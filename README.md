@@ -1,0 +1,1 @@
+A property management and booking web application built with React + TypeScript, designed for managing rental spaces, function halls, and parking slots with role-based access for clients and administrators.
