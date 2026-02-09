@@ -65,6 +65,14 @@ export default function ClientLayout() {
     { to: "/client/profile", icon: User, label: "Profile" },
   ];
 
+  // Build an avatar URL fallback (uses provided avatar, photoURL, or ui-avatars)
+  const avatarUrl =
+    (user as any)?.avatarUrl ||
+    (user as any)?.photoURL ||
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(
+      user?.name || "User",
+    )}&background=0D8ABC&color=fff&size=128`;
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -74,18 +82,32 @@ export default function ClientLayout() {
             <div className="flex items-center gap-3">
               <Building2 className="size-8 text-blue-600" />
               <div>
-                <h1 className="text-blue-600">
-                  Commerciales Flores
-                </h1>
-                <p className="text-sm text-gray-500">
-                  Client Portal
-                </p>
+                <h1 className="text-blue-600">Commerciales Flores</h1>
+                <p className="text-sm text-gray-500">Client Portal</p>
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <span className="text-gray-700">
-                Welcome, {user?.name}
-              </span>
+              <span className="text-gray-700">Welcome, {user?.name}</span>
+
+              <NavLink
+                to="/client/profile"
+                aria-label="Open profile"
+                className="flex items-center"
+              >
+                <img
+                  src={avatarUrl}
+                  alt={user?.name || "User avatar"}
+                  onError={(e) => {
+                    const target = e.currentTarget as HTMLImageElement;
+                    target.onerror = null;
+                    target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                      user?.name || "User",
+                    )}&background=0D8ABC&color=fff&size=128`;
+                  }}
+                  className="w-8 h-8 rounded-full object-cover border border-gray-200 shadow-sm"
+                />
+              </NavLink>
+
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
@@ -142,11 +164,7 @@ export default function ClientLayout() {
       </button>
 
       {/* Support Modal */}
-      {showSupport && (
-        <ContactSupportModal
-          onClose={() => setShowSupport(false)}
-        />
-      )}
+      {showSupport && <ContactSupportModal onClose={() => setShowSupport(false)} />}
     </div>
   );
-}   
+}

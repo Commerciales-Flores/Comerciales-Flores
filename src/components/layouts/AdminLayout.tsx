@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useData } from "../../contexts/DataContext";
 import { 
   LayoutDashboard, 
   Users, 
@@ -35,6 +36,13 @@ export default function AdminLayout() {
     { to: '/admin/profile', icon: User, label: 'Profile' },
   ];
 
+  const avatarUrl =
+    (user as any)?.avatarUrl ||
+    (user as any)?.photoURL ||
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(
+      user?.name || "User",
+    )}&background=0D8ABC&color=fff&size=128`;
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -50,6 +58,27 @@ export default function AdminLayout() {
             </div>
             <div className="flex items-center gap-4">
               <span>Welcome, {user?.name}</span>
+
+              <NavLink
+                to="/admin/profile"
+                aria-label="Open profile"
+                className="flex items-center"
+              >
+                <img
+                  src={avatarUrl}
+                  alt={user?.name || "Admin avatar"}
+                  onError={(e) => {
+                    const target = e.currentTarget as HTMLImageElement;
+                    target.onerror = null;
+                    target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                      user?.name || "Admin",
+                    )}&background=0D8ABC&color=fff&size=128`;
+                  }}
+                  className="w-8 h-8 rounded-full object-cover border border-gray-200 shadow-sm"
+                />
+              </NavLink>
+
+
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-800 hover:bg-blue-700 rounded-lg transition-colors"

@@ -30,26 +30,6 @@ export interface Property {
   features: string[];
 }
 
-    // ✅ NEW, CORRECTED TYPE in DataContext.tsx
-    export interface GuestParkingReservation {
-      id: string;
-      slotId: string;
-      slotName: string;
-      name: string;
-      contact: string;
-      email: string;
-      plateNumber: string;
-      vehicleType: string;
-      startDate: string; // Stored as an ISO string
-      duration: number; // The number of hours or days
-      durationType: 'hours' | 'days'; // The unit for the duration
-      paymentMethod: string;
-      reference: string;
-      notes: string;
-    }
-    
-
-
 // In src/contexts/DataContext.tsx
 
 // ✅ START: THE NEW, CORRECTED BOOKING INTERFACE
@@ -237,7 +217,7 @@ const MOCK_PROPERTIES: Property[] = [
     name: 'Parking Area',
     type: 'parking_slot',
     description: 'Secure covered parking slots available for hourly, daily, or monthly rental. CCTV monitored 24/7.',
-    price: 50, // hourly
+    price: 3000, 
     images: ['https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800'],
     policies: 'Minimum 1-hour booking. Vehicle must be registered. Not responsible for items left in vehicle.',
     available: true,

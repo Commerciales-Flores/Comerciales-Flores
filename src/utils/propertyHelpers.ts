@@ -20,7 +20,7 @@ export function getMinimumDuration(type: PropertyType): { value: number; unit: s
     case 'function_hall':
       return { value: 1, unit: 'day' };
     case 'parking_slot':
-      return { value: 1, unit: 'hour' };
+      return { value: 1, unit: 'month' };
   }
 }
 
@@ -31,7 +31,7 @@ export function getPriceLabel(type: PropertyType): string {
     case 'function_hall':
       return 'per day';
     case 'parking_slot':
-      return 'per hour';
+      return 'per month';
   }
 }
 
@@ -44,7 +44,7 @@ export function calculateTotalAmount(type: PropertyType, price: number, duration
       // Duration is in days, price is daily
       return price * duration;
     case 'parking_slot':
-      // Duration is in hours, price is hourly
+      // Duration is in months, price is monthly
       return price * duration;
     default:
       return price * duration;

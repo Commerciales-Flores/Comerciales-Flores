@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { User, Mail, Phone, MapPin, Lock, CheckCircle, AlertCircle } from 'lucide-react';
 
@@ -7,6 +7,14 @@ export default function AdminProfile() {
   const [editing, setEditing] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+    // Avatar URL fallback (prefers user.avatarUrl or user.photoURL, then generated initials)
+   const avatarUrl =
+       (user as any)?.avatarUrl ||
+       (user as any)?.photoURL ||
+       `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=0D8ABC&color=fff&size=512`;
 
   const [profileForm, setProfileForm] = useState({
     name: user?.name || '',
@@ -57,8 +65,27 @@ export default function AdminProfile() {
     setTimeout(() => setMessage(null), 3000);
   };
 
+    const handleEditPictureClick = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = () => {
+            const dataUrl = reader.result as string;
+            // updateProfile may be sync or async — handle both
+            Promise.resolve(updateProfile({ avatarUrl: dataUrl }))
+                .then(() => showMessage('success', 'Profile picture updated!'))
+                .catch(() => showMessage('error', 'Failed to update profile picture'));
+        };
+        reader.readAsDataURL(file);
+    };
+
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 max-w-7xl mx-auto px-4">
       <div>
         <h1 className="mb-2">Admin Profile</h1>
         <p className="text-gray-600">Manage your administrator account</p>
@@ -75,7 +102,9 @@ export default function AdminProfile() {
         </div>
       )}
 
+      <div className="flex flex-col lg:flex-row">
       {/* Profile Information */}
+      <div className="lg:flex-1">
       <div className="bg-white rounded-lg border border-gray-200">
         <div className="p-6 border-b border-gray-200 flex justify-between items-center">
           <h2>Personal Information</h2>
@@ -215,6 +244,41 @@ export default function AdminProfile() {
           </div>
         )}
       </div>
+              </div>
+
+              <div className="mt-6 lg:mt-0 lg:w-80 lg:pl-20 flex justify-center items-center">
+
+                  <div className="flex flex-col items-center">
+                      <img
+                          src={avatarUrl}
+                          alt={user?.name || 'User avatar'}
+                          onError={(e) => {
+                              const target = e.currentTarget as HTMLImageElement;
+                              target.onerror = null;
+                              target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=0D8ABC&color=fff&size=512`;
+                          }}
+                          className="w-24 h-24 sm:w-28 sm:h-28 lg:w-50 lg:h-50 rounded-full object-cover border-2 border-gray-200 shadow-sm"
+                      />
+                      <div className="mt-4">
+                          <button
+                              type="button"
+                              onClick={handleEditPictureClick}
+                              className="px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          >
+                              Edit Picture
+                          </button>
+                          <input
+                              ref={fileInputRef}
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={handleImageChange}
+                          />
+                      </div>
+                  </div>
+              </div>
+      </div>
+
 
       {/* Change Password */}
       <div className="bg-white rounded-lg border border-gray-200">
