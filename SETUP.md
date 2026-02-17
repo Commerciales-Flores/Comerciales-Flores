@@ -16,10 +16,8 @@ Before you begin, ensure you have the following installed:
 3. **Git**  
    Download: https://github.com/averageCoder-byte/Comerciales-Flores.git
 
-4. **Firebase CLI** (optional, for backend / deployment)  
-	   ```bash
-	   npm install -g firebase-tools
-	   ```
+4. **Supabase** (optional, for backend / deployment)  
+	Create one at: https://supabase.com/
 
 ## 1. Clone the Repository
 
@@ -39,13 +37,26 @@ npm install
 
 This installs all frontend dependencies listed in package.json
 
-## 3. Entry point
+## 3. Environment Variables Setup
+Create a .env file in the project root and add:
+
+```bash
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+You can find these values in your Supabase dashboard:
+
+Project Settings → API
+
+⚠️ Do not commit your .env file to GitHub.
+
+## 4. Entry point
 
 The frontend entry point is at main.tsx
 React will mount your entire app inside <div id="root"></div> from index.html.
 
 ## 5. Running the Development Server
-Stil inside the project root
+Still inside the project root
 ```bash
 npm run dev
 ```
@@ -53,24 +64,24 @@ npm run dev
 This uses Vite to serve your app locally.
 Open your browser at http://localhost:5173 (default port).
 
-## 6. Firebase Setup (Optional for Backend)
-Install Firebase CLI globally
+## 6. Supabase Setup (Backend)
+
+1. Create a new project in Supabase.
+2. Set up your database tables via the SQL Editor or Table Editor.
+3. Enable Authentication providers if needed (Email/Password, Google, etc.).
+4. Copy your project URL and anon key into your .env file.
+
+If using Supabase locally (optional advanced setup):
+
+Install Supabase CLI:
 ```bash
-npm install -g firebase-tools
+npm install -g supabase
 ```
 
-6.1. Log in and initialize Firebase (if not already done):
+Log in and initialize Supabase (if not already done):
 
 ```bash
-firebase login
-firebase init
+supabase init
+supabase start
 ```
 
-
-Follow prompts for Hosting, Firestore, and Authentication as needed.
-
-6.2. Deploy to Firebase:
-
-```bash
-firebase deploy
-```
