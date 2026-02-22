@@ -15,7 +15,10 @@ export default function ClientNotifications() {
 
   const typeIcons = {
     booking: Calendar,
+<<<<<<< HEAD
     reservation: Calendar,
+=======
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     payment: CreditCard,
     inquiry: MessageSquare,
     system: AlertCircle
@@ -23,7 +26,10 @@ export default function ClientNotifications() {
 
   const typeColors = {
     booking: 'text-blue-600 bg-blue-100',
+<<<<<<< HEAD
     reservation: 'text-blue-600 bg-blue-100',
+=======
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     payment: 'text-green-600 bg-green-100',
     inquiry: 'text-purple-600 bg-purple-100',
     system: 'text-gray-600 bg-gray-100'

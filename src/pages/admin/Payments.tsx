@@ -9,7 +9,11 @@ import AdminActionModal from '../../pages/admin/AdminActionModal';
 
 export default function AdminPayments() {
   // ✅ Add getUserById to get user context
+<<<<<<< HEAD
   const { payments, reservations, updatePayment, getUserById } = useData();
+=======
+  const { payments, bookings, updatePayment, getUserById } = useData();
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
   const { sendPaymentNotification } = useNotifications();
   const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'unpaid'>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -19,12 +23,21 @@ export default function AdminPayments() {
 
   const filteredPayments = payments.filter(p => {
     // ✅ Add user to search context
+<<<<<<< HEAD
     const reservation = reservations.find(r => r.id === p.reservationId);
     const user = reservation ? getUserById(reservation.userId) : null;
     
     const matchesStatus = filterStatus === 'all' || p.status === filterStatus;
     const matchesSearch = p.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          p.reservationId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+=======
+    const booking = bookings.find(b => b.id === p.bookingId);
+    const user = booking ? getUserById(booking.userId) : null;
+    
+    const matchesStatus = filterStatus === 'all' || p.status === filterStatus;
+    const matchesSearch = p.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         p.bookingId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                          (user && `${user.first_name} ${user.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()));
     
     return matchesStatus && matchesSearch;
@@ -55,6 +68,7 @@ export default function AdminPayments() {
     }
 
     const csvData = sortedPayments.map(payment => {
+<<<<<<< HEAD
       const reservation = reservations.find(r => r.id === payment.reservationId);
       const user = reservation ? getUserById(reservation.userId) : null;
       return {
@@ -63,6 +77,16 @@ export default function AdminPayments() {
         'Payment Date': new Date(payment.date).toLocaleDateString(),
         'Customer Name': user ? `${user.first_name} ${user.last_name}` : 'N/A',
         'Property Name': reservation?.propertyName ?? 'N/A',
+=======
+      const booking = bookings.find(b => b.id === payment.bookingId);
+      const user = booking ? getUserById(booking.userId) : null;
+      return {
+        'Payment ID': payment.id,
+        'Booking ID': payment.bookingId,
+        'Payment Date': new Date(payment.date).toLocaleDateString(),
+        'Customer Name': user ? `${user.first_name} ${user.last_name}` : 'N/A',
+        'Property Name': booking?.propertyName ?? 'N/A',
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
         'Amount': payment.amount,
         'Payment Method': payment.method.replace('_', ' ').toUpperCase(),
         'Status': payment.status.toUpperCase(),
@@ -85,9 +109,15 @@ export default function AdminPayments() {
   };
 
   const payment = selectedPayment ? payments.find(p => p.id === selectedPayment) : null;
+<<<<<<< HEAD
   const paymentReservation = payment ? reservations.find(r => r.id === payment.reservationId) : null;
   // ✅ Get user for the modal
   const paymentUser = paymentReservation ? getUserById(paymentReservation.userId) : null;
+=======
+  const paymentBooking = payment ? bookings.find(b => b.id === payment.bookingId) : null;
+  // ✅ Get user for the modal
+  const paymentUser = paymentBooking ? getUserById(paymentBooking.userId) : null;
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
 
   const statusColors = {
     paid: 'bg-green-100 text-green-800',
@@ -133,7 +163,11 @@ export default function AdminPayments() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
           <input
             type="text"
+<<<<<<< HEAD
             placeholder="Search by Payment ID, Reservation ID, or Customer Name..."
+=======
+            placeholder="Search by Payment ID, Booking ID, or Customer Name..."
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -207,7 +241,11 @@ export default function AdminPayments() {
                   <tr key={payment.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{payment.userId}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{payment.id}</td>
+<<<<<<< HEAD
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{payment.reservationId}</td>
+=======
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{payment.bookingId}</td>
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{formatCurrency(payment.amount)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{new Date(payment.date).toLocaleDateString()}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -218,7 +256,11 @@ export default function AdminPayments() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       {payment.proofOfPayment ? (
                         <button
+<<<<<<< HEAD
                           onClick={() => setProofImageUrl(payment.proofOfPayment || null)}
+=======
+                          onClick={() => setProofImageUrl(payment.proofOfPayment)}
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                           className="text-xs text-blue-600 hover:underline"
                         >
                           View Proof
@@ -286,9 +328,15 @@ export default function AdminPayments() {
                 <div><span className="text-gray-600">Payment ID:</span></div>
                 <div className="text-gray-900 font-mono">{payment.id}</div>
                 <div><span className="text-gray-600">Reservation ID:</span></div>
+<<<<<<< HEAD
                 <div className="text-gray-900 font-mono">{payment.reservationId}</div>
                 <div><span className="text-gray-600">Property:</span></div>
                 <div className="text-gray-900">{paymentReservation?.propertyName ?? <span className="text-red-500">Not Found</span>}</div>
+=======
+                <div className="text-gray-900 font-mono">{payment.bookingId}</div>
+                <div><span className="text-gray-600">Property:</span></div>
+                <div className="text-gray-900">{paymentBooking?.propertyName ?? <span className="text-red-500">Not Found</span>}</div>
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                 <div><span className="text-gray-600">Amount:</span></div>
                 <div className="text-gray-900 font-semibold">{formatCurrency(payment.amount)}</div>
                 <div><span className="text-gray-600">Method:</span></div>

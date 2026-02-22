@@ -1,5 +1,8 @@
 import { useState, useRef } from 'react';
+<<<<<<< HEAD
 import type { JSX } from 'react';
+=======
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
 import { useData } from "../../contexts/DataContext";
 import type { PropertyType } from "../../contexts/DataContext"; // ✅ type-only
 import { Plus, Edit, Trash2, X, Home, Building2, Car } from 'lucide-react';

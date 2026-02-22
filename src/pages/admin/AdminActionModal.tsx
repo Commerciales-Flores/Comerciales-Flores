@@ -7,6 +7,7 @@ import { X, Search, User as UserIcon, Building, ArrowLeft } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 
 // ✅ STEP 1: IMPORT THE NEW FORM COMPONENTS
+<<<<<<< HEAD
 import AdminPaymentForm from './forms/AdminPaymentForm';
 import AdminReservationForm from './forms/AdminReservationForm';
 
@@ -15,6 +16,16 @@ type Stage = 'select_user' | 'select_target' | 'fill_form' | 'success';
 
 export default function AdminActionModal({ actionType, onClose }: { actionType: ActionType, onClose: () => void }) {
   const { users = [], reservations = [], properties = [], addPayment, addReservation } = useData();
+=======
+import AdminPaymentForm from '../../components/admin/AdminPaymentForm';
+import AdminBookingForm from '../../components/admin/AdminBookingForm';
+
+type ActionType = 'payment' | 'booking';
+type Stage = 'select_user' | 'select_target' | 'fill_form' | 'success';
+
+export default function AdminActionModal({ actionType, onClose }: { actionType: ActionType, onClose: () => void }) {
+  const { users = [], bookings = [], properties = [], addPayment, addBooking } = useData();
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
 
   // ... (all other state remains the same: stage, selectedUser, etc.)
   const [stage, setStage] = useState<Stage>('select_user');
@@ -87,20 +98,29 @@ export default function AdminActionModal({ actionType, onClose }: { actionType: 
 
       // ✅ START: RESTORE MISSING JSX FOR STAGE 2
       case 'select_target':
+<<<<<<< HEAD
         const userReservationsWithBalance = reservations.filter(r => r.userId === selectedUser?.id && r.totalAmount > r.paidAmount);
+=======
+        const userBookingsWithBalance = bookings.filter(b => b.userId === selectedUser?.id && b.totalAmount > b.paidAmount);
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
 
         return (
           <div>
             <button onClick={() => setStage('select_user')} className="flex items-center gap-2 text-sm text-gray-600 hover:text-black mb-4">
               <ArrowLeft size={16}/> Back to user list
             </button>
+<<<<<<< HEAD
             <h3 className="font-semibold mb-4 text-lg">Select a {actionType === 'payment' ? 'Reservation' : 'Property'}</h3>
+=======
+            <h3 className="font-semibold mb-4 text-lg">Select a {actionType === 'payment' ? 'Booking' : 'Property'}</h3>
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
             <p className="text-sm text-gray-600 mb-4">
               For: <span className="font-bold text-gray-800">{selectedUser?.first_name} {selectedUser?.last_name}</span>
             </p>
             <div className="max-h-80 overflow-y-auto divide-y border rounded-lg">
               {/* Logic for 'Create Payment' */}
               {actionType === 'payment' && (
+<<<<<<< HEAD
                 userReservationsWithBalance.length > 0 ? (
                   userReservationsWithBalance.map(reservation => (
                     <div key={reservation.id} onClick={() => { setSelectedTargetId(reservation.id); setStage('fill_form'); }} className="p-3 hover:bg-blue-50 cursor-pointer transition-colors">
@@ -115,6 +135,22 @@ export default function AdminActionModal({ actionType, onClose }: { actionType: 
               )}
               {/* Logic for 'Create Reservation' */}
               {actionType === 'reservation' && (
+=======
+                userBookingsWithBalance.length > 0 ? (
+                  userBookingsWithBalance.map(booking => (
+                    <div key={booking.id} onClick={() => { setSelectedTargetId(booking.id); setStage('fill_form'); }} className="p-3 hover:bg-blue-50 cursor-pointer transition-colors">
+                      <p className="font-semibold text-gray-800">{booking.propertyName}</p>
+                      <p className="text-sm text-red-600">Balance: {formatCurrency(booking.totalAmount - booking.paidAmount)}</p>
+                      <p className="text-xs text-gray-500">ID: {booking.id}</p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-8 text-center text-gray-500">This user has no bookings with an outstanding balance.</div>
+                )
+              )}
+              {/* Logic for 'Create Reservation' */}
+              {actionType === 'booking' && (
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                 properties.map(property => (
                  <div key={property.id} onClick={() => { setSelectedTargetId(property.id); setStage('fill_form'); }} className="p-3 hover:bg-blue-50 cursor-pointer flex items-center gap-3 transition-colors">
                    <Building className="size-5 text-gray-500 flex-shrink-0"/>
@@ -139,13 +175,22 @@ export default function AdminActionModal({ actionType, onClose }: { actionType: 
             {actionType === 'payment' && selectedUser && selectedTargetId && (
               <AdminPaymentForm
                 userId={selectedUser.id}
+<<<<<<< HEAD
                 reservationId={selectedTargetId}
+=======
+                bookingId={selectedTargetId}
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                 onComplete={() => setStage('success')}
               />
             )}
 
+<<<<<<< HEAD
             {actionType === 'reservation' && selectedUser && selectedTargetId && (
               <AdminReservationForm
+=======
+            {actionType === 'booking' && selectedUser && selectedTargetId && (
+              <AdminBookingForm
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                 userId={selectedUser.id}
                 propertyId={selectedTargetId}
                 onComplete={() => setStage('success')}

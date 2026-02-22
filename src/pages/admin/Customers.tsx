@@ -17,7 +17,11 @@ const MOCK_CUSTOMERS = [
 ];
 
 export default function AdminCustomers() {
+<<<<<<< HEAD
   const { reservations } = useData();
+=======
+  const { bookings } = useData();
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
   const [customers, setCustomers] = useState(MOCK_CUSTOMERS);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
@@ -41,7 +45,11 @@ const [newCustomer, setNewCustomer] = useState({
   );
 
   const customer = selectedCustomer ? customers.find(c => c.id === selectedCustomer) : null;
+<<<<<<< HEAD
   const customerReservations = customer ? reservations.filter(b => b.userId === customer.id) : [];
+=======
+  const customerBookings = customer ? bookings.filter(b => b.userId === customer.id) : [];
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
 
 
 

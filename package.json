@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.95.3",
+<<<<<<< HEAD
     "html2canvas": "^1.4.1",
     "html2pdf.js": "^0.14.0",
     "jspdf": "^4.2.0",
@@ -18,12 +19,19 @@
     "react-dom": "^18.3.1",
     "react-to-print": "^3.2.0",
     "recharts": "^3.7.0"
+=======
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^24.10.1",
+<<<<<<< HEAD
     "@types/papaparse": "^5.5.2",
+=======
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",

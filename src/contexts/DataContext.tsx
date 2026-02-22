@@ -1,8 +1,15 @@
+<<<<<<< HEAD
 import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
 
 export type PropertyType = 'rental_space' | 'function_hall' | 'parking_slot';
 export type ReservationStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed';
+=======
+import { createContext, useContext, useState, ReactNode } from 'react';
+
+export type PropertyType = 'rental_space' | 'function_hall' | 'parking_slot';
+export type BookingStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed';
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
 export type PaymentStatus = 'unpaid' | 'partial' | 'paid';
 export type PaymentMethod = 'cash' | 'cheque' | 'gcash' | 'paymaya' | 'bank_transfer' | 'credit_card' | 'not_applicable';
 export type PaymentCycle = 'monthly' | 'quarterly' | 'full';
@@ -32,18 +39,30 @@ export interface Property {
 }
 
 // In src/contexts/DataContext.tsx
+<<<<<<< HEAD
 export interface Reservation {
+=======
+
+// ✅ START: THE NEW, CORRECTED BOOKING INTERFACE
+export interface Booking {
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
   id: string;
   userId: string;
   propertyId: string;
   propertyName: string;
   propertyType: PropertyType;
+<<<<<<< HEAD
   requestDate: string;
+=======
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
   startDate: string;
   endDate: string;
   duration: number;
   totalAmount: number;
+<<<<<<< HEAD
   paidAmount: number;
+=======
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
   notes?: string;
     paymentMethod?: 'cash' | 'cheque' | 'gcash' | 'paymaya' | 'bank_transfer' | 'credit_card' | 'not_applicable'; // ✅ ADD THIS LINE
@@ -69,11 +88,19 @@ export interface Reservation {
   slotId?: string;
   slotName?: string;
 }
+<<<<<<< HEAD
+=======
+// ✅ END: THE NEW, CORRECTED BOOKING INTERFACE
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
 
 
 export interface Payment {
   id: string;
+<<<<<<< HEAD
   reservationId: string;
+=======
+  bookingId: string;
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
   userId: string;
   amount: number;
   method: PaymentMethod;
@@ -115,7 +142,11 @@ export interface Notification {
   userId: string;
   title: string;
   message: string;
+<<<<<<< HEAD
   type: 'reservation' | 'payment' | 'inquiry' | 'system';
+=======
+  type: 'booking' | 'payment' | 'inquiry' | 'system';
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
   read: boolean;
   date: string;
 }
@@ -151,7 +182,11 @@ export interface ContentSettings {
 interface DataContextType {
   users: User[];
   properties: Property[];
+<<<<<<< HEAD
   reservations: Reservation[];
+=======
+  bookings: Booking[];
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
   payments: Payment[];
   inquiries: Inquiry[];
   notifications: Notification[];
@@ -161,9 +196,17 @@ interface DataContextType {
   updateProperty: (id: string, property: Partial<Property>) => void;
   deleteProperty: (id: string) => void;
   parkingSlots: ParkingSlot[];
+<<<<<<< HEAD
   addReservation: (reservation: Omit<Reservation, 'id' | 'requestDate' | 'paidAmount'>) => string;
   updateReservation: (id: string, reservation: Partial<Reservation>) => void;
   deleteReservation: (id: string) => void;
+=======
+  guestParkingReservations: GuestParkingReservation[];
+  addParkingReservation: (reservation: Omit<GuestParkingReservation, 'id' | 'status' | 'createdAt' | 'is_a_user'>) => void;
+  addBooking: (booking: Omit<Booking, 'id' | 'requestDate' | 'paidAmount'>) => string;
+  updateBooking: (id: string, booking: Partial<Booking>) => void;
+  deleteBooking: (id: string) => void;
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
   addPayment: (payment: Omit<Payment, 'id' | 'date'>) => void;
   updatePayment: (id: string, payment: Partial<Payment>) => void;
   addInquiry: (inquiry: Omit<Inquiry, 'id' | 'date' | 'status'>) => void;
@@ -176,7 +219,11 @@ interface DataContextType {
   deleteBusinessSlot: (id: string) => void;
   updateContentSettings: (settings: Partial<ContentSettings>) => void;
   getPropertyById: (id: string) => Property | undefined;
+<<<<<<< HEAD
   getReservationsByUserId: (userId: string) => Reservation[];
+=======
+  getBookingsByUserId: (userId: string) => Booking[];
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
   getPaymentsByUserId: (userId: string) => Payment[];
   getNotificationsByUserId: (userId: string) => Notification[];
   getInquiriesByUserId: (userId: string) => Inquiry[];
@@ -205,7 +252,11 @@ const MOCK_PROPERTIES: Property[] = [
     description: 'Elegant function hall suitable for weddings, conferences, and special events. Fully equipped with audio-visual systems.',
     price: 15000, // daily
     images: ['https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=800', 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800'],
+<<<<<<< HEAD
     policies: 'Minimum 1-day reservation. Full payment required 7 days before event. Damages will be charged separately.',
+=======
+    policies: 'Minimum 1-day booking. Full payment required 7 days before event. Damages will be charged separately.',
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     capacity: 200,
     available: true,
     features: ['200 person capacity', 'Stage and sound system', 'Air-conditioned', 'Catering area', 'Restrooms', 'LED screen']
@@ -217,7 +268,11 @@ const MOCK_PROPERTIES: Property[] = [
     description: 'Secure covered parking slots available for hourly, daily, or monthly rental. CCTV monitored 24/7.',
     price: 3000, 
     images: ['https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800'],
+<<<<<<< HEAD
     policies: 'Minimum 1-hour reservation. Vehicle must be registered. Not responsible for items left in vehicle.',
+=======
+    policies: 'Minimum 1-hour booking. Vehicle must be registered. Not responsible for items left in vehicle.',
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     available: true,
     features: ['Covered parking', '24/7 CCTV', 'Security guard', 'Well-lit area']
   },
@@ -239,7 +294,11 @@ const MOCK_PROPERTIES: Property[] = [
     description: 'Cozy event space perfect for small gatherings, meetings, and celebrations.',
     price: 8000, // daily
     images: ['https://images.unsplash.com/photo-1511578314322-379afb476865?w=800'],
+<<<<<<< HEAD
     policies: 'Minimum 1-day reservation. Decorations must be approved. External catering allowed.',
+=======
+    policies: 'Minimum 1-day booking. Decorations must be approved. External catering allowed.',
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     capacity: 50,
     available: true,
     features: ['50 person capacity', 'Basic sound system', 'Air-conditioned', 'WiFi included', 'Kitchen access']
@@ -252,9 +311,15 @@ const MOCK_PARKING_SLOTS: ParkingSlot[] = Array.from({ length: 10 }, (_, i) => (
   imageUrl: `https://placehold.co/400x300/e2e8f0/475569?text=Slot%20${i + 1}`,
 }));
 
+<<<<<<< HEAD
 const MOCK_RESERVATIONS: Reservation[] = [
   {
     id: 'r1',
+=======
+const MOCK_BOOKINGS: Booking[] = [
+  {
+    id: 'b1',
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     userId: '2',
     propertyId: 'p1',
     propertyName: 'Commercial Unit 101',
@@ -263,7 +328,11 @@ const MOCK_RESERVATIONS: Reservation[] = [
     endDate: '2026-01-14',
     duration: 12, // months
     modeOfVisit: 'online',
+<<<<<<< HEAD
     status: 'confirmed',
+=======
+    status: 'approved',
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     paymentMethod: 'bank_transfer',
     paymentIntent: 'pay_later',
     paymentCycle: 'monthly',
@@ -274,7 +343,11 @@ const MOCK_RESERVATIONS: Reservation[] = [
     businessType: 'Food & Beverage'
   },
   {
+<<<<<<< HEAD
     id: 'r2',
+=======
+    id: 'b2',
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     userId: '2',
     propertyId: 'p3',
     propertyName: 'Covered Parking - Section A',
@@ -312,7 +385,11 @@ const MOCK_USERS: User[] = [
 const MOCK_PAYMENTS: Payment[] = [
   {
     id: 'pay1',
+<<<<<<< HEAD
     reservationId: 'r1',
+=======
+    bookingId: 'b1',
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     userId: '2',
     amount: 50000,
     method: 'bank_transfer',
@@ -344,16 +421,28 @@ const MOCK_CONTENT: ContentSettings = {
   contactAddress: '123 Business Avenue, Manila, Philippines 1000',
   announcements: [
     'New parking rates effective January 2026',
+<<<<<<< HEAD
     'Holiday promo: 10% off on function hall reservations for December'
   ],
   policies: 'All reservations are subject to admin approval. Payment terms vary by property type. Cancellations must be made 7 days in advance for refund eligibility.'
+=======
+    'Holiday promo: 10% off on function hall bookings for December'
+  ],
+  policies: 'All bookings are subject to admin approval. Payment terms vary by property type. Cancellations must be made 7 days in advance for refund eligibility.'
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
 };
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const [properties, setProperties] = useState<Property[]>(MOCK_PROPERTIES);
+<<<<<<< HEAD
   const [reservations, setReservations] = useState<Reservation[]>(MOCK_RESERVATIONS);
   const [payments, setPayments] = useState<Payment[]>(MOCK_PAYMENTS);
   const [users] = useState(MOCK_USERS);
+=======
+  const [bookings, setBookings] = useState<Booking[]>(MOCK_BOOKINGS);
+  const [payments, setPayments] = useState<Payment[]>(MOCK_PAYMENTS);
+  const [users, setUsers] = useState(MOCK_USERS);
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
 
   // ✅ ADD THIS HELPER FUNCTION
   const getUserById = (id: string) => users.find(u => u.id === id);
@@ -398,15 +487,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setProperties(properties.filter(p => p.id !== id));
   };
 
+<<<<<<< HEAD
   // Reservations
   const addReservation = (reservation: Omit<Reservation, 'id' | 'requestDate' | 'status' | 'paidAmount'>): string => {
     const newReservation: Reservation = {
       ...reservation,
       id: 'r' + Date.now().toString(),
+=======
+  // Bookings
+  const addBooking = (booking: Omit<Booking, 'id' | 'requestDate' | 'status' | 'paidAmount'>): string => {
+    const newBooking: Booking = {
+      ...booking,
+      id: 'b' + Date.now().toString(),
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
       requestDate: new Date().toISOString().split('T')[0],
       status: 'pending',
       paidAmount: 0
     };
+<<<<<<< HEAD
     setReservations([...reservations, newReservation]);
     return newReservation.id;
   };
@@ -417,6 +515,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const deleteReservation = (id: string) => {
     setReservations(reservations.filter(r => r.id !== id));
+=======
+    setBookings([...bookings, newBooking]);
+    return newBooking.id;
+  };
+
+  const updateBooking = (id: string, booking: Partial<Booking>) => {
+    setBookings(bookings.map(b => b.id === id ? { ...b, ...booking } : b));
+  };
+
+  const deleteBooking = (id: string) => {
+    setBookings(bookings.filter(b => b.id !== id));
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
   };
 
   // Payments
@@ -428,11 +538,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
     setPayments([...payments, newPayment]);
 
+<<<<<<< HEAD
     // Update reservation paid amount
     const reservation = reservations.find(r => r.id === payment.reservationId);
     if (reservation) {
       const newPaidAmount = reservation.paidAmount + payment.amount;
       updateReservation(payment.reservationId, { 
+=======
+    // Update booking paid amount
+    const booking = bookings.find(b => b.id === payment.bookingId);
+    if (booking) {
+      const newPaidAmount = booking.paidAmount + payment.amount;
+      updateBooking(payment.bookingId, { 
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
         paidAmount: newPaidAmount,
       });
     }
@@ -495,6 +613,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setContentSettings({ ...contentSettings, ...settings });
   };
 
+<<<<<<< HEAD
 
   // Helper functions
   const getPropertyById = (id: string) => properties.find(p => p.id === id);
@@ -502,18 +621,53 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const getPaymentsByUserId = (userId: string) => payments.filter(p => p.userId === userId);
   const getNotificationsByUserId = (userId: string) => notifications.filter(n => n.userId === userId);
   const getInquiriesByUserId = (userId: string) => inquiries.filter(i => i.userId === userId);
+=======
+  const addParkingReservation = (reservation: Omit<GuestParkingReservation, 'id' | 'status' | 'createdAt' | 'is_a_user' | 'slotName'>) => {
+    const slot = properties.find(p => p.id === reservation.slotId);
+    if (!slot) {
+      console.error("Parking slot not found!");
+      return;
+    }
+
+    const newReservation: GuestParkingReservation = {
+      ...reservation,
+      id: 'gpr' + Date.now().toString(),
+      status: 'pending',
+      is_a_user: false,
+      createdAt: new Date().toISOString(),
+      slotName: slot.name, // ✨ NEW: Add the slot name for easier display later
+      // The `vehicleType` and `plateNumber` are now passed directly from the form handler
+    };
+    setGuestParkingReservations(prev => [...prev, newReservation]);
+    console.log("New Guest Reservation Added:", newReservation); // For debugging
+  };
+
+  // Helper functions
+  const getPropertyById = (id: string) => properties.find(p => p.id === id);
+  const getBookingsByUserId = (userId: string) => bookings.filter(b => b.userId === userId);
+  const getPaymentsByUserId = (userId: string) => payments.filter(p => p.userId === userId);
+  const getNotificationsByUserId = (userId: string) => notifications.filter(n => n.userId === userId);
+  const getInquiriesByUserId = (userId: string) => inquiries.filter(i => i.userId === userId);
+  const [guestParkingReservations, setGuestParkingReservations] = useState<GuestParkingReservation[]>([]);
+
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
 
   return (
     <DataContext.Provider
       value={{
         users,
         properties,
+<<<<<<< HEAD
         reservations,
+=======
+        bookings,
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
         payments,
         inquiries,
         notifications,
         businessSlots,
         contentSettings,
+<<<<<<< HEAD
         parkingSlots: MOCK_PARKING_SLOTS,  // ✅ new
         addProperty,
         updateProperty,
@@ -521,6 +675,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
         addReservation,
         updateReservation,
         deleteReservation,
+=======
+        parkingSlots: MOCK_PARKING_SLOTS,
+        guestParkingReservations,   // ✅ new
+        addParkingReservation,
+        addProperty,
+        updateProperty,
+        deleteProperty,
+        addBooking,
+        updateBooking,
+        deleteBooking,
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
         addPayment,
         updatePayment,
         addInquiry,
@@ -533,7 +698,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         deleteBusinessSlot,
         updateContentSettings,
         getPropertyById,
+<<<<<<< HEAD
         getReservationsByUserId,
+=======
+        getBookingsByUserId,
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
         getPaymentsByUserId,
         getNotificationsByUserId,
         getInquiriesByUserId,

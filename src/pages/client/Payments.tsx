@@ -9,10 +9,17 @@ import { formatCurrency } from '../../utils/currency';
 
 export default function ClientPayments() {
   const { user } = useAuth();
+<<<<<<< HEAD
   const { getReservationsByUserId, getPaymentsByUserId, addPayment } = useData();
   const { sendSystemNotification } = useNotifications();
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState<string | null>(null);
+=======
+  const { getBookingsByUserId, getPaymentsByUserId, addPayment } = useData();
+  const { sendSystemNotification } = useNotifications();
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState<string | null>(null);
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     const [viewingImage, setViewingImage] = useState<string | null>(null);
 
     const [proofFile, setProofFile] = useState<File | null>(null);
@@ -26,11 +33,19 @@ export default function ClientPayments() {
   });
   const [paymentSuccess, setPaymentSuccess] = useState(false);
 
+<<<<<<< HEAD
   const userReservations = getReservationsByUserId(user?.id || '');
   const userPayments = getPaymentsByUserId(user?.id || '');
 
   const eligibleReservations = userReservations.filter(
     b => b.status === 'completed' && b.paidAmount < b.totalAmount
+=======
+  const userBookings = getBookingsByUserId(user?.id || '');
+  const userPayments = getPaymentsByUserId(user?.id || '');
+
+  const eligibleBookings = userBookings.filter(
+    b => b.status === 'approved' && b.paidAmount < b.totalAmount
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
   );
 
   // ✅ Updated file change handler to create a preview
@@ -51,8 +66,13 @@ export default function ClientPayments() {
     setProofPreviewUrl(null);
   };
   // No changes to handleMakePayment or handlePaymentSubmit
+<<<<<<< HEAD
   const handleMakePayment = (reservationId: string) => {
     setSelectedReservation(reservationId);
+=======
+  const handleMakePayment = (bookingId: string) => {
+    setSelectedBooking(bookingId);
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     setShowPaymentModal(true);
     setPaymentForm({ amount: '', method: 'gcash', proofOfPayment: '', notes: '' });
   };
@@ -61,23 +81,40 @@ export default function ClientPayments() {
 
   const handlePaymentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+<<<<<<< HEAD
     if (!selectedReservation || !user) return;
     const reservation = userReservations.find(b => b.id === selectedReservation);
     if (!reservation) return;
     const amount = parseFloat(paymentForm.amount);
     addPayment({
       reservationId: selectedReservation,
+=======
+    if (!selectedBooking || !user) return;
+    const booking = userBookings.find(b => b.id === selectedBooking);
+    if (!booking) return;
+    const amount = parseFloat(paymentForm.amount);
+    addPayment({
+      bookingId: selectedBooking,
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
       userId: user.id,
       amount,
       method: paymentForm.method,
       status: 'unpaid',
+<<<<<<< HEAD
       proofOfPayment: proofPreviewUrl || '',
+=======
+      proofOfPayment: paymentForm.proofOfPayment,
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
       notes: paymentForm.notes
     });
     sendSystemNotification(
       user.id,
       'Payment Submitted',
+<<<<<<< HEAD
       `Your payment of ${formatCurrency(amount)} for ${reservation.propertyName} has been submitted and is pending verification.`
+=======
+      `Your payment of ${formatCurrency(amount)} for ${booking.propertyName} has been submitted and is pending verification.`
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     );
     setPaymentSuccess(true);
     setTimeout(() => {
@@ -109,7 +146,11 @@ export default function ClientPayments() {
 
   // ✅ START: NEW INVOICE & CSV EXPORT FUNCTIONS
   const handleDownloadInvoice = (payment: any) => {
+<<<<<<< HEAD
     const reservation = userReservations.find(b => b.id === payment.reservationId);
+=======
+    const booking = userBookings.find(b => b.id === payment.bookingId);
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     const invoiceContent = `
       ========================================
       PAYMENT INVOICE
@@ -127,15 +168,26 @@ export default function ClientPayments() {
       ----------------------------------------
       RESERVATION DETAILS
       ----------------------------------------
+<<<<<<< HEAD
       Reservation ID:   ${reservation?.id}
       Property:     ${reservation?.propertyName}
       Property Type: ${getPropertyTypeLabel(reservation?.propertyType || 'rental_space')}
       Reservation Date: ${new Date(reservation?.startDate || '').toLocaleDateString()}
+=======
+      Booking ID:   ${booking?.id}
+      Property:     ${booking?.propertyName}
+      Property Type: ${getPropertyTypeLabel(booking?.propertyType || 'rental_space')}
+      Booking Date: ${new Date(booking?.startDate || '').toLocaleDateString()}
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
 
       ----------------------------------------
       PAYMENT DETAILS
       ----------------------------------------
+<<<<<<< HEAD
       Description:    Payment for ${reservation?.propertyName}
+=======
+      Description:    Payment for ${booking?.propertyName}
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
       Payment Method: ${payment.method.replace('_', ' ')}
       Amount Paid:    ${formatCurrency(payment.amount)}
 
@@ -157,6 +209,7 @@ export default function ClientPayments() {
 
   const handleExportCSV = () => {
     const csvData = userPayments.map(payment => {
+<<<<<<< HEAD
       const reservation = userReservations.find(b => b.id === payment.reservationId);
       return {
         'Payment ID': payment.id,
@@ -164,6 +217,15 @@ export default function ClientPayments() {
         'Reservation ID': payment.reservationId,
         'Property Name': reservation ?.propertyName,
         'Property Type': reservation ? getPropertyTypeLabel(reservation.propertyType) : 'N/A',
+=======
+      const booking = userBookings.find(b => b.id === payment.bookingId);
+      return {
+        'Payment ID': payment.id,
+        'Payment Date': new Date(payment.date).toLocaleDateString(),
+        'Booking ID': payment.bookingId,
+        'Property Name': booking?.propertyName,
+        'Property Type': booking ? getPropertyTypeLabel(booking.propertyType) : 'N/A',
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
         'Amount': payment.amount,
         'Payment Method': payment.method,
         'Payment Status': payment.status,
@@ -192,6 +254,7 @@ export default function ClientPayments() {
       </div>
 
       {/* Pending Payments Section is unchanged */}
+<<<<<<< HEAD
       {eligibleReservations.length > 0 && (
         <div className="bg-white rounded-lg border border-gray-200 p-6">
           <h2 className="mb-4">Balance due</h2>
@@ -207,11 +270,32 @@ export default function ClientPayments() {
                       <span className="text-gray-600">Total: {formatCurrency(reservation.totalAmount)}</span>
                       <span className="mx-2">•</span>
                       <span className="text-green-600">Paid: {formatCurrency(reservation.paidAmount)}</span>
+=======
+      {eligibleBookings.length > 0 && (
+        <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <h2 className="mb-4">Balance due</h2>
+          <div className="space-y-3">
+            {eligibleBookings.map((booking) => {
+              const balance = booking.totalAmount - booking.paidAmount;
+              return (
+                <div key={booking.id} className="flex justify-between items-center p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="flex-1">
+                    <h3 className="text-gray-900">{booking.propertyName}</h3>
+                    <p className="text-sm text-gray-600">Booking ID: {booking.id}</p>
+                    <div className="mt-2 text-sm">
+                      <span className="text-gray-600">Total: {formatCurrency(booking.totalAmount)}</span>
+                      <span className="mx-2">•</span>
+                      <span className="text-green-600">Paid: {formatCurrency(booking.paidAmount)}</span>
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                       <span className="mx-2">•</span>
                       <span className="text-red-600">Balance: {formatCurrency(balance)}</span>
                     </div>
                   </div>
+<<<<<<< HEAD
                   <button onClick={() => handleMakePayment(reservation.id)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+=======
+                  <button onClick={() => handleMakePayment(booking.id)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                     <Plus className="size-4" />
                     Make Payment
                   </button>
@@ -249,7 +333,11 @@ export default function ClientPayments() {
             {[...userPayments]
               .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
               .map((payment) => {
+<<<<<<< HEAD
                 const reservation = userReservations.find(r => r.id === payment.reservationId );
+=======
+                const booking = userBookings.find(b => b.id === payment.bookingId);
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                 const StatusIcon = paymentStatusIcons[payment.status];
 
                 return (
@@ -262,7 +350,11 @@ export default function ClientPayments() {
                             <StatusIcon className="size-3" />
                             {payment.status.toUpperCase()}
                           </span>
+<<<<<<< HEAD
 <span className="text-xs font-semibold text-gray-500 tracking-wider">{getPropertyTypeLabel(reservation?.propertyType || 'rental_space').toUpperCase()}</span>                        </div>
+=======
+<span className="text-xs font-semibold text-gray-500 tracking-wider">{getPropertyTypeLabel(booking?.propertyType || 'rental_space').toUpperCase()}</span>                        </div>
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                         <h3 className="font-bold text-gray-800">{formatCurrency(payment.amount)}</h3>
                         <p className="text-sm text-gray-500">Paid on {new Date(payment.date).toLocaleDateString()}</p>
                       </div>
@@ -277,25 +369,42 @@ export default function ClientPayments() {
 
                     {/* -- Card Body -- */}
                     <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+<<<<<<< HEAD
                       <h4 className="text-sm font-semibold mb-2">{reservation?.propertyName}</h4>
                       {/* ✅ START: NEW, SIMPLIFIED CARD DETAILS */}
 <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-sm">
   <div className="flex justify-between md:block">
     <span className="text-gray-600">Reservation ID: </span>
     <span className="text-gray-900">{reservation?.id}</span>
+=======
+                      <h4 className="text-sm font-semibold mb-2">{booking?.propertyName}</h4>
+                      {/* ✅ START: NEW, SIMPLIFIED CARD DETAILS */}
+<div className="grid sm:grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-sm">
+  <div className="flex justify-between md:block">
+    <span className="text-gray-600">Booking ID: </span>
+    <span className="text-gray-900">{booking?.id}</span>
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
   </div>
   <div className="flex justify-between md:block">
     <span className="text-gray-600">Method: </span>
     <span className="text-gray-900 capitalize">{payment.method.replace('_', ' ')}</span>
   </div>
+<<<<<<< HEAD
   {reservation?.paymentCycle && (
     <div className="flex justify-between md:block">
       <span className="text-gray-600">Cycle: </span>
       <span className="text-gray-900 capitalize">{reservation.paymentCycle}</span>
+=======
+  {booking?.paymentCycle && (
+    <div className="flex justify-between md:block">
+      <span className="text-gray-600">Cycle: </span>
+      <span className="text-gray-900 capitalize">{booking.paymentCycle}</span>
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     </div>
   )}
   <div className="flex justify-between md:block">
     <span className="text-gray-600">Total Bill: </span>
+<<<<<<< HEAD
     <span className="text-gray-900">{formatCurrency(reservation?.totalAmount || 0)}</span>
   </div>
   <div className="flex justify-between md:block">
@@ -305,6 +414,17 @@ export default function ClientPayments() {
   <div className="flex justify-between md:block">
     <span className="text-gray-600">Balance: </span>
     <span className="font-semibold text-red-600">{formatCurrency((reservation?.totalAmount || 0) - (reservation?.paidAmount || 0))}</span>
+=======
+    <span className="text-gray-900">{formatCurrency(booking?.totalAmount || 0)}</span>
+  </div>
+  <div className="flex justify-between md:block">
+    <span className="text-gray-600">Total Paid: </span>
+    <span className="font-semibold text-green-600">{formatCurrency(booking?.paidAmount || 0)}</span>
+  </div>
+  <div className="flex justify-between md:block">
+    <span className="text-gray-600">Balance: </span>
+    <span className="font-semibold text-red-600">{formatCurrency((booking?.totalAmount || 0) - (booking?.paidAmount || 0))}</span>
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
   </div>
 </div>
 {/* ✅ END: NEW, SIMPLIFIED CARD DETAILS */}
@@ -317,7 +437,11 @@ export default function ClientPayments() {
                       {payment.proofOfPayment && (
   <div className="mt-2 pt-2 border-t border-gray-200">
     <button
+<<<<<<< HEAD
       onClick={() => setViewingImage(payment.proofOfPayment || null)}
+=======
+      onClick={() => setViewingImage(payment.proofOfPayment)}
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
       className="text-sm text-blue-600 hover:underline font-medium"
     >
       View Proof of Payment
@@ -355,7 +479,11 @@ export default function ClientPayments() {
 
 
       {/* Make Payment Modal is unchanged */}
+<<<<<<< HEAD
       {showPaymentModal && selectedReservation && (
+=======
+      {showPaymentModal && selectedBooking && (
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">          
                     <div className="bg-white rounded-lg max-w-md w-full flex flex-col max-h-[90vh]">
             <div className="flex-shrink-0 p-6 border-b flex justify-between items-center">              
@@ -370,6 +498,7 @@ export default function ClientPayments() {
               </div>
             ) : (
 <form id="payment-form" onSubmit={handlePaymentSubmit} className="p-6 space-y-4 overflow-y-auto">                {(() => {
+<<<<<<< HEAD
                   const reservation = userReservations.find(r => r.id === selectedReservation);
                   if (!reservation) return null;
                   const balance = reservation.totalAmount - reservation.paidAmount;
@@ -379,6 +508,17 @@ export default function ClientPayments() {
                       <div className="space-y-1 text-sm">
                         <div className="flex justify-between"><span className="text-gray-600">Total Amount:</span><span className="text-gray-900">{formatCurrency(reservation.totalAmount)}</span></div>
                         <div className="flex justify-between"><span className="text-gray-600">Paid Amount:</span><span className="text-green-600">{formatCurrency(reservation.paidAmount)}</span></div>
+=======
+                  const booking = userBookings.find(b => b.id === selectedBooking);
+                  if (!booking) return null;
+                  const balance = booking.totalAmount - booking.paidAmount;
+                  return (
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <p className="text-sm text-gray-600 mb-2">{booking.propertyName}</p>
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between"><span className="text-gray-600">Total Amount:</span><span className="text-gray-900">{formatCurrency(booking.totalAmount)}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">Paid Amount:</span><span className="text-green-600">{formatCurrency(booking.paidAmount)}</span></div>
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                         <div className="flex justify-between border-t border-gray-200 pt-1 mt-1"><span className="font-semibold text-gray-900">Outstanding Balance:</span><span className="font-semibold text-red-600">{formatCurrency(balance)}</span></div>
                       </div>
                     </div>
@@ -386,7 +526,11 @@ export default function ClientPayments() {
                 })()}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Payment Amount (₱)</label>
+<<<<<<< HEAD
                   <input type="number" required min="0.01" step="0.01" max={(() => { const reservation = userReservations.find(r => r.id === selectedReservation); return reservation ? reservation.totalAmount - reservation.paidAmount : 0; })()} value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0.00" />
+=======
+                  <input type="number" required min="0.01" step="0.01" max={(() => { const booking = userBookings.find(b => b.id === selectedBooking); return booking ? booking.totalAmount - booking.paidAmount : 0; })()} value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0.00" />
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>

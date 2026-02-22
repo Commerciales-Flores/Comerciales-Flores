@@ -12,8 +12,12 @@ import {
   BarChart3, 
   User, 
   LogOut,
+<<<<<<< HEAD
   Building2,
   ClipboardClock
+=======
+  Building2
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
 } from 'lucide-react';
 
 export default function AdminLayout() {
@@ -28,9 +32,14 @@ export default function AdminLayout() {
   const navItems = [
     { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { to: '/admin/customers', icon: Users, label: 'Customers' },
+<<<<<<< HEAD
     { to: '/admin/audit', icon: ClipboardClock, label: 'Audit Log' },
     { to: '/admin/business-slots', icon: CalendarDays, label: 'Business Slots' },
     { to: '/admin/reservations', icon: Calendar, label: 'Reservations' },
+=======
+    { to: '/admin/business-slots', icon: CalendarDays, label: 'Business Slots' },
+    { to: '/admin/bookings', icon: Calendar, label: 'Reservations' },
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     { to: '/admin/payments', icon: CreditCard, label: 'Payments' },
     { to: '/admin/inquiries', icon: MessageSquare, label: 'Inquiries' },
     { to: '/admin/content', icon: FileText, label: 'Content' },
@@ -96,7 +105,11 @@ export default function AdminLayout() {
       {/* Navigation */}
       <nav className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<<<<<<< HEAD
           <div className="flex justify-center gap-1.5 px-1">
+=======
+          <div className="flex gap-1 overflow-x-auto">
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
             {navItems.map((item) => (
               <NavLink
                 key={item.to}

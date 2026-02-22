@@ -1,5 +1,9 @@
+<<<<<<< HEAD
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
+=======
+import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
 
 interface User {
   id: string;

@@ -1,6 +1,10 @@
 import { Link } from 'react-router-dom';
 import { Building2, Calendar, CreditCard, Shield, ArrowRight, MapPin, Phone, Mail } from 'lucide-react';
+<<<<<<< HEAD
 import { ImageWithFallback } from '../ui/ImageWithFallback';
+=======
+import { ImageWithFallback } from '../figma/ImageWithFallback';
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
 
 export default function LandingPage() {
   return (

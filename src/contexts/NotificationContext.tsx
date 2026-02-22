@@ -1,10 +1,18 @@
+<<<<<<< HEAD
 import { createContext, useContext } from 'react';
 import type { ReactNode } from 'react';
+=======
+import { createContext, useContext, ReactNode } from 'react';
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
 import { useData } from './DataContext';
 import { useAuth } from './AuthContext';
 
 interface NotificationContextType {
+<<<<<<< HEAD
   sendReservationNotification: (userId: string, reservationId: string, status: 'approved' | 'rejected') => void;
+=======
+  sendBookingNotification: (userId: string, bookingId: string, status: 'approved' | 'rejected') => void;
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
   sendPaymentNotification: (userId: string, paymentId: string, amount: number) => void;
   sendInquiryResponseNotification: (userId: string, inquirySubject: string) => void;
   sendSystemNotification: (userId: string, title: string, message: string) => void;
@@ -15,17 +23,29 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { addNotification } = useData();
 
+<<<<<<< HEAD
   const sendReservationNotification = (userId: string, reservationId: string, status: 'approved' | 'rejected') => {
     const title = status === 'approved' ? 'Reservation Approved' : 'Reservation Rejected';
     const message = status === 'approved' 
       ? `Your reservation #${reservationId} has been approved. You may now proceed with payment.`
       : `Your reservation #${reservationId} has been rejected. Please contact support for more information.`;
+=======
+  const sendBookingNotification = (userId: string, bookingId: string, status: 'approved' | 'rejected') => {
+    const title = status === 'approved' ? 'Booking Approved' : 'Booking Rejected';
+    const message = status === 'approved' 
+      ? `Your booking #${bookingId} has been approved. You may now proceed with payment.`
+      : `Your booking #${bookingId} has been rejected. Please contact support for more information.`;
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     
     addNotification({
       userId,
       title,
       message,
+<<<<<<< HEAD
       type: 'reservation'
+=======
+      type: 'booking'
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     });
   };
 
@@ -59,7 +79,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   return (
     <NotificationContext.Provider
       value={{
+<<<<<<< HEAD
         sendReservationNotification,
+=======
+        sendBookingNotification,
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
         sendPaymentNotification,
         sendInquiryResponseNotification,
         sendSystemNotification

@@ -24,7 +24,11 @@ import {
 export default function ClientProperties() {
   type DurationType = "hours" | "days" | "months";
 
+<<<<<<< HEAD
   interface ReservationForm {
+=======
+  interface BookingForm {
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     startDate: Date;
     endDate: Date;
     duration: number;
@@ -43,7 +47,11 @@ export default function ClientProperties() {
   }
 
   const { user } = useAuth();
+<<<<<<< HEAD
   const { properties, addReservation, parkingSlots, reservations } = useData();
+=======
+  const { properties, addBooking, parkingSlots, bookings } = useData();
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
   const [isSlotPanelOpen, setIsSlotPanelOpen] = useState(false);
   const { sendSystemNotification } = useNotifications();
   const [searchTerm, setSearchTerm] = useState("");
@@ -53,11 +61,19 @@ export default function ClientProperties() {
   const [selectedProperty, setSelectedProperty] = useState<string | null>(
     null
   );
+<<<<<<< HEAD
   const [showReservationModal, setShowReservationModal] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [reservationSuccess, setReservationSuccess] = useState(false);
 
   const [reservationForm, setReservationForm] = useState<ReservationForm>({
+=======
+  const [showBookingModal, setShowBookingModal] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [bookingSuccess, setBookingSuccess] = useState(false);
+
+  const [bookingForm, setBookingForm] = useState<BookingForm>({
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     startDate: new Date(),
     endDate: new Date(),
     duration: 1,
@@ -123,7 +139,11 @@ export default function ClientProperties() {
 
     setSelectedProperty(propertyId);
     setCurrentImageIndex(0);
+<<<<<<< HEAD
     setShowReservationModal(true);
+=======
+    setShowBookingModal(true);
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
 
     const defaultStart = (() => {
       const d = tomorrow();
@@ -143,7 +163,11 @@ export default function ClientProperties() {
       return e;
     })();
 
+<<<<<<< HEAD
     setReservationForm({
+=======
+    setBookingForm({
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
       startDate: prop.type === "parking_slot" ? defaultStart : defaultStart,
       endDate: defaultEnd,
       duration:
@@ -193,12 +217,21 @@ export default function ClientProperties() {
 
   // reserved-slot overlap detection with proper handling of hours/days/months
   const getReservedSlotIds = () => {
+<<<<<<< HEAD
     if (!reservationForm.startDate || !reservationForm.duration) return new Set<string>();
 
     const formStart = new Date(reservationForm.startDate);
     const formEnd = computeEndFromForm(formStart, reservationForm.duration, reservationForm.durationType);
 
     const reservedIds = reservations
+=======
+    if (!bookingForm.startDate || !bookingForm.duration) return new Set<string>();
+
+    const formStart = new Date(bookingForm.startDate);
+    const formEnd = computeEndFromForm(formStart, bookingForm.duration, bookingForm.durationType);
+
+    const reservedIds = bookings
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
       .filter((b) => b.propertyType === "parking_slot" && b.slotId)
       .filter((b) => {
         const resStart = new Date(b.startDate);
@@ -216,25 +249,45 @@ export default function ClientProperties() {
   const reservedSlotIds = getReservedSlotIds();
 
   const handleSlotSelectFromPanel = (slotId: string) => {
+<<<<<<< HEAD
     setReservationForm((prev) => ({ ...prev, slotId }));
+=======
+    setBookingForm((prev) => ({ ...prev, slotId }));
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     setIsSlotPanelOpen(false);
   };
 
   const clearSlotSelection = () => {
+<<<<<<< HEAD
     setReservationForm((prev) => ({ ...prev, slotId: "" }));
   };
 
   const selectedSlotObject = reservationForm.slotId
     ? parkingSlots.find((s) => s.id === reservationForm.slotId) ?? null
+=======
+    setBookingForm((prev) => ({ ...prev, slotId: "" }));
+  };
+
+  const selectedSlotObject = bookingForm.slotId
+    ? parkingSlots.find((s) => s.id === bookingForm.slotId) ?? null
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     : null;
 
   const [showCalendar, setShowCalendar] = useState(false);
 
+<<<<<<< HEAD
   const handleReservationSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!property || !user) return;
 
     if (property.type === "parking_slot" && !reservationForm.slotId) {
+=======
+  const handleBookingSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!property || !user) return;
+
+    if (property.type === "parking_slot" && !bookingForm.slotId) {
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
       alert("Please select a specific parking slot before proceeding.");
       setIsSlotPanelOpen(true);
       return;
@@ -243,15 +296,24 @@ export default function ClientProperties() {
     const totalAmount = calculateTotalAmount(
       property.type,
       property.price,
+<<<<<<< HEAD
       reservationForm.duration,
       reservationForm.paymentCycle
     );
 
     const reservationData: any = {
+=======
+      bookingForm.duration,
+      bookingForm.paymentCycle
+    );
+
+    const bookingData: any = {
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
       userId: user.id,
       propertyId: property.id,
       propertyName: property.name,
       propertyType: property.type,
+<<<<<<< HEAD
       startDate: reservationForm.startDate.toISOString(),
       endDate: reservationForm.endDate.toISOString(),
       duration: reservationForm.duration,
@@ -273,10 +335,34 @@ export default function ClientProperties() {
       reservationData.attendees = parseInt(reservationForm.attendees || "0");
     } else if (property.type === "parking_slot") {
       const selectedSlot = parkingSlots.find((p) => p.id === reservationForm.slotId);
+=======
+      startDate: bookingForm.startDate.toISOString(),
+      endDate: bookingForm.endDate.toISOString(),
+      duration: bookingForm.duration,
+      modeOfVisit: bookingForm.modeOfVisit,
+      paymentIntent:
+        bookingForm.modeOfVisit === "onsite"
+          ? bookingForm.paymentIntent
+          : "pay_later",
+      paymentMethod: bookingForm.paymentMethod,
+      totalAmount,
+      notes: bookingForm.notes,
+    };
+
+    if (property.type === "rental_space") {
+      bookingData.paymentCycle = bookingForm.paymentCycle;
+      bookingData.businessType = bookingForm.businessType;
+    } else if (property.type === "function_hall") {
+      bookingData.eventPurpose = bookingForm.eventPurpose;
+      bookingData.attendees = parseInt(bookingForm.attendees || "0");
+    } else if (property.type === "parking_slot") {
+      const selectedSlot = parkingSlots.find((p) => p.id === bookingForm.slotId);
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
       if (!selectedSlot) {
         console.error("No slot selected!");
         return;
       }
+<<<<<<< HEAD
       reservationData.slotId = reservationForm.slotId;
       reservationData.vehicleType = reservationForm.vehicleType;
       reservationData.plateNumber = reservationForm.plateNumber;
@@ -284,6 +370,15 @@ export default function ClientProperties() {
     }
 
     addReservation(reservationData);
+=======
+      bookingData.slotId = bookingForm.slotId;
+      bookingData.vehicleType = bookingForm.vehicleType;
+      bookingData.plateNumber = bookingForm.plateNumber;
+      bookingData.modeOfVisit = bookingForm.modeOfVisit;
+    }
+
+    addBooking(bookingData);
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
 
     sendSystemNotification(
       user.id,
@@ -291,10 +386,17 @@ export default function ClientProperties() {
       `Your reservation request for ${property.name} has been submitted and is pending admin approval.`
     );
 
+<<<<<<< HEAD
     setReservationSuccess(true);
     setTimeout(() => {
       setShowReservationModal(false);
       setReservationSuccess(false);
+=======
+    setBookingSuccess(true);
+    setTimeout(() => {
+      setShowBookingModal(false);
+      setBookingSuccess(false);
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
     }, 2000);
   };
 
@@ -414,8 +516,13 @@ export default function ClientProperties() {
         </div>
       )}
 
+<<<<<<< HEAD
       {/* Reservation Modal */}
       {showReservationModal && property && (
+=======
+      {/* Booking Modal */}
+      {showBookingModal && property && (
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
         <div className="fixed inset-0 p-4 z-50 overflow-auto">
           <div className="bg-white rounded-lg max-w-4xl w-full mx-auto my-8 max-h-[90vh] overflow-y-auto shadow-xl">
             <div className="flex justify-between items-center p-6 border-b border-gray-200">
@@ -426,19 +533,32 @@ export default function ClientProperties() {
                 <h2>{property.name}</h2>
               </div>
               <button
+<<<<<<< HEAD
                 onClick={() => setShowReservationModal(false)}
+=======
+                onClick={() => setShowBookingModal(false)}
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                 className="text-gray-400 hover:text-gray-600 transition-colors"
               >
                 <X className="size-6" />
               </button>
             </div>
 
+<<<<<<< HEAD
             {reservationSuccess ? (
               <div className="p-6 text-center">
                 <div className="bg-green-100 text-green-700 p-6 rounded-lg">
                   <h3 className="mb-2">Reservation Request Submitted!</h3>
                   <p>
                     Your reservation is pending admin approval. We'll notify you once it's processed.
+=======
+            {bookingSuccess ? (
+              <div className="p-6 text-center">
+                <div className="bg-green-100 text-green-700 p-6 rounded-lg">
+                  <h3 className="mb-2">Booking Request Submitted!</h3>
+                  <p>
+                    Your booking is pending admin approval. We'll notify you once it's processed.
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                   </p>
                 </div>
               </div>
@@ -488,7 +608,11 @@ export default function ClientProperties() {
                     </div>
                   </div>
 
+<<<<<<< HEAD
                   <form onSubmit={handleReservationSubmit} className="space-y-4">
+=======
+                  <form onSubmit={handleBookingSubmit} className="space-y-4">
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                     {/* Mode + payment intent for non-parking and parking (consistent UX) */}
                     <div className="p-4 border border-gray-200 rounded-lg space-y-4">
                       <div>
@@ -496,10 +620,17 @@ export default function ClientProperties() {
                           How do you want to proceed?
                         </label>
                         <select
+<<<<<<< HEAD
                           value={reservationForm.modeOfVisit}
                           onChange={(e) => {
                             const newMode = e.target.value as "online" | "onsite";
                             setReservationForm((prev) => ({
+=======
+                          value={bookingForm.modeOfVisit}
+                          onChange={(e) => {
+                            const newMode = e.target.value as "online" | "onsite";
+                            setBookingForm((prev) => ({
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                               ...prev,
                               modeOfVisit: newMode,
                               paymentIntent: newMode === "online" ? "pay_later" : prev.paymentIntent,
@@ -512,7 +643,11 @@ export default function ClientProperties() {
                         </select>
                       </div>
 
+<<<<<<< HEAD
                       {reservationForm.modeOfVisit === "onsite" && (
+=======
+                      {bookingForm.modeOfVisit === "onsite" && (
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                         <div className="pt-4 border-t border-gray-200">
                           <label className="block text-sm font-medium text-gray-700 mb-2">
                             Regarding Payment:
@@ -524,9 +659,15 @@ export default function ClientProperties() {
                                 type="radio"
                                 name="paymentIntent"
                                 value="pay_onsite"
+<<<<<<< HEAD
                                 checked={reservationForm.paymentIntent === "pay_onsite"}
                                 onChange={(e) =>
                                   setReservationForm((prev) => ({ ...prev, paymentIntent: e.target.value as any }))
+=======
+                                checked={bookingForm.paymentIntent === "pay_onsite"}
+                                onChange={(e) =>
+                                  setBookingForm((prev) => ({ ...prev, paymentIntent: e.target.value as any }))
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                                 }
                                 className="size-4 text-blue-600 focus:ring-blue-500"
                               />
@@ -541,9 +682,15 @@ export default function ClientProperties() {
                                 type="radio"
                                 name="paymentIntent"
                                 value="pay_later"
+<<<<<<< HEAD
                                 checked={reservationForm.paymentIntent === "pay_later"}
                                 onChange={(e) =>
                                   setReservationForm((prev) => ({ ...prev, paymentIntent: e.target.value as any }))
+=======
+                                checked={bookingForm.paymentIntent === "pay_later"}
+                                onChange={(e) =>
+                                  setBookingForm((prev) => ({ ...prev, paymentIntent: e.target.value as any }))
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                                 }
                                 className="size-4 text-blue-600 focus:ring-blue-500"
                               />
@@ -555,12 +702,21 @@ export default function ClientProperties() {
                           </div>
 
                           {/* Conditional: show payment fields only when Pay On-site is selected */}
+<<<<<<< HEAD
                           {reservationForm.paymentIntent === "pay_onsite" ? (
                             <div className="mt-4">
                               <label className="block text-sm text-gray-700 mb-2">Payment Method</label>
                               <select
                                 value={reservationForm.paymentMethod}
                                 onChange={(e) => setReservationForm((prev) => ({ ...prev, paymentMethod: e.target.value }))}
+=======
+                          {bookingForm.paymentIntent === "pay_onsite" ? (
+                            <div className="mt-4">
+                              <label className="block text-sm text-gray-700 mb-2">Payment Method</label>
+                              <select
+                                value={bookingForm.paymentMethod}
+                                onChange={(e) => setBookingForm((prev) => ({ ...prev, paymentMethod: e.target.value }))}
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                               >
                                 <option value="">Select method</option>
@@ -600,8 +756,13 @@ export default function ClientProperties() {
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-left flex justify-between items-center"
                           >
                             <span>
+<<<<<<< HEAD
                               {reservationForm.startDate && reservationForm.endDate
                                 ? `${reservationForm.startDate.toLocaleDateString()} – ${reservationForm.endDate.toLocaleDateString()}`
+=======
+                              {bookingForm.startDate && bookingForm.endDate
+                                ? `${bookingForm.startDate.toLocaleDateString()} – ${bookingForm.endDate.toLocaleDateString()}`
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                                 : "Please select the dates"}
                             </span>
                           </button>
@@ -609,7 +770,11 @@ export default function ClientProperties() {
                           {showCalendar && (
                             <div className="mt-2">
                               <Calendar
+<<<<<<< HEAD
                                 value={reservationForm.startDate}
+=======
+                                value={bookingForm.startDate}
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                                 selectRange={false}
                                 minDate={tomorrow()}
                                 onChange={(value) => {
@@ -622,7 +787,11 @@ export default function ClientProperties() {
                                     newEnd.setDate(newEnd.getDate() - 1);
                                     newEnd.setHours(23, 59, 59, 999);
 
+<<<<<<< HEAD
                                     setReservationForm((prev) => ({
+=======
+                                    setBookingForm((prev) => ({
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                                       ...prev,
                                       startDate: newStart,
                                       endDate: newEnd,
@@ -643,7 +812,11 @@ export default function ClientProperties() {
                           <input
                             type="text"
                             readOnly
+<<<<<<< HEAD
                             value={`${reservationForm.duration} month(s)`}
+=======
+                            value={`${bookingForm.duration} month(s)`}
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                             className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg"
                           />
                         </div>
@@ -669,15 +842,24 @@ export default function ClientProperties() {
                         </div>
 
                         {/* Vehicle inputs only for onsite visits */}
+<<<<<<< HEAD
                         {reservationForm.modeOfVisit === "onsite" && (
+=======
+                        {bookingForm.modeOfVisit === "onsite" && (
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                           <>
                             <div>
                               <label className="block text-sm text-gray-700 mb-2">Vehicle Type</label>
                               <input
                                 type="text"
                                 required
+<<<<<<< HEAD
                                 value={reservationForm.vehicleType}
                                 onChange={(e) => setReservationForm((prev) => ({ ...prev, vehicleType: e.target.value }))}
+=======
+                                value={bookingForm.vehicleType}
+                                onChange={(e) => setBookingForm((prev) => ({ ...prev, vehicleType: e.target.value }))}
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 placeholder="e.g., Sedan, SUV, Motorcycle"
                               />
@@ -687,8 +869,13 @@ export default function ClientProperties() {
                               <input
                                 type="text"
                                 required
+<<<<<<< HEAD
                                 value={reservationForm.plateNumber}
                                 onChange={(e) => setReservationForm((prev) => ({ ...prev, plateNumber: e.target.value }))}
+=======
+                                value={bookingForm.plateNumber}
+                                onChange={(e) => setBookingForm((prev) => ({ ...prev, plateNumber: e.target.value }))}
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 placeholder="ABC 1234"
                               />
@@ -707,7 +894,11 @@ export default function ClientProperties() {
                           onClick={() => setShowCalendar((s) => !s)}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-left flex justify-between items-center"
                         >
+<<<<<<< HEAD
                           <span>{`${reservationForm.startDate.toLocaleDateString()} - ${reservationForm.endDate.toLocaleDateString()}`}</span>
+=======
+                          <span>{`${bookingForm.startDate.toLocaleDateString()} - ${bookingForm.endDate.toLocaleDateString()}`}</span>
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                         </button>
                         {showCalendar && (
                           <div className="mt-2">
@@ -719,11 +910,19 @@ export default function ClientProperties() {
                                   const end = new Date(value[1]);
                                   end.setHours(23, 59, 59, 999);
                                   const dayCount = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+<<<<<<< HEAD
                                   setReservationForm((prev) => ({ ...prev, startDate: start, endDate: end, duration: dayCount, durationType: "days" }));
                                   setShowCalendar(false);
                                 }
                               }}
                               value={[reservationForm.startDate, reservationForm.endDate]}
+=======
+                                  setBookingForm((prev) => ({ ...prev, startDate: start, endDate: end, duration: dayCount, durationType: "days" }));
+                                  setShowCalendar(false);
+                                }
+                              }}
+                              value={[bookingForm.startDate, bookingForm.endDate]}
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                               selectRange={true}
                               minDate={tomorrow()}
                               className="w-full border rounded-lg shadow-lg"
@@ -732,7 +931,11 @@ export default function ClientProperties() {
                         )}
                         <div className="mt-4">
                           <label className="block text-sm text-gray-700 mb-2">Calculated Duration</label>
+<<<<<<< HEAD
                           <input type="text" readOnly value={`${reservationForm.duration} day(s)`} className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg" />
+=======
+                          <input type="text" readOnly value={`${bookingForm.duration} day(s)`} className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg" />
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                         </div>
                       </div>
                     )}
@@ -743,20 +946,33 @@ export default function ClientProperties() {
                         <div>
                           <label className="block text-sm text-gray-700 mb-2">Lease Start Date</label>
                           <button type="button" onClick={() => setShowCalendar((s) => !s)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-left flex justify-between items-center">
+<<<<<<< HEAD
                             <span>{`${reservationForm.startDate.toLocaleDateString()}`}</span>
+=======
+                            <span>{`${bookingForm.startDate.toLocaleDateString()}`}</span>
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                           </button>
                           {showCalendar && (
                             <div className="mt-2">
                               <Calendar
+<<<<<<< HEAD
                                 value={reservationForm.startDate}
+=======
+                                value={bookingForm.startDate}
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                                 selectRange={false}
                                 minDate={tomorrow()}
                                 onChange={(value) => {
                                   if (value instanceof Date) {
                                     const newStart = new Date(value);
                                     const newEnd = new Date(newStart);
+<<<<<<< HEAD
                                     newEnd.setFullYear(newEnd.getFullYear() + (reservationForm.duration || 1));
                                     setReservationForm((prev) => ({ ...prev, startDate: newStart, endDate: newEnd }));
+=======
+                                    newEnd.setFullYear(newEnd.getFullYear() + (bookingForm.duration || 1));
+                                    setBookingForm((prev) => ({ ...prev, startDate: newStart, endDate: newEnd }));
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                                     setShowCalendar(false);
                                   }
                                 }}
@@ -772,12 +988,21 @@ export default function ClientProperties() {
                             type="number"
                             required
                             min={getMinimumDuration(property.type).value}
+<<<<<<< HEAD
                             value={reservationForm.duration}
                             onChange={(e) => {
                               const newDuration = parseInt(e.target.value) || 1;
                               const newEndDate = new Date(reservationForm.startDate);
                               newEndDate.setFullYear(newEndDate.getFullYear() + newDuration);
                               setReservationForm((prev) => ({ ...prev, duration: newDuration, endDate: newEndDate }));
+=======
+                            value={bookingForm.duration}
+                            onChange={(e) => {
+                              const newDuration = parseInt(e.target.value) || 1;
+                              const newEndDate = new Date(bookingForm.startDate);
+                              newEndDate.setFullYear(newEndDate.getFullYear() + newDuration);
+                              setBookingForm((prev) => ({ ...prev, duration: newDuration, endDate: newEndDate }));
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                             }}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                           />
@@ -785,7 +1010,11 @@ export default function ClientProperties() {
 
                         <div className="mt-4">
                           <label className="block text-sm text-gray-700 mb-2">Lease End Date (Auto-calculated)</label>
+<<<<<<< HEAD
                           <input type="text" readOnly value={`${reservationForm.endDate.toLocaleDateString()}`} className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg" />
+=======
+                          <input type="text" readOnly value={`${bookingForm.endDate.toLocaleDateString()}`} className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg" />
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                         </div>
                       </>
                     )}
@@ -796,8 +1025,13 @@ export default function ClientProperties() {
                         <div>
                           <label className="block text-sm text-gray-700 mb-2">Payment Cycle</label>
                           <select
+<<<<<<< HEAD
                             value={reservationForm.paymentCycle}
                             onChange={(e) => setReservationForm((prev) => ({ ...prev, paymentCycle: e.target.value }))}
+=======
+                            value={bookingForm.paymentCycle}
+                            onChange={(e) => setBookingForm((prev) => ({ ...prev, paymentCycle: e.target.value }))}
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                           >
                             <option value="monthly">Monthly Installments</option>
@@ -810,8 +1044,13 @@ export default function ClientProperties() {
                           <input
                             type="text"
                             required
+<<<<<<< HEAD
                             value={reservationForm.businessType}
                             onChange={(e) => setReservationForm((prev) => ({ ...prev, businessType: e.target.value }))}
+=======
+                            value={bookingForm.businessType}
+                            onChange={(e) => setBookingForm((prev) => ({ ...prev, businessType: e.target.value }))}
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="e.g., Retail, Office, Restaurant"
                           />
@@ -827,8 +1066,13 @@ export default function ClientProperties() {
                           <input
                             type="text"
                             required
+<<<<<<< HEAD
                             value={reservationForm.eventPurpose}
                             onChange={(e) => setReservationForm((prev) => ({ ...prev, eventPurpose: e.target.value }))}
+=======
+                            value={bookingForm.eventPurpose}
+                            onChange={(e) => setBookingForm((prev) => ({ ...prev, eventPurpose: e.target.value }))}
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder="e.g., Wedding, Conference, Birthday"
                           />
@@ -840,8 +1084,13 @@ export default function ClientProperties() {
                             required
                             min={1}
                             max={property.capacity}
+<<<<<<< HEAD
                             value={reservationForm.attendees}
                             onChange={(e) => setReservationForm((prev) => ({ ...prev, attendees: e.target.value }))}
+=======
+                            value={bookingForm.attendees}
+                            onChange={(e) => setBookingForm((prev) => ({ ...prev, attendees: e.target.value }))}
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                             placeholder={`Max: ${property.capacity}`}
                           />
@@ -858,10 +1107,17 @@ export default function ClientProperties() {
                           <input
                             type="text"
                             required
+<<<<<<< HEAD
                             value={reservationForm.vehicleType}
                             onChange={(e) =>
                               setReservationForm({
                                 ...reservationForm,
+=======
+                            value={bookingForm.vehicleType}
+                            onChange={(e) =>
+                              setBookingForm({
+                                ...bookingForm,
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                                 vehicleType: e.target.value,
                               })
                             }
@@ -876,10 +1132,17 @@ export default function ClientProperties() {
                           <input
                             type="text"
                             required
+<<<<<<< HEAD
                             value={reservationForm.plateNumber}
                             onChange={(e) =>
                               setReservationForm({
                                 ...reservationForm,
+=======
+                            value={bookingForm.plateNumber}
+                            onChange={(e) =>
+                              setBookingForm({
+                                ...bookingForm,
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                                 plateNumber: e.target.value,
                               })
                             }
@@ -895,10 +1158,17 @@ export default function ClientProperties() {
                         Payment Method
                       </label>
                       <select
+<<<<<<< HEAD
                         value={reservationForm.paymentMethod}
                         onChange={(e) =>
                           setReservationForm({
                             ...reservationForm,
+=======
+                        value={bookingForm.paymentMethod}
+                        onChange={(e) =>
+                          setBookingForm({
+                            ...bookingForm,
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                             paymentMethod: e.target
                               .value as any,
                           })
@@ -923,10 +1193,17 @@ export default function ClientProperties() {
                         Additional Notes (Optional)
                       </label>
                       <textarea
+<<<<<<< HEAD
                         value={reservationForm.notes}
                         onChange={(e) =>
                           setReservationForm({
                             ...reservationForm,
+=======
+                        value={bookingForm.notes}
+                        onChange={(e) =>
+                          setBookingForm({
+                            ...bookingForm,
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                             notes: e.target.value,
                           })
                         }
@@ -947,8 +1224,13 @@ export default function ClientProperties() {
                           calculateTotalAmount(
                             property.type,
                             property.price,
+<<<<<<< HEAD
                             reservationForm.duration,
                             reservationForm.paymentCycle,
+=======
+                            bookingForm.duration,
+                            bookingForm.paymentCycle,
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                           )
                         )}
                       </div>
@@ -963,7 +1245,11 @@ export default function ClientProperties() {
                       type="submit"
                       className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                     >
+<<<<<<< HEAD
                       Submit Reservation Request
+=======
+                      Submit Booking Request
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                     </button>
                   </form>
                 </div>
@@ -986,7 +1272,11 @@ export default function ClientProperties() {
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                 {parkingSlots.map((slot) => {
                   const isReserved = reservedSlotIds.has(slot.id);
+<<<<<<< HEAD
                   const isSelected = reservationForm.slotId === slot.id;
+=======
+                  const isSelected = bookingForm.slotId === slot.id;
+>>>>>>> e0d15afe755cf439d3033851c6bfa0dcbf605f9f
                   return (
                     <button type="button" key={slot.id} disabled={isReserved} onClick={() => handleSlotSelectFromPanel(slot.id)} className={`border-2 rounded-lg overflow-hidden relative text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed ${isSelected ? "border-blue-600 scale-105" : "border-transparent"} ${isReserved ? "cursor-not-allowed" : "hover:border-blue-500"}`}>
                       {isSelected && (
