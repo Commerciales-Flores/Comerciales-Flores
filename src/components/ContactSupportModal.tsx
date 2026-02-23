@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Send, CheckCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useData } from '../contexts/DataContext';
-import { useNotifications } from '../contexts/NotificationContext'; // Make sure this path is correct
+import { useNotifications } from '../contexts/NotificationContext';
 
 interface ContactSupportModalProps {
   onClose: () => void;
@@ -13,19 +13,31 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
   const { addInquiry } = useData();
   const { sendSystemNotification } = useNotifications();
   
-  const [formData, setFormData] = useState({
-    subject: '',
-    message: ''
-  });
+  const [formData, setFormData] = useState({ subject: '', message: '' });
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  const [visible, setVisible] = useState(false); // fade-in trigger
+  const [closing, setClosing] = useState(false); // fade-out trigger
+
+  // Trigger fade-in on mount
+  useEffect(() => {
+    const timeout = setTimeout(() => setVisible(true), 10);
+    return () => clearTimeout(timeout);
+  }, []);
+
+  const handleClose = () => {
+    setClosing(true);
+    setVisible(false);
+    setTimeout(() => onClose(), 200); // match transition duration
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !formData.subject.trim() || !formData.message.trim()) return;
 
     setLoading(true);
-    
+
     addInquiry({
       userId: user.id,
       name: user.name,
@@ -34,7 +46,6 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
       message: formData.message
     });
 
-    // Send a system notification for a persistent record
     sendSystemNotification(
       user.id,
       "Support message sent",
@@ -43,25 +54,23 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
 
     setSubmitted(true);
     setLoading(false);
-
-    // Close the modal after a delay
-    setTimeout(() => {
-      onClose();
-    }, 3000); // Increased delay for better readability of the success message
   };
 
   return (
-    // ✅ This is your original layout, preserved as requested.
-    <div className="fixed bottom-20 right-6 w-96 bg-white rounded-lg shadow-2xl z-50 animate-fade-in-up">
+    <div
+      className={`fixed bottom-20 right-6 w-96 bg-white rounded-lg shadow-2xl z-50
+        transform transition-all duration-200
+        ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}
+        ${closing ? 'opacity-0 translate-y-4' : ''}`}
+    >
       <div className="flex justify-between items-center p-4 border-b border-gray-200">
         <h2 className="font-semibold text-lg text-gray-800">Contact Support</h2>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+        <button onClick={handleClose} className="text-gray-400 hover:text-gray-600 transition-colors">
           <X className="size-6" />
         </button>
       </div>
 
       {submitted ? (
-        // ✅ 1. IMPROVEMENT: A much richer and more informative success screen.
         <div className="p-6 text-center">
           <CheckCircle className="size-12 text-green-500 mx-auto mb-3" />
           <h3 className="font-semibold text-gray-800 mb-1">Message Sent!</h3>
@@ -71,7 +80,6 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
           </p>
         </div>
       ) : (
-        // ✅ 2. IMPROVEMENT: A cleaner form with loading state feedback.
         <form onSubmit={handleSubmit}>
           <div className="p-4 space-y-4">
             <div>
@@ -97,7 +105,7 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
               />
             </div>
           </div>
-          <div className="p-4 bg-gray-50 border-t flex justify-end">
+          <div className="p-4 bg-gray-50 flex justify-end">
             <button
               type="submit"
               disabled={loading}
@@ -112,9 +120,3 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
     </div>
   );
 }
-
-// Optional: Add a simple animation in your tailwind.config.js and global CSS
-// In tailwind.config.js -> theme -> extend -> keyframes:
-// 'fade-in-up': { '0%': { opacity: '0', transform: 'translateY(10px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } }
-// In tailwind.config.js -> theme -> extend -> animation:
-// 'fade-in-up': 'fade-in-up 0.3s ease-out'

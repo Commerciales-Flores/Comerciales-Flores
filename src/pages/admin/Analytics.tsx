@@ -21,7 +21,15 @@ export default function AdminAnalytics() {
     const monthStr = date.toISOString().slice(0, 7);
 
     const monthReservations = reservations.filter(b => b.requestDate.startsWith(monthStr)).length;
-    const monthRevenue = payments.filter(p => p.date.startsWith(monthStr) && p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
+    const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+    const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+
+    const monthRevenue = payments
+      .filter(p => {
+        const pDate = new Date(p.date);
+        return pDate >= startOfMonth && pDate <= endOfMonth && p.status === 'paid';
+      })
+      .reduce((sum, p) => sum + p.amount, 0);
     
 
     return {

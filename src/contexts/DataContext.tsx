@@ -7,6 +7,7 @@ export type PaymentStatus = 'unpaid' | 'partial' | 'paid';
 export type PaymentMethod = 'cash' | 'cheque' | 'gcash' | 'paymaya' | 'bank_transfer' | 'credit_card' | 'not_applicable';
 export type PaymentCycle = 'monthly' | 'quarterly' | 'full';
 export type InquiryStatus = 'open' | 'responded' | 'resolved';
+
 export type ParkingFormState = {
   name: string;
   contact: string;
@@ -15,8 +16,6 @@ export type ParkingFormState = {
   paymentMethod: PaymentMethod | "";
   reference: string;
 };
-
-
 
 export interface Property {
   id: string;
@@ -148,10 +147,20 @@ export interface ContentSettings {
   policies: string;
 }
 
+export interface AuditLog {
+  id: string;
+  action: string;
+  target: string;
+  performedBy: string;
+  date: string;
+  details?: string;
+}
+
 interface DataContextType {
   users: User[];
   properties: Property[];
   reservations: Reservation[];
+  auditLogs: AuditLog[]; 
   payments: Payment[];
   inquiries: Inquiry[];
   notifications: Notification[];
@@ -503,6 +512,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const getNotificationsByUserId = (userId: string) => notifications.filter(n => n.userId === userId);
   const getInquiriesByUserId = (userId: string) => inquiries.filter(i => i.userId === userId);
 
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]); // ✅ Add this
+
   return (
     <DataContext.Provider
       value={{
@@ -515,6 +526,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         businessSlots,
         contentSettings,
         parkingSlots: MOCK_PARKING_SLOTS,  // ✅ new
+        auditLogs, // Placeholder for audit logs
         addProperty,
         updateProperty,
         deleteProperty,

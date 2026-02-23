@@ -1,273 +1,376 @@
 import { useData } from '../../contexts/DataContext';
-import { Calendar, Users, CreditCard, TrendingUp, Clock, CheckCircle, Building2 } from 'lucide-react';
+import { 
+  AlertCircle, TrendingUp, Award, Activity, ArrowRight, 
+  CheckCircle2, MessageSquare, CreditCard, Clock 
+} from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { Link } from 'react-router-dom';
+import {
+  LineChart,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis
+} from 'recharts';
 
 export default function AdminDashboard() {
-  const { reservations, payments, properties, inquiries } = useData();
+  const { reservations, payments, properties, inquiries, auditLogs } = useData();
 
-  const today = new Date().toISOString().split('T')[0];
-  
-  // Stats
-  const todayReservations = reservations.filter(b => b.requestDate === today);
-  const pendingReservations = reservations.filter(b => b.status === 'pending');
-  const approvedReservations = reservations.filter(b => b.status === 'confirmed');
+  // --- Time helpers ---
+  const now = new Date();
+  const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+
+  // --- URGENT ALERTS ---
+  const overdueReservations = reservations.filter(r => 
+    r.status === 'pending' && new Date(r.requestDate) < fortyEightHoursAgo
+  );
+
+  // --- Monthly Data ---
+  const monthlyData = Array.from({ length: 6 }, (_, i) => {
+    const date = new Date();
+    date.setMonth(date.getMonth() - (5 - i));
+    
+    // Create a YYYY-MM string for accurate filtering
+    const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const monthLabel = date.toLocaleDateString('en-US', { month: 'short' });
+
+    // Filter data for this specific month
+    const monthReservations = reservations.filter(r => r.requestDate.startsWith(yearMonth));
+    const monthRevenue = payments.filter(p => p.date.startsWith(yearMonth) && p.status === 'paid')
+      .reduce((sum, p) => sum + p.amount, 0);
+
+    // Calculate occupancy for this month: (Active Bookings / Total Properties) * 100
+    const monthOccupancy = properties.length > 0 
+      ? (monthReservations.length / properties.length) * 100 
+      : 0;
+
+    return {
+      month: monthLabel,
+      occupancy: monthOccupancy,
+      revenue: monthRevenue,
+    };
+  });
+
+  const occupancyTrend = monthlyData.map(d => ({
+    label: d.month, 
+    occupancy: d.occupancy,
+  }));
+
+  const revenueTrend = monthlyData.map(d => ({
+    label: d.month,
+    revenue: d.revenue,
+  }));
+
+  // --- Pending Data ---
+  const pendingReservations = reservations.filter(r => r.status === 'pending').slice(0, 3);
+  const pendingPayments = payments.filter(p => p.status === 'unpaid' || p.status === 'partial').slice(0, 3);
+  const recentInquiries = inquiries.filter(i => i.status === 'open').slice(0, 3);
+
+  // --- Health Metrics ---
+  const activeProperties = properties.filter(p => p.available).length;
+  const occupancyRate = properties.length > 0 ? (activeProperties / properties.length) * 100 : 0;
   const totalRevenue = payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
-  const pendingPayments = payments.filter(p => p.status === 'unpaid');
-  const openInquiries = inquiries.filter(i => i.status === 'open');
 
-  // Top performing properties
-  const propertyReservations = properties.map(property => ({
+  // --- KPI Cards Δ% vs Last Month ---
+  const lastMonthReservations = reservations.filter(r => {
+    const resDate = new Date(r.requestDate);
+    const lastMonth = new Date();
+    lastMonth.setMonth(now.getMonth() - 1);
+    return resDate.getMonth() === lastMonth.getMonth() && resDate.getFullYear() === lastMonth.getFullYear();
+  }).length;
+
+  const reservationsChange = lastMonthReservations > 0 
+    ? ((reservations.length - lastMonthReservations) / lastMonthReservations) * 100
+    : 0;
+
+  // --- Top Properties ---
+  const topProperties = properties.map(property => ({
     ...property,
-    reservationCount: reservations.filter(b => b.propertyId === property.id && b.status === 'confirmed').length,
     revenue: payments.filter(p => {
-      const reservation = reservations.find(b => b.id === p.reservationId && b.propertyId === property.id);
-      return reservation && p.status === 'paid';
+      const res = reservations.find(r => r.id === p.reservationId && r.propertyId === property.id);
+      return res && p.status === 'paid';
     }).reduce((sum, p) => sum + p.amount, 0)
-  })).sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+  })).sort((a, b) => b.revenue - a.revenue).slice(0, 3);
 
-  // Recent reservations
-  const recentReservations = [...reservations]
-    .sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime())
-    .slice(0, 5);
+  const latestActivity = auditLogs?.[0] || { action: 'No recent activity', timestamp: new Date() };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="mb-2">Admin Dashboard</h1>
-        <p className="text-gray-600">Overview of your rental management system</p>
-      </div>
+    <div className="space-y-6 bg-gray-50 min-h-screen p-6">
+      <header>
+        <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+        <p className="text-sm text-gray-500">Overview of your rental management system</p>
+      </header>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
+      {/* --- KPI Cards --- */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        {/* Total Reservations */}
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-sm text-gray-600">Today's Reservations</p>
-            <Calendar className="size-5 text-blue-600" />
+            <p className="text-xs font-medium text-gray-500">Total Reservations</p>
+            <Activity className="size-5 text-purple-500" />
           </div>
-          <p className="text-gray-900">{todayReservations.length}</p>
-          <p className="text-xs text-gray-500 mt-1">Requests received today</p>
+          <p className="text-xl font-bold text-gray-900">{reservations.length}</p>
+          <span className={`text-sm ${reservationsChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            {reservationsChange >= 0 ? '↑' : '↓'} {Math.abs(reservationsChange).toFixed(1)}%
+          </span>
         </div>
 
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
+        {/* Confirmed Reservations */}
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-sm text-gray-600">Pending Approvals</p>
-            <Clock className="size-5 text-yellow-600" />
+            <p className="text-xs font-medium text-gray-500">Confirmed</p>
+            <CheckCircle2 className="size-5 text-green-500" />
           </div>
-          <p className="text-gray-900">{pendingReservations.length}</p>
-          <Link to="/admin/reservations" className="text-xs text-blue-600 hover:text-blue-700 mt-1 inline-block">
-            Review reservations →
-          </Link>
+          <p className="text-xl font-bold text-gray-900">
+            {reservations.filter(r => r.status === 'confirmed').length}
+          </p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
+        {/* Cancelled Reservations */}
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-sm text-gray-600">Total Revenue</p>
-            <TrendingUp className="size-5 text-green-600" />
+            <p className="text-xs font-medium text-gray-500">Cancelled</p>
+            <AlertCircle className="size-5 text-red-500" />
           </div>
-          <p className="text-gray-900">{formatCurrency(totalRevenue)}</p>
-          <p className="text-xs text-gray-500 mt-1">Verified payments</p>
+          <p className="text-xl font-bold text-gray-900">
+            {reservations.filter(r => r.status === 'cancelled').length}
+          </p>
         </div>
 
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
+        {/* Total Paid Payments */}
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-sm text-gray-600">Active Properties</p>
-            <Building2 className="size-5 text-purple-600" />
+            <p className="text-xs font-medium text-gray-500">Paid Payments</p>
+            <CreditCard className="size-5 text-blue-500" />
           </div>
-          <p className="text-gray-900">{properties.filter(p => p.available).length}</p>
-          <p className="text-xs text-gray-500 mt-1">Out of {properties.length} total</p>
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h2 className="mb-4">Quick Actions</h2>
-        <div className="grid md:grid-cols-4 gap-4">
-          <Link
-            to="/admin/reservations"
-            className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg hover:bg-yellow-100 transition-colors text-center"
-          >
-            <div className="bg-yellow-600 text-white size-12 rounded-lg flex items-center justify-center mx-auto mb-2">
-              {pendingReservations.length}
-            </div>
-            <p className="text-sm text-yellow-800">Approve Reservations</p>
-          </Link>
-
-          <Link
-            to="/admin/payments"
-            className="p-4 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors text-center"
-          >
-            <div className="bg-blue-600 text-white size-12 rounded-lg flex items-center justify-center mx-auto mb-2">
-              {pendingPayments.length}
-            </div>
-            <p className="text-sm text-blue-800">Verify Payments</p>
-          </Link>
-
-          <Link
-            to="/admin/inquiries"
-            className="p-4 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors text-center"
-          >
-            <div className="bg-purple-600 text-white size-12 rounded-lg flex items-center justify-center mx-auto mb-2">
-              {openInquiries.length}
-            </div>
-            <p className="text-sm text-purple-800">Answer Inquiries</p>
-          </Link>
-
-          <Link
-            to="/admin/business-slots"
-            className="p-4 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors text-center"
-          >
-            <div className="bg-green-600 text-white size-12 rounded-lg flex items-center justify-center mx-auto mb-2">
-              +
-            </div>
-            <p className="text-sm text-green-800">Add Slots</p>
-          </Link>
+          <p className="text-xl font-bold text-gray-900">
+            {payments.filter(p => p.status === 'paid').length}
+          </p>
         </div>
       </div>
 
-      {/* Top Performing Properties */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h2 className="mb-4">Top Performing Units</h2>
-        <div className="space-y-3">
-          {propertyReservations.map((property, index) => (
-            <div key={property.id} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
-              <div className="text-lg text-gray-500 w-8">#{index + 1}</div>
-              <img
-                src={property.images[0]}
-                alt={property.name}
-                className="size-12 object-cover rounded"
-              />
-              <div className="flex-1">
-                <h3 className="text-sm text-gray-900">{property.name}</h3>
-                <p className="text-xs text-gray-600">{property.reservationCount} reservations</p>
+      {/* --- Main Dashboard Grid --- */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* MAIN COLUMN */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* URGENT ALERTS */}
+          <section className="bg-white rounded-xl border border-red-100 shadow-sm overflow-hidden">
+            <div className="bg-red-50 px-6 py-4 border-b border-red-100 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-red-700 font-semibold">
+                <AlertCircle className="size-5" />
+                <h2>Urgent Alerts</h2>
               </div>
-              <div className="text-right">
-                <p className="text-green-600">{formatCurrency(property.revenue)}</p>
-                <p className="text-xs text-gray-500">Revenue</p>
-              </div>
+              <span className="bg-red-200 text-red-800 text-xs px-2 py-1 rounded-full font-bold">
+                {overdueReservations.length} Overdue
+              </span>
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Recent Reservations */}
-      <div className="bg-white rounded-lg border border-gray-200">
-        <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-          <h2>Recent Reservation Requests</h2>
-          <Link to="/admin/reservations" className="text-sm text-blue-600 hover:text-blue-700">
-            View all →
-          </Link>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs text-gray-500 uppercase tracking-wider">
-                  Reservation ID
-                </th>
-                <th className="px-6 py-3 text-left text-xs text-gray-500 uppercase tracking-wider">
-                  Property
-                </th>
-                <th className="px-6 py-3 text-left text-xs text-gray-500 uppercase tracking-wider">
-                  Date
-                </th>
-                <th className="px-6 py-3 text-left text-xs text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs text-gray-500 uppercase tracking-wider">
-                  Amount
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {recentReservations.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                    No recent reservations
-                  </td>
-                </tr>
+            <div className="p-6">
+              {overdueReservations.length > 0 ? (
+                <div className="divide-y divide-gray-100">
+                  {overdueReservations.map(res => (
+                    <div key={res.id} className="py-3 flex justify-between items-center">
+                      <div>
+                        <p className="font-medium text-gray-900">{res.propertyName}</p>
+                        <p className="text-xs text-gray-500 font-mono">Overdue since {new Date(res.requestDate).toLocaleDateString()}</p>
+                      </div>
+                      <Link to="/admin/reservations" className="text-sm text-red-600 font-semibold hover:underline flex items-center gap-1">
+                        Resolve <ArrowRight className="size-3" />
+                      </Link>
+                    </div>
+                  ))}
+                </div>
               ) : (
-                recentReservations.map((reservation) => {
-                  const statusColors = {
-                    pending: 'bg-yellow-100 text-yellow-800',
-                    confirmed: 'bg-green-100 text-green-800',
-                    cancelled: 'bg-red-100 text-red-800',
-                    completed: 'bg-blue-100 text-blue-800'
-                  };
-
-                  return (
-                    <tr key={reservation.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {reservation.id}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">
-                        {reservation.propertyName}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {new Date(reservation.requestDate).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 text-xs rounded-full ${statusColors[reservation.status]}`}>
-                          {reservation.status.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatCurrency(reservation.totalAmount)}
-                      </td>
-                    </tr>
-                  );
-                })
+                <div className="text-center py-2 text-gray-500 flex items-center justify-center gap-2 text-sm">
+                  <CheckCircle2 className="size-5 text-green-500" />
+                  No overdue items.
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </div>
+          </section>
 
-      {/* Payment Summary */}
-      <div className="grid md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <CheckCircle className="size-5 text-green-600" />
+          {/* PENDING REVIEW GRID */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Pending Reservations Card */}
+            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-gray-800 flex items-center gap-2 text-sm">
+                  <Clock className="size-4 text-orange-500" /> Pending Reservations
+                </h3>
+                <Link to="/admin/reservations" className="text-xs text-blue-600">View All</Link>
+              </div>
+              <div className="space-y-3">
+                {pendingReservations.length > 0 ? (
+                  pendingReservations.map(res => (
+                    <div key={res.id} className="flex justify-between items-center bg-gray-50 p-2 rounded">
+                      <span className="text-xs font-medium text-gray-700 truncate w-32">{res.propertyName}</span>
+                      <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded uppercase">Pending</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex items-center justify-center bg-gray-50 p-3 rounded text-xs text-gray-500">
+                    No pending reservations
+                  </div>
+                )}
+              </div>
             </div>
-            <div>
-              <p className="text-sm text-gray-600">Verified Payments</p>
-              <p className="text-gray-900">{payments.filter(p => p.status === 'paid').length}</p>
+
+            {/* Pending Payments Card */}
+            <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-gray-800 flex items-center gap-2 text-sm">
+                  <CreditCard className="size-4 text-blue-500" /> Pending Payments
+                </h3>
+                <Link to="/admin/payments" className="text-xs text-blue-600">View All</Link>
+              </div>
+              <div className="space-y-3">
+                {pendingPayments.length > 0 ? (
+                  pendingPayments.map(pay => (
+                    <div key={pay.id} className="flex justify-between items-center bg-gray-50 p-2 rounded">
+                      <span className="text-xs font-medium text-gray-700">{formatCurrency(pay.amount)}</span>
+                      <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded uppercase">Review</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex items-center justify-center bg-gray-50 p-3 rounded text-xs text-gray-500">
+                    No pending or partial payments
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-          <div className="text-green-600">
-            {formatCurrency(totalRevenue)}
-          </div>
+
+          {/* HEALTH METRICS */}
+          <section className="space-y-4">
+            <h2 className="text-lg font-semibold text-gray-900">Health Metrics</h2>
+            <p className="text-xs text-gray-500 mb-2">Overall occupancy and revenue trends</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Occupancy Rate */}
+              <div className="bg-white p-8 rounded-xl border border-gray-200 shadow-sm">
+                <div className="flex justify-between items-start mb-2">
+                  <p className="text-xs font-medium text-gray-500">Occupancy Rate</p>
+                  <Activity className="size-5 text-purple-500" />
+                </div>
+                <div className="flex items-end gap-2 mb-2">
+                  <span className="text-2xl font-bold">{occupancyRate.toFixed(1)}%</span> {/* smaller font */}
+                </div>
+                <div className="h-32"> {/* taller chart for bigger card */}
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={occupancyTrend}>
+                      <XAxis dataKey="label" tick={{ fontSize: 10 }} /> {/* smaller X-axis font */}
+                      <Line type="monotone" dataKey="occupancy" stroke="#7c3aed" strokeWidth={2} dot={false} />
+                      <Tooltip 
+                        contentStyle={{ fontSize: 10 }} 
+                        formatter={(value) => [`${value.toFixed(1)}%`, "Occupancy"]} 
+                        labelFormatter={(label) => `Month: ${label}`} 
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Total Revenue */}
+              <div className="bg-white p-8 rounded-xl border border-gray-200 shadow-sm">
+                <div className="flex justify-between items-start mb-2">
+                  <p className="text-xs font-medium text-gray-500">Total Revenue</p>
+                  <TrendingUp className="size-5 text-green-500" />
+                </div>
+                <div className="flex items-end gap-2 mb-2">
+                  <span className="text-2xl font-bold">{formatCurrency(totalRevenue)}</span> {/* smaller font */}
+                </div>
+                <div className="h-32"> {/* taller chart for bigger card */}
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={revenueTrend}>
+                      <XAxis dataKey="label" tick={{ fontSize: 10 }} /> {/* smaller X-axis font */}
+                      <Line type="monotone" dataKey="revenue" stroke="#16a34a" strokeWidth={2} dot={false} />
+                      <Tooltip 
+                        contentStyle={{ fontSize: 10 }} 
+                        formatter={(value) => [`₱${(value/1000).toFixed(1)}k`, "Revenue"]} 
+                        labelFormatter={(label) => `Month: ${label}`} 
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          </section>
         </div>
 
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-yellow-100 rounded-lg">
-              <Clock className="size-5 text-yellow-600" />
+        {/* SIDEBAR */}
+        <div className="space-y-6">
+          {/* Recent Inquiries */}
+          <section className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="p-4 bg-indigo-50 border-b border-indigo-100 flex items-center gap-2 font-semibold text-indigo-900">
+              <MessageSquare className="size-4" />
+              <h2 className="text-sm">Recent Inquiries</h2>
             </div>
-            <div>
-              <p className="text-sm text-gray-600">Pending Verification</p>
-              <p className="text-gray-900">{pendingPayments.length}</p>
+            <div className="divide-y divide-gray-100">
+              {recentInquiries.length > 0 ? (
+                recentInquiries.map(inq => (
+                  <div key={inq.id} className="p-4 hover:bg-gray-50 transition-colors">
+                    <p className="text-xs font-semibold text-gray-900 truncate">{inq.subject || "General Inquiry"}</p>
+                    <p className="text-[11px] text-gray-500 line-clamp-1">{inq.message}</p>
+                    <Link to="/admin/inquiries" className="text-[10px] text-indigo-600 font-bold mt-2 inline-block">REPLY</Link>
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-center justify-center p-4 text-xs text-gray-500">
+                  No new inquiries
+                </div>
+              )}
             </div>
-          </div>
-          <div className="text-yellow-600">
-            {formatCurrency(pendingPayments.reduce((sum, p) => sum + p.amount, 0))}
-          </div>
-        </div>
+          </section>
 
-        <div className="bg-white p-6 rounded-lg border border-gray-200">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Users className="size-5 text-blue-600" />
+          {/* Top Properties */}
+          <section className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <div className="flex items-center gap-2 mb-6 font-semibold text-gray-900">
+              <Award className="size-5 text-yellow-500" />
+              <h2 className="text-sm">Top Performing Units</h2>
             </div>
-            <div>
-              <p className="text-sm text-gray-600">Active Reservations</p>
-              <p className="text-gray-900">{approvedReservations.length}</p>
+            <div className="space-y-4">
+              {topProperties.map((prop, i) => (
+                <div key={prop.id} className="flex items-center gap-3 group">
+                  <div className="relative">
+                    <img 
+                      src={prop.images?.[0] || 'https://via.placeholder.com/40'} 
+                      alt={prop.name} 
+                      className="size-10 object-cover rounded-lg border border-gray-100"
+                    />
+                    <div className="absolute -top-1 -left-1 size-4 bg-gray-900 text-white text-[8px] rounded-full flex items-center justify-center font-bold">
+                      {i + 1}
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-gray-900 truncate">{prop.name}</p>
+                    <p className="text-[10px] text-green-600 font-semibold">{formatCurrency(prop.revenue)}</p>
+                  </div>
+                  <ArrowRight className="size-3 text-gray-300 group-hover:text-blue-500 transition-colors" />
+                </div>
+              ))}
             </div>
-          </div>
-          <Link to="/admin/reservations" className="text-sm text-blue-600 hover:text-blue-700">
-            Manage reservations →
-          </Link>
+          </section>
+
+          {/* SYSTEM STATUS */}
+          <section className="bg-gray-900 text-white p-8 rounded-xl shadow-lg">
+            <h2 className="text-sm font-uppercase tracking-widest text-gray-400 mb-4">SYSTEM STATUS</h2>
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs text-gray-400">Latest Admin Action</p>
+                <p className="text-sm font-medium">{latestActivity.action}</p>
+                <p className="text-[10px] text-gray-500">{new Date(latestActivity.date).toLocaleString()}</p>
+              </div>
+              <div className="pt-4 border-t border-gray-800">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-xs">Database Connection</span>
+                  <span className="size-2 bg-green-500 rounded-full animate-pulse"></span>
+                </div>
+                <Link to="/admin/audit-log" className="text-[10px] text-blue-400 hover:underline">
+                  Open Audit Logs
+                </Link>
+              </div>
+            </div>
+          </section>
+
         </div>
       </div>
     </div>
