@@ -1,5 +1,5 @@
-import { useData } from '../../context/DataContext';
-import { useAuth } from '../../context/AuthContext';
+import { useData } from '../../contexts/DataContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, DollarSign } from 'lucide-react';
 import { format } from 'date-fns';
 

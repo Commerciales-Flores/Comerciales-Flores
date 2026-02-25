@@ -1,5 +1,4 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
-import supabase from '../supabaseClient';
 import { fetchUnits } from '../utils/fetchUnits';   // adjust path as needed
 import { useEffect } from 'react';                  // already available in React
 

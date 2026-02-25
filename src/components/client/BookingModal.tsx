@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X, Calendar, DollarSign } from 'lucide-react';
-import { useData } from '../../context/DataContext';
-import { useAuth } from '../../context/AuthContext';
+import { useData } from '../../contexts/DataContext';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface BookingModalProps {
   spaceId: string;

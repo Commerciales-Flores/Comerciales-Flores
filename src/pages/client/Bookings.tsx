@@ -7,7 +7,7 @@ import { getPropertyTypeLabel } from '../../utils/propertyHelpers';
 
 export default function ClientBookings() {
   const { user } = useAuth();
-  const { getBookingsByUserId, properties, deleteBooking } = useData();
+  const { getBookingsByUserId, units, deleteBooking } = useData();
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
 
   const handleDeleteBooking = (bookingId: string, propertyName: string) => {
