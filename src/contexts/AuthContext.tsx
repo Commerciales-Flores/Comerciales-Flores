@@ -1,9 +1,23 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import supabase from '../supabaseClient';
 
+/* 
+  In Progress:
+
+  Register:
+  - media for profile picture,
+  - password hashing
+  - role table shenanigans
+
+  Login:
+  - forgot password
+  - Google and Facebook Sign up
+  */
 interface User {
   id: string;
   email: string;
-  name: string;
+  firstName: string;
+  lastName: string;
   role: 'client' | 'admin';
   contactNumber: string;
   address: string;
@@ -12,40 +26,17 @@ interface User {
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<boolean>;
-  register: (userData: Omit<User, 'id' | 'role'> & { password: string }) => Promise<boolean>;
+  register: (userData: Omit<User, 'id'> & { password: string }) => Promise<boolean>;
   logout: () => void;
   updateProfile: (userData: Partial<User>) => void;
   changePassword: (oldPassword: string, newPassword: string) => Promise<boolean>;
-  recoverPassword: (email: string) => Promise<{ password: string } | null>;
+  recoverPassword: (email: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Mock users for demo
-const MOCK_USERS = [
-  {
-    id: '1',
-    email: 'admin@flores.com',
-    password: 'admin123',
-    name: 'Admin User',
-    role: 'admin' as const,
-    contactNumber: '+63 917 123 4567',
-    address: 'Manila, Philippines'
-  },
-  {
-    id: '2',
-    email: 'client@example.com',
-    password: 'client123',
-    name: 'John Doe',
-    role: 'client' as const,
-    contactNumber: '+63 918 765 4321',
-    address: 'Quezon City, Philippines'
-  }
-];
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [users, setUsers] = useState(MOCK_USERS);
 
   // Check for stored user on mount
   useEffect(() => {
@@ -55,48 +46,75 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Login Authentication
   const login = async (email: string, password: string): Promise<boolean> => {
-    const foundUser = users.find(u => u.email === email && u.password === password);
-    
-    if (foundUser) {
-      const { password: _, ...userWithoutPassword } = foundUser;
-      setUser(userWithoutPassword);
-      localStorage.setItem('currentUser', JSON.stringify(userWithoutPassword));
-      return true;
-    }
-    return false;
-  };
+    const { data, error } = await supabase
+      .from('users')   
+      .select('*')
+      .eq('email', email)
+      .eq('password_hash', password)  
+      .single();
 
-  const register = async (userData: Omit<User, 'id' | 'role'> & { password: string }): Promise<boolean> => {
-    // Check if email already exists
-    if (users.find(u => u.email === userData.email)) {
-      return false;
-    }
+    if (error || !data) return false;
 
-    const newUser = {
-      id: Date.now().toString(),
-      ...userData,
-      role: 'client' as const
-    };
-
-    setUsers([...users, newUser]);
-    
-    const { password: _, ...userWithoutPassword } = newUser;
-    setUser(userWithoutPassword);
-    localStorage.setItem('currentUser', JSON.stringify(userWithoutPassword));
-    
+    setUser(data);
+    localStorage.setItem('currentUser', JSON.stringify(data));
     return true;
   };
 
-  const recoverPassword = async (email: string): Promise<{ password: string } | null> => {
-    // Find the user by email in the original mock data
-    const foundUser = MOCK_USERS.find(u => u.email.toLowerCase() === email.toLowerCase());
-    
-    if (foundUser) {
-      // FOR DEMO ONLY: In a real app, you would NEVER return the password.
-      return { password: foundUser.password };
-    }
-    return null;
+  //Register
+   const register = async (userData: Omit<User, 'id'> & { password: string }): Promise<boolean> => {
+    // Check if email already exists
+    const { data: existing } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', userData.email)
+      .single();
+
+    if (existing) return false;
+
+    const { data, error } = await supabase
+      .from('users')
+      .insert([{
+        first_name: userData.firstName,
+        last_name: userData.lastName,
+        email: userData.email,
+        password_hash: userData.password,
+        role: 'client',
+        phone: userData.contactNumber,
+        address: userData.address,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        last_login: new Date().toISOString(),
+      }])
+      .select()
+      .single();
+
+    if (error || !data) return false;
+
+    const newUser: User = {
+      id: data.id,
+      email: data.email,
+      firstName: data.first_name,
+      lastName: data.last_name,
+      role: data.role,
+      contactNumber: data.phone,
+      address: data.address,
+    };
+
+    setUser(newUser);
+    localStorage.setItem('currentUser', JSON.stringify(newUser));
+    return true;
+  };
+
+  const recoverPassword = async (email: string): Promise<boolean> => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .single();
+
+    return !error && !!data;
   };
 
   const logout = () => {
@@ -104,26 +122,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('currentUser');
   };
 
-  const updateProfile = (userData: Partial<User>) => {
-    if (user) {
+  const updateProfile = async (userData: Partial<User>) => {
+    if (!user) return;
+
+    const { error } = await supabase
+      .from('users')
+      .update({
+        first_name: userData.firstName,
+        last_name: userData.lastName,
+        phone: userData.contactNumber,
+        address: userData.address,
+      })
+      .eq('id', user.id);
+
+    if (!error) {
       const updatedUser = { ...user, ...userData };
       setUser(updatedUser);
       localStorage.setItem('currentUser', JSON.stringify(updatedUser));
-      
-      // Update in users array
-      setUsers(users.map(u => u.id === updatedUser.id ? { ...u, ...userData } : u));
     }
   };
 
   const changePassword = async (oldPassword: string, newPassword: string): Promise<boolean> => {
     if (!user) return false;
-    
-    const foundUser = users.find(u => u.id === user.id && u.password === oldPassword);
-    if (foundUser) {
-      setUsers(users.map(u => u.id === user.id ? { ...u, password: newPassword } : u));
-      return true;
-    }
-    return false;
+
+    const { data, error } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', user.id)
+      .eq('password_hash', oldPassword)
+      .single();
+
+    if (error || !data) return false;
+
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ password_hash: newPassword })
+      .eq('id', user.id);
+
+    return !updateError;
   };
 
   return (

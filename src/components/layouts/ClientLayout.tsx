@@ -66,11 +66,16 @@ export default function ClientLayout() {
   ];
 
   // Build an avatar URL fallback (uses provided avatar, photoURL, or ui-avatars)
+  /*
+
+    Name is currently just Last Name must fix in the future
+  */
   const avatarUrl =
     (user as any)?.avatarUrl ||
     (user as any)?.photoURL ||
     `https://ui-avatars.com/api/?name=${encodeURIComponent(
-      user?.name || "User",
+      // Here
+      user?.lastName || "User",
     )}&background=0D8ABC&color=fff&size=128`;
 
   return (
@@ -87,7 +92,8 @@ export default function ClientLayout() {
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <span className="text-gray-700">Welcome, {user?.name}</span>
+              {/* Here */}
+              <span className="text-gray-700">Welcome, {user?.lastName}</span>
 
               <NavLink
                 to="/client/profile"
@@ -96,12 +102,14 @@ export default function ClientLayout() {
               >
                 <img
                   src={avatarUrl}
-                  alt={user?.name || "User avatar"}
+                  // Here
+                  alt={user?.lastName || "User avatar"}
                   onError={(e) => {
                     const target = e.currentTarget as HTMLImageElement;
                     target.onerror = null;
+                    // Here
                     target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                      user?.name || "User",
+                      user?.lastName || "User",
                     )}&background=0D8ABC&color=fff&size=128`;
                   }}
                   className="w-8 h-8 rounded-full object-cover border border-gray-200 shadow-sm"

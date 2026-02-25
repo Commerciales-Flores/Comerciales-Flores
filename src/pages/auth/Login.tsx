@@ -70,7 +70,6 @@ export default function Login() {
 
         if (result) {
             // For demo purposes, we show the password in an alert.
-            alert(`DEMO ONLY:\nYour password is: ${result.password}`);
             setRecoverySuccess(`A recovery link has been sent to ${recoveryEmail} (simulation). You can now close this window.`);
         } else {
             setRecoveryError('No account found with that email address.');
