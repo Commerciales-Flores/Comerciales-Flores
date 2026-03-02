@@ -15,7 +15,7 @@ const PropertyTypeDisplay = ({ type }: { type: PropertyType }) => {
 
   const { icon, label, color } = map[type];
 
-  
+
   return (
     <span className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-full ${color}`}>
       {icon}
@@ -65,7 +65,7 @@ function revokeObjectURLs(urls: string[] | undefined) {
 }
 
 export default function AdminPropertyManagement() {
-  const { properties, addProperty, updateProperty, deleteProperty } = useData();
+  const { properties, addProperty, updateProperty, deleteProperty, locations } = useData();
   const [showModal, setShowModal] = useState(false);
   const [editingPropertyId, setEditingPropertyId] = useState<string | null>(null);
   const [hoveredButtonIndex, setHoveredButtonIndex] = useState<number | null>(null);
@@ -78,7 +78,8 @@ export default function AdminPropertyManagement() {
     policies: '',
     capacity: '', // Optional number
     available: true,
-    features: '' // Comma-separated string of features
+    features: '', // Comma-separated string of features
+    location: ''
   };
 
   const [propertyForm, setPropertyForm] = useState(initialFormState);
@@ -137,7 +138,8 @@ export default function AdminPropertyManagement() {
       policies: propertyForm.policies,
       capacity: propertyForm.capacity ? parseInt(propertyForm.capacity) : undefined,
       available: propertyForm.available,
-      features: propertyForm.features.split(',').map(s => s.trim()).filter(s => s.length > 0)
+      features: propertyForm.features.split(',').map(s => s.trim()).filter(s => s.length > 0),
+      location: propertyForm.location
     };
 
     if (editingPropertyId) {
@@ -162,6 +164,7 @@ export default function AdminPropertyManagement() {
         capacity: property.capacity?.toString() || '',
         available: property.available,
         features: property.features.join(', ')
+        ,location: property.location
       });
       setEditingPropertyId(propertyId);
       setShowModal(true);
@@ -196,11 +199,11 @@ export default function AdminPropertyManagement() {
   const closeLightbox = () => setLightboxImage(null);
 
   return (
-    <div className="space-y-6">
+    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="mb-2">Property Management</h1>
-            <p className="text-gray-600">Manage all your rentable properties, halls, and parking slots.</p>
+            <h1 className="text-2xl font-bold text-gray-900">Property Management</h1>
+            <p className="text-gray-500">Manage all your rentable properties, halls, and parking slots.</p>
           </div>
           <button
             onClick={() => setShowModal(true)}
@@ -337,6 +340,25 @@ export default function AdminPropertyManagement() {
                     <option value="parking_slot">Parking Slot (e.g., Vehicle Space)</option>
                   </select>
                 </div>
+
+                <div>
+                <label htmlFor="location" className="block text-sm font-medium text-gray-700 mb-1">
+                  Location
+                </label>
+                <select
+                  id="location"
+                  required
+                  value={propertyForm.location}
+                  onChange={(e) => setPropertyForm({ ...propertyForm, location: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select a location</option>
+                  {locations.map((loc) => (
+                    <option key={loc} value={loc}>{loc}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">Choose the property's location from the list.</p>
+              </div>
 
                 {/* Price */}
                 <div>

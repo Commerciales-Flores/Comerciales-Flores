@@ -95,7 +95,7 @@ export default function AdminDashboard() {
   const latestActivity = auditLogs?.[0] || { action: 'No recent activity', timestamp: new Date() };
 
   return (
-    <div className="space-y-6 bg-gray-50 min-h-screen p-6">
+    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
       <header>
         <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
         <p className="text-sm text-gray-500">Overview of your rental management system</p>

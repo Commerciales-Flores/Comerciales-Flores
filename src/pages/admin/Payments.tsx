@@ -96,7 +96,7 @@ export default function AdminPayments() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
       <div className="flex justify-between items-center">
         {/* Text container */}
         <div>

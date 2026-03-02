@@ -9,6 +9,7 @@ import jsPDF from "jspdf";
 import { useRef } from 'react';
 import { useReactToPrint } from 'react-to-print'; 
 import html2canvas from "html2canvas";
+import { saveAs } from 'file-saver';
 
 export default function AdminAnalytics() {
   const { reservations, payments, properties } = useData();
@@ -153,19 +154,109 @@ const handlePrint = useReactToPrint({
   onAfterPrint: () => console.log('Print done!'),
 });
 
+// Helper function to convert array of objects to CSV and trigger download
+const exportToCsv = (filename: string, rows: any[]) => {
+  if (!rows.length) return;
+
+  const headers = Object.keys(rows[0]);
+
+  const csv = [
+    headers.join(','),
+    ...rows.map(row =>
+      headers.map(field => `"${row[field]}"`).join(',')
+    ),
+  ].join('\r\n');
+
+  // 👇 Add BOM for Excel UTF-8 support
+  const blob = new Blob(
+    ['\uFEFF' + csv],
+    { type: 'text/csv;charset=utf-8;' }
+  );
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
+const handleExportReservationsCsv = () => {
+  const data = chartData.map(d => {
+    let period: string;
+
+    if (granularity === 'daily' && 'day' in d) {
+      period = d.day;
+    } else if (granularity === 'weekly' && 'week' in d) {
+      period = d.week;
+    } else if (granularity === 'monthly' && 'month' in d) {
+      period = d.month;
+    } else if (granularity === 'yearly' && 'year' in d) {
+      period = d.year;
+    } else {
+      period = ''; // fallback safety
+    }
+
+    return {
+      Period: period,
+      Reservations: d.reservations,
+      Revenue: formatCurrency(d.revenue * 1000),
+    };
+  });
+
+  exportToCsv(
+    `Reservations-${granularity}-${new Date().toISOString().split('T')[0]}.csv`,
+    data
+  );
+};
+
+// -----------------------
+// Property Performance CSV
+// -----------------------
+const handleExportPropertyPerformanceCsv = () => {
+  const data = propertyStats.map((p, index) => ({
+    Rank: index + 1,
+    Property: p.name,
+    Type: getPropertyTypeLabel(p.type),
+    Reservations: p.reservationCount,
+    Revenue: formatCurrency(p.revenue),
+    Occupancy: `${p.occupancyRate}%`,
+  }));
+
+  exportToCsv(`PropertyPerformance-${new Date().toISOString().split('T')[0]}.csv`, data);
+};
+
+// -----------------------
+// Property Type Distribution CSV
+// -----------------------
+const handleExportPropertyTypeCsv = () => {
+  const total = typeDistributionData.reduce((sum, e) => sum + e.value, 0);
+  const data = typeDistributionData.map(entry => {
+    const percent = ((entry.value / total) * 100).toFixed(0);
+    return {
+      Type: entry.name,
+      Reservations: entry.value,
+      Percentage: `${percent}%`,
+    };
+  });
+
+  exportToCsv(`PropertyTypeDistribution-${new Date().toISOString().split('T')[0]}.csv`, data);
+};
+
   return (
-    <div className="space-y-6">
+    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="mb-2">Analytics & Reports</h1>
-          <p className="text-gray-600">Business insights and performance metrics</p>
+          <h1 className="text-2xl font-bold text-gray-900">Analytics & Reports</h1>
+          <p className="text-gray-500">Business insights and performance metrics</p>
         </div>
 
         <button
           onClick={handlePrint}
           className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 cursor-pointer"
         >
-          Export Analytics
+          Print Analytics
         </button>
       </div>
 
@@ -240,6 +331,12 @@ const handlePrint = useReactToPrint({
           <option value="monthly">Monthly (Last 6 Months)</option>
           <option value="yearly">Yearly (Last 5 Years)</option>
         </select>
+        <button
+          onClick={handleExportReservationsCsv}
+          className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 text-sm"
+        >
+          Export CSV
+        </button>
       </div>
     </div>
     <div className="h-[350px] w-full">
@@ -324,7 +421,15 @@ const handlePrint = useReactToPrint({
 
         {/* Property Performance */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 className="mb-6">Property Performance Ranking</h2>
+          <h2 className="mb-2 flex items-center justify-between">
+            Property Performance Ranking
+            <button
+              onClick={handleExportPropertyPerformanceCsv}
+              className="bg-purple-600 text-white px-3 py-1 rounded hover:bg-purple-700 text-sm"
+            >
+              Export CSV
+            </button>
+          </h2>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="border-b border-gray-200">
@@ -365,7 +470,17 @@ const handlePrint = useReactToPrint({
 
               {/* Property Type Distribution */}
       <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h2 className="mb-6">Reservations by Property Type</h2>
+        <h2 className="mb-2 flex items-center justify-between">
+          Reservations by Property Type
+          <div className="flex justify-end mb-2">
+            <button
+              onClick={handleExportPropertyTypeCsv}
+              className="bg-blue-600 text-white px-3 py-1 rounded hover:bg-blue-700 text-sm"
+            >
+              Export CSV
+            </button>
+          </div>
+        </h2>
         
         {/* Pie Chart */}
         <div className="h-[250px] w-full">

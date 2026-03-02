@@ -45,33 +45,42 @@ export default function ClientReservations() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="mb-2">My Reservations</h1>
-        <p className="text-gray-600">View and manage your reservations requests</p>
-      </div>
+    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
 
-      {/* Filter Tabs */}
-      <div className="bg-white rounded-lg border border-gray-200 p-1 inline-flex">
-        {(['all', 'pending', 'approved', 'rejected'] as const).map((status) => (
-          <button
-            key={status}
-            onClick={() => setFilterStatus(status)}
-            className={`px-4 py-2 rounded-lg transition-colors ${
-              filterStatus === status
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            {status.charAt(0).toUpperCase() + status.slice(1)}
-            {status !== 'all' && (
-              <span className="ml-2">
-                ({userReservations.filter(b => b.status === status).length})
+      <div>
+          <h1 className="text-2xl font-bold text-gray-900">My Reservations</h1>
+          <p className="text-gray-500">View and manage your reservations requests</p>
+        </div>
+
+      {/* Filter Navigation (Matches Admin Style) */}
+      <div className="flex gap-2 flex-wrap">
+        {(['all', 'pending', 'approved', 'rejected'] as const).map((status) => {
+          // We calculate count based on the full user list so the numbers are stable
+          const count = status === 'all' 
+            ? userReservations.length 
+            : userReservations.filter(b => b.status === status).length;
+
+          return (
+            <button
+              key={status}
+              onClick={() => setFilterStatus(status)}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-2 ${
+                filterStatus === status
+                  ? 'bg-blue-600 text-white shadow-md'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-transparent'
+              }`}
+            >
+              <span className="capitalize">{status}</span>
+              <span className={`text-xs ${
+                filterStatus === status ? 'text-blue-100' : 'text-gray-400'
+              }`}>
+                ({count})
               </span>
-            )}
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
+      
 
       {/* Reservations List */}
       {sortedReservations.length === 0 ? (
@@ -107,6 +116,9 @@ export default function ClientReservations() {
             </span>
           </div>
           <h3 className="mb-1">{reservation.propertyName}</h3>
+          <p className="text-sm text-gray-500 flex items-center gap-1">
+            <MapPin className="size-4 text-blue-600" /> {property?.location || 'N/A'}
+          </p>
           <p className="text-sm text-gray-500">Reservation ID: {reservation.id}</p>
         </div>
       </div>

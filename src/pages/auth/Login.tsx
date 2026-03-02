@@ -1,15 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Building2, AlertCircle, CheckCircle, X } from 'lucide-react';
+import { Building2, AlertCircle, CheckCircle, X, ArrowLeft, Mail, Lock } from 'lucide-react';
 
 const GoogleLogo = () => (
-    <svg className="size-5" viewBox="0 0 24 24" fill="currentColor">
+    <svg className="size-5" viewBox="0 0 24 24">
         <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
         <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
         <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
         <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-        <path d="M1 1h22v22H1z" fill="none" />
     </svg>
 );
 
@@ -22,12 +21,16 @@ const FacebookLogo = () => (
 export default function Login() {
     const { login, recoverPassword } = useAuth();
     const navigate = useNavigate();
-    const [formData, setFormData] = useState({
-        email: '',
-        password: ''
-    });
+    const [formData, setFormData] = useState({ email: '', password: '' });
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const { user } = useAuth();
+
+    useEffect(() => {
+    if (user) {
+        navigate(user.role === 'admin' ? '/admin/dashboard' : '/client/dashboard');
+    }
+    }, [user, navigate]);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [recoveryEmail, setRecoveryEmail] = useState('');
@@ -41,25 +44,20 @@ export default function Login() {
         setLoading(true);
 
         const success = await login(formData.email, formData.password);
+        console.log('Login success:', success);
+  console.log('User after login (from context):', user);  // <-- check this
+  console.log('User in localStorage:', localStorage.getItem('currentUser'));
 
-        if (success) {
-            // Check user role and redirect
-            const storedUser = localStorage.getItem('currentUser');
-            if (storedUser) {
-                const user = JSON.parse(storedUser);
-                if (user.role === 'admin') {
-                    navigate('/admin/dashboard');
-                } else {
-                    navigate('/client/dashboard');
-                }
-            }
-        } else {
+        if (!success) {
             setError('Invalid email or password');
             setLoading(false);
+            return;
         }
-    };
 
-    // ✅ START: New function to handle the recovery form submission
+        // DO NOT read `user` immediately, let the effect handle redirect
+        setLoading(false);
+        };
+
     const handleRecoverPassword = async (e: React.FormEvent) => {
         e.preventDefault();
         setRecoveryError('');
@@ -67,233 +65,187 @@ export default function Login() {
         setRecoveryLoading(true);
 
         const result = await recoverPassword(recoveryEmail);
-
         if (result) {
-            // For demo purposes, we show the password in an alert.
-            alert(`DEMO ONLY:\nYour password is: ${result.password}`);
-            setRecoverySuccess(`A recovery link has been sent to ${recoveryEmail} (simulation). You can now close this window.`);
+            setRecoverySuccess(`A recovery link has been sent to ${recoveryEmail}.`);
         } else {
             setRecoveryError('No account found with that email address.');
         }
         setRecoveryLoading(false);
     };
 
-    const openModal = () => {
-        // Reset modal state when opening
-        setRecoveryEmail('');
-        setRecoveryError('');
-        setRecoverySuccess('');
-        setIsModalOpen(true);
-    }
-    // ✅ END: New function
-
-
     return (
-        <div className="h-screen bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center p-12">
-            <div className="w-[800px] md:w-[1000px] bg-white rounded-lg shadow-xl">
-
-                <div className="grid grid-cols-1 md:grid-cols-2 w-full">
-                    {/* Left panel: Profile */}
-                    <div className="p-12 bg-gradient-to-b from-blue-100 to-blue-200 text-blue-900 flex flex-col justify-center gap-6 w-full">
-                        <div className="flex flex-col items-center gap-4 mx-8">
-                            <div className="rounded-full bg-gray-100 flex items-center justify-center border-2 border-blue-300"
-                                style={{ width: '200px', height: '200px' }}>
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    style={{ width: '120px', height: '120px' }}
-                                >
-                                    <path d="M12 12a4 4 0 100-8 4 4 0 000 8z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                    <path d="M20 21v-1a4 4 0 00-4-4H8a4 4 0 00-4 4v1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 antialiased">
+            <div className="w-full max-w-[1000px] bg-white rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.05)] overflow-hidden border border-slate-200/60">
+                <div className="grid grid-cols-1 md:grid-cols-2">
+                    
+                    {/* Left Panel: Profile maintained */}
+                    <div className="p-12 bg-slate-900 text-white flex flex-col items-center justify-center relative overflow-hidden">
+                        <div className="relative z-10 flex flex-col items-center gap-8">
+                            <div className="size-48 rounded-[3rem] bg-white/5 backdrop-blur-sm border border-white/10 flex items-center justify-center shadow-2xl">
+                                <svg viewBox="0 0 24 24" fill="none" className="size-24 text-blue-400" stroke="currentColor">
+                                    <path d="M12 12a4 4 0 100-8 4 4 0 000 8z" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                    <path d="M20 21v-1a4 4 0 00-4-4H8a4 4 0 00-4 4v1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                                 </svg>
                             </div>
-                            <h2 className="text-2xl font-bold text-center">Welcome, User</h2>
+                            <div className="text-center">
+                                <h2 className="text-3xl font-bold tracking-tight">Welcome Back</h2>
+                                <p className="text-slate-400 mt-2 font-medium">
+                                    {user?.name || 'Guest'}
+                                </p>
+                            </div>
                         </div>
+                        {/* Background Decor */}
+                        <div className="absolute top-0 right-0 size-64 bg-blue-600/10 blur-[100px] rounded-full -mr-32 -mt-32" />
                     </div>
 
-                    {/* Right form panel */}
-                    <main className="p-12 flex flex-col justify-center w-full">
-                        <div className="text-center mb-8">
-                            <div className="flex justify-center mb-4">
-                                <Building2 className="size-16 text-blue-600" />
+                    {/* Right Panel: Form maintained */}
+                    <main className="p-12 md:p-16 flex flex-col justify-center bg-white">
+                        <div className="text-center mb-10">
+                            <div className="inline-flex items-center justify-center size-16 rounded-2xl bg-blue-50 text-blue-600 mb-4 shadow-sm">
+                                <Building2 className="size-10" />
                             </div>
-                            <h1 className="text-blue-600 mb-2">Commerciales Flores</h1>
-                            <p className="text-gray-600">Sign in to your account</p>
+                            <h1 className="text-xl font-black text-slate-900 uppercase tracking-[0.2em] mb-1">Comerciales Flores</h1>
+                            <p className="text-slate-500 font-medium">Sign in to your account</p>
                         </div>
 
                         {error && (
-                            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
-                                <AlertCircle className="size-5" />
+                            <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-3 text-rose-700 text-xs font-bold animate-in fade-in slide-in-from-top-1">
+                                <AlertCircle className="size-4 shrink-0" />
                                 {error}
                             </div>
                         )}
 
-                        <form onSubmit={handleSubmit} className="space-y-4 w-[400px] max-w-full">
-
-                            <div>
-                                <label className="block text-sm text-gray-700 mb-2">
-                                    Email Address
-                                </label>
-                                <input
-                                    type="email"
-                                    required
-                                    value={formData.email}
-                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="you@example.com"
-                                />
-
-                                <label className="invisible select-none pointer-events-none opacity-0 cursor-default">
-                                    xxxxxxxxxxxxxxxxxxxxxxxxxxx
-                                </label>
-
+                        <form onSubmit={handleSubmit} className="space-y-5 max-w-[400px] mx-auto w-full">
+                            <div className="space-y-1.5 group">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
+                                <div className="relative">
+                                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-300 group-focus-within:text-blue-500 transition-colors" />
+                                    <input
+                                        type="email" required value={formData.email}
+                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                        className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
+                                        placeholder="you@example.com"
+                                    />
+                                </div>
                             </div>
 
-                            <div>
-                                <label className="block text-sm text-gray-700 mb-2">
-                                    Password
-                                </label>
+                            <div className="space-y-1.5 group">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                Password
+                            </label>
+
+                            <div className="relative">
+                                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-300 group-focus-within:text-blue-500 transition-colors" />
                                 <input
-                                    type="password"
-                                    required
-                                    value={formData.password}
-                                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="••••••••"
+                                type="password"
+                                required
+                                value={formData.password}
+                                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
+                                placeholder="••••••••"
                                 />
                             </div>
 
-                            {/* ✅ START: NEW FORGOT PASSWORD LINK */}
-                            <div className="flex justify-end">
+                            <div className="text-right">
                                 <button
-                                    type="button"
-                                    onClick={openModal}
-                                    className="text-sm text-blue-600 hover:text-blue-700"
+                                type="button"
+                                onClick={() => setIsModalOpen(true)}
+                                className="text-[11px] font-bold text-blue-600 hover:underline"
                                 >
-                                    Forgot Password?
+                                Forgot Password?
                                 </button>
                             </div>
-                            {/* ✅ END: NEW FORGOT PASSWORD LINK */}
+                            </div>
 
                             <button
-                                type="submit"
-                                disabled={loading}
-                                className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                type="submit" disabled={loading}
+                                className="w-full bg-blue-600 text-white py-2 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/10 disabled:opacity-50 mt-2 active:scale-[0.98]"
                             >
                                 {loading ? 'Signing in...' : 'Sign In'}
                             </button>
                         </form>
 
-                        <div className="mt-6">
-                            <div className="relative">
-                                <div className="absolute inset-0 flex items-center">
-                                    <div className="w-full border-t border-gray-300" />
-                                </div>
-                                <div className="relative flex justify-center text-sm">
-                                    <span className="bg-white px-2 text-gray-500">Or continue with</span>
-                                </div>
+                        {/* Social Logins */}
+                        <div className="mt-8 max-w-[400px] mx-auto w-full">
+                            <div className="relative flex items-center justify-center mb-6">
+                                <div className="w-full border-t border-slate-100" />
+                                <span className="absolute bg-white px-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">Or login with</span>
                             </div>
 
-                            <div className="mt-6 grid grid-cols-2 gap-4">
-                                {/* Google Button */}
-                                <button
-                                    type="button"
-                                    onClick={() => alert("Google login not implemented")}
-                                    className="w-full inline-flex justify-center items-center gap-3 py-2 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                                >
-                                    <GoogleLogo />
-                                    <span>Google</span>
+                            <div className="grid grid-cols-2 gap-4">
+                                <button className="flex items-center justify-center gap-3 py-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-all font-bold text-xs text-slate-700 shadow-sm active:scale-95">
+                                    <GoogleLogo /> Google
                                 </button>
-
-                                {/* Facebook Button */}
-                                <button
-                                    type="button"
-                                    onClick={() => alert("Facebook login not implemented")}
-                                    className="w-full inline-flex justify-center items-center gap-3 py-2 px-4 border border-transparent rounded-lg shadow-sm bg-[#1877F2] text-sm font-medium text-white hover:bg-[#166fe5] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1877F2]"
-                                >
-                                    <FacebookLogo />
-                                    <span>Facebook</span>
+                                <button className="flex items-center justify-center gap-3 py-3 bg-[#1877F2] text-white rounded-xl hover:bg-[#166fe5] transition-all font-bold text-xs shadow-sm active:scale-95">
+                                    <FacebookLogo /> Facebook
                                 </button>
                             </div>
                         </div>
-                        {/* ✅ END: Social Login Section */}
 
-
-                        <div className="mt-6 text-center space-y-2">
-                            <p className="text-gray-600">
+                        {/* Bigger Footer Links */}
+                        <div className="mt-12 text-center space-y-3">
+                            <p className="text-slate-500 text-sm font-medium">
                                 Don't have an account?{' '}
-                                <Link to="/register" className="text-blue-600 hover:text-blue-700">
-                                    Sign up
-                                </Link>
+                                <Link to="/register" className="text-blue-600 font-bold hover:underline">Sign up</Link>
                             </p>
-                            <Link to="/" className="block text-blue-600 hover:text-blue-700">
+                            <Link to="/" className="inline-flex items-center gap-2 text-slate-500 hover:text-slate-800 text-xs font-bold transition-all group">
+                                <ArrowLeft className="size-4 transition-transform group-hover:-translate-x-1" /> 
                                 Back to Home
                             </Link>
+                            
                         </div>
-
-                        {/*<div className="mt-8 pt-6 border-t border-gray-200">*/}
-                        {/*    <p className="text-sm text-gray-500 mb-2">Demo Accounts:</p>*/}
-                        {/*    <div className="text-xs space-y-1 text-gray-600">*/}
-                        {/*        <p>Admin: admin@flores.com / admin123</p>*/}
-                        {/*        <p>Client: client@example.com / client123</p>*/}
-                        {/*    </div>*/}
-                        {/*</div>*/}
                     </main>
                 </div>
             </div>
 
-            {/* ✅ START: FORGOT PASSWORD MODAL JSX */}
+            {/* Password Recovery Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-50 bg-gray-900/20 backdrop-blur-sm flex items-center justify-center p-4">          <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-8" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-bold text-gray-800">Password Recovery</h2>
-                        <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
-                            <X className="size-6" />
-                        </button>
-                    </div>
-
-                    {recoveryError && (
-                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
-                            <AlertCircle className="size-5" />
-                            {recoveryError}
-                        </div>
-                    )}
-
-                    {recoverySuccess && (
-                        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-700">
-                            <CheckCircle className="size-5" />
-                            {recoverySuccess}
-                        </div>
-                    )}
-
-                    {!recoverySuccess && (
-                        <form onSubmit={handleRecoverPassword} className="space-y-4">
-                            <p className="text-sm text-gray-600">Enter your account's email address and we will send you a password recovery link (simulation).</p>
-                            <div>
-                                <label className="block text-sm text-gray-700 mb-2">Email Address</label>
-                                <input
-                                    type="email"
-                                    required
-                                    value={recoveryEmail}
-                                    onChange={(e) => setRecoveryEmail(e.target.value)}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="you@example.com"
-                                />
-                            </div>
-                            <button
-                                type="submit"
-                                disabled={recoveryLoading}
-                                className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                            >
-                                {recoveryLoading ? 'Searching...' : 'Recover Password'}
+                <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4">
+                    <div className="bg-white rounded-[2rem] shadow-2xl max-w-md w-full p-10 animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-8">
+                            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Recovery</h2>
+                            <button onClick={() => setIsModalOpen(false)} className="size-10 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors">
+                                <X className="size-6 text-slate-400" />
                             </button>
-                        </form>
-                    )}
-                </div>
+                        </div>
+
+                        {recoveryError && (
+                            <div className="mb-6 p-4 bg-rose-50 text-rose-700 text-xs font-bold rounded-xl flex items-center gap-3">
+                                <AlertCircle className="size-4" /> {recoveryError}
+                            </div>
+                        )}
+
+                        {recoverySuccess ? (
+                            <div className="text-center py-6">
+                                <div className="size-16 rounded-full bg-green-50 text-green-500 flex items-center justify-center mx-auto mb-4">
+                                    <CheckCircle className="size-8" />
+                                </div>
+                                <p className="text-slate-600 font-medium mb-8 leading-relaxed">{recoverySuccess}</p>
+                                <button onClick={() => setIsModalOpen(false)} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold">Close</button>
+                            </div>
+                        ) : (
+                            <form onSubmit={handleRecoverPassword} className="space-y-6">
+                                <p className="text-sm text-slate-500 font-medium leading-relaxed">Enter your email and we'll send instructions to reset your password.</p>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
+                                    <input
+                                        type="email" required value={recoveryEmail}
+                                        onChange={(e) => setRecoveryEmail(e.target.value)}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none text-sm"
+                                        placeholder="you@example.com"
+                                    />
+                                </div>
+                                <button
+                                    type="submit" disabled={recoveryLoading}
+                                    className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-500/10 transition-all disabled:opacity-50"
+                                >
+                                    {recoveryLoading ? 'Processing...' : 'Send Recovery Link'}
+                                </button>
+                            </form>
+                        )}
+                    </div>
                 </div>
             )}
-            {/* ✅ END: FORGOT PASSWORD MODAL JSX */}
         </div>
     );
-}
+}   

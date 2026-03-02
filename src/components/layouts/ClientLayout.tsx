@@ -78,56 +78,66 @@ export default function ClientLayout() {
   return (
     <div className="min-h-screen bg-gray-50">
 
-      {/* HEADER */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-16">
+      {/* CLIENT HEADER */}
+<header className="bg-white border-b border-gray-200 sticky top-0 z-50">
+  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-16">
 
-          <div className="flex items-center gap-3">
-            <Building2 className="size-8 text-blue-600" />
-            <div>
-              <h1 className="text-blue-600">Commerciales Flores</h1>
-              <p className="text-sm text-gray-500">Client Portal</p>
-            </div>
-          </div>
+    {/* Brand Identity */}
+    <div className="flex items-center gap-3">
+      <div className="bg-blue-50 p-2 rounded-lg">
+        <Building2 className="size-6 text-blue-600" />
+      </div>
+      <div>
+        <h1 className="text-blue-600 font-bold tracking-tight leading-none">Commerciales Flores</h1>
+        <p className="text-[10px] uppercase font-bold text-gray-400 tracking-widest mt-1">Client Portal</p>
+      </div>
+    </div>
 
-          {/* DESKTOP NAV + AVATAR */}
-          <div className="hidden md:flex items-center gap-4">
-            <span className="text-gray-700">Welcome, {user?.name}</span>
+    {/* DESKTOP NAV + AVATAR */}
+    <div className="hidden md:flex items-center gap-6">
+      <div className="flex items-center gap-4 pr-6 border-r border-gray-100">
+        <span className="text-sm text-gray-600">
+          Welcome, <span className="text-gray-900 font-medium">{user?.name}</span>
+        </span>
 
-            <NavLink to="/client/profile" className="flex items-center">
-              <img
-                src={avatarUrl}
-                alt={user?.name || "User avatar"}
-                onError={(e) => {
-                  const target = e.currentTarget as HTMLImageElement;
-                  target.onerror = null;
-                  target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                    user?.name || "User"
-                  )}&background=0D8ABC&color=fff&size=128`;
-                }}
-                className="w-8 h-8 rounded-full object-cover border border-gray-200 shadow-sm"
-              />
-            </NavLink>
+        <NavLink 
+          to="/client/profile" 
+          className="transition-transform hover:scale-105 active:scale-95 p-0.5"
+        >
+          <img
+            src={avatarUrl}
+            alt={user?.name || "User avatar"}
+            className="w-9 h-9 rounded-full object-cover border border-gray-200 shadow-sm"
+            onError={(e) => {
+              const target = e.currentTarget as HTMLImageElement;
+              target.onerror = null;
+              target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+                user?.name || "User"
+              )}&background=eff6ff&color=2563eb&size=128`;
+            }}
+          />
+        </NavLink>
+      </div>
 
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <LogOut className="size-4" />
-              Logout
-            </button>
-          </div>
+      <button
+        onClick={handleLogout}
+        className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all text-sm font-semibold"
+      >
+        <LogOut className="size-4" />
+        Logout
+      </button>
+    </div>
 
-          {/* MOBILE HAMBURGER */}
-          <button
-            className="md:hidden flex items-center p-2 rounded-md hover:bg-gray-100 transition-colors"
-            onClick={() => setMobileNavOpen(true)}
-            aria-label="Open mobile menu"
-          >
-            <Menu className="size-6" />
-          </button>
-        </div>
-      </header>
+    {/* MOBILE HAMBURGER */}
+    <button
+      className="md:hidden flex items-center p-2 rounded-lg hover:bg-gray-50 border border-transparent hover:border-gray-200 transition-colors"
+      onClick={() => setMobileNavOpen(true)}
+      aria-label="Open mobile menu"
+    >
+      <Menu className="size-6 text-gray-600" />
+    </button>
+  </div>
+</header>
 
       {/* DESKTOP NAVBAR */}
     <nav className="bg-white border-b border-gray-200 relative">
@@ -140,12 +150,12 @@ export default function ClientLayout() {
             key={item.to}
             to={item.to}
             data-active={window.location.pathname === item.to ? "true" : undefined}
-            className="flex items-center gap-2 px-4 py-3 whitespace-nowrap text-gray-600 hover:text-gray-900 relative"
+            className="relative flex items-center gap-2 px-4 py-3 pr-6 whitespace-nowrap text-gray-600 hover:text-gray-900"
           >
             <item.icon className="size-4" />
             {item.label}
             {item.badge !== undefined && item.badge > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+              <span className="absolute top-0.5 right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
                 {item.badge > 9 ? "9+" : item.badge}
               </span>
             )}

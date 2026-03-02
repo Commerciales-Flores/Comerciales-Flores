@@ -40,16 +40,19 @@ export default function ClientProperties() {
     eventPurpose: string;
     attendees: string;
     businessType: string;
+    appointmentDate?: Date;
+    appointmentTime?: string;
   }
 
   const { user } = useAuth();
-  const { properties, addReservation, parkingSlots, reservations } = useData();
+  const { properties, addReservation, parkingSlots, reservations, locations } = useData();
   const [isSlotPanelOpen, setIsSlotPanelOpen] = useState(false);
   const { sendSystemNotification } = useNotifications();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<PropertyType | "all">(
     "all"
   );
+  const [filterLocation, setFilterLocation] = useState<string>("all");
   const [selectedProperty, setSelectedProperty] = useState<string | null>(
     null
   );
@@ -90,6 +93,9 @@ export default function ClientProperties() {
       p.description.toLowerCase().includes(q);
     const matchesType = filterType === "all" || p.type === filterType;
 
+    const matchesLocation =
+    filterLocation === "all" || p.location === filterLocation;
+
     let matchesPrice = true;
     const price = p.price;
     switch (priceRange) {
@@ -107,7 +113,7 @@ export default function ClientProperties() {
         break;
     }
 
-    return matchesSearch && matchesType && matchesPrice && p.available;
+    return matchesSearch && matchesType && matchesPrice && matchesLocation && p.available;
   });
 
   const tomorrow = () => {
@@ -117,7 +123,11 @@ export default function ClientProperties() {
     return d;
   };
 
-  const handleBookNow = (propertyId: string) => {
+  const [appointmentDate, setAppointmentDate] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+
+  const handleReserveNow = (propertyId: string) => {
     const prop = properties.find((p) => p.id === propertyId);
     if (!prop) return;
 
@@ -282,8 +292,22 @@ export default function ClientProperties() {
       reservationData.plateNumber = reservationForm.plateNumber;
       reservationData.modeOfVisit = reservationForm.modeOfVisit;
     }
+    if (reservationForm.modeOfVisit === "onsite") {
+      reservationData.appointmentDate =
+        reservationForm.appointmentDate?.toISOString();
+      reservationData.appointmentTime =
+        reservationForm.appointmentTime;
+    }
 
     addReservation(reservationData);
+
+    if (
+      reservationForm.modeOfVisit === "onsite" &&
+      (!reservationForm.appointmentDate || !reservationForm.appointmentTime)
+    ) {
+      alert("Please select an appointment date and time.");
+      return;
+    }
 
     sendSystemNotification(
       user.id,
@@ -313,13 +337,12 @@ export default function ClientProperties() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
+
       <div>
-        <h1 className="mb-2">Browse Properties</h1>
-        <p className="text-gray-600">
-          Secure a space or book an appointment for a tour
-        </p>
-      </div>
+          <h1 className="text-2xl font-bold text-gray-900">Browse Properties</h1>
+          <p className="text-gray-500">Secure a space or book an appointment for a tour</p>
+        </div>
 
       {/* Search and Filter */}
       <div className="bg-white p-4 rounded-lg border border-gray-200">
@@ -363,6 +386,18 @@ export default function ClientProperties() {
               <option value="10001+">₱10,001+</option>
             </select>
           </div>
+
+          <div className="relative">
+            <select
+              value={filterLocation}
+              onChange={(e) => setFilterLocation(e.target.value)}
+              className="pl-3 pr-8 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {locations.map((loc) => (
+                <option key={loc} value={loc}>{loc}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -398,7 +433,7 @@ export default function ClientProperties() {
                 )}
               </div>
               <button
-                onClick={() => handleBookNow(prop.id)}
+                onClick={() => handleReserveNow(prop.id)}
                 className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
                 Reserve Now
@@ -415,184 +450,242 @@ export default function ClientProperties() {
       )}
 
       {/* Reservation Modal */}
+
       {showReservationModal && property && (
-        <div className="fixed inset-0 p-4 z-50 overflow-auto">
-          <div className="bg-white rounded-lg max-w-4xl w-full mx-auto my-8 max-h-[90vh] overflow-y-auto shadow-xl">
-            <div className="flex justify-between items-center p-6 border-b border-gray-200">
-              <div>
-                <div className="text-sm text-blue-600 mb-1">
-                  {getPropertyTypeLabel(property.type)}
-                </div>
-                <h2>{property.name}</h2>
+  <div className="fixed inset-0 p-4 z-50 overflow-auto">
+    <div className="bg-white rounded-lg max-w-4xl w-full mx-auto my-8 max-h-[90vh] overflow-y-auto shadow-xl">
+      <div className="flex justify-between items-center p-6 border-b border-gray-200">
+        <div>
+          <div className="text-sm text-blue-600 mb-1">
+            {getPropertyTypeLabel(property.type)}
+          </div>
+          <h2>{property.name}</h2>
+          <div className="text-sm text-gray-500 mb-1">
+            📍 {property.location}
+          </div>
+        </div>
+        <button
+          onClick={() => setShowReservationModal(false)}
+          className="text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          <X className="size-6" />
+        </button>
+      </div>
+
+      {reservationSuccess ? (
+        <div className="p-6 text-center">
+          <div className="bg-green-100 text-green-700 p-6 rounded-lg">
+            <h3 className="mb-2">Reservation Request Submitted!</h3>
+            <p>
+              Your reservation is pending admin approval. We'll notify you once it's processed.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="p-6">
+          <div className="grid md:grid-cols-2 gap-6 mb-6">
+            {/* LEFT PANEL: Property Images & Info */}
+            <div>
+              <div className="relative mb-4">
+                <img
+                  src={property.images[currentImageIndex]}
+                  alt={property.name}
+                  className="w-full h-48 object-cover rounded-lg"
+                />
+                {property.images.length > 1 && (
+                  <>
+                    <button
+                      onClick={prevImage}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 bg-white bg-opacity-80 p-1 rounded-full"
+                    >
+                      <ChevronLeft className="size-5" />
+                    </button>
+                    <button
+                      onClick={nextImage}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 bg-white bg-opacity-80 p-1 rounded-full"
+                    >
+                      <ChevronRight className="size-5" />
+                    </button>
+                  </>
+                )}
               </div>
-              <button
-                onClick={() => setShowReservationModal(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X className="size-6" />
-              </button>
+
+              <p className="text-sm text-gray-600 mb-4">{property.description}</p>
+
+              <div className="bg-blue-50 p-4 rounded-lg mb-4">
+                <p className="text-sm text-gray-600 mb-1">Price</p>
+                <div className="text-blue-600">
+                  {formatCurrency(property.price)}{" "}
+                  <span className="text-sm">{getPriceLabel(property.type)}</span>
+                </div>
+              </div>
+
+              <div className="text-sm text-gray-600">
+                <p className="mb-1">
+                  Minimum Duration: {getMinimumDuration(property.type).value}{" "}
+                  {getMinimumDuration(property.type).unit}
+                </p>
+              </div>
             </div>
 
-            {reservationSuccess ? (
-              <div className="p-6 text-center">
-                <div className="bg-green-100 text-green-700 p-6 rounded-lg">
-                  <h3 className="mb-2">Reservation Request Submitted!</h3>
-                  <p>
-                    Your reservation is pending admin approval. We'll notify you once it's processed.
-                  </p>
+            {/* RIGHT PANEL: Reservation Form */}
+            <form onSubmit={handleReservationSubmit} className="space-y-4">
+              {/* Mode of Visit Selector */}
+              <div className="p-4 border border-gray-200 rounded-lg space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    How do you want to proceed?
+                  </label>
+                  <select
+                    value={reservationForm.modeOfVisit}
+                    onChange={(e) => {
+                      const newMode = e.target.value as "online" | "onsite";
+                      setReservationForm((prev) => ({
+                        ...prev,
+                        modeOfVisit: newMode,
+                        paymentIntent:
+                          newMode === "online" ? "pay_later" : prev.paymentIntent,
+                      }));
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="online">Online / Digital Process</option>
+                    <option value="onsite">On-site Visit / Tour</option>
+                  </select>
                 </div>
-              </div>
-            ) : (
-              <div className="p-6">
-                <div className="grid md:grid-cols-2 gap-6 mb-6">
-                  <div>
-                    <div className="relative mb-4">
-                      <img
-                        src={property.images[currentImageIndex]}
-                        alt={property.name}
-                        className="w-full h-48 object-cover rounded-lg"
+
+                {reservationForm.modeOfVisit === "onsite" && (
+                  <div className="pt-4 border-t border-gray-200">
+                    {/* Appointment Date & Time */}
+                    <div className="mt-6">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Appointment Date
+                      </label>
+                      <input
+                        type="date"
+                        value={appointmentDate}
+                        min={new Date().toISOString().split("T")[0]}
+                        onChange={(e) => setAppointmentDate(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
-                      {property.images.length > 1 && (
-                        <>
-                          <button
-                            onClick={prevImage}
-                            className="absolute left-2 top-1/2 -translate-y-1/2 bg-white bg-opacity-80 p-1 rounded-full"
-                          >
-                            <ChevronLeft className="size-5" />
-                          </button>
-                          <button
-                            onClick={nextImage}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 bg-white bg-opacity-80 p-1 rounded-full"
-                          >
-                            <ChevronRight className="size-5" />
-                          </button>
-                        </>
-                      )}
                     </div>
-
-                    <p className="text-sm text-gray-600 mb-4">{property.description}</p>
-
-                    <div className="bg-blue-50 p-4 rounded-lg mb-4">
-                      <p className="text-sm text-gray-600 mb-1">Price</p>
-                      <div className="text-blue-600">
-                        {formatCurrency(property.price)}{" "}
-                        <span className="text-sm">{getPriceLabel(property.type)}</span>
+                    <div className="mt-4 flex gap-4">
+                      <div className="flex-1">
+                        <label className="block text-sm text-gray-700 mb-1">
+                          Start Time
+                        </label>
+                        <input
+                          type="time"
+                          min="09:00"
+                          max="17:00"
+                          value={startTime}
+                          onChange={(e) => setStartTime(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-sm text-gray-700 mb-1">
+                          End Time
+                        </label>
+                        <input
+                          type="time"
+                          min={startTime || "09:00"}
+                          max="17:00"
+                          value={endTime}
+                          onChange={(e) => setEndTime(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
                       </div>
                     </div>
 
-                    <div className="text-sm text-gray-600">
-                      <p className="mb-1">
-                        Minimum Duration: {getMinimumDuration(property.type).value}{" "}
-                        {getMinimumDuration(property.type).unit}
-                      </p>
-                    </div>
-                  </div>
-
-                  <form onSubmit={handleReservationSubmit} className="space-y-4">
-                    {/* Mode + payment intent for non-parking and parking (consistent UX) */}
-                    <div className="p-4 border border-gray-200 rounded-lg space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          How do you want to proceed?
-                        </label>
-                        <select
-                          value={reservationForm.modeOfVisit}
-                          onChange={(e) => {
-                            const newMode = e.target.value as "online" | "onsite";
+                    {/* Visitation Goal */}
+                    <label className="block text-sm font-medium text-gray-700 mt-6 mb-2">
+                      What is the goal of your visit?
+                    </label>
+                    <div className="space-y-2">
+                      <label
+                        className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-all ${
+                          reservationForm.paymentIntent === "pay_later"
+                            ? "border-blue-500 bg-blue-50"
+                            : "border-gray-200"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="paymentIntent"
+                          value="pay_later"
+                          checked={reservationForm.paymentIntent === "pay_later"}
+                          onChange={(e) =>
                             setReservationForm((prev) => ({
                               ...prev,
-                              modeOfVisit: newMode,
-                              paymentIntent: newMode === "online" ? "pay_later" : prev.paymentIntent,
-                            }));
-                          }}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="online">Online / Digital Process</option>
-                          <option value="onsite">On-site Visit / Tour</option>
-                        </select>
-                      </div>
-
-                      {reservationForm.modeOfVisit === "onsite" && (
-                        <div className="pt-4 border-t border-gray-200">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Regarding Payment:
-                          </label>
-
-                          <div className="space-y-2">
-                            <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer">
-                              <input
-                                type="radio"
-                                name="paymentIntent"
-                                value="pay_onsite"
-                                checked={reservationForm.paymentIntent === "pay_onsite"}
-                                onChange={(e) =>
-                                  setReservationForm((prev) => ({ ...prev, paymentIntent: e.target.value as any }))
-                                }
-                                className="size-4 text-blue-600 focus:ring-blue-500"
-                              />
-                              <div>
-                                <p className="font-medium">Pay On-site</p>
-                                <p className="text-xs text-gray-500">I intend to pay in person during my visit.</p>
-                              </div>
-                            </label>
-
-                            <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer">
-                              <input
-                                type="radio"
-                                name="paymentIntent"
-                                value="pay_later"
-                                checked={reservationForm.paymentIntent === "pay_later"}
-                                onChange={(e) =>
-                                  setReservationForm((prev) => ({ ...prev, paymentIntent: e.target.value as any }))
-                                }
-                                className="size-4 text-blue-600 focus:ring-blue-500"
-                              />
-                              <div>
-                                <p className="font-medium">Decide Later</p>
-                                <p className="text-xs text-gray-500">I am just viewing the property for now and will pay later if I decide to proceed.</p>
-                              </div>
-                            </label>
-                          </div>
-
-                          {/* Conditional: show payment fields only when Pay On-site is selected */}
-                          {reservationForm.paymentIntent === "pay_onsite" ? (
-                            <div className="mt-4">
-                              <label className="block text-sm text-gray-700 mb-2">Payment Method</label>
-                              <select
-                                value={reservationForm.paymentMethod}
-                                onChange={(e) => setReservationForm((prev) => ({ ...prev, paymentMethod: e.target.value }))}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              >
-                                <option value="">Select method</option>
-                                <option value="gcash">GCash</option>
-                                <option value="credit_card">Credit/Debit Card</option>
-                                <option value="bank_transfer">Bank Transfer</option>
-                                <option value="cash">Cash (collected on visit)</option>
-                              </select>
-                              <p className="text-xs text-gray-500 mt-2">
-                                You selected Pay On-site — we will collect payment during your visit. Providing a preferred payment method helps staff prepare.
-                              </p>
-                            </div>
-                          ) : (
-                            <div className="mt-4 p-3 bg-gray-50 border rounded-lg text-sm text-gray-700">
-                              You can pay onsite during your visit.
-                            </div>
-                          )}
+                              paymentIntent: e.target.value as any,
+                            }))
+                          }
+                          className="size-4 text-blue-600 focus:ring-blue-500"
+                        />
+                        <div>
+                          <p className="font-medium text-sm">Just Viewing</p>
+                          <p className="text-xs text-gray-500">
+                            I'd like a tour of the property first before deciding.
+                          </p>
                         </div>
-                      )}
+                      </label>
+
+                      <label
+                        className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition-all ${
+                          reservationForm.paymentIntent === "pay_onsite"
+                            ? "border-blue-500 bg-blue-50"
+                            : "border-gray-200"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="paymentIntent"
+                          value="pay_onsite"
+                          checked={reservationForm.paymentIntent === "pay_onsite"}
+                          onChange={(e) =>
+                            setReservationForm((prev) => ({
+                              ...prev,
+                              paymentIntent: e.target.value as any,
+                            }))
+                          }
+                          className="size-4 text-blue-600 focus:ring-blue-500"
+                        />
+                        <div>
+                          <p className="font-medium text-sm">Ready to Reserve</p>
+                          <p className="text-xs text-gray-500">
+                            I want to secure my slot and pay during my visit.
+                          </p>
+                        </div>
+                      </label>
                     </div>
 
-                    {/* Parking slot: monthly minimum, date selection, slot selector, vehicle fields when onsite */}
+                    {/* CONDITIONAL: Just Viewing Friendly Message */}
+                    {reservationForm.paymentIntent === "pay_later" && (
+                      <div className="mt-4 p-3 bg-green-50 border border-green-100 rounded-lg text-sm text-green-800">
+                        ✨ We look forward to showing you around! No payment is required for this visit.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* RESERVATION FIELDS: only show if not Just Viewing */}
+              {!(reservationForm.modeOfVisit === "onsite" && reservationForm.paymentIntent === "pay_later") && (
+                <>
+                 {/* Parking slot: monthly minimum, date selection, slot selector, vehicle fields when onsite */}
                     {property.type === "parking_slot" && (
                       <>
                         <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
                           Parking spaces require a <strong>minimum occupancy of 1 month</strong>.
                         </div>
 
+
                         <div>
                           <label className="block text-sm text-gray-700 mb-2">
                             Reservation Period (Minimum 1 Month)
                           </label>
+
 
                           <button
                             type="button"
@@ -605,6 +698,7 @@ export default function ClientProperties() {
                                 : "Please select the dates"}
                             </span>
                           </button>
+
 
                           {showCalendar && (
                             <div className="mt-2">
@@ -622,6 +716,7 @@ export default function ClientProperties() {
                                     newEnd.setDate(newEnd.getDate() - 1);
                                     newEnd.setHours(23, 59, 59, 999);
 
+
                                     setReservationForm((prev) => ({
                                       ...prev,
                                       startDate: newStart,
@@ -638,6 +733,7 @@ export default function ClientProperties() {
                           )}
                         </div>
 
+
                         <div className="mt-4">
                           <label className="block text-sm text-gray-700 mb-2">Calculated Duration</label>
                           <input
@@ -647,6 +743,7 @@ export default function ClientProperties() {
                             className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg"
                           />
                         </div>
+
 
                         <div className="mt-4">
                           <label className="block text-sm font-medium text-gray-700 mb-2">Parking Slot</label>
@@ -667,6 +764,7 @@ export default function ClientProperties() {
                             </button>
                           )}
                         </div>
+
 
                         {/* Vehicle inputs only for onsite visits */}
                         {reservationForm.modeOfVisit === "onsite" && (
@@ -697,6 +795,7 @@ export default function ClientProperties() {
                         )}
                       </>
                     )}
+
 
                     {/* Function hall: date range (days) */}
                     {property.type === "function_hall" && (
@@ -737,6 +836,7 @@ export default function ClientProperties() {
                       </div>
                     )}
 
+
                     {/* Rental space: lease start + years */}
                     {property.type === "rental_space" && (
                       <>
@@ -766,6 +866,7 @@ export default function ClientProperties() {
                           )}
                         </div>
 
+
                         <div>
                           <label className="block text-sm text-gray-700 mb-2 mt-4">Duration (years)</label>
                           <input
@@ -783,12 +884,14 @@ export default function ClientProperties() {
                           />
                         </div>
 
+
                         <div className="mt-4">
                           <label className="block text-sm text-gray-700 mb-2">Lease End Date (Auto-calculated)</label>
                           <input type="text" readOnly value={`${reservationForm.endDate.toLocaleDateString()}`} className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg" />
                         </div>
                       </>
                     )}
+
 
                     {/* Rental-specific fields */}
                     {property.type === "rental_space" && (
@@ -819,6 +922,7 @@ export default function ClientProperties() {
                       </>
                     )}
 
+
                     {/* Function hall fields */}
                     {property.type === "function_hall" && (
                       <>
@@ -848,6 +952,7 @@ export default function ClientProperties() {
                         </div>
                       </>
                     )}
+
 
                     {property.type === "parking_slot" && (
                       <>
@@ -890,6 +995,7 @@ export default function ClientProperties() {
                       </>
                     )}
 
+
                     <div>
                       <label className="block text-sm text-gray-700 mb-2">
                         Payment Method
@@ -918,60 +1024,64 @@ export default function ClientProperties() {
                       </select>
                     </div>
 
-                    <div>
-                      <label className="block text-sm text-gray-700 mb-2">
-                        Additional Notes (Optional)
-                      </label>
-                      <textarea
-                        value={reservationForm.notes}
-                        onChange={(e) =>
-                          setReservationForm({
-                            ...reservationForm,
-                            notes: e.target.value,
-                          })
-                        }
-                        rows={3}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="Any special requests or requirements"
-                      />
+
+                  {/* Notes */}
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-2">
+                      Additional Notes (Optional)
+                    </label>
+                    <textarea
+                      value={reservationForm.notes}
+                      onChange={(e) =>
+                        setReservationForm({ ...reservationForm, notes: e.target.value })
+                      }
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Any special requests or requirements"
+                    />
+                  </div>
+
+                  {/* Estimated Total */}
+                  <div className="bg-gray-100 p-4 rounded-lg">
+                    <p className="text-sm text-gray-600 mb-1">Estimated Total</p>
+                    <div className="text-gray-900 font-bold text-lg">
+                      {formatCurrency(
+                        calculateTotalAmount(
+                          property.type,
+                          property.price,
+                          reservationForm.duration,
+                          reservationForm.paymentCycle
+                        )
+                      )}
                     </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      * Payment required after admin approval
+                    </p>
+                  </div>
 
-                    {/* ✅ START: FINAL, WORKING ESTIMATED TOTAL DISPLAY */}
-                    <div className="bg-gray-100 p-4 rounded-lg">
-                      <p className="text-sm text-gray-600 mb-1">
-                        Estimated Total
-                      </p>
-                      <div className="text-gray-900 font-bold text-lg">
-                        {/* ✅ FIX: Call your existing helper function directly here */}
-                        {formatCurrency(
-                          calculateTotalAmount(
-                            property.type,
-                            property.price,
-                            reservationForm.duration,
-                            reservationForm.paymentCycle,
-                          )
-                        )}
-                      </div>
-
-                    {/* ✅ END: FINAL, WORKING ESTIMATED TOTAL DISPLAY */}
-                      <p className="text-xs text-gray-500 mt-2">
-                        * Payment required after admin approval
-                      </p>
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      Submit Reservation Request
-                    </button>
-                  </form>
-                </div>
-              </div>
-            )}
+                  {/* Submit Button */}
+                  <button
+                    type="submit"
+                    disabled={
+                      reservationForm.modeOfVisit === "onsite" &&
+                      (!reservationForm.appointmentDate || !reservationForm.appointmentTime)
+                    }
+                    className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg disabled:opacity-50"
+                  >
+                    Submit Reservation Request
+                  </button>
+                </>
+              )}
+            </form>
           </div>
         </div>
       )}
+    </div>
+  </div>
+)}
+
+
+      
       {/* ✅ PASTE THE SLOT PANEL MODAL CODE RIGHT HERE */}
       {isSlotPanelOpen && (
         <div className="fixed inset-0 z-[60] bg-black bg-opacity-60 flex items-center justify-center p-4" onClick={() => setIsSlotPanelOpen(false)}>

@@ -8,6 +8,7 @@ interface User {
   role: 'client' | 'admin';
   contactNumber: string;
   address: string;
+  avatarUrl?: string;
 }
 
 interface AuthContextType {
@@ -18,9 +19,12 @@ interface AuthContextType {
   updateProfile: (userData: Partial<User>) => void;
   changePassword: (oldPassword: string, newPassword: string) => Promise<boolean>;
   recoverPassword: (email: string) => Promise<{ password: string } | null>;
+  deleteAccount: (userId: string) => void; 
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+
 
 // Mock users for demo
 const MOCK_USERS = [
@@ -47,6 +51,16 @@ const MOCK_USERS = [
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [users, setUsers] = useState(MOCK_USERS);
+
+  const deleteAccount = (userId: string) => {
+  // Remove user from users array
+  setUsers(users.filter(u => u.id !== userId));
+
+  // If the deleted user is currently logged in, log them out
+  if (user?.id === userId) {
+    logout();
+  }
+};
 
   // Check for stored user on mount
   useEffect(() => {
@@ -128,7 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, updateProfile, changePassword, recoverPassword }}>
+    <AuthContext.Provider value={{ user, login, register, logout, updateProfile, changePassword, recoverPassword, deleteAccount }}>
       {children}
     </AuthContext.Provider>
   );

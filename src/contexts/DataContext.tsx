@@ -28,6 +28,7 @@ export interface Property {
   capacity?: number;
   available: boolean;
   features: string[];
+  location: string;
 }
 
 // In src/contexts/DataContext.tsx
@@ -67,6 +68,8 @@ export interface Reservation {
   durationType?: 'hours' | 'days';
   slotId?: string;
   slotName?: string;
+
+  location?: string;
 }
 
 
@@ -114,7 +117,7 @@ export interface Notification {
   userId: string;
   title: string;
   message: string;
-  type: 'reservation' | 'payment' | 'inquiry' | 'system';
+  type: 'appointment' | 'reservation' | 'payment' | 'inquiry' | 'system';
   read: boolean;
   date: string;
 }
@@ -128,6 +131,7 @@ export interface BusinessSlot {
   endTime: string;
   price: number;
   available: boolean;
+  location?: string;
 }
 
 export interface ParkingSlot {
@@ -156,6 +160,13 @@ export interface AuditLog {
   details?: string;
 }
 
+export type Location = 
+  | 'Quezon City'; // add more as needed
+
+const locations: Location[] = [
+  'Quezon City'
+];
+
 interface DataContextType {
   users: User[];
   properties: Property[];
@@ -165,6 +176,7 @@ interface DataContextType {
   inquiries: Inquiry[];
   notifications: Notification[];
   businessSlots: BusinessSlot[];
+  locations: Location[];
   contentSettings: ContentSettings;
   addProperty: (property: Omit<Property, 'id'>) => void;
   updateProperty: (id: string, property: Partial<Property>) => void;
@@ -180,6 +192,7 @@ interface DataContextType {
   addNotification: (notification: Omit<Notification, 'id' | 'date' | 'read'>) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: (userId: string) => void;
+  deleteNotification: (id: string) => void;
   addBusinessSlot: (slot: Omit<BusinessSlot, 'id'>) => void;
   updateBusinessSlot: (id: string, slot: Partial<BusinessSlot>) => void;
   deleteBusinessSlot: (id: string) => void;
@@ -205,7 +218,8 @@ const MOCK_PROPERTIES: Property[] = [
     images: ['https://images.unsplash.com/photo-1497366216548-37526070297c?w=800', 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=800'],
     policies: 'Minimum 1-year contract. Security deposit equivalent to 2 months rent required. No subleasing without approval.',
     available: true,
-    features: ['50 sqm floor area', 'Air-conditioned', '24/7 security', 'Parking space included', 'Restroom']
+    features: ['50 sqm floor area', 'Air-conditioned', '24/7 security', 'Parking space included', 'Restroom'],
+    location: "Quezon City, Metro Manila",
   },
   {
     id: 'p2',
@@ -217,7 +231,8 @@ const MOCK_PROPERTIES: Property[] = [
     policies: 'Minimum 1-day reservation. Full payment required 7 days before event. Damages will be charged separately.',
     capacity: 200,
     available: true,
-    features: ['200 person capacity', 'Stage and sound system', 'Air-conditioned', 'Catering area', 'Restrooms', 'LED screen']
+    features: ['200 person capacity', 'Stage and sound system', 'Air-conditioned', 'Catering area', 'Restrooms', 'LED screen'],
+    location: "Quezon City, Metro Manila",
   },
   {
     id: 'p3',
@@ -228,7 +243,8 @@ const MOCK_PROPERTIES: Property[] = [
     images: ['https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800'],
     policies: 'Minimum 1-hour reservation. Vehicle must be registered. Not responsible for items left in vehicle.',
     available: true,
-    features: ['Covered parking', '24/7 CCTV', 'Security guard', 'Well-lit area']
+    features: ['Covered parking', '24/7 CCTV', 'Security guard', 'Well-lit area'],
+    location: "Quezon City, Metro Manila"
   },
   {
     id: 'p4',
@@ -239,7 +255,8 @@ const MOCK_PROPERTIES: Property[] = [
     images: ['https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=800'],
     policies: 'Minimum 1-year contract. Utilities not included. Advance and deposit required.',
     available: true,
-    features: ['75 sqm floor area', 'Panoramic windows', 'Fiber internet ready', 'Pantry area', 'Executive washroom']
+    features: ['75 sqm floor area', 'Panoramic windows', 'Fiber internet ready', 'Pantry area', 'Executive washroom'],
+    location: "Quezon City, Metro Manila"
   },
   {
     id: 'p5',
@@ -251,7 +268,8 @@ const MOCK_PROPERTIES: Property[] = [
     policies: 'Minimum 1-day reservation. Decorations must be approved. External catering allowed.',
     capacity: 50,
     available: true,
-    features: ['50 person capacity', 'Basic sound system', 'Air-conditioned', 'WiFi included', 'Kitchen access']
+    features: ['50 person capacity', 'Basic sound system', 'Air-conditioned', 'WiFi included', 'Kitchen access'],
+    location: "Quezon City, Metro Manila"
   }
 ];
 
@@ -350,7 +368,7 @@ const MOCK_CONTENT: ContentSettings = {
   aboutUs: 'Commerciales Flores has been serving the community for over 20 years, providing quality commercial spaces, event venues, and parking facilities. We pride ourselves on excellent customer service and well-maintained properties.',
   contactEmail: 'info@comercialesflores.ph',
   contactPhone: '+63 2 8123 4567',
-  contactAddress: '123 Business Avenue, Manila, Philippines 1000',
+  contactAddress: '16 Rd 23, Project 8, Quezon City, Metro Manila',
   announcements: [
     'New parking rates effective January 2026',
     'Holiday promo: 10% off on function hall reservations for December'
@@ -409,12 +427,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   // Reservations
   const addReservation = (reservation: Omit<Reservation, 'id' | 'requestDate' | 'status' | 'paidAmount'>): string => {
+    const property = getPropertyById(reservation.propertyId);
     const newReservation: Reservation = {
       ...reservation,
       id: 'r' + Date.now().toString(),
       requestDate: new Date().toISOString().split('T')[0],
       status: 'pending',
-      paidAmount: 0
+      paidAmount: 0,
+      location: property?.location, // ✅ copy from property
     };
     setReservations([...reservations, newReservation]);
     return newReservation.id;
@@ -485,6 +505,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setNotifications(notifications.map(n => n.userId === userId ? { ...n, read: true } : n));
   };
 
+  const deleteNotification = (id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  };
+
   // Business Slots
   const addBusinessSlot = (slot: Omit<BusinessSlot, 'id'>) => {
     const newSlot = { ...slot, id: 'slot' + Date.now().toString() };
@@ -527,6 +551,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         contentSettings,
         parkingSlots: MOCK_PARKING_SLOTS,  // ✅ new
         auditLogs, // Placeholder for audit logs
+        locations,
+        deleteNotification,
         addProperty,
         updateProperty,
         deleteProperty,

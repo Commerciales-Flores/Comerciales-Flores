@@ -1,15 +1,28 @@
 import { useState, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { User, Mail, Phone, MapPin, Lock, CheckCircle, AlertCircle } from 'lucide-react';
+import { 
+  User as UserIcon, 
+  Mail, 
+  Phone, 
+  MapPin, 
+  Lock, 
+  CheckCircle, 
+  AlertCircle, 
+  Camera, 
+  ShieldAlert, 
+  ShieldCheck 
+} from 'lucide-react';
 
 export default function ClientProfile() {
-    const { user, updateProfile, changePassword } = useAuth();
+    const { user, updateProfile, changePassword, deleteAccount, logout } = useAuth();
     const [editing, setEditing] = useState(false);
     const [changingPassword, setChangingPassword] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-    // Avatar URL fallback (prefers user.avatarUrl or user.photoURL, then generated initials)
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [deleting, setDeleting] = useState(false);
+
     const avatarUrl =
         (user as any)?.avatarUrl ||
         (user as any)?.photoURL ||
@@ -28,374 +41,377 @@ export default function ClientProfile() {
         confirmPassword: ''
     });
 
-    const handleProfileSubmit = (e: React.FormEvent) => {
+    const showMessage = (type: 'success' | 'error', text: string) => {
+        setMessage({ type, text });
+        setTimeout(() => setMessage(null), 4000);
+    };
+
+    const handleProfileSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        updateProfile(profileForm);
-        setEditing(false);
-        showMessage('success', 'Profile updated successfully!');
+        try {
+            await updateProfile(profileForm);
+            setEditing(false);
+            showMessage('success', 'Profile information updated!');
+        } catch (err) {
+            showMessage('error', 'Failed to update profile.');
+        }
     };
 
     const handlePasswordSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-
         if (passwordForm.newPassword !== passwordForm.confirmPassword) {
             showMessage('error', 'New passwords do not match');
             return;
         }
-
         if (passwordForm.newPassword.length < 6) {
             showMessage('error', 'Password must be at least 6 characters');
             return;
         }
 
         const success = await changePassword(passwordForm.oldPassword, passwordForm.newPassword);
-
         if (success) {
             setChangingPassword(false);
             setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
-            showMessage('success', 'Password changed successfully!');
+            showMessage('success', 'Password updated securely.');
         } else {
-            showMessage('error', 'Incorrect old password');
+            showMessage('error', 'Current password was incorrect.');
         }
-    };
-
-    const showMessage = (type: 'success' | 'error', text: string) => {
-        setMessage({ type, text });
-        setTimeout(() => setMessage(null), 3000);
-    };
-
-    const handleEditPictureClick = () => {
-        fileInputRef.current?.click();
     };
 
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-
         const reader = new FileReader();
         reader.onload = () => {
             const dataUrl = reader.result as string;
-            // updateProfile may be sync or async — handle both
             Promise.resolve(updateProfile({ avatarUrl: dataUrl }))
                 .then(() => showMessage('success', 'Profile picture updated!'))
-                .catch(() => showMessage('error', 'Failed to update profile picture'));
+                .catch(() => showMessage('error', 'Failed to upload image'));
         };
         reader.readAsDataURL(file);
     };
 
     return (
-        <div className="space-y-6 max-w-7xl mx-auto px-4">
-
-            <div>
-                <h1 className="mb-2">Profile Settings</h1>
-                <p className="text-gray-600">Manage your account information</p>
+        <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
+            {/* Header */}
+            <div className="border-b border-gray-100 pb-6">
+                <h1 className="text-2xl font-bold text-gray-900">Account Settings</h1>
+                <p className="text-gray-500 mt-1">Manage your identity and security preferences</p>
             </div>
 
+            {/* Global Message Toast */}
             {message && (
-                <div className={`p-4 rounded-lg flex items-center gap-2 ${message.type === 'success'
-                        ? 'bg-green-50 border border-green-200 text-green-700'
-                        : 'bg-red-50 border border-red-200 text-red-700'
-                    }`}>
+                <div className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-lg border flex items-center gap-3 animate-in slide-in-from-top-4 duration-300 ${
+                    message.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'
+                }`}>
                     {message.type === 'success' ? <CheckCircle className="size-5" /> : <AlertCircle className="size-5" />}
-                    {message.text}
+                    <p className="font-medium text-sm">{message.text}</p>
                 </div>
             )}
 
-            {/* Profile Information + Avatar (avatar moved outside the personal information box to the right) */}
-            <div className="flex flex-col lg:flex-row">
-
-                {/* Left: Personal Information card */}
-                <div className="lg:flex-1">
-                    <div className="bg-white rounded-lg border border-gray-200">
-                        <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-                            <h2>Personal Information</h2>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Main Content Area (Left/Middle) */}
+                <div className="lg:col-span-2 space-y-8">
+                    
+                    {/* Personal Info Card */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div className="px-6 py-4 bg-gray-50/50 border-b border-gray-200 flex justify-between items-center">
+                            <h2 className="font-bold text-gray-800">Personal Information</h2>
                             {!editing && (
                                 <button
                                     onClick={() => setEditing(true)}
-                                    className="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                    className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition"
                                 >
-                                    Edit Profile
+                                    Edit Details
                                 </button>
                             )}
                         </div>
 
-                        {editing ? (
-                            <form onSubmit={handleProfileSubmit} className="p-6 space-y-4">
-                                <div>
-                                    <label className="block text-sm text-gray-700 mb-2">
-                                        Full Name
-                                    </label>
-                                    <div className="relative">
-                                        <User className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
-                                        <input
-                                            type="text"
-                                            required
-                                            value={profileForm.name}
-                                            onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
-                                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
+                        <div className="p-6">
+                            {editing ? (
+                                <form onSubmit={handleProfileSubmit} className="space-y-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Full Name</label>
+                                            <div className="relative group">
+                                                <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400 group-focus-within:text-blue-500 transition" />
+                                                <input
+                                                    type="text"
+                                                    required
+                                                    value={profileForm.name}
+                                                    onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                                                    className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none text-sm"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Email Address</label>
+                                            <div className="relative group">
+                                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400 group-focus-within:text-blue-500 transition" />
+                                                <input
+                                                    type="email"
+                                                    required
+                                                    value={profileForm.email}
+                                                    onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+                                                    className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none text-sm"
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
 
-                                <div>
-                                    <label className="block text-sm text-gray-700 mb-2">
-                                        Email Address
-                                    </label>
-                                    <div className="relative">
-                                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
-                                        <input
-                                            type="email"
-                                            required
-                                            value={profileForm.email}
-                                            onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
-                                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Contact Number</label>
+                                        <div className="relative group">
+                                            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400 group-focus-within:text-blue-500 transition" />
+                                            <input
+                                                type="tel"
+                                                required
+                                                value={profileForm.contactNumber}
+                                                onChange={(e) => setProfileForm({ ...profileForm, contactNumber: e.target.value })}
+                                                className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none text-sm"
+                                            />
+                                        </div>
                                     </div>
-                                </div>
 
-                                <div>
-                                    <label className="block text-sm text-gray-700 mb-2">
-                                        Contact Number
-                                    </label>
-                                    <div className="relative">
-                                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
-                                        <input
-                                            type="tel"
-                                            required
-                                            value={profileForm.contactNumber}
-                                            onChange={(e) => setProfileForm({ ...profileForm, contactNumber: e.target.value })}
-                                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Residential Address</label>
+                                        <div className="relative group">
+                                            <MapPin className="absolute left-3 top-3 size-4 text-gray-400 group-focus-within:text-blue-500 transition" />
+                                            <textarea
+                                                required
+                                                value={profileForm.address}
+                                                onChange={(e) => setProfileForm({ ...profileForm, address: e.target.value })}
+                                                rows={3}
+                                                className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none text-sm"
+                                            />
+                                        </div>
                                     </div>
-                                </div>
 
-                                <div>
-                                    <label className="block text-sm text-gray-700 mb-2">
-                                        Address
-                                    </label>
-                                    <div className="relative">
-                                        <MapPin className="absolute left-3 top-3 size-5 text-gray-400" />
-                                        <textarea
-                                            required
-                                            value={profileForm.address}
-                                            onChange={(e) => setProfileForm({ ...profileForm, address: e.target.value })}
-                                            rows={2}
-                                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
+                                    <div className="flex gap-3 pt-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditing(false)}
+                                            className="flex-1 px-4 py-2.5 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition"
+                                        >
+                                            Discard
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 shadow-sm transition"
+                                        >
+                                            Save Updates
+                                        </button>
                                     </div>
+                                </form>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-12">
+                                    <ProfileDetail icon={UserIcon} label="Full Name" value={user?.name} />
+                                    <ProfileDetail icon={Mail} label="Email Address" value={user?.email} />
+                                    <ProfileDetail icon={Phone} label="Contact" value={user?.contactNumber} />
+                                    <ProfileDetail icon={MapPin} label="Address" value={user?.address} />
                                 </div>
+                            )}
+                        </div>
+                    </div>
 
-                                <div className="flex gap-3 pt-4">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setEditing(false);
-                                            setProfileForm({
-                                                name: user?.name || '',
-                                                email: user?.email || '',
-                                                contactNumber: user?.contactNumber || '',
-                                                address: user?.address || ''
-                                            });
-                                        }}
-                                        className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                                    >
-                                        Save Changes
-                                    </button>
-                                </div>
-                            </form>
-                        ) : (
-                            <div className="p-6 space-y-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-gray-100 rounded-lg">
-                                        <User className="size-5 text-gray-600" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm text-gray-600">Name</p>
-                                        <p className="text-gray-900">{user?.name}</p>
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-gray-100 rounded-lg">
-                                        <Mail className="size-5 text-gray-600" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm text-gray-600">Email</p>
-                                        <p className="text-gray-900">{user?.email}</p>
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-gray-100 rounded-lg">
-                                        <Phone className="size-5 text-gray-600" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm text-gray-600">Contact Number</p>
-                                        <p className="text-gray-900">{user?.contactNumber}</p>
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-gray-100 rounded-lg">
-                                        <MapPin className="size-5 text-gray-600" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm text-gray-600">Address</p>
-                                        <p className="text-gray-900">{user?.address}</p>
-                                    </div>
-                                </div>
+                    {/* Security Card */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div className="px-6 py-4 bg-gray-50/50 border-b border-gray-200 flex justify-between items-center">
+                            <div>
+                                <h2 className="font-bold text-gray-800">Account Security</h2>
+                                <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mt-0.5">Password & Protection</p>
                             </div>
-                        )}
+                            {!changingPassword && (
+                                <button
+                                    onClick={() => setChangingPassword(true)}
+                                    className="px-4 py-1.5 text-xs font-bold bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition shadow-sm"
+                                >
+                                    Update Password
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="p-6">
+                            {changingPassword ? (
+                                <form onSubmit={handlePasswordSubmit} className="space-y-4 max-w-md">
+                                    <PasswordField 
+                                        label="Current Password" 
+                                        value={passwordForm.oldPassword} 
+                                        onChange={(v) => setPasswordForm({ ...passwordForm, oldPassword: v })} 
+                                    />
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <PasswordField 
+                                            label="New Password" 
+                                            value={passwordForm.newPassword} 
+                                            onChange={(v) => setPasswordForm({ ...passwordForm, newPassword: v })} 
+                                        />
+                                        <PasswordField 
+                                            label="Confirm New" 
+                                            value={passwordForm.confirmPassword} 
+                                            onChange={(v) => setPasswordForm({ ...passwordForm, confirmPassword: v })} 
+                                        />
+                                    </div>
+                                    <div className="flex gap-2 pt-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setChangingPassword(false)}
+                                            className="px-4 py-2 text-xs font-semibold text-gray-500 hover:text-gray-700 transition"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            className="px-6 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition shadow-md shadow-blue-200"
+                                        >
+                                            Confirm Change
+                                        </button>
+                                    </div>
+                                </form>
+                            ) : (
+                                <div className="flex items-center gap-3 text-emerald-600">
+                                    <ShieldCheck className="size-5" />
+                                    <p className="text-sm font-medium">Your account is secured with a unique password.</p>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 
-                {/* Right: Larger avatar placed outside the personal information box */}
-                <div className="mt-6 lg:mt-0 lg:w-80 lg:pl-20 flex justify-center items-center">
+                {/* Sidebar Area (Right) */}
+                <div className="space-y-6">
+                    {/* Profile Picture Card */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center flex flex-col items-center">
 
-                    <div className="flex flex-col items-center">
-                        <img
-                            src={avatarUrl}
-                            alt={user?.name || 'User avatar'}
-                            onError={(e) => {
-                                const target = e.currentTarget as HTMLImageElement;
-                                target.onerror = null;
-                                target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=0D8ABC&color=fff&size=512`;
-                            }}
-                            className="w-24 h-24 sm:w-28 sm:h-28 lg:w-50 lg:h-50 rounded-full object-cover border-2 border-gray-200 shadow-sm"
-                        />
-                        <div className="mt-4">
-                            <button
-                                type="button"
-                                onClick={handleEditPictureClick}
-                                className="px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            >
-                                Edit Picture
-                            </button>
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={handleImageChange}
-                            />
+                        <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                            <img src={avatarUrl} alt="Profile" className="size-32 rounded-3xl object-cover ring-4 ring-slate-50 shadow-xl transition-transform group-hover:scale-[1.02]" />
+                            <div className="absolute inset-0 bg-black/40 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <Camera className="text-white size-8" />
+                            </div>
+                            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
                         </div>
+                        <h3 className="mt-4 font-bold text-gray-900 text-lg">{user?.name}</h3>
+                        <p className="text-blue-600 text-xs font-bold uppercase tracking-widest mt-1">Client Account</p>
+                        
+                        <div className="mt-6 w-full pt-6 border-t border-gray-100">
+                            <div className="flex items-center justify-between text-xs font-medium text-gray-500 mb-2">
+                                <span>Verification Status</span>
+                                <span className="text-emerald-600">Verified</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-emerald-500 w-full" />
+                            </div>
+                        </div>
+
+                        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+                    </div>
+
+                    {/* Legal/Info Card */}
+                    <div className="bg-gray-900 text-white rounded-2xl p-6 shadow-xl shadow-gray-200">
+                        <ShieldAlert className="size-6 text-blue-400 mb-4" />
+                        <h4 className="font-bold text-sm">Data Protection</h4>
+                        <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+                            Your account information is encrypted and managed in strict compliance with the **Philippine Data Privacy Act of 2012**.
+                        </p>
+                    </div>
+
+                    {/* Danger Zone */}
+                    <div className="bg-red-50 border border-red-100 rounded-2xl p-6">
+                        <h4 className="text-red-700 font-bold text-sm">Danger Zone</h4>
+                        <p className="text-[10px] text-red-600/70 mt-1 uppercase font-bold tracking-tight">Permanent Action</p>
+                        <button
+                            onClick={() => setShowDeleteConfirm(true)}
+                            className="mt-4 w-full py-2.5 border border-red-200 bg-white text-red-600 text-xs font-bold rounded-xl hover:bg-red-600 hover:text-white transition shadow-sm"
+                        >
+                            Delete My Account
+                        </button>
                     </div>
                 </div>
             </div>
+            {showDeleteConfirm && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+                    
+                    <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 p-6">
 
-            {/* Change Password */}
-            <div className="bg-white rounded-lg border border-gray-200">
-                <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-                    <div>
-                        <h2>Password</h2>
-                        <p className="text-sm text-gray-600 mt-1">Update your password to keep your account secure</p>
-                    </div>
-                    {!changingPassword && (
-                        <button
-                            onClick={() => setChangingPassword(true)}
-                            className="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        >
-                            Change Password
-                        </button>
-                    )}
-                </div>
+                        <h3 className="text-lg font-bold text-gray-900">
+                            Delete Account
+                        </h3>
 
-                {changingPassword ? (
-                    <form onSubmit={handlePasswordSubmit} className="p-6 space-y-4">
-                        <div>
-                            <label className="block text-sm text-gray-700 mb-2">
-                                Current Password
-                            </label>
-                            <div className="relative">
-                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
-                                <input
-                                    type="password"
-                                    required
-                                    value={passwordForm.oldPassword}
-                                    onChange={(e) => setPasswordForm({ ...passwordForm, oldPassword: e.target.value })}
-                                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="••••••••"
-                                />
-                            </div>
-                        </div>
+                        <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+                            This action is <span className="font-semibold text-red-600">permanent</span>.
+                            All reservations, payments, and account history will be permanently removed.
+                        </p>
 
-                        <div>
-                            <label className="block text-sm text-gray-700 mb-2">
-                                New Password
-                            </label>
-                            <div className="relative">
-                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
-                                <input
-                                    type="password"
-                                    required
-                                    value={passwordForm.newPassword}
-                                    onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-                                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="••••••••"
-                                />
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm text-gray-700 mb-2">
-                                Confirm New Password
-                            </label>
-                            <div className="relative">
-                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
-                                <input
-                                    type="password"
-                                    required
-                                    value={passwordForm.confirmPassword}
-                                    onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
-                                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="••••••••"
-                                />
-                            </div>
-                        </div>
-
-                        <div className="flex gap-3 pt-4">
+                        <div className="mt-6 flex gap-3">
                             <button
-                                type="button"
-                                onClick={() => {
-                                    setChangingPassword(false);
-                                    setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
-                                }}
-                                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                                disabled={deleting}
+                                onClick={() => setShowDeleteConfirm(false)}
+                                className="flex-1 py-2.5 text-sm font-semibold border border-gray-200 rounded-xl hover:bg-gray-50 transition"
                             >
                                 Cancel
                             </button>
+
                             <button
-                                type="submit"
-                                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                disabled={deleting}
+                                onClick={async () => {
+                                    try {
+                                        setDeleting(true);
+
+                                        await deleteAccount(user!.id);
+                                        await logout();
+
+                                        window.location.href = "/";
+                                    } catch {
+                                        showMessage("error", "Failed to delete account.");
+                                        setDeleting(false);
+                                    }
+                                }}
+                                className="flex-1 py-2.5 text-sm font-bold bg-red-600 text-white rounded-xl hover:bg-red-700 transition disabled:opacity-60"
                             >
-                                Update Password
+                                {deleting ? "Deleting..." : "Yes, Delete"}
                             </button>
                         </div>
-                    </form>
-                ) : (
-                    <div className="p-6">
-                        <p className="text-sm text-gray-600">
-                            •••••••• (Password hidden for security)
-                        </p>
-                    </div>
-                )}
-            </div>
 
-            {/* Account Info */}
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <p className="text-sm text-gray-600">
-                    <strong>Account Type:</strong> Client
-                </p>
-                <p className="text-sm text-gray-500 mt-2">
-                    Your data is protected in compliance with the Philippine Data Privacy Act of 2012
-                </p>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// --- Helper Components ---
+
+function ProfileDetail({ icon: Icon, label, value }: { icon: any, label: string, value: string | undefined }) {
+    return (
+        <div className="flex items-start gap-4">
+            <div className="p-2.5 bg-gray-100 rounded-xl">
+                <Icon className="size-4 text-gray-500" />
+            </div>
+            <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{label}</p>
+                <p className="text-gray-900 font-medium text-sm mt-0.5">{value || 'Not provided'}</p>
             </div>
         </div>
     );
+}
+
+function PasswordField({ label, value, onChange }: { label: string, value: string, onChange: (v: string) => void }) {
+    return (
+        <div className="space-y-1">
+            <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">{label}</label>
+            <div className="relative group">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400 group-focus-within:text-blue-500 transition" />
+                <input
+                    type="password"
+                    required
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none text-sm"
+                    placeholder="••••••••"
+                />
+            </div>
+            
+        </div>
+        
+    );
+    
 }

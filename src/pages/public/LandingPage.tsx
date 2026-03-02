@@ -39,6 +39,22 @@ export default function LandingPage() {
     message: "",
   });
 
+  // Navigate to previous image
+const prevImage = () => {
+  if (!property) return;
+  setCurrentImageIndex((prev) =>
+    prev === 0 ? property.images.length - 1 : prev - 1
+  );
+};
+
+// Navigate to next image
+const nextImage = () => {
+  if (!property) return;
+  setCurrentImageIndex((prev) =>
+    prev === property.images.length - 1 ? 0 : prev + 1
+  );
+};
+
   // Filter for slider
   const featuredProperties = properties.filter((p) => p.available && p.type !== "parking_slot");
   const announcementsToScroll =
@@ -73,17 +89,17 @@ export default function LandingPage() {
     <div className="min-h-screen bg-[#FAFAFA] text-slate-900 font-sans">
       {/* Modern Transparent Header */}
       <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex justify-between items-center">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 md:h-20 flex justify-between items-center">
           <div className="flex items-center gap-2 group cursor-pointer">
             <div className="bg-blue-600 p-2 rounded-xl group-hover:rotate-12 transition-transform">
               <Building2 className="size-6 text-white" />
             </div>
-            <span className="text-xl font-bold tracking-tight text-slate-800">
+            <span className="text-lg sm:text-xl font-bold tracking-tight text-slate-800 truncate">
               Commerciales<span className="text-blue-600">Flores</span>
             </span>
           </div>  
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <Link to="/login" className="text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors">Login</Link>
             <Link to="/register" className="px-5 py-2.5 bg-slate-900 text-white text-sm font-semibold rounded-full hover:bg-blue-600 transition-all shadow-lg shadow-slate-200">
               Sign Up
@@ -93,7 +109,7 @@ export default function LandingPage() {
       </header>
 
       {/* Hero Section: Dynamic & Clean */}
-      <section className="relative h-[85vh] flex items-center overflow-hidden">
+      <section className="relative min-h-[70vh] md:h-[85vh] flex items-center overflow-hidden">
         <div className="absolute inset-0 z-0">
           <img 
             src="https://images.unsplash.com/photo-1590674899484-d5640e854abe?q=80&w=2000&auto=format&fit=crop" 
@@ -103,7 +119,7 @@ export default function LandingPage() {
           <div className="absolute inset-0 bg-gradient-to-r from-slate-900/90 via-slate-900/40 to-transparent"></div>
         </div>
 
-        <div className="relative z-10 max-w-7xl mx-auto px-6">
+        <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -113,13 +129,13 @@ export default function LandingPage() {
             <span className="inline-block px-4 py-1.5 mb-6 text-xs font-bold tracking-widest uppercase bg-blue-600 text-white rounded-full">
               Premium Spaces
             </span>
-            <h1 className="text-5xl md:text-7xl font-extrabold text-white mb-6 leading-[1.1]">
+            <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-extrabold text-white mb-6 leading-[1.1]">
               {contentSettings.heroTitle}
             </h1>
             <p className="text-lg text-slate-200 mb-10 leading-relaxed">
               {contentSettings.heroSubtitle}
             </p>
-            <div className="flex flex-wrap gap-4">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
               <Link to="/register" className="px-8 py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2">
                 Get Started <ArrowRight className="size-5" />
               </Link>
@@ -135,7 +151,7 @@ export default function LandingPage() {
       {/* Announcements: Modern horizontal scroll */}
       {contentSettings.announcements.length > 0 && (
         <section className="bg-yellow-50 py-4 overflow-hidden relative">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="max-w-7xl mx-auto px-4 sm:px-4 sm:px-6 lg:px-8 lg:px-8">
             <motion.div
   className="flex gap-6 whitespace-nowrap"
   animate={{ x: ["0%", "-100%"] }}
@@ -170,7 +186,7 @@ export default function LandingPage() {
       </section>
 
       <section id="properties" className="py-24 bg-white overflow-hidden">
-  <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-end mb-12 gap-4">
+  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-end mb-12 gap-4">
     <div>
       <h2 className="text-4xl font-bold text-slate-900 mb-2">Featured Space</h2>
       <p className="text-slate-500 text-lg">Experience our most premium locations.</p>
@@ -190,7 +206,7 @@ export default function LandingPage() {
     </div>
   </div>
 
-  <div className="relative max-w-5xl mx-auto px-6">
+  <div className="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
     <div className="overflow-hidden rounded-[2rem]">
       <motion.div
         className="flex"
@@ -206,7 +222,7 @@ export default function LandingPage() {
             <div className="relative group cursor-pointer bg-slate-50 rounded-[2rem] overflow-hidden border border-slate-100">
               <div className="grid md:grid-cols-2">
                 {/* Image Side */}
-                <div className="relative h-[300px] md:h-[500px] overflow-hidden">
+                <div className="relative h-[220px] sm:h-[300px] md:h-[500px] overflow-hidden">
                   <motion.img
                     whileHover={{ scale: 1.05 }}
                     transition={{ duration: 0.6 }}
@@ -220,10 +236,13 @@ export default function LandingPage() {
                 </div>
 
                 {/* Content Side */}
-                <div className="p-8 md:p-12 flex flex-col justify-center">
+                <div className="p-5 sm:p-6 md:p-10 lg:p-12 flex flex-col justify-center">
                   <h3 className="text-3xl font-bold text-slate-900 mb-4">
                     {property.name}
                   </h3>
+                  <p className="text-sm text-slate-500 mb-4 flex items-center gap-1">
+                    <MapPin className="size-4 text-blue-600" /> {property.location}
+                  </p>
                   <p className="text-slate-600 text-lg leading-relaxed mb-8 line-clamp-4">
                     {property.description}
                   </p>
@@ -237,7 +256,7 @@ export default function LandingPage() {
                     </div>
                     <button
                     onClick={() => setSelectedProperty(property.id)}
-                    className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-blue-600 transition-colors"
+                    className="bg-slate-900 text-white px-4 sm:px-6 lg:px-8 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-blue-600 transition-colors"
                   >
                     View Details <ArrowRight className="size-5" />
                   </button>
@@ -268,57 +287,76 @@ export default function LandingPage() {
 
       {/* Contact Section: Modern Form */}
 <section id="contact" className="py-20 bg-gray-50">
-  <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-2 gap-12">
+  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid md:grid-cols-2 gap-12">
     <div className="rounded-2xl overflow-hidden shadow-lg h-full">
 
-      <div className="bg-blue-600 text-white px-6 py-4">
+      <div className="bg-blue-600 text-white px-4 sm:px-6 lg:px-8 py-4">
         <h4 className="text-xl font-bold">Our Location</h4>
-        <p className="text-sm">Random address</p>
+        <p className="text-sm">Visit us</p>
       </div>
       <iframe
-        src="https://www.google.com/maps?q=1600+Amphitheatre+Parkway,+Mountain+View,+CA&output=embed"
+        src="https://www.google.com/maps?q=16+Rd+23+Project+8,+Quezon+City,+Metro+Manila&output=embed"
 
         width="100%"
         height="100%"
-        className="border-0 min-h-[400px]"
+        className="border-0 h-[300px] sm:h-[400px]"
         allowFullScreen
         loading="lazy"
       ></iframe>
     </div>
 
     {/* Modern Form */}
-    <motion.div
-      initial={{ opacity: 0, x: 30 }}
-      whileInView={{ opacity: 1, x: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.8 }}
+<motion.div
+  initial={{ opacity: 0, x: 30 }}
+  whileInView={{ opacity: 1, x: 0 }}
+  viewport={{ once: true }}
+  transition={{ duration: 0.8 }}
+>
+  <h3 className="text-lg font-semibold mb-4">Send us a message</h3>
+  <p className="text-gray-500 text-sm mb-6">We’ll get back to you as soon as possible.</p>
+  <form onSubmit={handleInquirySubmit} className="space-y-4">
+    {['name', 'email', 'subject', 'message'].map((field) => (
+      <div key={field}>
+        {field === 'message' ? (
+          <textarea
+            placeholder={field.charAt(0).toUpperCase() + field.slice(1)}
+            value={(inquiryForm as any)[field]}
+            onChange={(e) => setInquiryForm({ ...inquiryForm, [field]: e.target.value })}
+            className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
+            rows={5} // Adjust number of lines
+            required
+          />
+        ) : (
+          <input
+            type={field === 'email' ? 'email' : 'text'}
+            placeholder={field.charAt(0).toUpperCase() + field.slice(1)}
+            value={(inquiryForm as any)[field]}
+            onChange={(e) => setInquiryForm({ ...inquiryForm, [field]: e.target.value })}
+            className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
+            required
+          />
+        )}
+      </div>
+    ))}
+    <button
+      type="submit"
+      className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all"
     >
-      <h3 className="text-lg font-semibold mb-4">Send us a message</h3>
-      <form onSubmit={handleInquirySubmit} className="space-y-4">
-        {['name','email','subject','message'].map((field) => (
-          <div key={field}>
-            <input
-              type={field === 'email' ? 'email' : 'text'}
-              placeholder={field.charAt(0).toUpperCase() + field.slice(1)}
-              value={(inquiryForm as any)[field]}
-              onChange={(e) => setInquiryForm({ ...inquiryForm, [field]: e.target.value })}
-              className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
-              required
-            />
-          </div>
-        ))}
-        <button type="submit" className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all">
-          Send Inquiry
-        </button>
-        {inquirySubmitted && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-green-700 text-center mt-2">Thank you! We've received your inquiry.</motion.div>}
-      </form>
-    </motion.div>
+      Send Inquiry
+    </button>
+    {inquirySubmitted && (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-green-700 text-center mt-2">
+        Thank you! We've received your inquiry.
+      </motion.div>
+    )}
+  </form>
+</motion.div>
   </div>
 </section>
 
       {/* Modern Footer */}
 <footer className="bg-gray-900 text-white py-16">
-  <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-3 gap-12">
+  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-12">
     
     {/* Branding & Social */}
     <div className="space-y-4">
@@ -373,7 +411,7 @@ export default function LandingPage() {
     />
 
     {/* 2️⃣ Modal content on top */}
-    <div className="relative z-10 bg-white rounded-lg max-w-4xl w-full mx-auto my-8 shadow-xl">
+    <div className="relative z-10 bg-white rounded-lg max-w-4xl w-full max-h-[90vh] mx-auto my-8 shadow-xl">
       <div className="flex justify-between items-start p-6 border-b border-gray-200">
         <div>
           <div className="text-sm text-blue-600 mb-1">{getPropertyTypeLabel(property.type)}</div>
@@ -392,7 +430,7 @@ export default function LandingPage() {
           <img
             src={property.images[currentImageIndex]}
             alt={property.name}
-            className="w-full h-96 object-cover rounded-lg"
+            className="w-full h-56 sm:h-72 md:h-96 object-cover rounded-lg"
           />
           {property.images.length > 1 && (
             <>
@@ -426,6 +464,10 @@ export default function LandingPage() {
                 <p className="text-gray-600">{property.description}</p>
               </div>
               <div>
+                <h3 className="mb-2 font-semibold">Location</h3>
+                <p className="text-gray-600">{property.location}</p>
+              </div>
+              <div>
                 <h3 className="mb-2 font-semibold">Features</h3>
                 <ul className="grid grid-cols-2 gap-2">
                   {property.features.map((feature, index) => (
@@ -452,7 +494,7 @@ export default function LandingPage() {
                 <p className="text-sm text-gray-600">{property.policies}</p>
               </div>
               <div className="pt-4 border-t border-gray-200">
-                <Link to="/register" className="block w-full text-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">Reserve Now - Sign Up Required</Link>
+                <Link to="/register" className="block w-full text-center px-4 sm:px-6 lg:px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">Reserve Now - Sign Up Required</Link>
               </div>
             </div>
           </div>

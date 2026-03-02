@@ -28,7 +28,7 @@ export default function ClientDashboard() {
     .slice(0, 1);
 
   return (
-    <div className="space-y-6 bg-gray-50 min-h-screen p-6">
+    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
       <header>
         <h1 className="text-2xl font-bold text-gray-900">Welcome back, {user?.name}!</h1>
         <p className="text-sm text-gray-500">Overview of your reservations, payments, and messages</p>

@@ -73,11 +73,11 @@ const [newCustomer, setNewCustomer] = useState({
 
   // --- Render ---
   return (
-    <div className="space-y-6">
+    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="mb-2">Customer Management</h1>
-          <p className="text-gray-600">View and manage customer accounts</p>
+          <h1 className="text-2xl font-bold text-gray-900">Customer Management</h1>
+          <p className="text-gray-500">View and manage customer accounts.</p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}

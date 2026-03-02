@@ -183,11 +183,11 @@ export default function ClientPayments() {
   // ✅ END: NEW INVOICE & CSV EXPORT FUNCTIONS
 
   return (
-    <div className="space-y-6">
+    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="mb-2">Payments</h1>
-          <p className="text-gray-600">Manage your payment records</p>
+          <h1 className="text-2xl font-bold text-gray-900">Payments</h1>
+          <p className="text-gray-500">Manage your payment records and view payment history.</p>
         </div>
       </div>
 

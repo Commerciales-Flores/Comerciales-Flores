@@ -31,14 +31,33 @@ export default function AdminAudit() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
+  const getActionStyle = (action: string) => {
+  switch (action) {
+    case 'CREATE':
+      return 'bg-green-100 text-green-800';
+    case 'UPDATE':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'DELETE':
+      return 'bg-red-100 text-red-800';
+    case 'DEACTIVATE':
+      return 'bg-gray-200 text-gray-800';
+    default:
+      return 'bg-blue-100 text-blue-800';
+  }
+};
+
   const filteredLogs = useMemo(() => {
     return logs
       .filter((log) => {
+        const lower = searchTerm.toLowerCase();
+
         const matchesSearch =
-          log.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          log.target.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          log.performedBy.toLowerCase().includes(searchTerm.toLowerCase());
+          log.id.toLowerCase().includes(lower) ||
+          log.action.toLowerCase().includes(lower) ||
+          log.module.toLowerCase().includes(lower) ||
+          log.target.toLowerCase().includes(lower) ||
+          log.performedBy.toLowerCase().includes(lower) ||
+          log.details.toLowerCase().includes(lower);
 
         const matchesAction =
           selectedAction === 'All' || log.action === selectedAction;
@@ -50,7 +69,7 @@ export default function AdminAudit() {
         const matchesStart =
           !startDate || logDate >= new Date(startDate);
         const matchesEnd =
-          !endDate || logDate <= new Date(endDate);
+          !endDate || logDate <= new Date(endDate + "T23:59:59");
 
         return (
           matchesSearch &&
@@ -63,15 +82,18 @@ export default function AdminAudit() {
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Latest first
   }, [logs, searchTerm, selectedAction, selectedModule, startDate, endDate]);
 
+  const modules = useMemo<string[]>(() => {
+    const unique = Array.from(new Set(logs.map((log) => log.module)));
+    return ['All', ...unique];
+  }, [logs]);
+
   return (
-    <div className="space-y-6">
+    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
       {/* Header */}
       <div>
-        <h1 className="mb-2">Audit Log</h1>
-        <p className="text-gray-600">
-          Monitor all administrative and system activities.
-        </p>
-      </div>
+          <h1 className="text-2xl font-bold text-gray-900">Audit Log</h1>
+          <p className="text-gray-500">Monitor all administrative and system activities.</p>
+        </div>
 
       {/* Search & Filters */}
       <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-4">
@@ -104,15 +126,16 @@ export default function AdminAudit() {
 
           {/* Module Filter */}
           <select
-            value={selectedModule}
-            onChange={(e) => setSelectedModule(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2"
-          >
-            <option value="All">All Modules</option>
-            <option value="Customer">Customer</option>
-            <option value="Reservation">Reservation</option>
-            <option value="Payment">Payment</option>
-          </select>
+          value={selectedModule}
+          onChange={(e) => setSelectedModule(e.target.value)}
+          className="border border-gray-300 rounded-lg px-3 py-2"
+        >
+          {modules.map((module) => (
+            <option key={module} value={module}>
+              {module === 'All' ? 'All Modules' : module}
+            </option>
+          ))}
+        </select>
 
           {/* Start Date */}
           <input
@@ -129,6 +152,20 @@ export default function AdminAudit() {
             onChange={(e) => setEndDate(e.target.value)}
             className="border border-gray-300 rounded-lg px-3 py-2"
           />
+        </div>
+        <div className="flex justify-end">
+          <button
+            onClick={() => {
+              setSearchTerm('');
+              setSelectedAction('All');
+              setSelectedModule('All');
+              setStartDate('');
+              setEndDate('');
+            }}
+            className="text-sm text-blue-600 hover:underline"
+          >
+            Clear Filters
+          </button>
         </div>
       </div>
 
@@ -164,7 +201,7 @@ export default function AdminAudit() {
                     </td>
 
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
+                      <span className={`px-2 py-1 text-xs rounded-full ${getActionStyle(log.action)}`}>
                         {log.action}
                       </span>
                     </td>

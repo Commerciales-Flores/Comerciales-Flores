@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { useNotifications } from '../../contexts/NotificationContext';
-import { Search, Eye, CheckCircle, XCircle, X, Plus } from 'lucide-react';
+import { Search, Eye, CheckCircle, XCircle, X, Plus, MapPin } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { getPropertyTypeLabel } from '../../utils/propertyHelpers';
 import AdminActionModal from './AdminActionModal';
@@ -53,7 +53,7 @@ export default function AdminReservations() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
       <div className="flex justify-between items-center">
         {/* Text container */}
         <div>
@@ -146,6 +146,9 @@ export default function AdminReservations() {
                       <td className="px-6 py-4 text-sm">
                         <div className="text-gray-900">{reservation.propertyName}</div>
                         <div className="text-xs text-gray-500">{getPropertyTypeLabel(reservation.propertyType)}</div>
+                        <div className="text-xs text-gray-400 flex items-center gap-1">
+                          Location: {reservation.location || 'N/A'}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                         <div>{new Date(reservation.startDate).toLocaleDateString()}</div>
@@ -219,6 +222,10 @@ export default function AdminReservations() {
                     <div><span className="text-gray-600">Reservation ID:</span> <span className="text-gray-900 font-mono text-xs">{reservation.id}</span></div>
                     <div><span className="text-gray-600">Property:</span> <span className="text-gray-900">{reservation.propertyName}</span></div>
                     <div><span className="text-gray-600">Type:</span> <span className="text-gray-900">{getPropertyTypeLabel(reservation.propertyType)}</span></div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-gray-600">Location:</span>
+                      <span className="text-gray-900">{reservation.location || 'N/A'}</span>
+                    </div>
                     <div><span className="text-gray-600">Start Date:</span> <span className="text-gray-900">{new Date(reservation.startDate).toLocaleDateString()}</span></div>
                     <div><span className="text-gray-600">End Date:</span> <span className="text-gray-900">{new Date(reservation.endDate).toLocaleDateString()}</span></div>
                     <div><span className="text-gray-600">Duration:</span> <span className="text-gray-900">{reservation.duration} {reservation.propertyType === 'rental_space' ? 'months' : reservation.propertyType === 'function_hall' ? 'days' : 'hours'}</span></div>

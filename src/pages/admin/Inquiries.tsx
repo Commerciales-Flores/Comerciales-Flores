@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { useNotifications } from '../../contexts/NotificationContext';
-import { Mail, Send, X, CheckCircle } from 'lucide-react';
+import { Mail, Send, X, CheckCircle, Clock, MessageSquare, Filter, User, Calendar } from 'lucide-react';
 
 export default function AdminInquiries() {
   const { inquiries, updateInquiry } = useData();
@@ -9,6 +9,11 @@ export default function AdminInquiries() {
   const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'responded' | 'resolved'>('all');
   const [selectedInquiry, setSelectedInquiry] = useState<string | null>(null);
   const [response, setResponse] = useState('');
+
+  // Auto-clear response box when switching inquiries
+  useEffect(() => {
+    setResponse('');
+  }, [selectedInquiry]);
 
   const filteredInquiries = filterStatus === 'all' 
     ? inquiries 
@@ -25,182 +30,183 @@ export default function AdminInquiries() {
     updateInquiry(selectedInquiry, {
       status: 'responded',
       response,
-      responseDate: new Date().toISOString().split('T')[0]
+      responseDate: new Date().toISOString()
     });
 
     if (inquiry?.userId) {
       sendInquiryResponseNotification(inquiry.userId, inquiry.subject);
     }
-
     setResponse('');
-    setSelectedInquiry(null);
   };
 
   const handleResolve = (id: string) => {
     updateInquiry(id, { status: 'resolved' });
-    setSelectedInquiry(null);
   };
 
   const inquiry = selectedInquiry ? inquiries.find(i => i.id === selectedInquiry) : null;
 
-  const statusColors = {
-    open: 'bg-yellow-100 text-yellow-800',
-    responded: 'bg-blue-100 text-blue-800',
-    resolved: 'bg-green-100 text-green-800'
+  const statusStyles = {
+    open: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-100', icon: <Clock className="size-3" /> },
+    responded: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-100', icon: <MessageSquare className="size-3" /> },
+    resolved: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-100', icon: <CheckCircle className="size-3" /> }
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="mb-2">Inquiries & Messages</h1>
-        <p className="text-gray-600">Manage customer inquiries and support tickets</p>
+    <div className="max-w-6xl mx-auto py-8 px-4 space-y-6 h-[calc(100vh-120px)] flex flex-col">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Support Inquiries</h1>
+          <p className="text-gray-500">Respond to customer messages and manage ticket status.</p>
+        </div>
+        
+        <div className="flex bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
+          {(['all', 'open', 'responded', 'resolved'] as const).map((status) => (
+            <button
+              key={status}
+              onClick={() => setFilterStatus(status)}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                filterStatus === status ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'
+              }`}
+            >
+              {status.charAt(0).toUpperCase() + status.slice(1)}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Filter */}
-      <div className="bg-white rounded-lg border border-gray-200 p-1 inline-flex">
-        {(['all', 'open', 'responded', 'resolved'] as const).map((status) => (
-          <button
-            key={status}
-            onClick={() => setFilterStatus(status)}
-            className={`px-4 py-2 rounded-lg transition-colors ${
-              filterStatus === status
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            {status.charAt(0).toUpperCase() + status.slice(1)}
-            {status !== 'all' && (
-              <span className="ml-2">({inquiries.filter(i => i.status === status).length})</span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Inquiries List */}
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 space-y-3 max-h-[calc(100vh-300px)] overflow-y-auto">
+      {/* Main Layout */}
+      <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0">
+        
+        {/* Left Sidebar: Inquiry List */}
+        <div className="lg:w-1/3 flex flex-col gap-3 overflow-y-auto pr-2 custom-scrollbar">
           {sortedInquiries.length === 0 ? (
-            <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
-              <Mail className="size-12 text-gray-400 mx-auto mb-2" />
-              <p className="text-gray-500">No inquiries found</p>
+            <div className="bg-white rounded-2xl border border-dashed border-gray-300 p-12 text-center">
+              <Mail className="size-10 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-400 font-medium">No inquiries found</p>
             </div>
           ) : (
             sortedInquiries.map((inq) => (
-              <div
+              <button
                 key={inq.id}
                 onClick={() => setSelectedInquiry(inq.id)}
-                className={`bg-white border rounded-lg p-4 cursor-pointer transition-all ${
+                className={`w-full text-left p-4 rounded-2xl border transition-all ${
                   selectedInquiry === inq.id
-                    ? 'border-blue-500 shadow-md'
-                    : 'border-gray-200 hover:border-gray-300'
+                    ? 'bg-blue-50 border-blue-200 ring-2 ring-blue-500/10 shadow-sm'
+                    : 'bg-white border-gray-200 hover:border-gray-300'
                 }`}
               >
-                <div className="flex justify-between items-start mb-2">
-                  <h3 className="text-sm text-gray-900 line-clamp-1">{inq.subject}</h3>
-                  <span className={`px-2 py-1 text-xs rounded-full ${statusColors[inq.status]}`}>
-                    {inq.status.toUpperCase()}
+                <div className="flex justify-between items-start mb-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                    {new Date(inq.date).toLocaleDateString()}
                   </span>
+                  <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${statusStyles[inq.status].bg} ${statusStyles[inq.status].text}`}>
+                    {statusStyles[inq.status].icon}
+                    {inq.status}
+                  </div>
                 </div>
-                <p className="text-xs text-gray-600 mb-2 line-clamp-2">{inq.message}</p>
-                <div className="flex justify-between items-center text-xs text-gray-500">
-                  <span>{inq.name}</span>
-                  <span>{new Date(inq.date).toLocaleDateString()}</span>
+                <h3 className={`font-semibold text-sm truncate ${selectedInquiry === inq.id ? 'text-blue-900' : 'text-gray-900'}`}>
+                  {inq.subject}
+                </h3>
+                <p className="text-xs text-gray-500 line-clamp-2 mt-1">{inq.message}</p>
+                <div className="mt-3 flex items-center gap-2 text-[11px] text-gray-400 italic">
+                  <User className="size-3" /> {inq.name}
                 </div>
-              </div>
+              </button>
             ))
           )}
         </div>
 
-        <div className="lg:col-span-2">
+        {/* Right Content: Inquiry Details */}
+        <div className="lg:w-2/3 flex flex-col min-h-0 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
           {!inquiry ? (
-            <div className="bg-white rounded-lg border border-gray-200 h-full flex items-center justify-center p-12">
-              <div className="text-center">
-                <Mail className="size-16 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">Select an inquiry to view details</p>
+            <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
+              <div className="bg-gray-50 p-6 rounded-full mb-4">
+                <MessageSquare className="size-10 text-gray-300" />
               </div>
+              <h3 className="text-lg font-semibold text-gray-900">Select an inquiry</h3>
+              <p className="text-gray-500 max-w-xs mx-auto">Click on a message from the sidebar to view the full conversation and respond.</p>
             </div>
           ) : (
-            <div className="bg-white rounded-lg border border-gray-200 h-full flex flex-col">
-              <div className="p-6 border-b border-gray-200">
-                <div className="flex justify-between items-start mb-2">
-                  <h2>{inquiry.subject}</h2>
-                  <span className={`px-3 py-1 text-xs rounded-full ${statusColors[inquiry.status]}`}>
-                    {inquiry.status.toUpperCase()}
-                  </span>
+            <>
+              {/* Detail Header */}
+              <div className="p-6 border-b border-gray-100 bg-gray-50/30 flex justify-between items-start">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 mb-1">{inquiry.subject}</h2>
+                  <div className="flex flex-wrap gap-4 text-sm text-gray-500">
+                    <span className="flex items-center gap-1.5"><User className="size-4" /> {inquiry.name} ({inquiry.email})</span>
+                    <span className="flex items-center gap-1.5"><Calendar className="size-4" /> {new Date(inquiry.date).toLocaleString()}</span>
+                  </div>
                 </div>
-                <div className="text-sm text-gray-600">
-                  <p>From: {inquiry.name} ({inquiry.email})</p>
-                  <p>Date: {new Date(inquiry.date).toLocaleString()}</p>
+                <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase ${statusStyles[inquiry.status].bg} ${statusStyles[inquiry.status].text} border ${statusStyles[inquiry.status].border}`}>
+                  {statusStyles[inquiry.status].icon}
+                  {inquiry.status}
                 </div>
               </div>
 
-              <div className="flex-1 p-6 overflow-y-auto">
-                <div className="mb-6">
-                  <h3 className="text-sm text-gray-600 mb-2">Customer Message:</h3>
-                  <div className="bg-gray-50 p-4 rounded-lg text-gray-900">
-                    {inquiry.message}
+              {/* Message Thread */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+                {/* Customer Message */}
+                <div className="flex flex-col items-start max-w-[90%]">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase mb-2 ml-1">Customer Message</span>
+                  <div className="bg-gray-100 text-gray-800 p-4 rounded-2xl rounded-tl-none shadow-sm">
+                    <p className="text-sm leading-relaxed">{inquiry.message}</p>
                   </div>
                 </div>
 
+                {/* Previous Response */}
                 {inquiry.response && (
-                  <div className="mb-6">
-                    <h3 className="text-sm text-gray-600 mb-2">Your Response:</h3>
-                    <div className="bg-blue-50 p-4 rounded-lg text-gray-900">
-                      {inquiry.response}
+                  <div className="flex flex-col items-end ml-auto max-w-[90%]">
+                    <span className="text-[10px] font-bold text-blue-400 uppercase mb-2 mr-1">Your Response</span>
+                    <div className="bg-blue-600 text-white p-4 rounded-2xl rounded-tr-none shadow-md">
+                      <p className="text-sm leading-relaxed">{inquiry.response}</p>
                     </div>
                     {inquiry.responseDate && (
-                      <p className="text-xs text-gray-500 mt-2">
-                        Responded on {new Date(inquiry.responseDate).toLocaleString()}
-                      </p>
+                      <span className="text-[10px] text-gray-400 mt-2 italic">
+                        Sent on {new Date(inquiry.responseDate).toLocaleString()}
+                      </span>
                     )}
                   </div>
                 )}
+              </div>
 
-                {inquiry.status !== 'resolved' && (
-                  <div>
-                    <h3 className="text-sm text-gray-600 mb-2">
-                      {inquiry.response ? 'Send Another Response:' : 'Send Response:'}
-                    </h3>
+              {/* Action Area */}
+              <div className="p-6 border-t border-gray-100 bg-white">
+                {inquiry.status === 'resolved' ? (
+                  <div className="bg-green-50 border border-green-100 rounded-xl p-4 flex items-center gap-3 text-green-700">
+                    <CheckCircle className="size-5 shrink-0" />
+                    <span className="text-sm font-medium">This inquiry has been resolved and is closed for further responses.</span>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
                     <textarea
                       value={response}
                       onChange={(e) => setResponse(e.target.value)}
-                      rows={4}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Type your response here..."
+                      rows={3}
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none text-sm"
+                      placeholder="Write your reply..."
                     />
-                  </div>
-                )}
-              </div>
-
-              <div className="p-6 border-t border-gray-200">
-                {inquiry.status === 'resolved' ? (
-                  <div className="flex items-center gap-2 text-green-600">
-                    <CheckCircle className="size-5" />
-                    <span>This inquiry has been resolved</span>
-                  </div>
-                ) : (
-                  <div className="flex gap-3">
-                    {inquiry.status !== 'open' && (
+                    <div className="flex gap-3">
                       <button
                         onClick={() => handleResolve(inquiry.id)}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-all"
                       >
                         <CheckCircle className="size-4" />
-                        Mark as Resolved
+                        Resolve Ticket
                       </button>
-                    )}
-                    <button
-                      onClick={handleRespond}
-                      disabled={!response.trim()}
-                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Send className="size-4" />
-                      Send Response
-                    </button>
+                      <button
+                        onClick={handleRespond}
+                        disabled={!response.trim()}
+                        className="flex-[2] flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-all disabled:opacity-50 shadow-lg shadow-blue-100"
+                      >
+                        <Send className="size-4" />
+                        Send Response
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
-            </div>
+            </>
           )}
         </div>
       </div>
