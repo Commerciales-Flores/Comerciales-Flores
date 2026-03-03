@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Building2, AlertCircle, CheckCircle, X, ArrowLeft, Mail, Lock } from 'lucide-react';
 
@@ -19,18 +19,25 @@ const FacebookLogo = () => (
 );
 
 export default function Login() {
-    const { login, recoverPassword } = useAuth();
+    const { login, recoverPassword, user } = useAuth();
     const navigate = useNavigate();
     const [formData, setFormData] = useState({ email: '', password: '' });
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
-    const { user } = useAuth();
 
-    useEffect(() => {
     if (user) {
-        navigate(user.role === 'admin' ? '/admin/dashboard' : '/client/dashboard');
+        const path = user.role === 'admin' ? '/admin/dashboard' : '/client/dashboard';
+        return <Navigate to={path} replace />;
     }
-    }, [user, navigate]);
+
+    // useEffect(() => {
+    //     if (user) {
+    //         // replace: true is CRITICAL here. 
+    //         // It swaps "/login" with "/dashboard" in the browser history.
+    //         const path = user.role === 'admin' ? '/admin/dashboard' : '/client/dashboard';
+    //         navigate(path, { replace: true });
+    //     }
+    // }, [user, navigate]);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [recoveryEmail, setRecoveryEmail] = useState('');
@@ -38,20 +45,21 @@ export default function Login() {
     const [recoverySuccess, setRecoverySuccess] = useState('');
     const [recoveryLoading, setRecoveryLoading] = useState(false);
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
         setLoading(true);
 
-        const success = await login(formData.email, formData.password);
+        const email = formData.email.trim();
+        const password = formData.password;
+
+        const success = await login(email, password);
         console.log('Login success:', success);
-  console.log('User after login (from context):', user);  // <-- check this
-  console.log('User in localStorage:', localStorage.getItem('currentUser'));
+        console.log('User after login (from context):', user);  // <-- check this
+        console.log('User in localStorage:', localStorage.getItem('currentUser'));
 
         if (!success) {
             setError('Invalid email or password');
-            setLoading(false);
-            return;
         }
 
         // DO NOT read `user` immediately, let the effect handle redirect
@@ -75,31 +83,60 @@ export default function Login() {
 
     return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 antialiased">
-            <div className="w-full max-w-[1000px] bg-white rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.05)] overflow-hidden border border-slate-200/60">
-                <div className="grid grid-cols-1 md:grid-cols-2">
+            <div className="w-full max-w-5xl lg:max-w-6xl bg-white rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.05)] overflow-hidden border border-slate-200/60">
+                <div className="grid grid-cols-1 lg:grid-cols-2">
                     
-                    {/* Left Panel: Profile maintained */}
-                    <div className="p-12 bg-slate-900 text-white flex flex-col items-center justify-center relative overflow-hidden">
-                        <div className="relative z-10 flex flex-col items-center gap-8">
-                            <div className="size-48 rounded-[3rem] bg-white/5 backdrop-blur-sm border border-white/10 flex items-center justify-center shadow-2xl">
-                                <svg viewBox="0 0 24 24" fill="none" className="size-24 text-blue-400" stroke="currentColor">
-                                    <path d="M12 12a4 4 0 100-8 4 4 0 000 8z" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                    <path d="M20 21v-1a4 4 0 00-4-4H8a4 4 0 00-4 4v1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    {/* Left Panel */}
+                    <div className="p-5 sm:p-6 lg:p-12 
+                                    bg-slate-900 text-white 
+                                    flex flex-col items-center justify-center 
+                                    min-h-[150px] sm:min-h-[180px] lg:min-h-0 
+                                    relative overflow-hidden">
+
+                        <div className="relative z-10 flex flex-col items-center gap-4 sm:gap-6 lg:gap-8">
+
+                            {/* Avatar Container */}
+                            <div className="size-28 sm:size-36 lg:size-48 
+                                            rounded-[2rem] lg:rounded-[3rem] 
+                                            bg-white/5 backdrop-blur-sm 
+                                            border border-white/10 
+                                            flex items-center justify-center 
+                                            shadow-2xl">
+
+                                <svg viewBox="0 0 24 24" fill="none"
+                                    className="size-14 sm:size-18 lg:size-24 text-blue-400"
+                                    stroke="currentColor">
+                                    <path d="M12 12a4 4 0 100-8 4 4 0 000 8z"
+                                        strokeWidth="1.5"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round" />
+                                    <path d="M20 21v-1a4 4 0 00-4-4H8a4 4 0 00-4 4v1"
+                                        strokeWidth="1.5"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round" />
                                 </svg>
                             </div>
+
+                            {/* Text */}
                             <div className="text-center">
-                                <h2 className="text-3xl font-bold tracking-tight">Welcome Back</h2>
-                                <p className="text-slate-400 mt-2 font-medium">
-                                    {user?.name || 'Guest'}
+                                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight">
+                                    Welcome Back
+                                </h2>
+                                <p className="text-slate-400 mt-1 sm:mt-2 text-sm sm:text-base font-medium">
+                                    Guest
                                 </p>
                             </div>
                         </div>
+
                         {/* Background Decor */}
-                        <div className="absolute top-0 right-0 size-64 bg-blue-600/10 blur-[100px] rounded-full -mr-32 -mt-32" />
+                        <div className="hidden sm:block absolute top-0 right-0 
+                                        size-64 bg-blue-600/10 
+                                        blur-[100px] rounded-full 
+                                        -mr-32 -mt-32" />
                     </div>
 
                     {/* Right Panel: Form maintained */}
-                    <main className="p-12 md:p-16 flex flex-col justify-center bg-white">
+                    <main className="p-8 sm:p-10 lg:p-16 flex flex-col justify-center bg-white">
                         <div className="text-center mb-10">
                             <div className="inline-flex items-center justify-center size-16 rounded-2xl bg-blue-50 text-blue-600 mb-4 shadow-sm">
                                 <Building2 className="size-10" />
@@ -115,14 +152,17 @@ export default function Login() {
                             </div>
                         )}
 
-                        <form onSubmit={handleSubmit} className="space-y-5 max-w-[400px] mx-auto w-full">
+                        <form onSubmit={handleLogin} className="space-y-5 max-w-md lg:max-w-[400px] mx-auto w-full">
                             <div className="space-y-1.5 group">
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
                                 <div className="relative">
                                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-300 group-focus-within:text-blue-500 transition-colors" />
                                     <input
                                         type="email" required value={formData.email}
-                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                        onChange={(e) => {
+                                            setFormData({ ...formData, email: e.target.value });
+                                            if (error) setError('');
+                                        }}
                                         className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
                                         placeholder="you@example.com"
                                     />
@@ -140,7 +180,10 @@ export default function Login() {
                                 type="password"
                                 required
                                 value={formData.password}
-                                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                onChange={(e) => {
+                                    setFormData({ ...formData, password: e.target.value });
+                                    if (error) setError('');
+                                }}
                                 className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
                                 placeholder="••••••••"
                                 />

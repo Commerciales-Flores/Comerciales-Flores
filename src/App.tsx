@@ -33,6 +33,7 @@ import AdminProfile from './pages/admin/Profile';
 import ClientLayout from './components/layouts/ClientLayout';
 import AdminLayout from './components/layouts/AdminLayout';
 import { ProtectedRoute, GuestRoute } from './components/auth/RouteGuards';
+import AllProperties from './pages/public/AllProperties';
 
 export default function App() {
   return (
@@ -45,6 +46,7 @@ export default function App() {
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
               <Route path="/register" element={<GuestRoute><Register /></GuestRoute>} />
+              <Route path="/spaces" element={<AllProperties />} />
 
               {/* Client Routes */}
               <Route

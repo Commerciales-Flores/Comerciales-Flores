@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
-import { Save, Plus, X, Layout, Info, Phone, Megaphone, ShieldAlert, CheckCircle } from 'lucide-react';
+import { Save, Plus, X, Layout, Info, Phone, Megaphone, ShieldAlert, CheckCircle, Pencil } from 'lucide-react';
 
 export default function AdminContent() {
   const { contentSettings, updateContentSettings } = useData();
@@ -9,10 +9,7 @@ export default function AdminContent() {
   const [formData, setFormData] = useState(contentSettings);
   const [saved, setSaved] = useState(false);
 
-  // Keep local form in sync with context data
-  useEffect(() => {
-    setFormData(contentSettings);
-  }, [contentSettings]);
+  useEffect(() => setFormData(contentSettings), [contentSettings]);
 
   const handleSave = () => {
     updateContentSettings(formData);
@@ -39,34 +36,32 @@ export default function AdminContent() {
   };
 
   return (
-    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
-      <div className="flex justify-between items-center">
+    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6 pb-28 md:pb-12">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Content Management</h1>
-          <p className="text-gray-500">Update the landing page content, contact details, and announcements.</p>
+          <p className="text-sm text-gray-500">Update landing page content, contact info, and announcements.</p>
         </div>
-        <div className="flex gap-3 w-full md:w-auto">
+        <div className="hidden md:flex gap-3 w-full md:w-auto">
           {!editing ? (
             <button
               onClick={() => setEditing(true)}
-              className="flex-1 md:flex-none px-6 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-all shadow-sm"
+              className="px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-sm"
             >
               Edit Content
             </button>
           ) : (
             <>
               <button
-                onClick={() => {
-                  setEditing(false);
-                  setFormData(contentSettings);
-                }}
-                className="flex-1 md:flex-none px-6 py-2.5 bg-white border border-gray-200 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-all"
+                onClick={() => { setEditing(false); setFormData(contentSettings); }}
+                className="px-6 py-2.5 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 transition-all"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
-                className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-all shadow-blue-100 shadow-lg"
+                className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all"
               >
                 <Save className="size-4" />
                 Publish Changes
@@ -76,19 +71,19 @@ export default function AdminContent() {
         </div>
       </div>
 
+      {/* Success Notification */}
       {saved && (
         <div className="flex items-center gap-3 bg-green-50 border border-green-200 text-green-700 p-4 rounded-2xl animate-in fade-in slide-in-from-top-4">
-          <CheckCircle className="size-5" />
-          <span className="font-medium">Changes published successfully to the landing page!</span>
+          <CheckCircle className="size-5 shrink-0" />
+          <span className="font-bold text-sm">Changes published successfully!</span>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Main Content Area */}
+      {/* Main Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* LEFT: Main Content */}
         <div className="lg:col-span-8 space-y-6">
-          
-          {/* Hero Section Card */}
-          <ContentCard title="Hero Section" icon={<Layout className="text-blue-600" />}>
+          <ContentCard title="Hero Section" icon={<Layout className="text-blue-600 size-5" />}>
             <div className="space-y-4">
               <FieldWrapper label="Main Title">
                 {editing ? (
@@ -96,10 +91,10 @@ export default function AdminContent() {
                     type="text"
                     value={formData.heroTitle}
                     onChange={(e) => setFormData({ ...formData, heroTitle: e.target.value })}
-                    className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-base"
                   />
                 ) : (
-                  <p className="text-lg font-semibold text-gray-900">{contentSettings.heroTitle}</p>
+                  <p className="text-lg font-bold text-gray-900">{contentSettings.heroTitle}</p>
                 )}
               </FieldWrapper>
 
@@ -109,49 +104,45 @@ export default function AdminContent() {
                     value={formData.heroSubtitle}
                     onChange={(e) => setFormData({ ...formData, heroSubtitle: e.target.value })}
                     rows={2}
-                    className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                   />
                 ) : (
-                  <p className="text-gray-600 leading-relaxed">{contentSettings.heroSubtitle}</p>
+                  <p className="text-gray-600 text-sm leading-relaxed">{contentSettings.heroSubtitle}</p>
                 )}
               </FieldWrapper>
             </div>
           </ContentCard>
 
-          {/* About Us Card */}
-          <ContentCard title="About Us" icon={<Info className="text-purple-600" />}>
+          <ContentCard title="About Us" icon={<Info className="text-purple-600 size-5" />}>
             {editing ? (
               <textarea
                 value={formData.aboutUs}
                 onChange={(e) => setFormData({ ...formData, aboutUs: e.target.value })}
                 rows={6}
-                className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
               />
             ) : (
-              <p className="text-gray-600 leading-relaxed whitespace-pre-line">{contentSettings.aboutUs}</p>
+              <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">{contentSettings.aboutUs}</p>
             )}
           </ContentCard>
 
-          {/* Policies Card */}
-          <ContentCard title="Business Policies" icon={<ShieldAlert className="text-red-600" />}>
+          <ContentCard title="Business Policies" icon={<ShieldAlert className="text-red-600 size-5" />}>
             {editing ? (
               <textarea
                 value={formData.policies}
                 onChange={(e) => setFormData({ ...formData, policies: e.target.value })}
                 rows={6}
-                className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
               />
             ) : (
-              <p className="text-gray-600 leading-relaxed whitespace-pre-line">{contentSettings.policies}</p>
+              <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-line">{contentSettings.policies}</p>
             )}
           </ContentCard>
         </div>
 
-        {/* Sidebar Area */}
+        {/* RIGHT: Sidebar */}
         <div className="lg:col-span-4 space-y-6">
-          
-          {/* Contact Details Card */}
-          <ContentCard title="Contact Info" icon={<Phone className="text-green-600" />}>
+          <ContentCard title="Contact Info" icon={<Phone className="text-green-600 size-5" />}>
             <div className="space-y-4">
               <SidebarField label="Public Email" value={formData.contactEmail} editing={editing} 
                 onChange={(v) => setFormData({...formData, contactEmail: v})} />
@@ -162,12 +153,11 @@ export default function AdminContent() {
             </div>
           </ContentCard>
 
-          {/* Announcements Card */}
-          <ContentCard title="Announcements" icon={<Megaphone className="text-orange-500" />}>
+          <ContentCard title="Announcements" icon={<Megaphone className="text-orange-500 size-5" />}>
             <div className="space-y-3">
               {formData.announcements.map((announcement, index) => (
-                <div key={index} className="group flex items-start gap-2 bg-orange-50/50 p-3 rounded-xl border border-orange-100">
-                  <p className="flex-1 text-sm text-orange-800 leading-tight">{announcement}</p>
+                <div key={index} className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 bg-orange-50 p-3 rounded-xl border border-orange-100">
+                  <p className="flex-1 text-sm text-orange-800 font-bold leading-tight">{announcement}</p>
                   {editing && (
                     <button
                       onClick={() => handleRemoveAnnouncement(index)}
@@ -178,20 +168,20 @@ export default function AdminContent() {
                   )}
                 </div>
               ))}
-              
+
               {editing && (
                 <div className="pt-2">
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2">
                     <input
                       type="text"
                       value={newAnnouncement}
                       onChange={(e) => setNewAnnouncement(e.target.value)}
-                      placeholder="New alert..."
+                      placeholder="Add alert..."
                       className="flex-1 px-3 py-2 text-sm bg-white border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-500"
                     />
                     <button
                       onClick={handleAddAnnouncement}
-                      className="p-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+                      className="p-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors flex justify-center items-center"
                     >
                       <Plus className="size-4" />
                     </button>
@@ -202,11 +192,36 @@ export default function AdminContent() {
           </ContentCard>
         </div>
       </div>
+
+      {/* FAB for Mobile */}
+      {!editing ? (
+        <button
+          onClick={() => setEditing(true)}
+          className="fixed bottom-6 right-6 z-50 md:hidden flex items-center justify-center size-14 bg-blue-600 text-white rounded-full shadow-2xl hover:bg-blue-700 active:scale-90 transition-all border-4 border-white"
+        >
+          <Pencil className="size-6" />
+        </button>
+      ) : (
+        <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3 md:hidden">
+          <button
+            onClick={() => { setEditing(false); setFormData(contentSettings); }}
+            className="flex items-center justify-center size-12 bg-white text-gray-500 rounded-full shadow-xl border border-gray-200"
+          >
+            <X className="size-5" />
+          </button>
+          <button
+            onClick={handleSave}
+            className="flex items-center justify-center size-14 bg-green-600 text-white rounded-full shadow-2xl border-4 border-white"
+          >
+            <Save className="size-6" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-// Sub-components for better organization
+// Sub-components
 function ContentCard({ title, icon, children }: { title: string, icon: React.ReactNode, children: React.ReactNode }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
@@ -221,8 +236,8 @@ function ContentCard({ title, icon, children }: { title: string, icon: React.Rea
 
 function FieldWrapper({ label, children }: { label: string, children: React.ReactNode }) {
   return (
-    <div>
-      <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">{label}</label>
+    <div className="space-y-1">
+      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">{label}</label>
       {children}
     </div>
   );

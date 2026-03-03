@@ -16,6 +16,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<boolean>;
   register: (userData: Omit<User, 'id' | 'role'> & { password: string }) => Promise<boolean>;
   logout: () => void;
+  loading: boolean
   updateProfile: (userData: Partial<User>) => void;
   changePassword: (oldPassword: string, newPassword: string) => Promise<boolean>;
   recoverPassword: (email: string) => Promise<{ password: string } | null>;
@@ -23,7 +24,6 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
 
 
 // Mock users for demo
@@ -52,6 +52,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [users, setUsers] = useState(MOCK_USERS);
 
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('currentUser');
+    if (storedUser) setUser(JSON.parse(storedUser));
+    setLoading(false); // done loading
+  }, []);
+
+  // Block rendering until we know if a user is logged in
+  if (loading) return null; // or spinner
+
   const deleteAccount = (userId: string) => {
   // Remove user from users array
   setUsers(users.filter(u => u.id !== userId));
@@ -62,13 +73,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 };
 
-  // Check for stored user on mount
-  useEffect(() => {
-    const storedUser = localStorage.getItem('currentUser');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-  }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
     const foundUser = users.find(u => u.email === email && u.password === password);
@@ -142,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, updateProfile, changePassword, recoverPassword, deleteAccount }}>
+    <AuthContext.Provider value={{ user, login, register, loading, logout, updateProfile, changePassword, recoverPassword, deleteAccount }}>
       {children}
     </AuthContext.Provider>
   );

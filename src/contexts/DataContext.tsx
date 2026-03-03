@@ -141,6 +141,7 @@ export interface ParkingSlot {
 }
 
 export interface ContentSettings {
+  heroImage?: string;
   heroTitle: string;
   heroSubtitle: string;
   aboutUs: string;
@@ -363,6 +364,7 @@ const MOCK_INQUIRIES: Inquiry[] = [
 ];
 
 const MOCK_CONTENT: ContentSettings = {
+  heroImage: 'https://images.unsplash.com/photo-1590674899484-d5640e854abe?q=80&w=2000&auto=format&fit=crop',
   heroTitle: 'Welcome to Commerciales Flores',
   heroSubtitle: 'Your Premier Rental Management Partner',
   aboutUs: 'Commerciales Flores has been serving the community for over 20 years, providing quality commercial spaces, event venues, and parking facilities. We pride ourselves on excellent customer service and well-maintained properties.',

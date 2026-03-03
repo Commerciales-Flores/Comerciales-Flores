@@ -155,7 +155,7 @@ export default function AdminDashboard() {
         <div className="lg:col-span-2 space-y-6">
           {/* URGENT ALERTS */}
           <section className="bg-white rounded-xl border border-red-100 shadow-sm overflow-hidden">
-            <div className="bg-red-50 px-6 py-4 border-b border-red-100 flex items-center justify-between">
+            <div className="bg-red-50 px-4 sm:px-6 py-4 border-b border-red-100 flex items-center justify-between">
               <div className="flex items-center gap-2 text-red-700 font-semibold">
                 <AlertCircle className="size-5" />
                 <h2>Urgent Alerts</h2>
@@ -164,13 +164,13 @@ export default function AdminDashboard() {
                 {overdueReservations.length} Overdue
               </span>
             </div>
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               {overdueReservations.length > 0 ? (
                 <div className="divide-y divide-gray-100">
                   {overdueReservations.map(res => (
-                    <div key={res.id} className="py-3 flex justify-between items-center">
+                    <div key={res.id} className="py-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                       <div>
-                        <p className="font-medium text-gray-900">{res.propertyName}</p>
+                        <p className="font-medium text-gray-900 truncate">{res.propertyName}</p>
                         <p className="text-xs text-gray-500 font-mono">Overdue since {new Date(res.requestDate).toLocaleDateString()}</p>
                       </div>
                       <Link to="/admin/reservations" className="text-sm text-red-600 font-semibold hover:underline flex items-center gap-1">

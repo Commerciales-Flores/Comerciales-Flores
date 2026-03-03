@@ -3,11 +3,16 @@ import { useState, useRef, useEffect } from "react";
 import { useData } from "../../contexts/DataContext";
 import { motion, AnimatePresence } from "framer-motion"; // Modern animations
 import 'react-calendar/dist/Calendar.css';
+import PropertyModal from "../../components/PropertyModal";
+import { useNavigate } from 'react-router-dom';
 import {
   Building2,
   Mail,
+  Menu,
   Phone,
   MapPin,
+  LogIn,
+  UserPlus,
   X,
   ChevronLeft,
   ChevronRight,
@@ -26,9 +31,10 @@ export default function LandingPage() {
   const [inquirySubmitted, setInquirySubmitted] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const [containerWidth, setContainerWidth] = useState(0);
-
+  const navigate = useNavigate();
   const visibleCards = 3;
   const gap = 24; // px
   const cardWidth = (containerWidth - gap * (visibleCards - 1)) / visibleCards;
@@ -39,21 +45,20 @@ export default function LandingPage() {
     message: "",
   });
 
-  // Navigate to previous image
-const prevImage = () => {
-  if (!property) return;
-  setCurrentImageIndex((prev) =>
-    prev === 0 ? property.images.length - 1 : prev - 1
-  );
-};
+  useEffect(() => {
+    if (isMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+  }, [isMenuOpen]);
 
-// Navigate to next image
-const nextImage = () => {
-  if (!property) return;
-  setCurrentImageIndex((prev) =>
-    prev === property.images.length - 1 ? 0 : prev + 1
-  );
-};
+  // Close menu on desktop resize
+  useEffect(() => {
+    const handleResize = () => { if (window.innerWidth >= 768) setIsMenuOpen(false); };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Filter for slider
   const featuredProperties = properties.filter((p) => p.available && p.type !== "parking_slot");
@@ -74,46 +79,107 @@ const nextImage = () => {
   const property = selectedProperty ? properties.find((p) => p.id === selectedProperty) : null;
   // Inside your LandingPage component, above the return statement
   useEffect(() => {
+  if (featuredProperties.length === 0) return;
+
   const timer = setInterval(() => {
-    if (!selectedProperty) { // only advance when modal is closed
-      setCurrentSlide((prev) => 
+    if (!selectedProperty) {
+      setCurrentSlide((prev) =>
         prev === featuredProperties.length - 1 ? 0 : prev + 1
       );
     }
   }, 7000);
 
-  return () => clearInterval(timer); // always clear on cleanup
+  return () => clearInterval(timer);
 }, [featuredProperties.length, selectedProperty]);
+
+  useEffect(() => {
+    setCurrentImageIndex(0);
+  }, [selectedProperty]);
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-slate-900 font-sans">
       {/* Modern Transparent Header */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 md:h-20 flex justify-between items-center">
-          <div className="flex items-center gap-2 group cursor-pointer">
-            <div className="bg-blue-600 p-2 rounded-xl group-hover:rotate-12 transition-transform">
-              <Building2 className="size-6 text-white" />
-            </div>
-            <span className="text-lg sm:text-xl font-bold tracking-tight text-slate-800 truncate">
-              Commerciales<span className="text-blue-600">Flores</span>
-            </span>
-          </div>  
-
-          <div className="flex items-center gap-2 sm:gap-4">
-            <Link to="/login" className="text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors">Login</Link>
-            <Link to="/register" className="px-5 py-2.5 bg-slate-900 text-white text-sm font-semibold rounded-full hover:bg-blue-600 transition-all shadow-lg shadow-slate-200">
-              Sign Up
-            </Link>
-          </div>
+    <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 md:h-20 flex justify-between items-center">
+      <div className="flex items-center gap-2 group cursor-pointer" onClick={() => navigate('/')}>
+        <div className="bg-blue-600 p-1.5 sm:p-2 rounded-xl">
+          <Building2 className="size-5 sm:size-6 text-white" />
         </div>
-      </header>
+        <span className="text-base sm:text-xl font-bold text-slate-800">
+          Commerciales<span className="text-blue-600">Flores</span>
+        </span>
+      </div>
+
+      {/* Desktop Buttons */}
+      <div className="hidden md:flex items-center gap-4">
+        <button onClick={() => navigate('/login')} className="text-slate-600 font-semibold px-4 py-2 hover:text-blue-600">Login</button>
+        <button onClick={() => navigate('/register')} className="px-6 py-2.5 bg-slate-900 text-white font-semibold rounded-full hover:bg-blue-600 shadow-md">Sign Up</button>
+      </div>
+
+      {/* Hamburger Trigger */}
+      <button className="md:hidden p-2 text-slate-600" onClick={() => setIsMenuOpen(true)}>
+        <Menu className="size-6" />
+      </button>
+    </div>
+  </header>
+
+  {/* Side Panel Overlay */}
+  <AnimatePresence>
+    {isMenuOpen && (
+      <>
+        {/* Dark Backdrop */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={() => setIsMenuOpen(false)}
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] md:hidden"
+        />
+
+        {/* Sliding Panel */}
+        <motion.div
+          initial={{ x: "100%" }}
+          animate={{ x: 0 }}
+          exit={{ x: "100%" }}
+          transition={{ type: "spring", damping: 25, stiffness: 200 }}
+          className="fixed right-0 top-0 h-full w-[280px] sm:w-[320px] bg-white z-[70] shadow-2xl md:hidden flex flex-col"
+        >
+          <div className="p-5 border-b border-slate-100 flex justify-between items-center">
+            <span className="font-bold text-slate-800">Menu</span>
+            <button onClick={() => setIsMenuOpen(false)} className="p-2 hover:bg-slate-100 rounded-full">
+              <X className="size-6 text-slate-500" />
+            </button>
+          </div>
+
+          <nav className="p-6 space-y-2 flex-1">
+            <button
+              onClick={() => { navigate('/login'); setIsMenuOpen(false); }}
+              className="w-full flex items-center gap-3 px-4 py-3 text-slate-600 font-semibold hover:bg-slate-50 rounded-xl transition-colors"
+            >
+              <LogIn className="size-5" /> Login
+            </button>
+            <button
+              onClick={() => { navigate('/register'); setIsMenuOpen(false); }}
+              className="w-full flex items-center gap-3 px-4 py-3 text-slate-600 font-semibold hover:bg-slate-50 rounded-xl transition-colors"            >
+              <UserPlus className="size-5" /> Sign Up
+            </button>
+          </nav>
+
+          <div className="p-6 border-t border-slate-100 text-xs text-slate-400 text-center">
+            © 2026 Commerciales Flores
+          </div>
+        </motion.div>
+      </>
+    )}
+  </AnimatePresence>
+  
 
       {/* Hero Section: Dynamic & Clean */}
-      <section className="relative min-h-[70vh] md:h-[85vh] flex items-center overflow-hidden">
+      <section className="relative min-h-[60vh] md:h-[85vh] flex items-center overflow-hidden">
         <div className="absolute inset-0 z-0">
-          <img 
-            src="https://images.unsplash.com/photo-1590674899484-d5640e854abe?q=80&w=2000&auto=format&fit=crop" 
-            className="w-full h-full object-cover" 
+          <img
+            src={contentSettings.heroImage ?? '/fallback-hero.jpg'}
+            className="w-full h-full object-cover"
             alt="Hero"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-slate-900/90 via-slate-900/40 to-transparent"></div>
@@ -129,13 +195,13 @@ const nextImage = () => {
             <span className="inline-block px-4 py-1.5 mb-6 text-xs font-bold tracking-widest uppercase bg-blue-600 text-white rounded-full">
               Premium Spaces
             </span>
-            <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-extrabold text-white mb-6 leading-[1.1]">
+            <h1 className="text-2xl sm:text-3xl md:text-5xl lg:text-7xl font-extrabold text-white mb-4 sm:mb-6 leading-[1.1]">
               {contentSettings.heroTitle}
             </h1>
-            <p className="text-lg text-slate-200 mb-10 leading-relaxed">
+            <p className="text-base sm:text-lg text-slate-200 mb-6 sm:mb-10 leading-relaxed">
               {contentSettings.heroSubtitle}
             </p>
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
               <Link to="/register" className="px-8 py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2">
                 Get Started <ArrowRight className="size-5" />
               </Link>
@@ -172,7 +238,7 @@ const nextImage = () => {
       )}
 
       {/* About Us */}
-      <section className="py-20 bg-gray-50">
+      <section className="py-12 md:py-24 bg-gray-50 px-4 sm:px-6 lg:px-8">
         <motion.div
           className="max-w-3xl mx-auto text-center space-y-4"
           initial={{ opacity: 0, y: 20 }}
@@ -180,34 +246,41 @@ const nextImage = () => {
           viewport={{ once: true }}
           transition={{ duration: 0.8 }}
         >
-          <h2 className="text-3xl md:text-4xl font-bold text-slate-900">About Us</h2>
-          <p className="text-gray-600 text-lg leading-relaxed">{contentSettings.aboutUs}</p>
+          <h2 className="text-2xl md:text-4xl font-bold text-slate-900">About Us</h2>
+          <p className="text-gray-600 text-base md:text-lg leading-relaxed">
+            {contentSettings.aboutUs}
+          </p>
         </motion.div>
       </section>
 
-      <section id="properties" className="py-24 bg-white overflow-hidden">
-  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-end mb-12 gap-4">
-    <div>
-      <h2 className="text-4xl font-bold text-slate-900 mb-2">Featured Space</h2>
-      <p className="text-slate-500 text-lg">Experience our most premium locations.</p>
-    </div>
-    
-    {/* Progress Indicators */}
-    <div className="flex gap-2">
-      {featuredProperties.map((_, idx) => (
-        <button
-          key={idx}
-          onClick={() => setCurrentSlide(idx)}
-          className={`h-1.5 transition-all duration-500 rounded-full ${
-            currentSlide === idx ? "w-8 bg-blue-600" : "w-2 bg-slate-200"
-          }`}
-        />
-      ))}
+      <section id="properties" className="py-12 md:py-24 bg-white overflow-hidden">
+  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-8 md:mb-12">
+    <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+      <div className="w-full">
+        {/* Adjusted: text-xl on mobile, scales up to 4xl */}
+        <h2 className="text-xl sm:text-2xl md:text-4xl font-bold text-slate-900 mb-2">
+          Featured Space
+        </h2>
+        <p className="text-slate-500 text-sm md:text-lg">
+          Experience our most premium locations.
+        </p>
+      </div>
+      
+      <div className="flex justify-between items-center w-full md:w-auto gap-6">
+        <Link 
+          to="/spaces" 
+          className="text-sm md:text-base flex items-center gap-2 text-blue-600 font-bold hover:text-blue-700 transition-colors group whitespace-nowrap"
+        >
+          View all Spaces 
+          <ArrowRight className="size-4 md:size-5 group-hover:translate-x-1 transition-transform shrink-0" />
+        </Link>
+
+      </div>
     </div>
   </div>
 
   <div className="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div className="overflow-hidden rounded-[2rem]">
+    <div className="overflow-hidden rounded-2xl md:rounded-[2rem]">
       <motion.div
         className="flex"
         animate={{ x: `-${currentSlide * 100}%` }}
@@ -216,50 +289,52 @@ const nextImage = () => {
         {featuredProperties.map((property) => (
           <div
             key={property.id}
-            className="w-full flex-shrink-0"
-            onClick={() => setSelectedProperty(property.id)}
+            className="w-full flex-shrink-0 cursor-pointer"
+            onClick={() => {
+              setSelectedProperty(property.id);
+              setCurrentImageIndex(0);
+            }}
           >
-            <div className="relative group cursor-pointer bg-slate-50 rounded-[2rem] overflow-hidden border border-slate-100">
+            <div className="relative bg-slate-50 rounded-2xl md:rounded-[2rem] overflow-hidden border border-slate-100 mx-1">
               <div className="grid md:grid-cols-2">
                 {/* Image Side */}
-                <div className="relative h-[220px] sm:h-[300px] md:h-[500px] overflow-hidden">
+                <div className="relative h-[200px] sm:h-[250px] md:h-[500px] overflow-hidden">
                   <motion.img
                     whileHover={{ scale: 1.05 }}
-                    transition={{ duration: 0.6 }}
                     src={property.images[0]}
                     alt={property.name}
                     className="w-full h-full object-cover"
                   />
-                  <div className="absolute top-6 left-6 px-4 py-1.5 bg-white/90 backdrop-blur-md rounded-full text-xs font-bold text-blue-600 shadow-sm">
+                  <div className="absolute top-4 left-4 px-3 py-1 bg-white/90 backdrop-blur-md rounded-full text-[10px] md:text-xs font-bold text-blue-600 shadow-sm">
                     {getPropertyTypeLabel(property.type)}
                   </div>
                 </div>
 
                 {/* Content Side */}
-                <div className="p-5 sm:p-6 md:p-10 lg:p-12 flex flex-col justify-center">
-                  <h3 className="text-3xl font-bold text-slate-900 mb-4">
+                <div className="p-6 md:p-10 lg:p-12 flex flex-col justify-center">
+                  {/* Adjusted: text-lg on mobile, 3xl on desktop */}
+                  <h3 className="text-lg md:text-3xl font-bold text-slate-900 mb-2 md:mb-4">
                     {property.name}
                   </h3>
-                  <p className="text-sm text-slate-500 mb-4 flex items-center gap-1">
-                    <MapPin className="size-4 text-blue-600" /> {property.location}
+                  <p className="text-xs md:text-sm text-slate-500 mb-3 md:mb-4 flex items-center gap-1">
+                    <MapPin className="size-3 md:size-4 text-blue-600" /> {property.location}
                   </p>
-                  <p className="text-slate-600 text-lg leading-relaxed mb-8 line-clamp-4">
+                  {/* Adjusted: smaller text and fewer lines visible on mobile */}
+                  <p className="text-slate-600 text-sm md:text-lg leading-relaxed mb-6 md:mb-8 line-clamp-3 md:line-clamp-4">
                     {property.description}
                   </p>
                   
-                  <div className="flex items-center justify-between mt-auto pt-6 border-t border-slate-200">
+                  <div className="flex items-center justify-between mt-auto pt-4 md:pt-6 border-t border-slate-200">
                     <div>
-                      <span className="text-sm text-slate-400 block uppercase tracking-wider font-semibold">Price starts at</span>
-                      <span className="text-2xl font-bold text-slate-900">
+                      <span className="text-[10px] md:text-sm text-slate-400 block uppercase tracking-wider font-semibold">Price starts</span>
+                      <span className="text-lg md:text-2xl font-bold text-slate-900">
                         {formatCurrency(property.price)}
                       </span>
                     </div>
-                    <button
-                    onClick={() => setSelectedProperty(property.id)}
-                    className="bg-slate-900 text-white px-4 sm:px-6 lg:px-8 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-blue-600 transition-colors"
-                  >
-                    View Details <ArrowRight className="size-5" />
-                  </button>
+                    {/* Added styling to your button */}
+                    <button type="button" className="text-xs md:text-base px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                      Details
+                    </button>
                   </div>
                 </div>
               </div>
@@ -269,21 +344,35 @@ const nextImage = () => {
       </motion.div>
     </div>
 
-    {/* Navigation Arrows */}
+    {/* Progress Indicators - Centered Below Slider */}
+    <div className="flex justify-center gap-2 mt-6">
+      {featuredProperties.map((_, idx) => (
+        <button
+          key={idx}
+          onClick={() => setCurrentSlide(idx)}
+          className={`h-1 md:h-1.5 transition-all duration-500 rounded-full ${
+            currentSlide === idx ? "w-6 md:w-8 bg-blue-600" : "w-1.5 md:w-2 bg-slate-200"
+          }`}
+        />
+      ))}
+    </div>
+    
+    {/* Navigation Arrows (Hidden on mobile via hidden md:block) */}
     <button
       onClick={() => setCurrentSlide((prev) => (prev === 0 ? featuredProperties.length - 1 : prev - 1))}
-      className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 md:-translate-x-full bg-white p-4 rounded-full shadow-xl text-slate-800 hover:text-blue-600 transition-all z-10 hidden md:block"
+      className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full bg-white p-4 rounded-full shadow-xl text-slate-800 hover:text-blue-600 transition-all z-10 hidden md:block"
     >
       <ChevronLeft className="size-6" />
     </button>
     <button
       onClick={() => setCurrentSlide((prev) => (prev === featuredProperties.length - 1 ? 0 : prev + 1))}
-      className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 md:translate-x-full bg-white p-4 rounded-full shadow-xl text-slate-800 hover:text-blue-600 transition-all z-10 hidden md:block"
+      className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full bg-white p-4 rounded-full shadow-xl text-slate-800 hover:text-blue-600 transition-all z-10 hidden md:block"
     >
       <ChevronRight className="size-6" />
     </button>
   </div>
 </section>
+
 
       {/* Contact Section: Modern Form */}
 <section id="contact" className="py-20 bg-gray-50">
@@ -295,7 +384,7 @@ const nextImage = () => {
         <p className="text-sm">Visit us</p>
       </div>
       <iframe
-        src="https://www.google.com/maps?q=16+Rd+23+Project+8,+Quezon+City,+Metro+Manila&output=embed"
+        src={`https://www.google.com/maps?q=${encodeURIComponent(contentSettings.contactAddress)}&output=embed`}
 
         width="100%"
         height="100%"
@@ -403,102 +492,10 @@ const nextImage = () => {
 </footer>
 
       {property && (
-  <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 overflow-y-auto">
-    {/* 1️⃣ Blur overlay behind the modal */}
-    <div
-      className="absolute inset-0 bg-black/30 backdrop-blur-sm"
-      onClick={() => setSelectedProperty(null)} // close modal when clicking outside
-    />
-
-    {/* 2️⃣ Modal content on top */}
-    <div className="relative z-10 bg-white rounded-lg max-w-4xl w-full max-h-[90vh] mx-auto my-8 shadow-xl">
-      <div className="flex justify-between items-start p-6 border-b border-gray-200">
-        <div>
-          <div className="text-sm text-blue-600 mb-1">{getPropertyTypeLabel(property.type)}</div>
-          <h2 className="text-lg font-semibold">{property.name}</h2>
-        </div>
-        <button
-          onClick={() => setSelectedProperty(null)}
-          className="text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          <X className="size-6" />
-        </button>
-      </div>
-
-      <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
-        <div className="relative">
-          <img
-            src={property.images[currentImageIndex]}
-            alt={property.name}
-            className="w-full h-56 sm:h-72 md:h-96 object-cover rounded-lg"
-          />
-          {property.images.length > 1 && (
-            <>
-              <button
-                onClick={prevImage}
-                className="absolute left-2 top-1/2 -translate-y-1/2 bg-white bg-opacity-80 p-2 rounded-full hover:bg-opacity-100 transition-all"
-              >
-                <ChevronLeft className="size-6" />
-              </button>
-              <button
-                onClick={nextImage}
-                className="absolute right-2 top-1/2 -translate-y-1/2 bg-white bg-opacity-80 p-2 rounded-full hover:bg-opacity-100 transition-all"
-              >
-                <ChevronRight className="size-6" />
-              </button>
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-                {property.images.map((_, index) => (
-                  <div
-                    key={index}
-                    className={`size-2 rounded-full ${
-                      index === currentImageIndex ? "bg-white" : "bg-white bg-opacity-50"
-                    }`}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-              </div>
-              <div>
-                <h3 className="mb-2 font-semibold">Description</h3>
-                <p className="text-gray-600">{property.description}</p>
-              </div>
-              <div>
-                <h3 className="mb-2 font-semibold">Location</h3>
-                <p className="text-gray-600">{property.location}</p>
-              </div>
-              <div>
-                <h3 className="mb-2 font-semibold">Features</h3>
-                <ul className="grid grid-cols-2 gap-2">
-                  {property.features.map((feature, index) => (
-                    <li key={index} className="flex items-center gap-2 text-gray-600">
-                      <div className="size-1.5 bg-blue-600 rounded-full" />{feature}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="bg-blue-50 p-4 rounded-lg flex justify-between items-center">
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Price</p>
-                  <div className="text-blue-600">{formatCurrency(property.price)} <span className="text-sm">{getPriceLabel(property.type)}</span></div>
-                </div>
-                {property.capacity && (
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Capacity</p>
-                    <p className="text-gray-900">{property.capacity} persons</p>
-                  </div>
-                )}
-              </div>
-              <div>
-                <h3 className="mb-2 font-semibold">Policies</h3>
-                <p className="text-sm text-gray-600">{property.policies}</p>
-              </div>
-              <div className="pt-4 border-t border-gray-200">
-                <Link to="/register" className="block w-full text-center px-4 sm:px-6 lg:px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">Reserve Now - Sign Up Required</Link>
-              </div>
-            </div>
-          </div>
-        </div>
+        <PropertyModal
+          property={property}
+          onClose={() => setSelectedProperty(null)}
+        />
       )}
     </div>
   );

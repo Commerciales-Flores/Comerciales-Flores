@@ -48,11 +48,31 @@ export default function Register() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
-        if (formData.password !== formData.confirmPassword) return setError('Passwords do not match');
+
+        if (formData.password !== formData.confirmPassword) {
+            setError('Passwords do not match');
+            return;
+        }
+
         setLoading(true);
-        // ... registration logic
-        setLoading(false);
-    };
+
+        const success = await register({
+            name: formData.name,
+            email: formData.email,
+            contactNumber: formData.contactNumber,
+            address: formData.address,
+            password: formData.password,
+        });
+
+        if (!success) {
+            setError('Email already exists.');
+            setLoading(false);
+            return;
+        }
+
+        // redirect handled automatically because user is now set in context
+        navigate('/client/dashboard', { replace: true });
+        };
 
     return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 selection:bg-blue-100">
@@ -60,7 +80,7 @@ export default function Register() {
                 <div className="grid grid-cols-1 md:grid-cols-2">
                     
                     {/* Left Panel: Marketing (Position Maintained) */}
-                    <div className="p-12 bg-slate-900 flex flex-col justify-between relative overflow-hidden">
+                    <div className="p-12 bg-slate-900 flex flex-col justify-between relative overflow-hidden hidden md:flex">
                         <div className="relative z-10">
                             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-400/20 text-blue-400 text-[11px] font-bold uppercase tracking-[0.1em] mb-8">
                                 <Building2 className="size-3.5" />
@@ -99,9 +119,9 @@ export default function Register() {
                     </div>
 
                     {/* Right Panel: Form (Position Maintained) */}
-                    <main className="p-12 bg-white">
+                    <main className="p-6 md:p-12 bg-white">
                         <div className="mb-10">
-                            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Create Account</h1>
+                            <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">Create Account</h1>
                             <p className="text-slate-500 text-sm mt-1.5 font-medium">Please fill in your details to get started.</p>
                         </div>
 
@@ -114,7 +134,7 @@ export default function Register() {
 
                         <form onSubmit={handleSubmit} className="space-y-5">
                             {/* Profile Image Upload */}
-                            <div className="flex items-center gap-5 mb-8 p-4 bg-slate-50 rounded-2xl border border-slate-100 transition-all hover:border-slate-200">
+                            <div className="flex flex-col sm:flex-row items-center gap-5 mb-8 p-4 bg-slate-50 rounded-2xl border border-slate-100 transition-all hover:border-slate-200">
                                 <div className="relative">
                                     {profilePreview ? (
                                         <img src={profilePreview} className="size-16 rounded-2xl object-cover ring-4 ring-white shadow-sm" alt="Preview" />
@@ -196,7 +216,7 @@ export default function Register() {
                                         />
                                     </div>
                                     <div className="space-y-1.5">
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Confirm</label>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Confirm Password</label>
                                         <input
                                             type="password" required value={formData.confirmPassword}
                                             onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}

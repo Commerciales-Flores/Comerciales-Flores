@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { useNotifications } from '../../contexts/NotificationContext';
-import { Mail, Send, X, CheckCircle, Clock, MessageSquare, Filter, User, Calendar } from 'lucide-react';
+import { Mail, Send, X, CheckCircle, Clock, MessageSquare, User, Calendar, ChevronLeft } from 'lucide-react';
 
 export default function AdminInquiries() {
   const { inquiries, updateInquiry } = useData();
@@ -9,10 +9,14 @@ export default function AdminInquiries() {
   const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'responded' | 'resolved'>('all');
   const [selectedInquiry, setSelectedInquiry] = useState<string | null>(null);
   const [response, setResponse] = useState('');
+  // New state to manage mobile view toggle
+  const [showMobileDetail, setShowMobileDetail] = useState(false);
 
-  // Auto-clear response box when switching inquiries
   useEffect(() => {
     setResponse('');
+    if (selectedInquiry) {
+      setShowMobileDetail(true);
+    }
   }, [selectedInquiry]);
 
   const filteredInquiries = filterStatus === 'all' 
@@ -52,20 +56,20 @@ export default function AdminInquiries() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto py-8 px-4 space-y-6 h-[calc(100vh-120px)] flex flex-col">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
+    <div className="max-w-6xl mx-auto py-4 md:py-8 px-4 space-y-6 h-[calc(100vh-80px)] md:h-[calc(100vh-120px)] flex flex-col">
+      {/* Header - Hidden on mobile when viewing a message to save space */}
+      <div className={`${showMobileDetail ? 'hidden md:flex' : 'flex'} flex-col md:flex-row md:items-center justify-between gap-4 shrink-0`}>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Support Inquiries</h1>
-          <p className="text-gray-500">Respond to customer messages and manage ticket status.</p>
+          <p className="text-gray-500">Respond to customer messages.</p>
         </div>
         
-        <div className="flex bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
+        <div className="flex bg-white p-1 rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
           {(['all', 'open', 'responded', 'resolved'] as const).map((status) => (
             <button
               key={status}
               onClick={() => setFilterStatus(status)}
-              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              className={`px-3 md:px-4 py-1.5 rounded-lg text-xs md:text-sm font-medium transition-all whitespace-nowrap ${
                 filterStatus === status ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'
               }`}
             >
@@ -74,12 +78,13 @@ export default function AdminInquiries() {
           ))}
         </div>
       </div>
+      
 
       {/* Main Layout */}
-      <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0 relative">
         
         {/* Left Sidebar: Inquiry List */}
-        <div className="lg:w-1/3 flex flex-col gap-3 overflow-y-auto pr-2 custom-scrollbar">
+        <div className={`${showMobileDetail ? 'hidden lg:flex' : 'flex'} lg:w-1/3 flex-col gap-3 overflow-y-auto pr-2 custom-scrollbar`}>
           {sortedInquiries.length === 0 ? (
             <div className="bg-white rounded-2xl border border-dashed border-gray-300 p-12 text-center">
               <Mail className="size-10 text-gray-300 mx-auto mb-3" />
@@ -118,7 +123,7 @@ export default function AdminInquiries() {
         </div>
 
         {/* Right Content: Inquiry Details */}
-        <div className="lg:w-2/3 flex flex-col min-h-0 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className={`${!showMobileDetail ? 'hidden lg:flex' : 'flex'} lg:w-2/3 flex-col min-h-0 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden absolute inset-0 lg:relative`}>
           {!inquiry ? (
             <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
               <div className="bg-gray-50 p-6 rounded-full mb-4">
@@ -130,23 +135,31 @@ export default function AdminInquiries() {
           ) : (
             <>
               {/* Detail Header */}
-              <div className="p-6 border-b border-gray-100 bg-gray-50/30 flex justify-between items-start">
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900 mb-1">{inquiry.subject}</h2>
-                  <div className="flex flex-wrap gap-4 text-sm text-gray-500">
-                    <span className="flex items-center gap-1.5"><User className="size-4" /> {inquiry.name} ({inquiry.email})</span>
-                    <span className="flex items-center gap-1.5"><Calendar className="size-4" /> {new Date(inquiry.date).toLocaleString()}</span>
+              <div className="p-4 md:p-6 border-b border-gray-100 bg-gray-50/30 flex justify-between items-start">
+                <div className="flex items-start gap-3">
+                  {/* Mobile Back Button */}
+                  <button 
+                    onClick={() => setShowMobileDetail(false)}
+                    className="lg:hidden p-1 -ml-1 hover:bg-gray-200 rounded-full transition-colors"
+                  >
+                    <ChevronLeft className="size-6 text-gray-600" />
+                  </button>
+                  <div>
+                    <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-1">{inquiry.subject}</h2>
+                    <div className="flex flex-col md:flex-row md:flex-wrap md:gap-4 text-xs md:text-sm text-gray-500">
+                      <span className="flex items-center gap-1.5"><User className="size-3 md:size-4" /> {inquiry.name}</span>
+                      <span className="flex items-center gap-1.5"><Calendar className="size-3 md:size-4" /> {new Date(inquiry.date).toLocaleString()}</span>
+                    </div>
                   </div>
                 </div>
-                <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase ${statusStyles[inquiry.status].bg} ${statusStyles[inquiry.status].text} border ${statusStyles[inquiry.status].border}`}>
+                <div className={`flex items-center gap-2 px-2 md:px-3 py-1 rounded-full text-[10px] md:text-xs font-bold uppercase ${statusStyles[inquiry.status].bg} ${statusStyles[inquiry.status].text} border ${statusStyles[inquiry.status].border}`}>
                   {statusStyles[inquiry.status].icon}
                   {inquiry.status}
                 </div>
               </div>
 
               {/* Message Thread */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
-                {/* Customer Message */}
+              <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-8 custom-scrollbar">
                 <div className="flex flex-col items-start max-w-[90%]">
                   <span className="text-[10px] font-bold text-gray-400 uppercase mb-2 ml-1">Customer Message</span>
                   <div className="bg-gray-100 text-gray-800 p-4 rounded-2xl rounded-tl-none shadow-sm">
@@ -154,7 +167,6 @@ export default function AdminInquiries() {
                   </div>
                 </div>
 
-                {/* Previous Response */}
                 {inquiry.response && (
                   <div className="flex flex-col items-end ml-auto max-w-[90%]">
                     <span className="text-[10px] font-bold text-blue-400 uppercase mb-2 mr-1">Your Response</span>
@@ -171,11 +183,11 @@ export default function AdminInquiries() {
               </div>
 
               {/* Action Area */}
-              <div className="p-6 border-t border-gray-100 bg-white">
+              <div className="p-4 md:p-6 border-t border-gray-100 bg-white">
                 {inquiry.status === 'resolved' ? (
                   <div className="bg-green-50 border border-green-100 rounded-xl p-4 flex items-center gap-3 text-green-700">
                     <CheckCircle className="size-5 shrink-0" />
-                    <span className="text-sm font-medium">This inquiry has been resolved and is closed for further responses.</span>
+                    <span className="text-sm font-medium">Ticket resolved.</span>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -189,15 +201,16 @@ export default function AdminInquiries() {
                     <div className="flex gap-3">
                       <button
                         onClick={() => handleResolve(inquiry.id)}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-all"
+                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 border border-gray-200 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-all text-sm"
                       >
                         <CheckCircle className="size-4" />
-                        Resolve Ticket
+                        <span className="hidden sm:inline">Resolve Ticket</span>
+                        <span className="sm:hidden">Resolve</span>
                       </button>
                       <button
                         onClick={handleRespond}
                         disabled={!response.trim()}
-                        className="flex-[2] flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-all disabled:opacity-50 shadow-lg shadow-blue-100"
+                        className="flex-[2] flex items-center justify-center gap-2 px-3 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-all disabled:opacity-50 shadow-lg shadow-blue-100 text-sm"
                       >
                         <Send className="size-4" />
                         Send Response

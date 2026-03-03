@@ -2,11 +2,15 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import { Calendar, CreditCard, AlertCircle, MessageSquare, Bell } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
 
 export default function ClientDashboard() {
   const { user } = useAuth();
+  
   const { getReservationsByUserId, getPaymentsByUserId, properties, inquiries, notifications } = useData();
+
+
 
   const userReservations = getReservationsByUserId(user?.id || '');
   const userPayments = getPaymentsByUserId(user?.id || '');

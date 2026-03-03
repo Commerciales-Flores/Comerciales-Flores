@@ -29,13 +29,42 @@ export default function AdminLayout() {
   const [underlineStyle, setUnderlineStyle] = useState({ left: 0, width: 0 });
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
+  useEffect(() => {
+  if (!user) return;
+
+  // Mark the current page as the first internal page
+  window.history.replaceState({ internal: true, dashboard: location.pathname === '/client/dashboard' }, '');
+
+  const handlePopState = (event: PopStateEvent) => {
+    const state = event.state as any;
+
+    if (!state || !state.internal) {
+      // User pressed back to leave the app → log them out
+      logout();
+      navigate('/', { replace: true });
+    } else if (state.dashboard) {
+      // Hard start: dashboard → prevent going back anywhere
+      window.history.pushState({ internal: true, dashboard: true }, '');
+    } else {
+      // Internal navigation → browser handles back normally
+      // Optional: push current state so multiple internal pages don't break
+      window.history.replaceState({ internal: true }, '');
+    }
+  };
+
+  window.addEventListener('popstate', handlePopState);
+
+  return () => window.removeEventListener('popstate', handlePopState);
+}, [user, logout, navigate, location.pathname]);
+
   const handleLogout = () => {
     setShowLogoutConfirm(true);
   };
 
   const confirmLogout = () => {
     logout();
-    navigate("/");
+    setShowLogoutConfirm(false);
+    navigate("/login", { replace: true });
   };
 
   useEffect(() => {
@@ -77,25 +106,25 @@ export default function AdminLayout() {
     )}&background=0D8ABC&color=fff&size=128`;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen flex flex-col bg-gray-50">
 
       {/* HEADER */}
 <header className="bg-blue-900 text-white sticky top-0 z-50 shadow-md border-b border-blue-800">
-  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-16">
+  <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 flex justify-between items-center h-14 sm:h-16 md:h-16">
 
     {/* Brand Identity */}
     <div className="flex items-center gap-3">
       <div className="bg-blue-800 p-2 rounded-lg">
         <Building2 className="size-6 text-blue-300" />
       </div>
-      <div className="hidden sm:block">
-        <h1 className="font-bold tracking-tight text-lg leading-none">Commerciales Flores</h1>
+      <div className="hidden sm:block max-w-[180px] md:max-w-none truncate">
+        <h1 className="font-bold tracking-tight text-base md:text-lg leading-none truncate">Commerciales Flores</h1>
         <p className="text-[10px] uppercase font-bold text-blue-400 tracking-widest mt-1">Admin Portal</p>
       </div>
     </div>
 
     {/* DESKTOP NAV + AVATAR */}
-    <div className="hidden md:flex items-center gap-6">
+    <div className="hidden lg:flex items-center gap-4 xl:gap-6">
       <div className="flex items-center gap-4 pr-6 border-r border-blue-800">
         <span className="text-sm font-medium text-blue-100">
           Welcome, <span className="text-white font-semibold">{user?.name}</span>
@@ -131,7 +160,7 @@ export default function AdminLayout() {
 
     {/* MOBILE HAMBURGER */}
     <button
-      className="md:hidden flex items-center p-2 rounded-lg bg-blue-800 hover:bg-blue-700 transition-colors border border-blue-700"
+      className="lg:hidden flex items-center p-2 rounded-lg bg-blue-800 hover:bg-blue-700 transition-colors border border-blue-700"
       onClick={() => setMobileNavOpen(true)}
       aria-label="Open mobile menu"
     >
@@ -141,23 +170,23 @@ export default function AdminLayout() {
 </header>
 
       {/* DESKTOP NAVBAR */}
-      <nav className="hidden md:block bg-white border-b border-gray-200 shadow-sm relative">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div
-          ref={navRef}
-          className="flex justify-center gap-1.5 px-1 relative"
-        >
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              data-active={location.pathname === item.to ? "true" : undefined}
-              className="relative flex items-center gap-2 px-4 py-3 pr-6 whitespace-nowrap text-gray-600 hover:text-gray-900"
-            >
-              <item.icon className="size-4" />
-              {item.label}
-            </NavLink>
-          ))}
+      <nav className="hidden lg:block bg-white border-b border-gray-200 shadow-sm relative">
+        <div className="w-full overflow-x-auto scrollbar-hide">
+          <div
+            ref={navRef}
+            className="max-w-7xl mx-auto flex justify-start xl:justify-center gap-1 sm:gap-2 px-4 sm:px-6 lg:px-8 relative"
+          >
+            {navItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                data-active={location.pathname === item.to ? "true" : undefined}
+                className="relative flex items-center gap-2 px-3 xl:px-4 py-2 xl:py-3 pr-5 whitespace-nowrap text-sm xl:text-base"
+              >
+                <item.icon className="size-4" />
+                {item.label}
+              </NavLink>
+            ))}
 
           {/* Sliding underline */}
           <span
@@ -179,7 +208,7 @@ export default function AdminLayout() {
             onClick={() => setMobileNavOpen(false)}
           />
 
-          <div className="absolute left-0 top-0 bottom-0 w-64 bg-white shadow-lg flex flex-col">
+          <div className="absolute left-0 top-0 bottom-0 w-64 sm:w-72 bg-white shadow-lg flex flex-col">
             <div className="flex justify-between items-center p-4 border-b border-gray-200">
               <span className="font-bold">Menu</span>
               <button onClick={() => setMobileNavOpen(false)}>
@@ -220,7 +249,7 @@ export default function AdminLayout() {
       )}
 
       {/* MAIN CONTENT */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-1 w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-6 md:py-8">
         <Outlet />
       </main>
       {showLogoutConfirm && (
