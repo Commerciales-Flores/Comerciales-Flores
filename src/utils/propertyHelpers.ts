@@ -1,5 +1,6 @@
 import type { UnitType } from '../contexts/DataContext';
 
+//Change to getUnitTypeLabel
 export function getPropertyTypeLabel(type: UnitType): string {
   switch (type) {
     case 'rental_space':

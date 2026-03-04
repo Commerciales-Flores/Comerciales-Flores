@@ -1,19 +1,16 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
-import { fetchUnits } from '../utils/fetchUnits';   // adjust path as needed
-import { useEffect } from 'react';                  // already available in React
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import supabase from '../supabaseClient';
 
 // ─── Enums / Union Types ──────────────────────────────────────────────────────
-
 export type UnitType = 'rental_space' | 'function_hall' | 'parking_slot';
-export type BookingStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed' | 'approved'; // ✅ FIX 3: added 'approved'
+export type BookingStatus = 'pending' | 'approved' | 'confirmed' | 'completed' | 'cancelled' | 'rejected';
 export type PaymentStatus = 'unpaid' | 'partial' | 'paid';
 export type PaymentMethod = 'cash' | 'cheque' | 'gcash' | 'paymaya' | 'bank_transfer' | 'credit_card' | 'not_applicable';
 export type PaymentCycle = 'monthly' | 'quarterly' | 'full';
-export type InquiryStatus = 'open' | 'responded' | 'resolved';
+export type InquiryStatus = 'open' | 'responded' | 'closed'; 
 export type GuestParkingReservationStatus = 'pending' | 'approved' | 'rejected';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
-
 export interface Unit {
   id: string;
   name: string;
@@ -39,11 +36,8 @@ export interface Booking {
   totalAmount: number;
   status: BookingStatus;
   notes?: string;
-
-  // ✅ FIX 2: Added missing fields that are used in mock data and addPayment logic
-  paidAmount: number;
+  paidAmount: number; 
   requestDate: string;
-
   paymentMethod?: PaymentMethod;
   paymentCycle?: PaymentCycle;
   businessType?: string;
@@ -53,21 +47,43 @@ export interface Booking {
   modeOfVisit: 'online' | 'onsite';
   vehicleType?: string;
   plateNumber?: string;
-  durationType?: 'hours' | 'days';
+  durationType?: 'hours' | 'days' | 'months' | 'years'; 
   slotId?: string;
   slotName?: string;
 }
 
 export interface Payment {
   id: string;
-  bookingId: string;
+  bookingId: string; 
   userId: string;
   amount: number;
   method: PaymentMethod;
   status: PaymentStatus;
   proofOfPayment?: string;
   date: string;
-  notes: string;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface LedgerEntry {
+  id: string; 
+  userId: string;
+  amount: number;
+  date: string;
+}
+
+export interface AuditLog {
+  id: string; 
+  userId: string;
+  action: string;
+  targetTable: string;
+  targetId: string;
+  beforeValue?: Record<string, any>;
+  afterValue?: Record<string, any>;
+  changedFields?: Record<string, any>;
+  timestamp: string;
+  notes?: string;
 }
 
 export interface User {
@@ -121,7 +137,6 @@ export interface ParkingSlot {
   imageUrl: string;
 }
 
-// ✅ FIX 1: Defined the missing GuestParkingReservation interface
 export interface GuestParkingReservation {
   id: string;
   name: string;
@@ -138,15 +153,6 @@ export interface GuestParkingReservation {
   is_a_user: boolean;
 }
 
-export type ParkingFormState = {
-  name: string;
-  contact: string;
-  vehicleInfo: string;
-  slotId: string;
-  paymentMethod: PaymentMethod | '';
-  reference: string;
-};
-
 export interface ContentSettings {
   heroTitle: string;
   heroSubtitle: string;
@@ -159,12 +165,13 @@ export interface ContentSettings {
 }
 
 // ─── Context Type ─────────────────────────────────────────────────────────────
-
 interface DataContextType {
   users: User[];
   units: Unit[];
   bookings: Booking[];
   payments: Payment[];
+  ledgers: LedgerEntry[];
+  auditLogs: AuditLog[];
   inquiries: Inquiry[];
   notifications: Notification[];
   businessSlots: BusinessSlot[];
@@ -172,29 +179,31 @@ interface DataContextType {
   parkingSlots: ParkingSlot[];
   guestParkingReservations: GuestParkingReservation[];
 
-  addUnit: (unit: Omit<Unit, 'id'>) => void;
-  updateUnit: (id: string, unit: Partial<Unit>) => void;
-  deleteUnit: (id: string) => void;
+  addUnit: (unit: Omit<Unit, 'id'>) => Promise<void>;
+  updateUnit: (id: string, unit: Partial<Unit>) => Promise<void>;
+  deleteUnit: (id: string) => Promise<void>;
 
-  addParkingReservation: (
-    // ✅ FIX 7: Also omit 'slotName' since the function derives it internally
-    reservation: Omit<GuestParkingReservation, 'id' | 'status' | 'createdAt' | 'is_a_user' | 'slotName'>
-  ) => void;
+  addParkingReservation: (reservation: Omit<GuestParkingReservation, 'id' | 'status' | 'createdAt' | 'is_a_user' | 'slotName'>) => void;
 
-  // ✅ FIX 4: addBooking omit now matches the implementation (also omits 'status')
-  addBooking: (booking: Omit<Booking, 'id' | 'requestDate' | 'status' | 'paidAmount'>) => string;
-  updateBooking: (id: string, booking: Partial<Booking>) => void;
+  addBooking: (booking: Omit<Booking, 'id' | 'requestDate' | 'status' | 'paidAmount'>) => Promise<string>;
+  updateBooking: (id: string, booking: Partial<Booking>) => Promise<void>;
   deleteBooking: (id: string) => void;
 
-  addPayment: (payment: Omit<Payment, 'id' | 'date'>) => void;
-  updatePayment: (id: string, payment: Partial<Payment>) => void;
+  addPayment: (payment: Omit<Payment, 'id' | 'createdAt' | 'updatedAt' | 'date'>) => Promise<string>;
+  updatePayment: (id: string, payment: Partial<Payment>) => Promise<void>;
+  
+  uploadPaymentProof: (file: File) => Promise<string | null>;
+  uploadPropertyImage: (file: File) => Promise<string | null>; // ✅ Added this
 
-  addInquiry: (inquiry: Omit<Inquiry, 'id' | 'date' | 'status'>) => void;
-  updateInquiry: (id: string, inquiry: Partial<Inquiry>) => void;
+  addLedgerEntry: (entry: Omit<LedgerEntry, 'id'>) => Promise<string>;
+  addAuditLog: (log: Omit<AuditLog, 'id' | 'timestamp'>) => Promise<string>;
 
-  addNotification: (notification: Omit<Notification, 'id' | 'date' | 'read'>) => void;
-  markNotificationRead: (id: string) => void;
-  markAllNotificationsRead: (userId: string) => void;
+  addInquiry: (inquiry: Omit<Inquiry, 'id' | 'date' | 'status'>) => Promise<string>;
+  updateInquiry: (id: string, inquiry: Partial<Inquiry>) => Promise<void>;
+
+  addNotification: (notification: Omit<Notification, 'id' | 'date' | 'read'>) => Promise<void>;
+  markNotificationRead: (id: string) => Promise<void>;
+  markAllNotificationsRead: (userId: string) => Promise<void>;
 
   addBusinessSlot: (slot: Omit<BusinessSlot, 'id'>) => void;
   updateBusinessSlot: (id: string, slot: Partial<BusinessSlot>) => void;
@@ -207,417 +216,873 @@ interface DataContextType {
   getPaymentsByUserId: (userId: string) => Payment[];
   getNotificationsByUserId: (userId: string) => Notification[];
   getInquiriesByUserId: (userId: string) => Inquiry[];
-  // ✅ FIX 5: Added getUserById to the interface
   getUserById: (id: string) => User | undefined;
 }
 
 // ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const MOCK_UNITS: Unit[] = [
-  {
-    id: 'p1',
-    name: 'Commercial Unit 101',
-    type: 'rental_space',
-    description: 'Spacious commercial unit perfect for retail or office space.',
-    price: 25000,
-    images: [
-      'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800',
-      'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=800',
-    ],
-    policies: 'Minimum 1-year contract. Security deposit equivalent to 2 months rent required.',
-    available: true,
-    features: ['50 sqm floor area', 'Air-conditioned', '24/7 security', 'Parking space included', 'Restroom'],
-  },
-  {
-    id: 'p2',
-    name: 'Grand Function Hall',
-    type: 'function_hall',
-    description: 'Elegant function hall suitable for weddings, conferences, and special events.',
-    price: 15000,
-    images: [
-      'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=800',
-      'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800',
-    ],
-    policies: 'Minimum 1-day booking. Full payment required 7 days before event.',
-    capacity: 200,
-    available: true,
-    features: ['200 person capacity', 'Stage and sound system', 'Air-conditioned', 'Catering area', 'LED screen'],
-  },
-  {
-    id: 'p3',
-    name: 'Parking Area',
-    type: 'parking_slot',
-    description: 'Secure covered parking slots available for hourly, daily, or monthly rental.',
-    price: 3000,
-    images: ['https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800'],
-    policies: 'Minimum 1-hour booking. Vehicle must be registered.',
-    available: true,
-    features: ['Covered parking', '24/7 CCTV', 'Security guard', 'Well-lit area'],
-  },
-  {
-    id: 'p4',
-    name: 'Commercial Unit 205',
-    type: 'rental_space',
-    description: 'Modern office space with panoramic windows.',
-    price: 30000,
-    images: ['https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=800'],
-    policies: 'Minimum 1-year contract. Utilities not included.',
-    available: true,
-    features: ['75 sqm floor area', 'Panoramic windows', 'Fiber internet ready', 'Pantry area'],
-  },
-  {
-    id: 'p5',
-    name: 'Intimate Event Space',
-    type: 'function_hall',
-    description: 'Cozy event space perfect for small gatherings.',
-    price: 8000,
-    images: ['https://images.unsplash.com/photo-1511578314322-379afb476865?w=800'],
-    policies: 'Minimum 1-day booking. External catering allowed.',
-    capacity: 50,
-    available: true,
-    features: ['50 person capacity', 'Basic sound system', 'Air-conditioned', 'WiFi included'],
-  },
-];
-
 const MOCK_PARKING_SLOTS: ParkingSlot[] = Array.from({ length: 10 }, (_, i) => ({
   id: `slot-${i + 1}`,
   name: `Slot ${i + 1}`,
   imageUrl: `https://placehold.co/400x300/e2e8f0/475569?text=Slot%20${i + 1}`,
 }));
-
-const MOCK_BOOKINGS: Booking[] = [
-  {
-    id: 'b1',
-    userId: '2',
-    unitId: 'p1',
-    propertyName: 'Commercial Unit 101',
-    unitType: 'rental_space',
-    startDate: '2025-01-15',
-    endDate: '2026-01-14',
-    duration: 12,
-    modeOfVisit: 'online',
-    status: 'confirmed', // ✅ FIX 3: changed from invalid 'approved' to 'confirmed'
-    paymentMethod: 'bank_transfer',
-    paymentIntent: 'pay_later',
-    paymentCycle: 'monthly',
-    totalAmount: 300000,
-    paidAmount: 50000, // ✅ FIX 2: now valid — field exists on Booking
-    requestDate: '2024-12-15', // ✅ FIX 2: now valid — field exists on Booking
-    notes: 'Opening a small restaurant',
-    businessType: 'Food & Beverage',
-  },
-  {
-    id: 'b2',
-    userId: '2',
-    unitId: 'p3',
-    propertyName: 'Covered Parking - Section A',
-    unitType: 'parking_slot',
-    startDate: '2025-12-05',
-    endDate: '2025-12-05',
-    duration: 5,
-    modeOfVisit: 'online',
-    paymentIntent: 'pay_later',
-    status: 'pending',
-    paymentMethod: 'gcash',
-    totalAmount: 250,
-    paidAmount: 0,
-    requestDate: '2025-12-03',
-    notes: 'Client meeting in the area',
-    vehicleType: 'Sedan',
-    plateNumber: 'ABC 1234',
-  },
-];
-
-const MOCK_USERS: User[] = [
-  {
-    id: '2',
-    first_name: 'John',
-    last_name: 'Doe',
-    email: 'client@example.com',
-    contactNumber: '+63 918 765 4321',
-    address: '123 Business Avenue, Manila, Philippines 1000',
-    role: 'customer',
-    is_active: true,
-  },
-];
-
-const MOCK_PAYMENTS: Payment[] = [
-  {
-    id: 'pay1',
-    bookingId: 'b1',
-    userId: '2',
-    amount: 50000,
-    method: 'bank_transfer',
-    status: 'paid',
-    proofOfPayment: 'https://images.unsplash.com/photo-1554224311-beee4f9866a1?w=400',
-    date: '2024-12-20',
-    notes: 'First 2 months payment - advance and deposit',
-  },
-];
-
-const MOCK_INQUIRIES: Inquiry[] = [
-  {
-    id: 'inq1',
-    name: 'Maria Santos',
-    email: 'maria@example.com',
-    subject: 'Availability for December wedding',
-    message: 'Hi, I would like to inquire about the Grand Function Hall availability for December 25, 2025.',
-    status: 'open',
-    date: '2025-12-01',
-  },
-];
-
 const MOCK_CONTENT: ContentSettings = {
   heroTitle: 'Welcome to Commerciales Flores',
   heroSubtitle: 'Your Premier Rental Management Partner',
-  aboutUs:
-    'Commerciales Flores has been serving the community for over 20 years, providing quality commercial spaces, event venues, and parking facilities.',
+  aboutUs: 'Providing quality commercial spaces, event venues, and parking facilities.',
   contactEmail: 'info@comercialesflores.ph',
   contactPhone: '+63 2 8123 4567',
   contactAddress: '123 Business Avenue, Manila, Philippines 1000',
-  announcements: [
-    'New parking rates effective January 2026',
-    'Holiday promo: 10% off on function hall bookings for December',
-  ],
-  policies:
-    'All bookings are subject to admin approval. Payment terms vary by property type. Cancellations must be made 7 days in advance for refund eligibility.',
+  announcements: [],
+  policies: 'All bookings subject to admin approval.',
 };
 
 // ─── Context & Provider ───────────────────────────────────────────────────────
-
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  //const [units, setUnits] = useState<Unit[]>(MOCK_UNITS);
-  const [bookings, setBookings] = useState<Booking[]>(MOCK_BOOKINGS);
-  const [payments, setPayments] = useState<Payment[]>(MOCK_PAYMENTS);
-  const [users] = useState<User[]>(MOCK_USERS); // ✅ FIX 9: removed unused setUsers
-  const [inquiries, setInquiries] = useState<Inquiry[]>(MOCK_INQUIRIES);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [ledgers, setLedgers] = useState<LedgerEntry[]>([]); 
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]); 
+  const [users, setUsers] = useState<User[]>([]);
+  const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [guestParkingReservations, setGuestParkingReservations] = useState<GuestParkingReservation[]>([]);
-  //Supabase Unit Fetching Logic
+  
+  const [guestParkingReservations, _setGuestParkingReservations] = useState<GuestParkingReservation[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
-  const [businessSlots, setBusinessSlots] = useState<BusinessSlot[]>([
-    {
-      id: 'slot1',
-      unitId: 'p1',
-      propertyName: 'Commercial Unit 101',
-      date: '2025-12-10',
-      startTime: '09:00',
-      endTime: '17:00',
-      price: 25000,
-      available: true,
-    },
-    {
-      id: 'slot2',
-      unitId: 'p2',
-      propertyName: 'Grand Function Hall',
-      date: '2025-12-15',
-      startTime: '10:00',
-      endTime: '22:00',
-      price: 15000,
-      available: true,
-    },
-  ]);
-  const [contentSettings, setContentSettings] = useState<ContentSettings>(MOCK_CONTENT);
-  // Fetch units from Supabase on mount
+  const [businessSlots, _setBusinessSlots] = useState<BusinessSlot[]>([]);
+  const [contentSettings, _setContentSettings] = useState<ContentSettings>(MOCK_CONTENT);
+
   useEffect(() => {
-    fetchUnits(3).then((fetched) => {
-      if (fetched.length > 0) {
-        setUnits(fetched);
-      } else {
-        // Fall back to mock data if DB is empty or unreachable
-        setUnits(MOCK_UNITS);
+    // Fetch all unified property data
+    const fetchAllProperties = async () => {
+      try {
+        const { data: baseUnits, error: baseError } = await supabase.from('units').select('*');
+        const { data: rentalUnits } = await supabase.from('rental_units').select('*');
+        const { data: parkingUnits } = await supabase.from('parking_units').select('*');
+        const { data: media } = await supabase.from('media').select('*');
+
+        if (baseError) throw baseError;
+        if (!baseUnits) return;
+
+        const combinedUnits: Unit[] = baseUnits.map(base => {
+          let specific = null;
+          
+          if (base.unit_type === 'rental_space' || base.unit_type === 'function_hall') {
+            specific = rentalUnits?.find(r => r.unit_id === base.unit_id);
+          } else if (base.unit_type === 'parking_slot') {
+            specific = parkingUnits?.find(p => p.unit_id === base.unit_id);
+          }
+
+          // ✅ BULLETPROOF JSONB PARSING: Handles Strings, Objects, and Arrays securely
+          // Grab ALL media rows associated with this unit
+          const unitMediaRecords = media?.filter(m => m.unit_id === base.unit_id) || [];
+          let imagesArray: string[] = [];
+
+          unitMediaRecords.forEach(record => {
+            if (!record.url) return;
+            
+            const rawUrl = record.url;
+
+            if (typeof rawUrl === 'string') {
+              // If it's a direct URL link string
+              if (rawUrl.startsWith('http')) {
+                imagesArray.push(rawUrl);
+              } else {
+                // If it's a stringified JSON object
+                try {
+                  const parsed = JSON.parse(rawUrl);
+                  imagesArray.push(...Object.values(parsed).filter(v => typeof v === 'string') as string[]);
+                } catch (e) { /* ignore broken strings */ }
+              }
+            } else if (typeof rawUrl === 'object' && rawUrl !== null) {
+              // If it correctly returned as a JSONB Object: { "room": "http...", "hall": "http..." }
+              imagesArray.push(...Object.values(rawUrl).filter(v => typeof v === 'string') as string[]);
+            }
+          });
+
+          // Format _text array safely
+          let parsedFeatures: string[] = [];
+          if (Array.isArray(specific?.features)) {
+            parsedFeatures = specific.features;
+          } else if (typeof specific?.features === 'string') {
+            parsedFeatures = (specific.features as string).split(',').map(s => s.trim());
+          }
+
+          return {
+            id: base.unit_id,
+            name: base.title,
+            type: base.unit_type as UnitType,
+            description: specific?.description || '',
+            price: Number(base.price),
+            images: imagesArray,
+            policies: specific?.policies || '',
+            available: base.is_available,
+            features: parsedFeatures,
+            capacity: undefined 
+          };
+        });
+
+        setUnits(combinedUnits);
+      } catch (error) {
+        console.error("Error loading properties from Supabase:", error);
       }
-    });
+    };
+
+    const fetchUsers = async () => {
+      const { data, error } = await supabase.from('users').select('*');
+      if (!error && data) setUsers(data);
+    };
+
+    const fetchBookings = async () => {
+      const { data, error } = await supabase
+        .from('reservations')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        setBookings(data.map((row: any) => ({
+          id: row.reservation_id,
+          userId: row.user_id,
+          unitId: row.unit_id,
+          propertyName: row.title,
+          unitType: row.unit_type,
+          startDate: row.start_date,
+          endDate: row.end_date,
+          duration: row.duration,
+          totalAmount: Number(row.total_amount),
+          status: row.status as BookingStatus,
+          notes: row.notes,
+          paidAmount: Number(row.paid_amount || 0), 
+          requestDate: row.created_at,
+          paymentMethod: row.payment_method,
+          paymentIntent: row.payment_intent,
+          modeOfVisit: row.mode_of_visit,
+          paymentCycle: row.details?.paymentCycle,
+          businessType: row.details?.businessType,
+          eventPurpose: row.details?.eventPurpose,
+          attendees: row.details?.attendees,
+          slotId: row.details?.slotId,
+          slotName: row.details?.slotName,
+          vehicleType: row.details?.vehicleType,
+          plateNumber: row.details?.plateNumber,
+          durationType: row.details?.durationType,
+        })));
+      }
+    };
+
+    const fetchInquiries = async () => {
+      const { data, error } = await supabase.from('messages').select('*').order('date', { ascending: false });
+      if (!error && data) {
+        setInquiries(data.map((row: any) => ({
+          id: row.message_id,
+          userId: row.user_id,
+          name: row.name,
+          email: row.email,
+          subject: row.subject,
+          message: row.message,
+          status: row.status as InquiryStatus,
+          date: row.date,
+          response: row.response,
+          responseDate: row.response_date,
+        })));
+      }
+    };
+    
+    const fetchNotifications = async () => {
+      const { data, error } = await supabase.from('notifications').select('*').order('date', { ascending: false });
+      if (!error && data) {
+        setNotifications(data.map((row: any) => ({
+          id: row.notification_id,
+          userId: row.user_id,
+          title: row.title,
+          message: row.message,
+          type: row.type as any,
+          read: row.is_read,
+          date: row.date,
+        })));
+      }
+    };
+
+    const fetchPayments = async () => {
+      const { data, error } = await supabase.from('payments').select('*').order('created_at', { ascending: false });
+      if (!error && data) {
+        setPayments(data.map((row: any) => ({
+          id: row.payment_id,
+          bookingId: row.reservation_id,
+          userId: row.user_id,
+          amount: Number(row.amount),
+          method: row.method as PaymentMethod,
+          status: row.status as PaymentStatus,
+          proofOfPayment: row.proofOfPayment,
+          date: row.date,
+          notes: row.notes,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at
+        })));
+      }
+    };
+
+    const fetchLedgers = async () => {
+      const { data, error } = await supabase.from('ledger').select('*').order('date', { ascending: false });
+      if (!error && data) {
+        setLedgers(data.map((row: any) => ({
+          id: row.ledger_id,
+          userId: row.user_id,
+          amount: Number(row.amount),
+          date: row.date
+        })));
+      }
+    };
+
+    const fetchAuditLogs = async () => {
+      const { data, error } = await supabase.from('audit_log').select('*').order('timestamp', { ascending: false });
+      if (!error && data) {
+        setAuditLogs(data.map((row: any) => ({
+          id: row.audit_id,
+          userId: row.user_id,
+          action: row.action,
+          targetTable: row.target_table,
+          targetId: row.target_id,
+          beforeValue: row.before_value,
+          afterValue: row.after_value,
+          changedFields: row.changed_fields,
+          timestamp: row.timestamp,
+          notes: row.notes
+        })));
+      }
+    };
+
+    fetchAllProperties();
+    fetchUsers();
+    fetchBookings();
+    fetchInquiries();
+    fetchNotifications();
+    fetchPayments();
+    fetchLedgers();
+    fetchAuditLogs();
   }, []);
-  // ── Units ──────────────────────────────────────────────────────────────
 
-  const addUnit = (unit: Omit<Unit, 'id'>) => {
-    setUnits(prev => [...prev, { ...unit, id: Date.now().toString() }]);
+  // ── Storage ─────────────────────────────────────────────────────────────────
+  const uploadPaymentProof = async (file: File): Promise<string | null> => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `receipts/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('payment_proofs')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('payment_proofs')
+        .getPublicUrl(filePath);
+
+      return data.publicUrl;
+    } catch (error) {
+      console.error("Error uploading proof:", error);
+      return null;
+    }
   };
 
-  const updateUnit = (id: string, unit: Partial<Unit>) => {
-    setUnits(prev => prev.map(u => (u.id === id ? { ...u, ...unit } : u)));
+  // ✅ NEW: Upload property images
+  const uploadPropertyImage = async (file: File): Promise<string | null> => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `properties/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('property_images') // Must match your public bucket name exactly
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('property_images')
+        .getPublicUrl(filePath);
+
+      return data.publicUrl;
+    } catch (error) {
+      console.error("Error uploading property image:", error);
+      return null;
+    }
   };
 
-  const deleteUnit = (id: string) => {
-    setUnits(prev => prev.filter(u => u.id !== id));
+  // ── Units ──────────────────────────────────────────────────────────────────
+  const addUnit = async (unitData: Omit<Unit, 'id'>): Promise<void> => {
+    try {
+      const { data: baseUnit, error: baseError } = await supabase
+        .from('units')
+        .insert([{
+          unit_type: unitData.type,
+          title: unitData.name,
+          is_available: unitData.available,
+          price: unitData.price
+        }])
+        .select()
+        .single();
+
+      if (baseError) throw baseError;
+      const newUnitId = baseUnit.unit_id;
+
+      const specificData = {
+        unit_id: newUnitId,
+        title: unitData.name,
+        description: unitData.description,
+        policies: unitData.policies,
+        features: unitData.features 
+      };
+
+      let tableError = null;
+
+      if (unitData.type === 'rental_space' || unitData.type === 'function_hall') {
+        const { error } = await supabase.from('rental_units').insert([specificData]);
+        tableError = error;
+      } else if (unitData.type === 'parking_slot') {
+        const { error } = await supabase.from('parking_units').insert([specificData]);
+        tableError = error;
+      }
+
+      if (tableError) {
+        console.error("Sub-table insert failed, rolling back base unit...", tableError);
+        await supabase.from('units').delete().eq('unit_id', newUnitId);
+        throw tableError;
+      }
+
+      if (unitData.images && unitData.images.length > 0) {
+        const jsonbUrls = unitData.images.reduce((acc, url, index) => {
+          acc[`image_${index + 1}`] = url;
+          return acc;
+        }, {} as Record<string, string>);
+        
+        const { error: mediaError } = await supabase.from('media').insert([{
+          unit_id: newUnitId,
+          url: jsonbUrls, 
+          media_type: 'image'
+        }]);
+        
+        if (mediaError) console.error("Media insert failed, but unit was saved:", mediaError);
+      }
+
+      setUnits(prev => [...prev, { ...unitData, id: newUnitId }]);
+    } catch (error) {
+      console.error("Error adding unit:", error);
+      throw error;
+    }
+  };
+
+  const updateUnit = async (id: string, unitUpdate: Partial<Unit>): Promise<void> => {
+    try {
+      const existingUnit = units.find(u => u.id === id);
+      if (!existingUnit) return;
+
+      const basePayload: any = {};
+      if (unitUpdate.type !== undefined) basePayload.unit_type = unitUpdate.type;
+      if (unitUpdate.name !== undefined) basePayload.title = unitUpdate.name;
+      if (unitUpdate.available !== undefined) basePayload.is_available = unitUpdate.available;
+      if (unitUpdate.price !== undefined) basePayload.price = unitUpdate.price;
+
+      if (Object.keys(basePayload).length > 0) {
+        const { error } = await supabase.from('units').update(basePayload).eq('unit_id', id);
+        if (error) throw error;
+      }
+
+      const specificPayload: any = {};
+      if (unitUpdate.name !== undefined) specificPayload.title = unitUpdate.name;
+      if (unitUpdate.description !== undefined) specificPayload.description = unitUpdate.description;
+      if (unitUpdate.policies !== undefined) specificPayload.policies = unitUpdate.policies;
+      if (unitUpdate.features !== undefined) specificPayload.features = unitUpdate.features;
+
+      if (Object.keys(specificPayload).length > 0) {
+        const tableName = (existingUnit.type === 'rental_space' || existingUnit.type === 'function_hall') 
+                          ? 'rental_units' 
+                          : 'parking_units';
+        
+        const { error } = await supabase.from(tableName).update(specificPayload).eq('unit_id', id);
+        if (error) throw error;
+      }
+
+      if (unitUpdate.images !== undefined) {
+        await supabase.from('media').delete().eq('unit_id', id);
+        
+        if (unitUpdate.images.length > 0) {
+          const jsonbUrls = unitUpdate.images.reduce((acc, url, index) => {
+            acc[`image_${index + 1}`] = url;
+            return acc;
+          }, {} as Record<string, string>);
+
+          await supabase.from('media').insert([{
+            unit_id: id,
+            url: jsonbUrls, 
+            media_type: 'image'
+          }]);
+        }
+      }
+
+      setUnits(prev => prev.map(u => (u.id === id ? { ...u, ...unitUpdate } : u)));
+    } catch (error) {
+      console.error("Error updating unit:", error);
+      throw error;
+    }
+  };
+
+  const deleteUnit = async (id: string): Promise<void> => {
+    try {
+      const existingUnit = units.find(u => u.id === id);
+      if (!existingUnit) return;
+
+      await supabase.from('media').delete().eq('unit_id', id);
+      
+      const tableName = (existingUnit.type === 'rental_space' || existingUnit.type === 'function_hall') 
+                        ? 'rental_units' 
+                        : 'parking_units';
+                      
+      await supabase.from(tableName).delete().eq('unit_id', id);
+
+      const { error } = await supabase.from('units').delete().eq('unit_id', id);
+      if (error) throw error;
+
+      setUnits(prev => prev.filter(u => u.id !== id));
+    } catch (error) {
+      console.error("Error deleting unit:", error);
+      throw error;
+    }
   };
 
   // ── Bookings ────────────────────────────────────────────────────────────────
+  const addBooking = async (bookingData: Omit<Booking, 'id' | 'requestDate' | 'status' | 'paidAmount'>): Promise<string> => {
+    try {
+      const details = {
+        paymentCycle: bookingData.paymentCycle,
+        businessType: bookingData.businessType,
+        eventPurpose: bookingData.eventPurpose,
+        attendees: bookingData.attendees,
+        slotId: bookingData.slotId,
+        slotName: bookingData.slotName,
+        vehicleType: bookingData.vehicleType,
+        plateNumber: bookingData.plateNumber,
+        durationType: bookingData.durationType,
+      };
 
-  // ✅ FIX 4: Omit list matches the interface — 'status' is also omitted so caller doesn't pass it
-  const addBooking = (booking: Omit<Booking, 'id' | 'requestDate' | 'status' | 'paidAmount'>): string => {
-    const newBooking: Booking = {
-      ...booking,
-      id: 'b' + Date.now().toString(),
-      requestDate: new Date().toISOString().split('T')[0],
-      status: 'pending',
-      paidAmount: 0,
-    };
-    setBookings(prev => [...prev, newBooking]);
-    return newBooking.id;
+      const cleanDetails = Object.fromEntries(Object.entries(details).filter(([_, v]) => v !== undefined));
+
+      const { data, error } = await supabase
+        .from('reservations')
+        .insert([{
+          user_id: bookingData.userId,
+          unit_id: bookingData.unitId,
+          title: bookingData.propertyName,
+          unit_type: bookingData.unitType,
+          start_date: bookingData.startDate,
+          end_date: bookingData.endDate,
+          duration: bookingData.duration,
+          total_amount: bookingData.totalAmount,
+          status: 'pending',
+          payment_method: bookingData.paymentMethod,
+          payment_intent: bookingData.paymentIntent,
+          mode_of_visit: bookingData.modeOfVisit,
+          notes: bookingData.notes,
+          details: cleanDetails
+        }])
+        .select() 
+        .single();
+
+      if (error) throw error;
+
+      const newBooking: Booking = {
+        id: data.reservation_id, 
+        userId: data.user_id,
+        unitId: data.unit_id,
+        propertyName: data.title,
+        unitType: data.unit_type as UnitType,
+        startDate: data.start_date,
+        endDate: data.end_date,
+        duration: data.duration,
+        totalAmount: Number(data.total_amount), 
+        status: data.status as BookingStatus,
+        notes: data.notes,
+        paidAmount: Number(data.paid_amount || 0),
+        requestDate: data.created_at, 
+        paymentMethod: data.payment_method as any,
+        paymentIntent: data.payment_intent as any,
+        modeOfVisit: data.mode_of_visit as any,
+        ...cleanDetails
+      };
+
+      setBookings(prev => [newBooking, ...prev]);
+      return newBooking.id;
+    } catch (error) {
+      console.error("Error inserting booking:", error);
+      throw error; 
+    }
   };
 
-  const updateBooking = (id: string, booking: Partial<Booking>) => {
-    setBookings(prev => prev.map(b => (b.id === id ? { ...b, ...booking } : b)));
+  const updateBooking = async (id: string, booking: Partial<Booking>): Promise<void> => {
+    try {
+      const dbPayload: any = {};
+      if (booking.status) dbPayload.status = booking.status;
+      if (booking.paidAmount !== undefined) dbPayload.paid_amount = booking.paidAmount;
+
+      const { error } = await supabase
+        .from('reservations')
+        .update(dbPayload)
+        .eq('reservation_id', id);
+
+      if (error) throw error;
+
+      setBookings(prev => prev.map(b => (b.id === id ? { ...b, ...booking } : b)));
+    } catch (error) {
+      console.error("Error updating booking:", error);
+      throw error;
+    }
   };
 
-  const deleteBooking = (id: string) => {
-    setBookings(prev => prev.filter(b => b.id !== id));
+  const deleteBooking = (id: string) => { setBookings(prev => prev.filter(b => b.id !== id)); };
+
+  // ── Payments (WITH AUTO AUDIT, LEDGER, & BOOKING SYNC) ─────────────────────────
+  const addPayment = async (paymentData: Omit<Payment, 'id' | 'createdAt' | 'updatedAt' | 'date'>): Promise<string> => {
+    try {
+      const paymentDate = new Date().toISOString(); 
+      const { data, error } = await supabase
+        .from('payments')
+        .insert([{
+          user_id: paymentData.userId,
+          reservation_id: paymentData.bookingId,
+          amount: paymentData.amount,
+          method: paymentData.method,
+          status: paymentData.status,
+          proofOfPayment: paymentData.proofOfPayment,
+          date: paymentDate, 
+          notes: paymentData.notes
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newPayment: Payment = {
+        id: data.payment_id,
+        bookingId: data.reservation_id,
+        userId: data.user_id,
+        amount: Number(data.amount),
+        method: data.method as PaymentMethod,
+        status: data.status as PaymentStatus,
+        proofOfPayment: data.proofOfPayment,
+        date: data.date,
+        notes: data.notes,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      };
+
+      addAuditLog({
+        userId: newPayment.userId,
+        action: 'INSERT',
+        targetTable: 'payments',
+        targetId: newPayment.id,
+        afterValue: newPayment,
+        notes: `Created new payment for reservation ${newPayment.bookingId}`
+      }).catch(err => console.error("Failed to write audit log:", err));
+
+      if (newPayment.status === 'paid') {
+        addLedgerEntry({
+          userId: newPayment.userId,
+          amount: newPayment.amount,
+          date: newPayment.date
+        }).catch(err => console.error("Failed to write ledger entry:", err));
+
+        const booking = bookings.find(b => b.id === newPayment.bookingId);
+        if (booking) {
+          updateBooking(booking.id, { paidAmount: booking.paidAmount + newPayment.amount })
+            .catch(err => console.error("Failed to update booking paid amount:", err));
+        }
+      }
+
+      setPayments(prev => [newPayment, ...prev]);
+      return newPayment.id;
+    } catch (error) {
+      console.error("Error inserting payment:", error);
+      throw error;
+    }
   };
 
-  // ── Payments ────────────────────────────────────────────────────────────────
+  const updatePayment = async (id: string, paymentUpdate: Partial<Payment>): Promise<void> => {
+    try {
+      const existingPayment = payments.find(p => p.id === id);
+      
+      const dbPayload: any = {};
+      if (paymentUpdate.status) dbPayload.status = paymentUpdate.status;
+      if (paymentUpdate.amount !== undefined) dbPayload.amount = paymentUpdate.amount;
+      if (paymentUpdate.method) dbPayload.method = paymentUpdate.method;
+      if (paymentUpdate.proofOfPayment) dbPayload.proofOfPayment = paymentUpdate.proofOfPayment;
+      if (paymentUpdate.notes) dbPayload.notes = paymentUpdate.notes;
 
-  const addPayment = (payment: Omit<Payment, 'id' | 'date'>) => {
-    const newPayment: Payment = {
-      ...payment,
-      id: 'pay' + Date.now().toString(),
-      date: new Date().toISOString().split('T')[0],
-    };
-    setPayments(prev => [...prev, newPayment]);
+      const { error } = await supabase
+        .from('payments')
+        .update(dbPayload)
+        .eq('payment_id', id);
 
-    // Keep paidAmount on the booking in sync
-    setBookings(prev =>
-      prev.map(b =>
-        b.id === payment.bookingId
-          ? { ...b, paidAmount: b.paidAmount + payment.amount }
-          : b
-      )
-    );
+      if (error) throw error;
+
+      if (existingPayment) {
+        addAuditLog({
+          userId: existingPayment.userId, 
+          action: 'UPDATE',
+          targetTable: 'payments',
+          targetId: id,
+          beforeValue: existingPayment,
+          afterValue: { ...existingPayment, ...paymentUpdate },
+          changedFields: paymentUpdate,
+          notes: `Updated payment ${id}`
+        }).catch(err => console.error("Failed to write audit log:", err));
+
+        if (existingPayment.status !== 'paid' && paymentUpdate.status === 'paid') {
+          const finalAmount = paymentUpdate.amount !== undefined ? paymentUpdate.amount : existingPayment.amount;
+          addLedgerEntry({
+            userId: existingPayment.userId,
+            amount: finalAmount,
+            date: new Date().toISOString()
+          }).catch(err => console.error("Failed to write ledger entry:", err));
+        }
+
+        const booking = bookings.find(b => b.id === existingPayment.bookingId);
+        if (booking) {
+          let newPaidAmount = booking.paidAmount;
+          let needsBookingUpdate = false;
+
+          if (existingPayment.status !== 'paid' && paymentUpdate.status === 'paid') {
+            newPaidAmount += (paymentUpdate.amount ?? existingPayment.amount);
+            needsBookingUpdate = true;
+          } 
+          else if (existingPayment.status === 'paid' && paymentUpdate.status && paymentUpdate.status !== 'paid') {
+            newPaidAmount -= existingPayment.amount;
+            needsBookingUpdate = true;
+          }
+          else if (existingPayment.status === 'paid' && (!paymentUpdate.status || paymentUpdate.status === 'paid') && paymentUpdate.amount !== undefined && paymentUpdate.amount !== existingPayment.amount) {
+            newPaidAmount = newPaidAmount - existingPayment.amount + paymentUpdate.amount;
+            needsBookingUpdate = true;
+          }
+
+          if (needsBookingUpdate) {
+            updateBooking(booking.id, { paidAmount: Math.max(0, newPaidAmount) })
+              .catch(err => console.error("Failed to update booking paid amount:", err));
+          }
+        }
+      }
+
+      setPayments(prev => prev.map(p => (p.id === id ? { ...p, ...paymentUpdate } : p)));
+    } catch (error) {
+      console.error("Error updating payment:", error);
+      throw error;
+    }
   };
 
-  const updatePayment = (id: string, payment: Partial<Payment>) => {
-    setPayments(prev => prev.map(p => (p.id === id ? { ...p, ...payment } : p)));
+  // ── Ledger ──────────────────────────────────────────────────────────────────
+  const addLedgerEntry = async (entry: Omit<LedgerEntry, 'id'>): Promise<string> => {
+    try {
+      const { data, error } = await supabase
+        .from('ledger')
+        .insert([{
+          user_id: entry.userId,
+          amount: entry.amount,
+          date: entry.date || new Date().toISOString()
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newEntry: LedgerEntry = {
+        id: data.ledger_id,
+        userId: data.user_id,
+        amount: Number(data.amount),
+        date: data.date
+      };
+
+      setLedgers(prev => [newEntry, ...prev]);
+      return newEntry.id;
+    } catch (error) {
+      console.error("Error inserting ledger entry:", error);
+      throw error;
+    }
   };
 
-  // ── Inquiries ───────────────────────────────────────────────────────────────
+  // ── Audit Log ───────────────────────────────────────────────────────────────
+  const addAuditLog = async (log: Omit<AuditLog, 'id' | 'timestamp'>): Promise<string> => {
+    try {
+      const { data, error } = await supabase
+        .from('audit_log')
+        .insert([{
+          user_id: log.userId,
+          action: log.action,
+          target_table: log.targetTable,
+          target_id: log.targetId,
+          before_value: log.beforeValue,
+          after_value: log.afterValue,
+          changed_fields: log.changedFields,
+          timestamp: new Date().toISOString(),
+          notes: log.notes
+        }])
+        .select()
+        .single();
 
-  const addInquiry = (inquiry: Omit<Inquiry, 'id' | 'date' | 'status'>) => {
-    const newInquiry: Inquiry = {
-      ...inquiry,
-      id: 'inq' + Date.now().toString(),
-      date: new Date().toISOString().split('T')[0],
-      status: 'open',
-    };
-    setInquiries(prev => [...prev, newInquiry]);
+      if (error) throw error;
+
+      const newLog: AuditLog = {
+        id: data.audit_id,
+        userId: data.user_id,
+        action: data.action,
+        targetTable: data.target_table,
+        targetId: data.target_id,
+        beforeValue: data.beforeValue,
+        afterValue: data.afterValue,
+        changedFields: data.changedFields,
+        timestamp: data.timestamp,
+        notes: data.notes
+      };
+
+      setAuditLogs(prev => [newLog, ...prev]);
+      return newLog.id;
+    } catch (error) {
+      console.error("Error inserting audit log:", error);
+      throw error;
+    }
   };
 
-  const updateInquiry = (id: string, inquiry: Partial<Inquiry>) => {
-    setInquiries(prev => prev.map(i => (i.id === id ? { ...i, ...inquiry } : i)));
+  // ── Inquiries ─────────────────────────────────────────────────────────────
+  const addInquiry = async (inquiryData: Omit<Inquiry, 'id' | 'date' | 'status'>): Promise<string> => {
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .insert([{
+          user_id: inquiryData.userId || null,
+          name: inquiryData.name,
+          email: inquiryData.email,
+          subject: inquiryData.subject,
+          message: inquiryData.message,
+          status: 'open',
+          date: new Date().toISOString()
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newInquiry: Inquiry = {
+        id: data.message_id,
+        userId: data.user_id,
+        name: data.name,
+        email: data.email,
+        subject: data.subject,
+        message: data.message,
+        status: data.status as InquiryStatus,
+        date: data.date,
+        response: data.response,
+        responseDate: data.response_date,
+      };
+
+      setInquiries(prev => [newInquiry, ...prev]);
+      return newInquiry.id;
+    } catch (error) {
+      console.error("Error inserting message:", error);
+      throw error;
+    }
   };
 
-  // ── Notifications ────────────────────────────────────────────────────────────
+  const updateInquiry = async (id: string, inquiry: Partial<Inquiry>): Promise<void> => {
+    try {
+      const dbPayload: any = {};
+      if (inquiry.status) dbPayload.status = inquiry.status;
+      if (inquiry.response) dbPayload.response = inquiry.response;
+      if (inquiry.responseDate) dbPayload.response_date = inquiry.responseDate;
 
-  const addNotification = (notification: Omit<Notification, 'id' | 'date' | 'read'>) => {
-    const newNotification: Notification = {
-      ...notification,
-      id: 'notif' + Date.now().toString(),
-      date: new Date().toISOString(),
-      read: false,
-    };
-    setNotifications(prev => [...prev, newNotification]);
+      const { error } = await supabase.from('messages').update(dbPayload).eq('message_id', id);
+      if (error) throw error;
+
+      setInquiries(prev => prev.map(i => (i.id === id ? { ...i, ...inquiry } : i)));
+    } catch (error) {
+      console.error("Error updating inquiry in Supabase:", error);
+      throw error;
+    }
   };
 
-  const markNotificationRead = (id: string) => {
-    setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
+  // ── Notifications ────────────────────────────────────────────────────────
+  const addNotification = async (notification: Omit<Notification, 'id' | 'date' | 'read'>): Promise<void> => {
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .insert([{
+          user_id: notification.userId,
+          title: notification.title,
+          message: notification.message,
+          type: notification.type,
+          is_read: false,
+          date: new Date().toISOString()
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newNotification: Notification = {
+        id: data.notification_id,
+        userId: data.user_id,
+        title: data.title,
+        message: data.message,
+        type: data.type as any,
+        read: data.is_read,
+        date: data.date,
+      };
+
+      setNotifications(prev => [newNotification, ...prev]);
+    } catch (error) {
+      console.error("Error inserting notification:", error);
+    }
   };
 
-  const markAllNotificationsRead = (userId: string) => {
-    setNotifications(prev => prev.map(n => (n.userId === userId ? { ...n, read: true } : n)));
+  const markNotificationRead = async (id: string): Promise<void> => {
+    try {
+      const { error } = await supabase.from('notifications').update({ is_read: true }).eq('notification_id', id);
+      if (error) throw error;
+      setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
+    } catch (error) {
+      console.error("Error marking notification read:", error);
+    }
   };
 
-  // ── Business Slots ───────────────────────────────────────────────────────────
-
-  const addBusinessSlot = (slot: Omit<BusinessSlot, 'id'>) => {
-    setBusinessSlots(prev => [...prev, { ...slot, id: 'bslot' + Date.now().toString() }]);
+  const markAllNotificationsRead = async (userId: string): Promise<void> => {
+    try {
+      const { error } = await supabase.from('notifications').update({ is_read: true }).eq('user_id', userId).eq('is_read', false);
+      if (error) throw error;
+      setNotifications(prev => prev.map(n => (n.userId === userId ? { ...n, read: true } : n)));
+    } catch (error) {
+      console.error("Error marking all notifications read:", error);
+    }
   };
 
-  const updateBusinessSlot = (id: string, slot: Partial<BusinessSlot>) => {
-    setBusinessSlots(prev => prev.map(s => (s.id === id ? { ...s, ...slot } : s)));
-  };
-
-  const deleteBusinessSlot = (id: string) => {
-    setBusinessSlots(prev => prev.filter(s => s.id !== id));
-  };
-
-  // ── Content Settings ─────────────────────────────────────────────────────────
-
-  const updateContentSettings = (settings: Partial<ContentSettings>) => {
-    setContentSettings(prev => ({ ...prev, ...settings }));
-  };
-
-  // ── Guest Parking Reservations ───────────────────────────────────────────────
-
-  const addParkingReservation = (
-    reservation: Omit<GuestParkingReservation, 'id' | 'status' | 'createdAt' | 'is_a_user' | 'slotName'>
-  ) => {
-    // ✅ FIX 6: Look up from MOCK_PARKING_SLOTS (not properties) using the slotId
-    const slot = MOCK_PARKING_SLOTS.find(s => s.id === reservation.slotId);
-    const slotName = slot?.name ?? reservation.slotId; // graceful fallback
-
-    const newReservation: GuestParkingReservation = {
-      ...reservation,
-      id: 'gpr' + Date.now().toString(),
-      status: 'pending',
-      is_a_user: false,
-      createdAt: new Date().toISOString(),
-      slotName,
-    };
-    setGuestParkingReservations(prev => [...prev, newReservation]);
-  };
-
-  // ── Helpers ──────────────────────────────────────────────────────────────────
-
-  const getUnitById = (id: string) => units.find(p => p.id === id);
-  const getBookingsByUserId = (userId: string) => bookings.filter(b => b.userId === userId);
-  const getPaymentsByUserId = (userId: string) => payments.filter(p => p.userId === userId);
-  const getNotificationsByUserId = (userId: string) => notifications.filter(n => n.userId === userId);
-  const getInquiriesByUserId = (userId: string) => inquiries.filter(i => i.userId === userId);
-  const getUserById = (id: string) => users.find(u => u.id === id); // ✅ FIX 5: now also in interface
-
-  // ── Provider ─────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
+  const addBusinessSlot = (_s: any) => {};
+  const updateBusinessSlot = (_id: string, _s: any) => {};
+  const deleteBusinessSlot = (_id: string) => {};
+  const updateContentSettings = (_s: any) => {};
+  const addParkingReservation = (_r: any) => {};
 
   return (
-    <DataContext.Provider
-      value={{
-        users,
-        units,
-        bookings,
-        payments,
-        inquiries,
-        notifications,
-        businessSlots,
-        contentSettings,
-        parkingSlots: MOCK_PARKING_SLOTS,
-        guestParkingReservations,
-        addParkingReservation,
-        addUnit,
-        updateUnit,
-        deleteUnit,
-        addBooking,
-        updateBooking,
-        deleteBooking,
-        addPayment,
-        updatePayment,
-        addInquiry,
-        updateInquiry,
-        addNotification,
-        markNotificationRead,
-        markAllNotificationsRead,
-        addBusinessSlot,
-        updateBusinessSlot,
-        deleteBusinessSlot,
-        updateContentSettings,
-        getUnitById,
-        getBookingsByUserId,
-        getPaymentsByUserId,
-        getNotificationsByUserId,
-        getInquiriesByUserId,
-        getUserById,
-      }}
-    >
+    <DataContext.Provider value={{
+      users, units, bookings, payments, ledgers, auditLogs, inquiries, notifications, businessSlots, contentSettings, parkingSlots: MOCK_PARKING_SLOTS, guestParkingReservations,
+      addParkingReservation, addUnit, updateUnit, deleteUnit, addBooking, updateBooking, deleteBooking, 
+      addPayment, updatePayment, uploadPaymentProof, uploadPropertyImage, addLedgerEntry, addAuditLog, 
+      addInquiry, updateInquiry, addNotification, markNotificationRead, markAllNotificationsRead, 
+      addBusinessSlot, updateBusinessSlot, deleteBusinessSlot, updateContentSettings,
+      getUnitById: (id) => units.find(p => p.id === id),
+      getBookingsByUserId: (userId) => bookings.filter(b => b.userId === userId),
+      getPaymentsByUserId: (userId) => payments.filter(p => p.userId === userId),
+      getNotificationsByUserId: (userId) => notifications.filter(n => n.userId === userId),
+      getInquiriesByUserId: (userId) => inquiries.filter(i => i.userId === userId),
+      getUserById: (id) => users.find(u => u.id === id),
+    }}>
       {children}
     </DataContext.Provider>
   );
@@ -625,8 +1090,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
 export function useData() {
   const context = useContext(DataContext);
-  if (context === undefined) {
-    throw new Error('useData must be used within a DataProvider');
-  }
+  if (context === undefined) throw new Error('useData must be used within a DataProvider');
   return context;
 }

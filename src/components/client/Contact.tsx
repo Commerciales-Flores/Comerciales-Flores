@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useData } from '../../context/DataContext';
-import { useAuth } from '../../context/AuthContext';
+import { useData } from '../../contexts/DataContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { Send, MessageSquare, CheckCircle, Clock, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
 

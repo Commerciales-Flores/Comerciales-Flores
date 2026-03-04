@@ -2,7 +2,8 @@ import { useState } from "react";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import { useData } from "../../contexts/DataContext";
-import type { PropertyType } from "../../contexts/DataContext";
+// ✅ FIX 1: Imported UnitType instead of PropertyType to match your Context
+import type { UnitType } from "../../contexts/DataContext";
 
 import { useAuth } from "../../contexts/AuthContext";
 import { useNotifications } from "../../contexts/NotificationContext";
@@ -43,16 +44,16 @@ export default function ClientProperties() {
   }
 
   const { user } = useAuth();
-  const { properties, addBooking, parkingSlots, bookings } = useData();
+  // ✅ FIX 2: Aliased 'units' to 'properties' so the rest of your code works seamlessly
+  const { units: properties, addBooking, parkingSlots, bookings } = useData();
   const [isSlotPanelOpen, setIsSlotPanelOpen] = useState(false);
   const { sendSystemNotification } = useNotifications();
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterType, setFilterType] = useState<PropertyType | "all">(
-    "all"
-  );
-  const [selectedProperty, setSelectedProperty] = useState<string | null>(
-    null
-  );
+  
+  // ✅ FIX 3: Updated to UnitType
+  const [filterType, setFilterType] = useState<UnitType | "all">("all");
+  
+  const [selectedProperty, setSelectedProperty] = useState<string | null>(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [bookingSuccess, setBookingSuccess] = useState(false);
@@ -132,7 +133,6 @@ export default function ClientProperties() {
 
     const defaultEnd = (() => {
       const e = new Date(defaultStart);
-      // Parking slots minimum 1 month
       if (prop.type === "parking_slot") {
         e.setMonth(e.getMonth() + 1);
       } else if (prop.type === "rental_space") {
@@ -146,18 +146,8 @@ export default function ClientProperties() {
     setBookingForm({
       startDate: prop.type === "parking_slot" ? defaultStart : defaultStart,
       endDate: defaultEnd,
-      duration:
-        prop.type === "parking_slot"
-          ? 1
-          : prop.type === "function_hall"
-          ? 1
-          : 1,
-      durationType:
-        prop.type === "parking_slot"
-          ? "months"
-          : prop.type === "function_hall"
-          ? "days"
-          : "months",
+      duration: prop.type === "parking_slot" ? 1 : prop.type === "function_hall" ? 1 : 1,
+      durationType: prop.type === "parking_slot" ? "months" : prop.type === "function_hall" ? "days" : "months",
       modeOfVisit: "online",
       paymentIntent: "pay_later",
       paymentMethod: "gcash",
@@ -174,24 +164,21 @@ export default function ClientProperties() {
     setShowCalendar(false);
   };
 
-  // compute end date given start/duration/type
   const computeEndFromForm = (start: Date, duration: number, type: DurationType) => {
     const end = new Date(start);
     if (type === "hours") {
       end.setHours(end.getHours() + duration);
     } else if (type === "days") {
-      end.setDate(end.getDate() + duration - 1); // inclusive days
+      end.setDate(end.getDate() + duration - 1);
       end.setHours(23, 59, 59, 999);
     } else {
-      // months
       end.setMonth(end.getMonth() + duration);
-      end.setDate(end.getDate() - 1); // make it inclusive: start + 1 month -> end is day before same date next month
+      end.setDate(end.getDate() - 1);
       end.setHours(23, 59, 59, 999);
     }
     return end;
   };
 
-  // reserved-slot overlap detection with proper handling of hours/days/months
   const getReservedSlotIds = () => {
     if (!bookingForm.startDate || !bookingForm.duration) return new Set<string>();
 
@@ -199,13 +186,12 @@ export default function ClientProperties() {
     const formEnd = computeEndFromForm(formStart, bookingForm.duration, bookingForm.durationType);
 
     const reservedIds = bookings
-      .filter((b) => b.propertyType === "parking_slot" && b.slotId)
+      // ✅ FIX 4: Changed propertyType to unitType
+      .filter((b) => b.unitType === "parking_slot" && b.slotId)
       .filter((b) => {
         const resStart = new Date(b.startDate);
         const resType: DurationType = (b.durationType as DurationType) ?? "days";
         const resEnd = computeEndFromForm(resStart, b.duration, resType);
-
-        // overlap check (inclusive)
         return formStart <= resEnd && formEnd >= resStart;
       })
       .map((b) => b.slotId as string);
@@ -230,7 +216,7 @@ export default function ClientProperties() {
 
   const [showCalendar, setShowCalendar] = useState(false);
 
-  const handleBookingSubmit = (e: React.FormEvent) => {
+  const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!property || !user) return;
 
@@ -241,20 +227,22 @@ export default function ClientProperties() {
     }
 
     const totalAmount = calculateTotalAmount(
-      property.type,
+      property.type as any,
       property.price,
       bookingForm.duration,
       bookingForm.paymentCycle
     );
 
+    // 1. Build the base payload matching the Context's Omit<Booking, ...> interface
     const bookingData: any = {
       userId: user.id,
-      propertyId: property.id,
+      unitId: property.id,
       propertyName: property.name,
-      propertyType: property.type,
+      unitType: property.type,
       startDate: bookingForm.startDate.toISOString(),
       endDate: bookingForm.endDate.toISOString(),
       duration: bookingForm.duration,
+      durationType: bookingForm.durationType, // ✅ Included so DB knows months vs days
       modeOfVisit: bookingForm.modeOfVisit,
       paymentIntent:
         bookingForm.modeOfVisit === "onsite"
@@ -265,6 +253,7 @@ export default function ClientProperties() {
       notes: bookingForm.notes,
     };
 
+    // 2. Attach type-specific data (these get packed into JSONB by the Context)
     if (property.type === "rental_space") {
       bookingData.paymentCycle = bookingForm.paymentCycle;
       bookingData.businessType = bookingForm.businessType;
@@ -278,24 +267,33 @@ export default function ClientProperties() {
         return;
       }
       bookingData.slotId = bookingForm.slotId;
+      bookingData.slotName = selectedSlot.name; 
       bookingData.vehicleType = bookingForm.vehicleType;
       bookingData.plateNumber = bookingForm.plateNumber;
-      bookingData.modeOfVisit = bookingForm.modeOfVisit;
     }
 
-    addBooking(bookingData);
+    // 3. Execute the async booking insertion
+    try {
+      await addBooking(bookingData); // ✅ Now correctly awaits the Supabase insertion
 
-    sendSystemNotification(
-      user.id,
-      "Reservation Request Submitted",
-      `Your reservation request for ${property.name} has been submitted and is pending admin approval.`
-    );
+      sendSystemNotification(
+        user.id,
+        "Reservation Request Submitted",
+        `Your reservation request for ${property.name} has been submitted and is pending admin approval.`
+      );
 
-    setBookingSuccess(true);
-    setTimeout(() => {
-      setShowBookingModal(false);
-      setBookingSuccess(false);
-    }, 2000);
+      setBookingSuccess(true);
+      
+      // Auto-close modal after 2 seconds
+      setTimeout(() => {
+        setShowBookingModal(false);
+        setBookingSuccess(false);
+      }, 2000);
+
+    } catch (error) {
+      console.error("Booking submission failed:", error);
+      alert("There was an error submitting your booking. Please try again.");
+    }
   };
 
   const nextImage = () => {
@@ -339,7 +337,7 @@ export default function ClientProperties() {
             <select
               value={filterType}
               onChange={(e) =>
-                setFilterType(e.target.value as PropertyType | "all")
+                setFilterType(e.target.value as UnitType | "all")
               }
               className="pl-10 pr-8 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
@@ -380,7 +378,7 @@ export default function ClientProperties() {
             />
             <div className="p-4">
               <div className="text-xs text-blue-600 mb-1">
-                {getPropertyTypeLabel(prop.type)}
+                {getPropertyTypeLabel(prop.type as any)}
               </div>
               <h3 className="mb-2">{prop.name}</h3>
               <p className="text-sm text-gray-600 mb-3 line-clamp-2">
@@ -390,7 +388,7 @@ export default function ClientProperties() {
                 <div>
                   <div className="text-blue-600">{formatCurrency(prop.price)}</div>
                   <div className="text-xs text-gray-500">
-                    {getPriceLabel(prop.type)}
+                    {getPriceLabel(prop.type as any)}
                   </div>
                 </div>
                 {prop.capacity && (
@@ -416,12 +414,12 @@ export default function ClientProperties() {
 
       {/* Booking Modal */}
       {showBookingModal && property && (
-        <div className="fixed inset-0 p-4 z-50 overflow-auto">
+        <div className="fixed inset-0 p-4 z-50 overflow-auto bg-black bg-opacity-50">
           <div className="bg-white rounded-lg max-w-4xl w-full mx-auto my-8 max-h-[90vh] overflow-y-auto shadow-xl">
             <div className="flex justify-between items-center p-6 border-b border-gray-200">
               <div>
                 <div className="text-sm text-blue-600 mb-1">
-                  {getPropertyTypeLabel(property.type)}
+                  {getPropertyTypeLabel(property.type as any)}
                 </div>
                 <h2>{property.name}</h2>
               </div>
@@ -455,12 +453,14 @@ export default function ClientProperties() {
                       {property.images.length > 1 && (
                         <>
                           <button
+                            type="button"
                             onClick={prevImage}
                             className="absolute left-2 top-1/2 -translate-y-1/2 bg-white bg-opacity-80 p-1 rounded-full"
                           >
                             <ChevronLeft className="size-5" />
                           </button>
                           <button
+                            type="button"
                             onClick={nextImage}
                             className="absolute right-2 top-1/2 -translate-y-1/2 bg-white bg-opacity-80 p-1 rounded-full"
                           >
@@ -476,20 +476,20 @@ export default function ClientProperties() {
                       <p className="text-sm text-gray-600 mb-1">Price</p>
                       <div className="text-blue-600">
                         {formatCurrency(property.price)}{" "}
-                        <span className="text-sm">{getPriceLabel(property.type)}</span>
+                        <span className="text-sm">{getPriceLabel(property.type as any)}</span>
                       </div>
                     </div>
 
                     <div className="text-sm text-gray-600">
                       <p className="mb-1">
-                        Minimum Duration: {getMinimumDuration(property.type).value}{" "}
-                        {getMinimumDuration(property.type).unit}
+                        Minimum Duration: {getMinimumDuration(property.type as any).value}{" "}
+                        {getMinimumDuration(property.type as any).unit}
                       </p>
                     </div>
                   </div>
 
                   <form onSubmit={handleBookingSubmit} className="space-y-4">
-                    {/* Mode + payment intent for non-parking and parking (consistent UX) */}
+                    {/* Mode + payment intent */}
                     <div className="p-4 border border-gray-200 rounded-lg space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -554,7 +554,6 @@ export default function ClientProperties() {
                             </label>
                           </div>
 
-                          {/* Conditional: show payment fields only when Pay On-site is selected */}
                           {bookingForm.paymentIntent === "pay_onsite" ? (
                             <div className="mt-4">
                               <label className="block text-sm text-gray-700 mb-2">Payment Method</label>
@@ -582,7 +581,7 @@ export default function ClientProperties() {
                       )}
                     </div>
 
-                    {/* Parking slot: monthly minimum, date selection, slot selector, vehicle fields when onsite */}
+                    {/* Parking slot fields */}
                     {property.type === "parking_slot" && (
                       <>
                         <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
@@ -593,7 +592,6 @@ export default function ClientProperties() {
                           <label className="block text-sm text-gray-700 mb-2">
                             Reservation Period (Minimum 1 Month)
                           </label>
-
                           <button
                             type="button"
                             onClick={() => setShowCalendar((s) => !s)}
@@ -605,7 +603,6 @@ export default function ClientProperties() {
                                 : "Please select the dates"}
                             </span>
                           </button>
-
                           {showCalendar && (
                             <div className="mt-2">
                               <Calendar
@@ -615,10 +612,8 @@ export default function ClientProperties() {
                                 onChange={(value) => {
                                   if (value instanceof Date) {
                                     const newStart = new Date(value);
-                                    // set end to one month occupancy (inclusive end)
                                     const newEnd = new Date(newStart);
                                     newEnd.setMonth(newEnd.getMonth() + 1);
-                                    // make end inclusive: subtract 1 day to show actual inclusive period end date
                                     newEnd.setDate(newEnd.getDate() - 1);
                                     newEnd.setHours(23, 59, 59, 999);
 
@@ -668,7 +663,6 @@ export default function ClientProperties() {
                           )}
                         </div>
 
-                        {/* Vehicle inputs only for onsite visits */}
                         {bookingForm.modeOfVisit === "onsite" && (
                           <>
                             <div>
@@ -698,7 +692,7 @@ export default function ClientProperties() {
                       </>
                     )}
 
-                    {/* Function hall: date range (days) */}
+                    {/* Function hall fields */}
                     {property.type === "function_hall" && (
                       <div>
                         <label className="block text-sm text-gray-700 mb-2">Reservation Dates</label>
@@ -737,7 +731,7 @@ export default function ClientProperties() {
                       </div>
                     )}
 
-                    {/* Rental space: lease start + years */}
+                    {/* Rental space fields */}
                     {property.type === "rental_space" && (
                       <>
                         <div>
@@ -771,7 +765,7 @@ export default function ClientProperties() {
                           <input
                             type="number"
                             required
-                            min={getMinimumDuration(property.type).value}
+                            min={getMinimumDuration(property.type as any).value}
                             value={bookingForm.duration}
                             onChange={(e) => {
                               const newDuration = parseInt(e.target.value) || 1;
@@ -790,7 +784,7 @@ export default function ClientProperties() {
                       </>
                     )}
 
-                    {/* Rental-specific fields */}
+                    {/* Rental-specific specific inputs */}
                     {property.type === "rental_space" && (
                       <>
                         <div>
@@ -819,7 +813,7 @@ export default function ClientProperties() {
                       </>
                     )}
 
-                    {/* Function hall fields */}
+                    {/* Function hall specific inputs */}
                     {property.type === "function_hall" && (
                       <>
                         <div>
@@ -849,47 +843,7 @@ export default function ClientProperties() {
                       </>
                     )}
 
-                    {property.type === "parking_slot" && (
-                      <>
-                        <div>
-                          <label className="block text-sm text-gray-700 mb-2">
-                            Vehicle Type
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={bookingForm.vehicleType}
-                            onChange={(e) =>
-                              setBookingForm({
-                                ...bookingForm,
-                                vehicleType: e.target.value,
-                              })
-                            }
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="e.g., Sedan, SUV, Motorcycle"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm text-gray-700 mb-2">
-                            Plate Number
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={bookingForm.plateNumber}
-                            onChange={(e) =>
-                              setBookingForm({
-                                ...bookingForm,
-                                plateNumber: e.target.value,
-                              })
-                            }
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="ABC 1234"
-                          />
-                        </div>
-                      </>
-                    )}
-
+                    {/* Universal Inputs */}
                     <div>
                       <label className="block text-sm text-gray-700 mb-2">
                         Payment Method
@@ -899,8 +853,7 @@ export default function ClientProperties() {
                         onChange={(e) =>
                           setBookingForm({
                             ...bookingForm,
-                            paymentMethod: e.target
-                              .value as any,
+                            paymentMethod: e.target.value,
                           })
                         }
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -909,12 +862,9 @@ export default function ClientProperties() {
                         <option value="cash">Cash</option>
                         <option value="cheque">Cheque</option>
                         <option value="paymaya">PayMaya</option>
-                        <option value="bank_transfer">
-                          Bank Transfer
-                        </option>
-                        <option value="credit_card">
-                          Credit/Debit Card
-                        </option>
+                        <option value="bank_transfer">Bank Transfer</option>
+                        <option value="credit_card">Credit/Debit Card</option>
+                        <option value="not_applicable">Not Applicable</option>
                       </select>
                     </div>
 
@@ -936,24 +886,18 @@ export default function ClientProperties() {
                       />
                     </div>
 
-                    {/* ✅ START: FINAL, WORKING ESTIMATED TOTAL DISPLAY */}
                     <div className="bg-gray-100 p-4 rounded-lg">
-                      <p className="text-sm text-gray-600 mb-1">
-                        Estimated Total
-                      </p>
+                      <p className="text-sm text-gray-600 mb-1">Estimated Total</p>
                       <div className="text-gray-900 font-bold text-lg">
-                        {/* ✅ FIX: Call your existing helper function directly here */}
                         {formatCurrency(
                           calculateTotalAmount(
-                            property.type,
+                            property.type as any,
                             property.price,
                             bookingForm.duration,
-                            bookingForm.paymentCycle,
+                            bookingForm.paymentCycle
                           )
                         )}
                       </div>
-
-                    {/* ✅ END: FINAL, WORKING ESTIMATED TOTAL DISPLAY */}
                       <p className="text-xs text-gray-500 mt-2">
                         * Payment required after admin approval
                       </p>
@@ -961,7 +905,7 @@ export default function ClientProperties() {
 
                     <button
                       type="submit"
-                      className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
                     >
                       Submit Booking Request
                     </button>
@@ -972,7 +916,8 @@ export default function ClientProperties() {
           </div>
         </div>
       )}
-      {/* ✅ PASTE THE SLOT PANEL MODAL CODE RIGHT HERE */}
+
+      {/* Parking Slot Selection Modal */}
       {isSlotPanelOpen && (
         <div className="fixed inset-0 z-[60] bg-black bg-opacity-60 flex items-center justify-center p-4" onClick={() => setIsSlotPanelOpen(false)}>
           <div className="bg-white rounded-lg shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>

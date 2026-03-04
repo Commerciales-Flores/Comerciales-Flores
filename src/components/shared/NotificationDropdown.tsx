@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { CheckCheck, Info, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
-import { useData } from '../../context/DataContext';
+import { useAuth } from '../../contexts/AuthContext';
+// ✅ FIX: Added the 'type' keyword before Notification
+import { useData, type Notification } from '../../contexts/DataContext';
 import { format } from 'date-fns';
 
 interface NotificationDropdownProps {
@@ -10,12 +11,15 @@ interface NotificationDropdownProps {
 
 export default function NotificationDropdown({ onClose }: NotificationDropdownProps) {
   const { user } = useAuth();
-  const { notifications, markNotificationAsRead, markAllNotificationsAsRead } = useData();
+  // ✅ FIX: Matched the exact function names exported by DataContext
+  const { notifications, markNotificationRead, markAllNotificationsRead } = useData();
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const userNotifications = notifications
-    .filter(n => n.userId === user?.id)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const userNotifications = (notifications || [])
+    // ✅ FIX: Added specific Notification types to silence TS7006
+    .filter((n: Notification) => n.userId === user?.id)
+    // ✅ FIX: Changed 'createdAt' to 'date' to match the DataContext schema
+    .sort((a: Notification, b: Notification) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -47,11 +51,14 @@ export default function NotificationDropdown({ onClose }: NotificationDropdownPr
       className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 max-h-96 overflow-hidden flex flex-col"
     >
       <div className="flex items-center justify-between p-4 border-b border-gray-200">
-        <h3 className="text-gray-900">Notifications</h3>
-        {userNotifications.some(n => !n.read) && (
+        <h3 className="text-gray-900 font-semibold">Notifications</h3>
+        {/* ✅ FIX: Typed 'n' here as well */}
+        {userNotifications.some((n: Notification) => !n.read) && (
           <button
-            onClick={() => markAllNotificationsAsRead(user!.id)}
-            className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+            onClick={() => {
+              if (user?.id) markAllNotificationsRead(user.id);
+            }}
+            className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1 font-medium"
           >
             <CheckCheck className="w-4 h-4" />
             Mark all read
@@ -67,7 +74,8 @@ export default function NotificationDropdown({ onClose }: NotificationDropdownPr
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {userNotifications.map((notification) => (
+            {/* ✅ FIX: Typed 'notification' here as well */}
+            {userNotifications.map((notification: Notification) => (
               <div
                 key={notification.id}
                 className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors ${
@@ -75,7 +83,7 @@ export default function NotificationDropdown({ onClose }: NotificationDropdownPr
                 }`}
                 onClick={() => {
                   if (!notification.read) {
-                    markNotificationAsRead(notification.id);
+                    markNotificationRead(notification.id);
                   }
                 }}
               >
@@ -84,15 +92,18 @@ export default function NotificationDropdown({ onClose }: NotificationDropdownPr
                     {getIcon(notification.type)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-gray-900 mb-1">{notification.title}</p>
-                    <p className="text-sm text-gray-600 mb-2">{notification.message}</p>
+                    <p className={`mb-1 ${!notification.read ? 'text-gray-900 font-medium' : 'text-gray-700'}`}>
+                      {notification.title}
+                    </p>
+                    <p className="text-sm text-gray-600 mb-2 leading-snug">{notification.message}</p>
                     <p className="text-xs text-gray-500">
-                      {format(new Date(notification.createdAt), 'MMM d, yyyy h:mm a')}
+                      {/* ✅ FIX: Changed 'createdAt' to 'date' */}
+                      {format(new Date(notification.date), 'MMM d, yyyy h:mm a')}
                     </p>
                   </div>
                   {!notification.read && (
-                    <div className="flex-shrink-0">
-                      <div className="w-2 h-2 bg-blue-600 rounded-full" />
+                    <div className="flex-shrink-0 mt-1">
+                      <div className="w-2.5 h-2.5 bg-blue-600 rounded-full" />
                     </div>
                   )}
                 </div>

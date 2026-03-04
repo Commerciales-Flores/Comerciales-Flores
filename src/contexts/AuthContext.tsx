@@ -1,9 +1,7 @@
-import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { createContext, useContext, useState, type ReactNode, useEffect } from 'react';
 import supabase from '../supabaseClient';
 
-/* 
-  In Progress:
-
+/* In Progress:
   Register:
   - media for profile picture,
   - password hashing
@@ -12,7 +10,8 @@ import supabase from '../supabaseClient';
   Login:
   - forgot password
   - Google and Facebook Sign up
-  */
+*/
+
 interface User {
   id: string;
   email: string;
@@ -57,17 +56,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (error || !data) return false;
 
-    setUser(data);
-    localStorage.setItem('currentUser', JSON.stringify(data));
+    // ✅ Map user_id to user.id
+    const loggedInUser: User = {
+      id: data.user_id, 
+      email: data.email,
+      firstName: data.first_name,
+      lastName: data.last_name,
+      role: data.role,
+      contactNumber: data.phone,
+      address: data.address,
+    };
+
+    setUser(loggedInUser);
+    localStorage.setItem('currentUser', JSON.stringify(loggedInUser));
     return true;
   };
 
-  //Register
-   const register = async (userData: Omit<User, 'id'> & { password: string }): Promise<boolean> => {
+  // Register
+  const register = async (userData: Omit<User, 'id'> & { password: string }): Promise<boolean> => {
     // Check if email already exists
     const { data: existing } = await supabase
       .from('users')
-      .select('id')
+      .select('user_id') // ✅ Updated to user_id
       .eq('email', userData.email)
       .single();
 
@@ -93,7 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error || !data) return false;
 
     const newUser: User = {
-      id: data.id,
+      id: data.user_id, // ✅ Updated from data.id to data.user_id
       email: data.email,
       firstName: data.first_name,
       lastName: data.last_name,
@@ -110,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const recoverPassword = async (email: string): Promise<boolean> => {
     const { data, error } = await supabase
       .from('users')
-      .select('id')
+      .select('user_id') // ✅ Updated to user_id
       .eq('email', email)
       .single();
 
@@ -133,7 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         phone: userData.contactNumber,
         address: userData.address,
       })
-      .eq('id', user.id);
+      .eq('user_id', user.id); // ✅ Updated eq target to user_id
 
     if (!error) {
       const updatedUser = { ...user, ...userData };
@@ -147,8 +157,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data, error } = await supabase
       .from('users')
-      .select('id')
-      .eq('id', user.id)
+      .select('user_id') // ✅ Updated to user_id
+      .eq('user_id', user.id) // ✅ Updated eq target to user_id
       .eq('password_hash', oldPassword)
       .single();
 
@@ -157,7 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error: updateError } = await supabase
       .from('users')
       .update({ password_hash: newPassword })
-      .eq('id', user.id);
+      .eq('user_id', user.id); // ✅ Updated eq target to user_id
 
     return !updateError;
   };

@@ -1,12 +1,11 @@
 import { createContext, useContext, ReactNode } from 'react';
 import { useData } from './DataContext';
-import { useAuth } from './AuthContext';
 
 interface NotificationContextType {
-  sendBookingNotification: (userId: string, bookingId: string, status: 'approved' | 'rejected') => void;
-  sendPaymentNotification: (userId: string, paymentId: string, amount: number) => void;
-  sendInquiryResponseNotification: (userId: string, inquirySubject: string) => void;
-  sendSystemNotification: (userId: string, title: string, message: string) => void;
+  sendBookingNotification: (userId: string, bookingId: string, status: 'approved' | 'rejected') => Promise<void>;
+  sendPaymentNotification: (userId: string, paymentId: string, amount: number) => Promise<void>;
+  sendInquiryResponseNotification: (userId: string, inquirySubject: string) => Promise<void>;
+  sendSystemNotification: (userId: string, title: string, message: string) => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -14,13 +13,13 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const { addNotification } = useData();
 
-  const sendBookingNotification = (userId: string, bookingId: string, status: 'approved' | 'rejected') => {
+  const sendBookingNotification = async (userId: string, bookingId: string, status: 'approved' | 'rejected') => {
     const title = status === 'approved' ? 'Booking Approved' : 'Booking Rejected';
     const message = status === 'approved' 
-      ? `Your booking #${bookingId} has been approved. You may now proceed with payment.`
-      : `Your booking #${bookingId} has been rejected. Please contact support for more information.`;
+      ? `Your booking #${bookingId.split('-')[0]} has been approved. You may now proceed with payment.`
+      : `Your booking #${bookingId.split('-')[0]} has been rejected. Please contact support for more information.`;
     
-    addNotification({
+    await addNotification({
       userId,
       title,
       message,
@@ -28,8 +27,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const sendPaymentNotification = (userId: string, paymentId: string, amount: number) => {
-    addNotification({
+  const sendPaymentNotification = async (userId: string, paymentId: string, amount: number) => {
+    await addNotification({
       userId,
       title: 'Payment Confirmed',
       message: `Your payment of ₱${amount.toLocaleString()} has been confirmed. Payment ID: ${paymentId}`,
@@ -37,8 +36,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const sendInquiryResponseNotification = (userId: string, inquirySubject: string) => {
-    addNotification({
+  const sendInquiryResponseNotification = async (userId: string, inquirySubject: string) => {
+    await addNotification({
       userId,
       title: 'Inquiry Response',
       message: `Admin has responded to your inquiry: "${inquirySubject}"`,
@@ -46,8 +45,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const sendSystemNotification = (userId: string, title: string, message: string) => {
-    addNotification({
+  const sendSystemNotification = async (userId: string, title: string, message: string) => {
+    await addNotification({
       userId,
       title,
       message,

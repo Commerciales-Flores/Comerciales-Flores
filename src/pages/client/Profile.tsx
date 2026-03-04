@@ -9,15 +9,19 @@ export default function ClientProfile() {
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-    // Avatar URL fallback (prefers user.avatarUrl or user.photoURL, then generated initials)
+    // ✅ FIX 1: Safely combine first and last name for the avatar fallback
+    const fullName = user ? `${user.firstName} ${user.lastName}` : 'User';
+    
+    // Avatar URL fallback
     const avatarUrl =
         (user as any)?.avatarUrl ||
         (user as any)?.photoURL ||
-        `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=0D8ABC&color=fff&size=512`;
+        `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=0D8ABC&color=fff&size=512`;
 
+    // ✅ FIX 2: Split name into firstName and lastName to match AuthContext
     const [profileForm, setProfileForm] = useState({
-        name: user?.name || '',
-        email: user?.email || '',
+        firstName: user?.firstName || '',
+        lastName: user?.lastName || '',
         contactNumber: user?.contactNumber || '',
         address: user?.address || ''
     });
@@ -75,8 +79,7 @@ export default function ClientProfile() {
         const reader = new FileReader();
         reader.onload = () => {
             const dataUrl = reader.result as string;
-            // updateProfile may be sync or async — handle both
-            Promise.resolve(updateProfile({ avatarUrl: dataUrl }))
+            Promise.resolve(updateProfile({ ...user, avatarUrl: dataUrl } as any))
                 .then(() => showMessage('success', 'Profile picture updated!'))
                 .catch(() => showMessage('error', 'Failed to update profile picture'));
         };
@@ -87,7 +90,7 @@ export default function ClientProfile() {
         <div className="space-y-6 max-w-7xl mx-auto px-4">
 
             <div>
-                <h1 className="mb-2">Profile Settings</h1>
+                <h1 className="mb-2 text-2xl font-bold text-gray-900">Profile Settings</h1>
                 <p className="text-gray-600">Manage your account information</p>
             </div>
 
@@ -101,18 +104,16 @@ export default function ClientProfile() {
                 </div>
             )}
 
-            {/* Profile Information + Avatar (avatar moved outside the personal information box to the right) */}
             <div className="flex flex-col lg:flex-row">
-
                 {/* Left: Personal Information card */}
                 <div className="lg:flex-1">
-                    <div className="bg-white rounded-lg border border-gray-200">
+                    <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
                         <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-                            <h2>Personal Information</h2>
+                            <h2 className="text-lg font-semibold text-gray-900">Personal Information</h2>
                             {!editing && (
                                 <button
                                     onClick={() => setEditing(true)}
-                                    className="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                    className="px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                 >
                                     Edit Profile
                                 </button>
@@ -121,42 +122,53 @@ export default function ClientProfile() {
 
                         {editing ? (
                             <form onSubmit={handleProfileSubmit} className="p-6 space-y-4">
-                                <div>
-                                    <label className="block text-sm text-gray-700 mb-2">
-                                        Full Name
-                                    </label>
-                                    <div className="relative">
-                                        <User className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
-                                        <input
-                                            type="text"
-                                            required
-                                            value={profileForm.name}
-                                            onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
-                                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
+                                {/* ✅ FIX 3: Split into First and Last Name Inputs */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
+                                        <div className="relative">
+                                            <User className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
+                                            <input
+                                                type="text"
+                                                required
+                                                value={profileForm.firstName}
+                                                onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })}
+                                                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
+                                        <div className="relative">
+                                            <User className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
+                                            <input
+                                                type="text"
+                                                required
+                                                value={profileForm.lastName}
+                                                onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })}
+                                                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm text-gray-700 mb-2">
-                                        Email Address
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                                        Email Address <span className="text-xs text-gray-400 font-normal">(Cannot be changed here)</span>
                                     </label>
                                     <div className="relative">
                                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
                                         <input
                                             type="email"
-                                            required
-                                            value={profileForm.email}
-                                            onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
-                                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            disabled // ✅ Disabled to prevent accidental edits since AuthContext doesn't update this column
+                                            value={user?.email || ''}
+                                            className="w-full pl-10 pr-4 py-2 border border-gray-200 bg-gray-50 text-gray-500 rounded-lg cursor-not-allowed"
                                         />
                                     </div>
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm text-gray-700 mb-2">
-                                        Contact Number
-                                    </label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Contact Number</label>
                                     <div className="relative">
                                         <Phone className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
                                         <input
@@ -170,9 +182,7 @@ export default function ClientProfile() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm text-gray-700 mb-2">
-                                        Address
-                                    </label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
                                     <div className="relative">
                                         <MapPin className="absolute left-3 top-3 size-5 text-gray-400" />
                                         <textarea
@@ -180,74 +190,74 @@ export default function ClientProfile() {
                                             value={profileForm.address}
                                             onChange={(e) => setProfileForm({ ...profileForm, address: e.target.value })}
                                             rows={2}
-                                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                                         />
                                     </div>
                                 </div>
 
-                                <div className="flex gap-3 pt-4">
+                                <div className="flex gap-3 pt-4 border-t border-gray-100">
                                     <button
                                         type="button"
                                         onClick={() => {
                                             setEditing(false);
                                             setProfileForm({
-                                                name: user?.name || '',
-                                                email: user?.email || '',
+                                                firstName: user?.firstName || '',
+                                                lastName: user?.lastName || '',
                                                 contactNumber: user?.contactNumber || '',
                                                 address: user?.address || ''
                                             });
                                         }}
-                                        className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                                        className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
                                     >
                                         Cancel
                                     </button>
                                     <button
                                         type="submit"
-                                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                        className="flex-1 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
                                     >
                                         Save Changes
                                     </button>
                                 </div>
                             </form>
                         ) : (
-                            <div className="p-6 space-y-4">
+                            <div className="p-6 space-y-6">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-gray-100 rounded-lg">
-                                        <User className="size-5 text-gray-600" />
+                                    <div className="p-2 bg-blue-50 rounded-lg">
+                                        <User className="size-5 text-blue-600" />
                                     </div>
                                     <div>
-                                        <p className="text-sm text-gray-600">Name</p>
-                                        <p className="text-gray-900">{user?.name}</p>
+                                        <p className="text-sm font-medium text-gray-500">Full Name</p>
+                                        <p className="text-gray-900 font-medium">{fullName}</p>
                                     </div>
                                 </div>
 
                                 <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-gray-100 rounded-lg">
-                                        <Mail className="size-5 text-gray-600" />
+                                    <div className="p-2 bg-blue-50 rounded-lg">
+                                        <Mail className="size-5 text-blue-600" />
                                     </div>
                                     <div>
-                                        <p className="text-sm text-gray-600">Email</p>
-                                        <p className="text-gray-900">{user?.email}</p>
+                                        <p className="text-sm font-medium text-gray-500">Email Address</p>
+                                        <p className="text-gray-900 font-medium">{user?.email}</p>
                                     </div>
                                 </div>
 
                                 <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-gray-100 rounded-lg">
-                                        <Phone className="size-5 text-gray-600" />
+                                    <div className="p-2 bg-blue-50 rounded-lg">
+                                        <Phone className="size-5 text-blue-600" />
                                     </div>
                                     <div>
-                                        <p className="text-sm text-gray-600">Contact Number</p>
-                                        <p className="text-gray-900">{user?.contactNumber}</p>
+                                        <p className="text-sm font-medium text-gray-500">Contact Number</p>
+                                        <p className="text-gray-900 font-medium">{user?.contactNumber || 'Not provided'}</p>
                                     </div>
                                 </div>
 
                                 <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-gray-100 rounded-lg">
-                                        <MapPin className="size-5 text-gray-600" />
+                                    <div className="p-2 bg-blue-50 rounded-lg">
+                                        <MapPin className="size-5 text-blue-600" />
                                     </div>
                                     <div>
-                                        <p className="text-sm text-gray-600">Address</p>
-                                        <p className="text-gray-900">{user?.address}</p>
+                                        <p className="text-sm font-medium text-gray-500">Address</p>
+                                        <p className="text-gray-900 font-medium">{user?.address || 'Not provided'}</p>
                                     </div>
                                 </div>
                             </div>
@@ -256,24 +266,23 @@ export default function ClientProfile() {
                 </div>
 
                 {/* Right: Larger avatar placed outside the personal information box */}
-                <div className="mt-6 lg:mt-0 lg:w-80 lg:pl-20 flex justify-center items-center">
-
+                <div className="mt-6 lg:mt-0 lg:w-80 lg:pl-10 flex justify-center items-start pt-6">
                     <div className="flex flex-col items-center">
                         <img
                             src={avatarUrl}
-                            alt={user?.name || 'User avatar'}
+                            alt={fullName}
                             onError={(e) => {
                                 const target = e.currentTarget as HTMLImageElement;
                                 target.onerror = null;
-                                target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=0D8ABC&color=fff&size=512`;
+                                target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=0D8ABC&color=fff&size=512`;
                             }}
-                            className="w-24 h-24 sm:w-28 sm:h-28 lg:w-50 lg:h-50 rounded-full object-cover border-2 border-gray-200 shadow-sm"
+                            className="w-32 h-32 lg:w-48 lg:h-48 rounded-full object-cover border-4 border-white shadow-lg"
                         />
                         <div className="mt-4">
                             <button
                                 type="button"
                                 onClick={handleEditPictureClick}
-                                className="px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                className="px-5 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors"
                             >
                                 Edit Picture
                             </button>
@@ -290,16 +299,16 @@ export default function ClientProfile() {
             </div>
 
             {/* Change Password */}
-            <div className="bg-white rounded-lg border border-gray-200">
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm max-w-3xl">
                 <div className="p-6 border-b border-gray-200 flex justify-between items-center">
                     <div>
-                        <h2>Password</h2>
-                        <p className="text-sm text-gray-600 mt-1">Update your password to keep your account secure</p>
+                        <h2 className="text-lg font-semibold text-gray-900">Security</h2>
+                        <p className="text-sm text-gray-500 mt-1">Update your password to keep your account secure</p>
                     </div>
                     {!changingPassword && (
                         <button
                             onClick={() => setChangingPassword(true)}
-                            className="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            className="px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                         >
                             Change Password
                         </button>
@@ -309,9 +318,7 @@ export default function ClientProfile() {
                 {changingPassword ? (
                     <form onSubmit={handlePasswordSubmit} className="p-6 space-y-4">
                         <div>
-                            <label className="block text-sm text-gray-700 mb-2">
-                                Current Password
-                            </label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Current Password</label>
                             <div className="relative">
                                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
                                 <input
@@ -326,9 +333,7 @@ export default function ClientProfile() {
                         </div>
 
                         <div>
-                            <label className="block text-sm text-gray-700 mb-2">
-                                New Password
-                            </label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">New Password</label>
                             <div className="relative">
                                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
                                 <input
@@ -343,9 +348,7 @@ export default function ClientProfile() {
                         </div>
 
                         <div>
-                            <label className="block text-sm text-gray-700 mb-2">
-                                Confirm New Password
-                            </label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Confirm New Password</label>
                             <div className="relative">
                                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
                                 <input
@@ -359,20 +362,20 @@ export default function ClientProfile() {
                             </div>
                         </div>
 
-                        <div className="flex gap-3 pt-4">
+                        <div className="flex gap-3 pt-4 border-t border-gray-100">
                             <button
                                 type="button"
                                 onClick={() => {
                                     setChangingPassword(false);
                                     setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
                                 }}
-                                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
                             >
                                 Cancel
                             </button>
                             <button
                                 type="submit"
-                                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                                className="flex-1 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
                             >
                                 Update Password
                             </button>
@@ -380,7 +383,8 @@ export default function ClientProfile() {
                     </form>
                 ) : (
                     <div className="p-6">
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-gray-500 flex items-center gap-2">
+                            <Lock className="size-4" />
                             •••••••• (Password hidden for security)
                         </p>
                     </div>
@@ -388,12 +392,12 @@ export default function ClientProfile() {
             </div>
 
             {/* Account Info */}
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <p className="text-sm text-gray-600">
-                    <strong>Account Type:</strong> Client
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-5 max-w-3xl">
+                <p className="text-sm text-gray-700">
+                    <strong className="font-semibold">Account Type:</strong> Client
                 </p>
                 <p className="text-sm text-gray-500 mt-2">
-                    Your data is protected in compliance with the Philippine Data Privacy Act of 2012
+                    Your data is protected in compliance with the Philippine Data Privacy Act of 2012.
                 </p>
             </div>
         </div>

@@ -1,20 +1,19 @@
-import { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { useData } from "../../contexts/DataContext";
-import type { PropertyType } from "../../contexts/DataContext"; // ✅ type-only
+import type { UnitType, Unit } from "../../contexts/DataContext"; 
 import { Plus, Edit, Trash2, X, Home, Building2, Car } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 
-// Helper function to map property type to an icon/label
-const PropertyTypeDisplay = ({ type }: { type: PropertyType }) => {
-  const map: Record<PropertyType, { icon: JSX.Element; label: string; color: string }> = {
+const UnitTypeDisplay = ({ type }: { type: UnitType }) => {
+  const map: Record<UnitType, { icon: React.ReactNode; label: string; color: string }> = {
     rental_space: { icon: <Building2 className="size-4" />, label: 'Rental Space', color: 'text-indigo-600 bg-indigo-100' },
     function_hall: { icon: <Home className="size-4" />, label: 'Function Hall', color: 'text-purple-600 bg-purple-100' },
     parking_slot: { icon: <Car className="size-4" />, label: 'Parking Slot', color: 'text-orange-600 bg-orange-100' },
   };
 
-  const { icon, label, color } = map[type];
+  const defaultDisplay = { icon: <Building2 className="size-4" />, label: 'Property', color: 'text-gray-600 bg-gray-100' };
+  const { icon, label, color } = map[type] || defaultDisplay;
 
-  
   return (
     <span className={`inline-flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-full ${color}`}>
       {icon}
@@ -23,166 +22,145 @@ const PropertyTypeDisplay = ({ type }: { type: PropertyType }) => {
   );
 };
 
-// Add this near the top of the file (after imports)
-
-async function uploadImages(files: File[]): Promise<string[]> {
-  if (!files || files.length === 0) return [];
-
-  // Vite uses VITE_, Create React App uses REACT_APP_
-   const endpoint = import.meta.env.VITE_IMAGE_UPLOAD_ENDPOINT;
-
-  if (endpoint) {
-    try {
-      const form = new FormData();
-      files.forEach((f) => form.append("files", f));
-      const res = await fetch(endpoint, { method: "POST", body: form });
-      
-      if (!res.ok) throw new Error(`Server error: ${res.status}`);
-      
-      const data = await res.json();
-      return data.urls ?? [];
-    } catch (err) {
-      console.error("Upload failed, falling back to local previews", err);
-      // Fallback to local previews if the server is down
-    }
-  }
-
-  // Local Preview Fallback
-  return Array.from(files).map((f) => URL.createObjectURL(f));
-}
-
-function revokeObjectURLs(urls: string[] | undefined) {
-  if (!urls) return;
-  urls.forEach((u) => {
-    try {
-      // Only revoke if it looks like an object URL
-      if (u.startsWith("blob:")) URL.revokeObjectURL(u);
-    } catch {
-      // ignore
-    }
-  });
-}
-
 export default function AdminPropertyManagement() {
-  const { properties, addProperty, updateProperty, deleteProperty } = useData();
+  // ✅ FIX: added uploadPropertyImage from DataContext
+  const { units, addUnit, updateUnit, deleteUnit, uploadPropertyImage } = useData();
+  
   const [showModal, setShowModal] = useState(false);
-  const [editingPropertyId, setEditingPropertyId] = useState<string | null>(null);
+  const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
   const [hoveredButtonIndex, setHoveredButtonIndex] = useState<number | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
   const initialFormState = {
     name: '',
-    type: '' as PropertyType | '',
+    type: '' as UnitType | '',
     description: '',
     price: '',
-    images: '', // Comma-separated string of URLs
+    images: '', 
     policies: '',
-    capacity: '', // Optional number
+    capacity: '', 
     available: true,
-    features: '' // Comma-separated string of features
+    features: '' 
   };
 
   const [propertyForm, setPropertyForm] = useState(initialFormState);
-
-  // file input ref to trigger explorer programmatically
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  // lightbox state for enlarged preview
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
   const resetForm = () => {
-    // Revoke any object URLs created during session to avoid memory leaks
     try {
+      // Just in case any old broken blob URLs are lingering in state
       const prev = propertyForm.images ? propertyForm.images.split(',').map(s => s.trim()).filter(Boolean) : [];
-      revokeObjectURLs(prev);
-    } catch {
-      /* ignore */
-    }
+      prev.forEach((u) => {
+        if (u.startsWith("blob:")) URL.revokeObjectURL(u);
+      });
+    } catch { /* ignore */ }
+    
     setPropertyForm(initialFormState);
-    setEditingPropertyId(null);
+    setEditingUnitId(null);
     setShowModal(false);
     setLightboxImage(null);
   };
 
-    const removeImage = (url: string) => {
-        setPropertyForm(prev => {
-            const remaining = prev.images
-                .split(',')
-                .map(s => s.trim())
-                .filter(img => img !== url);
+  const removeImage = (url: string) => {
+      setPropertyForm(prev => {
+          const remaining = prev.images
+              .split(',')
+              .map(s => s.trim())
+              .filter(img => img !== url);
 
-            // Revoke object URL if needed
-            try {
-                if (url.startsWith('blob:')) URL.revokeObjectURL(url);
-            } catch { }
-
-            return { ...prev, images: remaining.join(', ') };
-        });
-    };
-
+          return { ...prev, images: remaining.join(', ') };
+      });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
 
-    // propertyForm.images already contains uploaded image URLs (or object URLs)
-    const imageUrls = propertyForm.images
-      ? propertyForm.images.split(',').map(s => s.trim()).filter(s => s.length > 0)
-      : [];
+    try {
+      const imageUrls = propertyForm.images
+        ? propertyForm.images.split(',').map(s => s.trim()).filter(s => s.length > 0)
+        : [];
 
-    const propertyData = {
-      name: propertyForm.name,
-      type: propertyForm.type as PropertyType,
-      description: propertyForm.description,
-      price: parseFloat(propertyForm.price),
-      images: imageUrls,
-      policies: propertyForm.policies,
-      capacity: propertyForm.capacity ? parseInt(propertyForm.capacity) : undefined,
-      available: propertyForm.available,
-      features: propertyForm.features.split(',').map(s => s.trim()).filter(s => s.length > 0)
-    };
+      const unitData: Omit<Unit, 'id'> = {
+        name: propertyForm.name,
+        type: propertyForm.type as UnitType,
+        description: propertyForm.description,
+        price: parseFloat(propertyForm.price),
+        images: imageUrls,
+        policies: propertyForm.policies,
+        capacity: propertyForm.capacity ? parseInt(propertyForm.capacity) : undefined,
+        available: propertyForm.available,
+        features: propertyForm.features.split(',').map(s => s.trim()).filter(s => s.length > 0)
+      };
 
-    if (editingPropertyId) {
-      updateProperty(editingPropertyId, propertyData);
-    } else {
-      addProperty(propertyData);
+      if (editingUnitId) {
+        await updateUnit(editingUnitId, unitData);
+      } else {
+        await addUnit(unitData);
+      }
+
+      resetForm();
+    } catch (error) {
+      console.error("Failed to save property:", error);
+      alert("Failed to save property. Please check the console for details.");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    resetForm();
   };
 
-  const handleEdit = (propertyId: string) => {
-    const property = properties.find(p => p.id === propertyId);
-    if (property) {
+  const handleEdit = (unitId: string) => {
+    const unit = units.find(u => u.id === unitId);
+    if (unit) {
       setPropertyForm({
-        name: property.name,
-        type: property.type,
-        description: property.description,
-        price: property.price.toString(),
-        images: property.images.join(', '),
-        policies: property.policies,
-        capacity: property.capacity?.toString() || '',
-        available: property.available,
-        features: property.features.join(', ')
+        name: unit.name,
+        type: unit.type,
+        description: unit.description,
+        price: unit.price.toString(),
+        images: unit.images.join(', '),
+        policies: unit.policies || '',
+        capacity: unit.capacity?.toString() || '',
+        available: unit.available,
+        features: unit.features.join(', ')
       });
-      setEditingPropertyId(propertyId);
+      setEditingUnitId(unitId);
       setShowModal(true);
     }
   };
 
-  const handleDelete = (propertyId: string) => {
-    if (confirm('Are you sure you want to delete this property? This action cannot be undone.')) {
-      deleteProperty(propertyId);
+  const handleDelete = async (unitId: string) => {
+    if (window.confirm('Are you sure you want to delete this property? This action cannot be undone.')) {
+      try {
+        await deleteUnit(unitId);
+      } catch (error) {
+        console.error("Failed to delete property:", error);
+        alert("Failed to delete property.");
+      }
     }
   };
 
-  // handle files selected from explorer
+  // ✅ FIX: Actually uploads files to Supabase instead of generating fake local blob links
   const handleFilesSelected = async (filesList: FileList | null) => {
     const files = Array.from(filesList || []);
     if (files.length === 0) return;
 
     try {
-      const urls = await uploadImages(files);
+      // 1. Upload all selected files to Supabase Storage concurrently
+      const uploadPromises = files.map(file => uploadPropertyImage(file));
+      const uploadedUrls = await Promise.all(uploadPromises);
+      
+      // 2. Filter out any uploads that might have failed (returned null)
+      const validUrls = uploadedUrls.filter((url): url is string => url !== null);
+
+      if (validUrls.length === 0) {
+        alert("Failed to upload images. Please try again.");
+        return;
+      }
+
+      // 3. Save the permanent public URLs to the form state
       setPropertyForm(prev => {
         const existing = prev.images ? prev.images.split(',').map(s => s.trim()).filter(Boolean) : [];
-        const merged = [...existing, ...urls];
+        const merged = [...existing, ...validUrls];
         return { ...prev, images: merged.join(', ') };
       });
     } catch (err: any) {
@@ -195,17 +173,17 @@ export default function AdminPropertyManagement() {
   const closeLightbox = () => setLightboxImage(null);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="mb-2">Property Management</h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Property Management</h1>
             <p className="text-gray-600">Manage all your rentable properties, halls, and parking slots.</p>
           </div>
           <button
             onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
           >
-            <Plus className="size-4" />
+            <Plus className="size-5" />
             Add Property
           </button>
         </div>
@@ -213,72 +191,72 @@ export default function AdminPropertyManagement() {
       {/* Properties Table */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
+          <table className="min-w-full divide-y divide-gray-200 text-left">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Name
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Price
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Capacity
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
+                <th className="px-6 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
+                <th className="px-6 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Type</th>
+                <th className="px-6 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Price Base</th>
+                <th className="px-6 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Capacity</th>
+                <th className="px-6 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {properties.length === 0 ? (
+            <tbody className="bg-white divide-y divide-gray-100">
+              {units.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
                     No properties listed yet. Click "Add Property" to get started.
                   </td>
                 </tr>
               ) : (
-                properties.map((property) => (
-                  <tr key={property.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                      {property.name}
+                units.map((unit) => (
+                  <tr key={unit.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        {unit.images && unit.images.length > 0 ? (
+                            <img src={unit.images[0]} alt={unit.name} className="w-12 h-12 rounded object-cover border border-gray-200 shadow-sm" />
+                        ) : (
+                            <div className="w-12 h-12 rounded bg-gray-100 border border-gray-200 flex items-center justify-center">
+                                <Building2 className="size-5 text-gray-400" />
+                            </div>
+                        )}
+                        <div>
+                          <p className="text-gray-900 font-medium">{unit.name}</p>
+                          <p className="text-xs text-gray-500 truncate max-w-[200px]">{unit.description}</p>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      <PropertyTypeDisplay type={property.type} />
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <UnitTypeDisplay type={unit.type} />
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatCurrency(property.price)}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {formatCurrency(unit.price)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded-full font-semibold ${
-                        property.available 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
+                      <span className={`px-2.5 py-1 text-xs rounded-full font-semibold border ${
+                        unit.available 
+                          ? 'bg-green-50 text-green-700 border-green-200' 
+                          : 'bg-red-50 text-red-700 border-red-200'
                       }`}>
-                        {property.available ? 'AVAILABLE' : 'UNAVAILABLE'}
+                        {unit.available ? 'AVAILABLE' : 'UNAVAILABLE'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {property.capacity || 'N/A'}
+                      {unit.capacity ? `${unit.capacity} pax` : <span className="text-gray-400">N/A</span>}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex gap-2">
+                      <div className="flex items-center justify-end gap-2">
                         <button
-                          onClick={() => handleEdit(property.id)}
-                          className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                          onClick={() => handleEdit(unit.id)}
+                          className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md transition-colors"
                           title="Edit"
                         >
                           <Edit className="size-4" />
                         </button>
                         <button
-                          onClick={() => handleDelete(property.id)}
-                          className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                          onClick={() => handleDelete(unit.id)}
+                          className="p-1.5 text-red-600 hover:bg-red-100 rounded-md transition-colors"
                           title="Delete"
                         >
                           <Trash2 className="size-4" />
@@ -296,17 +274,17 @@ export default function AdminPropertyManagement() {
       {/* Add/Edit Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col">
             {/* Modal Header */}
-            <div className="p-6 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white z-10">
-              <h2 className="text-xl font-semibold">{editingPropertyId ? 'Edit' : 'Add'} Property</h2>
-              <button onClick={resetForm} className="text-gray-400 hover:text-gray-600">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center sticky top-0 bg-white z-10 rounded-t-xl">
+              <h2 className="text-xl font-bold text-gray-900">{editingUnitId ? 'Edit' : 'Add'} Property</h2>
+              <button onClick={resetForm} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-1.5 rounded-lg transition-colors">
                 <X className="size-6" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <form onSubmit={handleSubmit} className="p-6 space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 {/* Name */}
                 <div>
                   <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">Property Name</label>
@@ -316,7 +294,7 @@ export default function AdminPropertyManagement() {
                     required
                     value={propertyForm.name}
                     onChange={(e) => setPropertyForm({ ...propertyForm, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
                   />
                 </div>
 
@@ -327,31 +305,34 @@ export default function AdminPropertyManagement() {
                     id="type"
                     required
                     value={propertyForm.type}
-                    onChange={(e) => setPropertyForm({ ...propertyForm, type: e.target.value as PropertyType | '' })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onChange={(e) => setPropertyForm({ ...propertyForm, type: e.target.value as UnitType | '' })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white transition-shadow"
                   >
                     <option value="">Select a type</option>
-                    <option value="rental_space">Rental Space (e.g., Office/Retail)</option>
-                    <option value="function_hall">Function Hall (e.g., Event Venue)</option>
-                    <option value="parking_slot">Parking Slot (e.g., Vehicle Space)</option>
+                    <option value="rental_space">Commercial / Office Unit</option>
+                    <option value="function_hall">Function Hall</option>
+                    <option value="parking_slot">Parking Slot</option>
                   </select>
                 </div>
 
                 {/* Price */}
                 <div>
-                  <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-1">Price (₱)</label>
-                  <input
-                    id="price"
-                    type="number"
-                    required
-                    min="0"
-                    step="0.01"
-                    placeholder="e.g., 25000"
-                    value={propertyForm.price}
-                    onChange={(e) => setPropertyForm({ ...propertyForm, price: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-1">Base Price</label>
+                  <div className="relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">₱</span>
+                      <input
+                        id="price"
+                        type="number"
+                        required
+                        min="0"
+                        step="0.01"
+                        placeholder="e.g., 25000"
+                        value={propertyForm.price}
+                        onChange={(e) => setPropertyForm({ ...propertyForm, price: e.target.value })}
+                        className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
+                      />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1.5 ml-1">
                     {propertyForm.type === 'rental_space' && 'Monthly Rate'}
                     {propertyForm.type === 'function_hall' && 'Daily Rate'}
                     {propertyForm.type === 'parking_slot' && 'Hourly Rate'}
@@ -366,12 +347,12 @@ export default function AdminPropertyManagement() {
                     id="capacity"
                     type="number"
                     min="1"
-                    placeholder="e.g., 200 (for hall) or N/A"
+                    placeholder="e.g., 200"
                     value={propertyForm.capacity}
                     onChange={(e) => setPropertyForm({ ...propertyForm, capacity: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
                   />
-                  <p className="text-xs text-gray-500 mt-1">Number of people or vehicles allowed.</p>
+                  <p className="text-xs text-gray-500 mt-1.5 ml-1">Number of people or vehicles allowed.</p>
                 </div>
               </div>
 
@@ -384,121 +365,95 @@ export default function AdminPropertyManagement() {
                   rows={3}
                   value={propertyForm.description}
                   onChange={(e) => setPropertyForm({ ...propertyForm, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none transition-shadow"
                 ></textarea>
               </div>
 
               {/* Images (file upload with preview) */}
-<div>
-  <label htmlFor="images" className="block text-sm font-medium text-gray-700 mb-1">Images (upload)</label>
+              <div>
+                <label htmlFor="images" className="block text-sm font-medium text-gray-700 mb-1">Images (Upload)</label>
 
-  {/* hidden file input */}
-  <input
-    ref={fileInputRef}
-    id="images"
-    type="file"
-    accept="image/*"
-    multiple
-    onChange={(e) => handleFilesSelected(e.target.files)}
-    className="hidden"
-  />
+                {/* hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  id="images"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => handleFilesSelected(e.target.files)}
+                  className="hidden"
+                />
 
-  {/* If images exist show horizontal preview strip, otherwise show prominent upload prompt */}
-  {propertyForm.images ? (
-    <div className="mt-2">
-  <div className="flex items-center gap-2 overflow-x-auto py-1 max-h-40">
-    {propertyForm.images.split(',').map((src, i) => {
-  const trimmed = src.trim();
-  if (!trimmed) return null;
-  return (
-    <div
-      key={i}
-      className="relative bg-gray-100 rounded-md border border-gray-200 flex-shrink-0"  // Removed overflow-hidden to prevent clipping the button
-      style={{ width: 170, height: 150 }}
-      aria-label="Uploaded image preview"
-      title="Click image to enlarge"
-    >
-      {/* Remove button */}
-          <button
-              type="button"
-              onClick={(e) => {
-                  e.stopPropagation();
-                  removeImage(trimmed);
-              }}
-              onMouseEnter={() => setHoveredButtonIndex(i)}  // Set the specific index on hover
-              onMouseLeave={() => setHoveredButtonIndex(null)}  // Clear on leave
-              className="
-    absolute top-3 right-2 z-10
-    w-6 h-6 
-    flex items-center justify-center
-    rounded-full
-    shadow-md
-    transition-colors duration-200
-    cursor-pointer
-  "
-              style={{
-                  backgroundColor: hoveredButtonIndex === i ? '#ed4c4a' : 'white',  // Only red if this button's index matches
-                  color: hoveredButtonIndex === i ? 'white' : '#4B5563',  // Only white text if this button's index matches
-              }}
-              aria-label="Remove image"
-              title="Remove image"
-          >
-              <X className="size-4" />
-          </button>
+                {propertyForm.images ? (
+                  <div className="mt-2">
+                    <div className="flex items-center gap-3 overflow-x-auto py-2 max-h-40">
+                      {propertyForm.images.split(',').map((src, i) => {
+                        const trimmed = src.trim();
+                        if (!trimmed) return null;
+                        return (
+                          <div
+                            key={i}
+                            className="relative bg-gray-100 rounded-lg border border-gray-200 flex-shrink-0" 
+                            style={{ width: 170, height: 150 }}
+                            aria-label="Uploaded image preview"
+                            title="Click image to enlarge"
+                          >
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        removeImage(trimmed);
+                                    }}
+                                    onMouseEnter={() => setHoveredButtonIndex(i)}
+                                    onMouseLeave={() => setHoveredButtonIndex(null)}
+                                    className="absolute top-2 right-2 z-10 w-6 h-6 flex items-center justify-center rounded-full shadow-md transition-colors duration-200 cursor-pointer"
+                                    style={{
+                                        backgroundColor: hoveredButtonIndex === i ? '#ef4444' : 'white', 
+                                        color: hoveredButtonIndex === i ? 'white' : '#4b5563', 
+                                    }}
+                                >
+                                    <X className="size-4" />
+                                </button>
 
-      <img
-        src={trimmed}
-        alt={`preview-${i}`}
-        className="w-full h-full object-cover transition-all duration-300 transform hover:scale-105 hover:shadow-lg hover:ring-2 hover:ring-blue-400 cursor-pointer rounded-md overflow-hidden"  // Added overflow-hidden to the image for rounded corners
-        onClick={() => openLightbox(trimmed)}
-      />
-          </div>
-      );
-    })}
+                            <img
+                              src={trimmed}
+                              alt={`preview-${i}`}
+                              className="w-full h-full object-cover transition-all duration-300 transform hover:scale-[1.02] cursor-pointer rounded-lg overflow-hidden" 
+                              onClick={() => openLightbox(trimmed)}
+                            />
+                                </div>
+                            );
+                          })}
 
-    {/* Add more button at the end (square, bigger) */}
-    <button
-  type="button"
-  onClick={() => fileInputRef.current?.click()}
-  className="flex items-center justify-center
-             border-2 border-dashed border-gray-300
-             rounded-md bg-white text-gray-700
-             hover:border-blue-400 hover:bg-blue-100
-             transition-colors flex-shrink-0 cursor-pointer"
-  style={{ width: 80, height: 80 }} // ← bigger & obvious
-  title="Add more images"
-  aria-label="Add more images"
->
-  <Plus className="size-6" />
-</button>
+                          {/* Add more button */}
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 text-gray-600 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600 transition-colors flex-shrink-0 cursor-pointer"
+                            style={{ width: 80, height: 80 }}
+                            title="Add more images"
+                          >
+                            <Plus className="size-6" />
+                          </button>
 
-  </div>
-  <p className="text-xs text-gray-500 mt-2">Uploaded images. Click to enlarge. Use "Add more" to append additional photos.</p>
-</div>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-2 ml-1">Uploaded images. Click to enlarge. Use "Add more" to append additional photos.</p>
+                      </div>
 
-  ) : (
-    <div className="mt-2">
-      <button
-    type="button"
-    onClick={() => fileInputRef.current?.click()}
-    className="
-      w-full
-      flex items-center justify-center gap-2
-      border-2 border-dashed border-gray-300
-      rounded-md bg-white text-gray-700
-      hover:border-blue-500 hover:bg-blue-100
-      hover:shadow-md
-      transition-all duration-200
-      cursor-pointer
-    "
-    style={{ height: '72px' }}   // ← THIS WILL OVERRIDE EVERYTHING
-  >
-    <Plus className="size-5" />
-      </button>
-      <p className="text-xs text-gray-500 mt-1">You can select one or more images. Supported types: JPG, PNG, GIF.</p>
-    </div>
-  )}
-</div>
+                    ) : (
+                      <div className="mt-2">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 text-gray-600 hover:border-blue-500 hover:bg-blue-50 hover:text-blue-600 transition-all duration-200 cursor-pointer"
+                          style={{ height: '72px' }} 
+                        >
+                          <Plus className="size-5" /> Add Images
+                        </button>
+                        <p className="text-xs text-gray-500 mt-2 ml-1">Select one or more images. Supported types: JPG, PNG, GIF.</p>
+                      </div>
+                )}
+              </div>
               
               {/* Features */}
               <div>
@@ -506,28 +461,29 @@ export default function AdminPropertyManagement() {
                 <input
                   id="features"
                   type="text"
-                  placeholder="Feature 1, Feature 2, Feature 3"
+                  placeholder="e.g., WiFi, Air Conditioning, Security"
                   value={propertyForm.features}
                   onChange={(e) => setPropertyForm({ ...propertyForm, features: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
                 />
               </div>
 
               {/* Policies */}
               <div>
-                <label htmlFor="policies" className="block text-sm font-medium text-gray-700 mb-1">Policies/Terms</label>
+                <label htmlFor="policies" className="block text-sm font-medium text-gray-700 mb-1">Policies & Terms</label>
                 <textarea
                   id="policies"
                   required
                   rows={2}
+                  placeholder="e.g., Minimum 1-year contract. 2 months deposit."
                   value={propertyForm.policies}
                   onChange={(e) => setPropertyForm({ ...propertyForm, policies: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none transition-shadow"
                 ></textarea>
               </div>
 
               {/* Available Checkbox */}
-              <div className="flex items-center gap-2 pt-2">
+              <div className="flex items-center gap-3 pt-2 pb-4 border-b border-gray-100">
                 <input
                   id="available"
                   type="checkbox"
@@ -535,24 +491,26 @@ export default function AdminPropertyManagement() {
                   onChange={(e) => setPropertyForm({ ...propertyForm, available: e.target.checked })}
                   className="size-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                 />
-                <label htmlFor="available" className="text-sm font-medium text-gray-700">
-                  Available for reservation
+                <label htmlFor="available" className="text-sm font-medium text-gray-700 cursor-pointer">
+                  Available for new reservations
                 </label>
               </div>
 
-              <div className="flex gap-3 pt-4">
+              <div className="flex gap-3 pt-2">
                 <button
                   type="button"
                   onClick={resetForm}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  disabled={isSubmitting}
+                  className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  disabled={isSubmitting}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {editingPropertyId ? 'Update' : 'Add'} Property
+                  {isSubmitting ? 'Saving...' : editingUnitId ? 'Update Property' : 'Save Property'}
                 </button>
               </div>
             </form>
@@ -560,21 +518,21 @@ export default function AdminPropertyManagement() {
         </div>
       )}
 
+      {/* Lightbox Modal */}
       {lightboxImage && (
         <div
-          className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 flex items-center justify-center bg-black/80 backdrop-blur-sm"
           style={{ zIndex: 2147483647 }}
           onClick={closeLightbox}
           role="dialog"
           aria-modal="true"
         >
-          {/* Close button pinned to the top-right of the viewport */}
           <button
             onClick={closeLightbox}
-            className="absolute top-4 right-4 z-[2147483648] bg-white bg-opacity-90 rounded-full p-2 hover:bg-opacity-100 transition-colors shadow-md"
+            className="absolute top-6 right-6 z-[2147483648] bg-white text-gray-900 rounded-full p-2 hover:bg-gray-200 transition-colors shadow-lg"
             aria-label="Close image"
           >
-            <X className="size-5 text-gray-800" />
+            <X className="size-6" />
           </button>
 
           <div
@@ -584,7 +542,7 @@ export default function AdminPropertyManagement() {
             <img
               src={lightboxImage}
               alt="Enlarged preview"
-              className="max-w-[95vw] max-h-[85vh] object-contain rounded-lg shadow-2xl border border-white/10"
+              className="max-w-[95vw] max-h-[85vh] object-contain rounded-lg shadow-2xl border border-white/20"
             />
           </div>
         </div>
