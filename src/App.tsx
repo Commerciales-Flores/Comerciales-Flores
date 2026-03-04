@@ -2,6 +2,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { AuthProvider } from './contexts/AuthContext';
 import { DataProvider } from './contexts/DataContext';
 import { NotificationProvider } from './contexts/NotificationContext';
+import { IndicatorProvider } from './contexts/IndicatorContext';
+
 
 // Public Pages
 import LandingPage from './pages/public/LandingPage';
@@ -29,6 +31,10 @@ import AdminContent from './pages/admin/Content';
 import AdminAnalytics from './pages/admin/Analytics';
 import AdminProfile from './pages/admin/Profile';
 
+// Error Pages
+import { UnauthorizePage, ForbiddenPage, NotFoundPage, ServerErrorPage } from './pages/errors';
+import { ServerErrorBoundary } from './pages/errors/ServerErrorBoundary';
+
 // Layouts
 import ClientLayout from './components/layouts/ClientLayout';
 import AdminLayout from './components/layouts/AdminLayout';
@@ -37,64 +43,79 @@ import AllProperties from './pages/public/AllProperties';
 
 export default function App() {
   return (
-    <Router>
-      <AuthProvider>
-        <DataProvider>
-          <NotificationProvider>
-            <Routes>
-              {/* Public Routes */}
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
-              <Route path="/register" element={<GuestRoute><Register /></GuestRoute>} />
-              <Route path="/spaces" element={<AllProperties />} />
+    <IndicatorProvider>
+      <Router>
+        <AuthProvider>
+          <DataProvider>
+            <NotificationProvider>
+              <Routes>
+                {/* --- Public Routes --- */}
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
+                <Route path="/register" element={<GuestRoute><Register /></GuestRoute>} />
+                <Route path="/spaces" element={<AllProperties />} />
 
-              {/* Client Routes */}
-              <Route
-                path="/client/*"
-                element={
-                  <ProtectedRoute allowedRoles={['client']}>
-                    <ClientLayout />
-                  </ProtectedRoute>
-                }
-              >
-                <Route index element={<Navigate to="/client/dashboard" replace />} />
-                <Route path="dashboard" element={<ClientDashboard />} />
-                <Route path="properties" element={<ClientProperties />} />
-                <Route path="reservations" element={<ClientReservations />} />
-                <Route path="payments" element={<ClientPayments />} />
-                <Route path="notifications" element={<ClientNotifications />} />
-                <Route path="messages" element={<ClientMessages />} />
-                <Route path="profile" element={<ClientProfile />} />
-              </Route>
+                {/* --- Error Pages (always full screen) --- */}
+                <Route path="/401" element={<UnauthorizePage />} />
+                <Route path="/403" element={<ForbiddenPage />} />
+                <Route path="/500" element={<ServerErrorPage />} />
 
-              {/* Admin Routes */}
-              <Route
-                path="/admin/*"
-                element={
-                  <ProtectedRoute allowedRoles={['admin']}>
-                    <AdminLayout />
-                  </ProtectedRoute>
-                }
-              >
-                <Route index element={<Navigate to="/admin/dashboard" replace />} />
-                <Route path="dashboard" element={<AdminDashboard />} />
-                <Route path="customers" element={<AdminCustomers />} />
-                <Route path="audit" element={<AdminAudit />} />
-                <Route path="business-slots" element={<AdminBusinessSlots />} />
-                <Route path="reservations" element={<AdminReservations />} />
-                <Route path="payments" element={<AdminPayments />} />
-                <Route path="inquiries" element={<AdminInquiries />} />
-                <Route path="content" element={<AdminContent />} />
-                <Route path="analytics" element={<AdminAnalytics />} />
-                <Route path="profile" element={<AdminProfile />} />
-              </Route>
+                {/* --- Client Routes --- */}
+                <Route
+                  path="/client/*"
+                  element={
+                    <ProtectedRoute allowedRoles={['client']}>
+                      <ServerErrorBoundary>
+                        <ClientLayout />
+                      </ServerErrorBoundary>
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<Navigate to="/client/dashboard" replace />} />
+                  <Route path="dashboard" element={<ClientDashboard />} />
+                  <Route path="properties" element={<ClientProperties />} />
+                  <Route path="reservations" element={<ClientReservations />} />
+                  <Route path="payments" element={<ClientPayments />} />
+                  <Route path="notifications" element={<ClientNotifications />} />
+                  <Route path="messages" element={<ClientMessages />} />
+                  <Route path="profile" element={<ClientProfile />} />
+                  {/* Internal catch-all for /client/* */}
+                  <Route path="*" element={<NotFoundPage />} />
+                </Route>
 
-              {/* Catch all */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </NotificationProvider>
-        </DataProvider>
-      </AuthProvider>
-    </Router>
+                {/* --- Admin Routes --- */}
+                <Route
+                  path="/admin/*"
+                  element={
+                    <ProtectedRoute allowedRoles={['admin']}>
+                      <ServerErrorBoundary>
+                        <AdminLayout />
+                      </ServerErrorBoundary>
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route index element={<Navigate to="/admin/dashboard" replace />} />
+                  <Route path="dashboard" element={<AdminDashboard />} />
+                  <Route path="customers" element={<AdminCustomers />} />
+                  <Route path="audit" element={<AdminAudit />} />
+                  <Route path="business-slots" element={<AdminBusinessSlots />} />
+                  <Route path="reservations" element={<AdminReservations />} />
+                  <Route path="payments" element={<AdminPayments />} />
+                  <Route path="inquiries" element={<AdminInquiries />} />
+                  <Route path="content" element={<AdminContent />} />
+                  <Route path="analytics" element={<AdminAnalytics />} />
+                  <Route path="profile" element={<AdminProfile />} />
+                  {/* Internal catch-all for /admin/* */}
+                  <Route path="*" element={<NotFoundPage />} />
+                </Route>
+
+                {/* --- Global Catch-all for root-level typos --- */}
+                <Route path="*" element={<NotFoundPage />} />
+              </Routes>
+            </NotificationProvider>
+          </DataProvider>
+        </AuthProvider>
+      </Router>
+    </IndicatorProvider>
   );
 }

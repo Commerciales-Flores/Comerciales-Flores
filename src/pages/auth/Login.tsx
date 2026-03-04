@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Building2, AlertCircle, CheckCircle, X, ArrowLeft, Mail, Lock } from 'lucide-react';
+import { useIndicator } from '../../contexts/IndicatorContext';
 
 const GoogleLogo = () => (
     <svg className="size-5" viewBox="0 0 24 24">
@@ -30,15 +31,7 @@ export default function Login() {
         return <Navigate to={path} replace />;
     }
 
-    // useEffect(() => {
-    //     if (user) {
-    //         // replace: true is CRITICAL here. 
-    //         // It swaps "/login" with "/dashboard" in the browser history.
-    //         const path = user.role === 'admin' ? '/admin/dashboard' : '/client/dashboard';
-    //         navigate(path, { replace: true });
-    //     }
-    // }, [user, navigate]);
-
+    const { showIndicator } = useIndicator();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [recoveryEmail, setRecoveryEmail] = useState('');
     const [recoveryError, setRecoveryError] = useState('');
@@ -54,17 +47,16 @@ export default function Login() {
         const password = formData.password;
 
         const success = await login(email, password);
-        console.log('Login success:', success);
-        console.log('User after login (from context):', user);  // <-- check this
-        console.log('User in localStorage:', localStorage.getItem('currentUser'));
+
+        setLoading(false);
 
         if (!success) {
             setError('Invalid email or password');
+            return;
         }
 
-        // DO NOT read `user` immediately, let the effect handle redirect
-        setLoading(false);
-        };
+        showIndicator(`Login by ${formData.email} at ${new Date().toLocaleTimeString()}`, 'login');
+    };
 
     const handleRecoverPassword = async (e: React.FormEvent) => {
         e.preventDefault();

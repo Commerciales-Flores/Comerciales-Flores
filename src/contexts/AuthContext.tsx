@@ -1,5 +1,7 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
+import { useIndicator } from './IndicatorContext';
+
 
 interface User {
   id: string;
@@ -15,7 +17,7 @@ interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<boolean>;
   register: (userData: Omit<User, 'id' | 'role'> & { password: string }) => Promise<boolean>;
-  logout: () => void;
+  logout: (message?: string) => void;
   loading: boolean
   updateProfile: (userData: Partial<User>) => void;
   changePassword: (oldPassword: string, newPassword: string) => Promise<boolean>;
@@ -51,40 +53,154 @@ const MOCK_USERS = [
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [users, setUsers] = useState(MOCK_USERS);
-
   const [loading, setLoading] = useState(true);
+  const { showIndicator } = useIndicator();
 
-  useEffect(() => {
-    const storedUser = localStorage.getItem('currentUser');
-    if (storedUser) setUser(JSON.parse(storedUser));
-    setLoading(false); // done loading
-  }, []);
+useEffect(() => {
+  const onPageShow = (event: PageTransitionEvent) => {
+    // 1. Check if the page was restored from the "frozen" cache
+    if (event.persisted) {
+      console.log("BFCache detected. Forcing a refresh to sync security state...");
+      // 2. Force a reload to ensure all React effects (and your alert/logs) run
+      window.location.reload();
+    }
+  };
 
-  // Block rendering until we know if a user is logged in
-  if (loading) return null; // or spinner
+  window.addEventListener('pageshow', onPageShow);
+  return () => window.removeEventListener('pageshow', onPageShow);
+}, []);
 
-  const deleteAccount = (userId: string) => {
-  // Remove user from users array
-  setUsers(users.filter(u => u.id !== userId));
-
-  // If the deleted user is currently logged in, log them out
-  if (user?.id === userId) {
-    logout();
-  }
-};
-
-
-  const login = async (email: string, password: string): Promise<boolean> => {
-    const foundUser = users.find(u => u.email === email && u.password === password);
+useEffect(() => {
+  const syncSession = () => {
+    const storedUser = sessionStorage.getItem('currentUser');
+    // Check if the user was actually logged in before this check
+    const wasLoggedIn = sessionStorage.getItem('wasLoggedIn') === 'true';
     
+    const now = new Date();
+    const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    if (!storedUser) {
+      setUser(null);
+      
+      // ONLY trigger the system alert if they were logged in and didn't manually logout
+      if (wasLoggedIn) {
+        // Remove the flag so it doesn't loop or re-fire
+        sessionStorage.removeItem('wasLoggedIn');
+        
+        setTimeout(() => {
+          showIndicator(`SYSTEM ALERT: Session ended at ${time}`, 'security');
+        }, 500);
+      }
+    } else {
+      setUser(JSON.parse(storedUser));
+      sessionStorage.setItem('wasLoggedIn', 'true');
+    }
+    setLoading(false);
+  };
+
+  syncSession();
+
+  const handlePageShow = (event: PageTransitionEvent) => {
+    if (event.persisted) syncSession(); 
+  };
+
+  window.addEventListener('pageshow', handlePageShow);
+  return () => window.removeEventListener('pageshow', handlePageShow);
+}, [showIndicator]);
+
+  // // --- 2. DEPARTURE CLEANUP ---
+  // useEffect(() => {
+  //   const handleUnload = () => sessionStorage.removeItem('currentUser');
+  //   window.addEventListener('pagehide', handleUnload);
+  //   return () => window.removeEventListener('pagehide', handleUnload);
+  // }, []);
+
+  // --- 3. THE LOGOUT FUNCTION (MEMOIZED) ---
+  // Memoizing this prevents the inactivity useEffect from re-running constantly
+  const logout = useCallback((message?: string) => {
+  setUser((prevUser) => {
+    if (prevUser) {
+      const email = prevUser.email;
+      
+      // 1. CLEAR EVERYTHING FIRST
+      sessionStorage.removeItem('currentUser');
+      sessionStorage.removeItem('wasLoggedIn'); // Critical: prevents syncSession alert
+      
+      const now = new Date();
+      const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      const msg = message?.toLowerCase() || "";
+      const isSecurity = msg.includes("security") || 
+                        msg.includes("expired") || 
+                        msg.includes("ended");
+      
+      showIndicator(
+        message ? `${message} at ${time}` : `Logout by ${email} at ${time}`,
+        isSecurity ? 'security' : 'logout'
+      );
+    }
+    return null;
+  });
+}, [showIndicator]);
+
+  // --- 4. INACTIVITY TIMER ---
+useEffect(() => {
+  // If no user is logged in, don't even start the listeners
+  if (!user) return;
+
+  const INACTIVITY_LIMIT = 30 * 60 * 1000; // 30 minutes
+  let timeoutId: any; // Use any for compatibility
+
+  const resetTimer = () => {
+    if (timeoutId) clearTimeout(timeoutId);
+    
+    timeoutId = setTimeout(() => {
+      // Check the ACTUAL storage right before logging out
+      const sessionExists = sessionStorage.getItem('currentUser');
+      if (sessionExists) {
+        logout("Session expired due to inactivity");
+      }
+    }, INACTIVITY_LIMIT);
+  };
+
+  const activityEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+  
+  // Start the timer immediately
+  resetTimer();
+
+  // Add listeners
+  activityEvents.forEach(e => window.addEventListener(e, resetTimer));
+
+  return () => {
+    if (timeoutId) clearTimeout(timeoutId);
+    activityEvents.forEach(e => window.removeEventListener(e, resetTimer));
+  };
+  // We include user.id to ensure that if a NEW user logs in, 
+  // the effect completely resets.
+}, [user?.id, logout]);
+
+  // --- 5. CONDITIONAL RENDER (MUST BE AFTER ALL HOOKS) ---
+  if (loading) return null;
+
+  // --- 6. AUTH ACTIONS ---
+  const login = async (email: string, password: string) => {
+    const foundUser = users.find(u => u.email === email && u.password === password);
     if (foundUser) {
       const { password: _, ...userWithoutPassword } = foundUser;
       setUser(userWithoutPassword);
-      localStorage.setItem('currentUser', JSON.stringify(userWithoutPassword));
+      sessionStorage.setItem('currentUser', JSON.stringify(userWithoutPassword));
+      sessionStorage.setItem('wasLoggedIn', 'true'); 
       return true;
     }
     return false;
   };
+
+  const deleteAccount = (userId: string) => {
+    setUsers(prev => prev.filter(u => u.id !== userId));
+    if (user?.id === userId) logout();
+  };
+
+
 
   const register = async (userData: Omit<User, 'id' | 'role'> & { password: string }): Promise<boolean> => {
     // Check if email already exists
@@ -102,7 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     const { password: _, ...userWithoutPassword } = newUser;
     setUser(userWithoutPassword);
-    localStorage.setItem('currentUser', JSON.stringify(userWithoutPassword));
+    sessionStorage.setItem('currentUser', JSON.stringify(userWithoutPassword));
     
     return true;
   };
@@ -113,21 +229,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     if (foundUser) {
       // FOR DEMO ONLY: In a real app, you would NEVER return the password.
-      return { password: foundUser.password };
+      //return { password: foundUser.password };
+      return { password: "A reset link has been sent." };
     }
     return null;
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('currentUser');
-  };
 
   const updateProfile = (userData: Partial<User>) => {
     if (user) {
       const updatedUser = { ...user, ...userData };
       setUser(updatedUser);
-      localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+      sessionStorage.setItem('currentUser', JSON.stringify(updatedUser));
       
       // Update in users array
       setUsers(users.map(u => u.id === updatedUser.id ? { ...u, ...userData } : u));

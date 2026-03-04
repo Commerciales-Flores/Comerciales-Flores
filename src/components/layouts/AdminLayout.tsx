@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { useLocation } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import LogoutConfirmModal from "../LogoutConfirmModal";
+import ErrorWrapper from "./ErrorWrapper";
 import {
   LayoutDashboard,
   Users,
@@ -32,29 +33,40 @@ export default function AdminLayout() {
   useEffect(() => {
   if (!user) return;
 
-  // Mark the current page as the first internal page
-  window.history.replaceState({ internal: true, dashboard: location.pathname === '/client/dashboard' }, '');
+  const isDashboard = location.pathname === '/admin/dashboard';
+
+  // Push the first internal state if it's the dashboard
+  if (isDashboard) {
+    // Replace current entry (login page) with dashboard
+    window.history.replaceState({ internal: true, dashboard: true }, '');
+    // Push another state so back button is trapped
+    window.history.pushState({ internal: true, dashboard: true }, '');
+  } else {
+    // For other internal pages
+    window.history.replaceState({ internal: true, dashboard: false }, '');
+  }
 
   const handlePopState = (event: PopStateEvent) => {
     const state = event.state as any;
 
     if (!state || !state.internal) {
-      // User pressed back to leave the app → log them out
-      logout();
-      navigate('/', { replace: true });
+      // User tried to go back outside SPA → logout 
+      logout("Security: Session ended because you left the site.");
+      navigate('/login', { replace: true });
     } else if (state.dashboard) {
-      // Hard start: dashboard → prevent going back anywhere
+      // Hard lock at dashboard → do nothing
       window.history.pushState({ internal: true, dashboard: true }, '');
     } else {
-      // Internal navigation → browser handles back normally
-      // Optional: push current state so multiple internal pages don't break
-      window.history.replaceState({ internal: true }, '');
+      // Internal page → keep state
+      window.history.replaceState({ internal: true, dashboard: false }, '');
     }
   };
 
   window.addEventListener('popstate', handlePopState);
 
-  return () => window.removeEventListener('popstate', handlePopState);
+  return () => {
+    window.removeEventListener('popstate', handlePopState);
+  };
 }, [user, logout, navigate, location.pathname]);
 
   const handleLogout = () => {
@@ -98,6 +110,21 @@ export default function AdminLayout() {
     { to: '/admin/profile', icon: User, label: 'Profile' },
   ];
 
+  const validPaths = [
+    '/admin/dashboard',
+    '/admin/customers',
+    '/admin/audit',
+    '/admin/business-slots',
+    '/admin/reservations',
+    '/admin/payments',
+    '/admin/inquiries',
+    '/admin/content',
+    '/admin/analytics',
+    '/admin/profile'
+  ];
+
+  const isValidChildRoute = validPaths.includes(location.pathname);
+
   const avatarUrl =
     (user as any)?.avatarUrl ||
     (user as any)?.photoURL ||
@@ -105,7 +132,9 @@ export default function AdminLayout() {
       user?.name || "User"
     )}&background=0D8ABC&color=fff&size=128`;
 
+
   return (
+    <ErrorWrapper validPaths={validPaths} allowedRoles={['admin']}>
     <div className="min-h-screen flex flex-col bg-gray-50">
 
       {/* HEADER */}
@@ -259,5 +288,6 @@ export default function AdminLayout() {
         />
       )}
     </div>
+      </ErrorWrapper>
   );
 }

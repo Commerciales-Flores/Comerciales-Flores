@@ -3,6 +3,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useData } from "../../contexts/DataContext";
 import LogoutConfirmModal from "../LogoutConfirmModal";
 import { useLocation } from "react-router-dom";
+import ErrorWrapper from "./ErrorWrapper";
 import {
   LayoutDashboard,
   Building2,
@@ -38,29 +39,40 @@ export default function ClientLayout() {
   useEffect(() => {
   if (!user) return;
 
-  // Mark the current page as the first internal page
-  window.history.replaceState({ internal: true, dashboard: location.pathname === '/client/dashboard' }, '');
+  const isDashboard = location.pathname === '/client/dashboard';
+
+  // Push the first internal state if it's the dashboard
+  if (isDashboard) {
+    // Replace current entry (login page) with dashboard
+    window.history.replaceState({ internal: true, dashboard: true }, '');
+    // Push another state so back button is trapped
+    window.history.pushState({ internal: true, dashboard: true }, '');
+  } else {
+    // For other internal pages
+    window.history.replaceState({ internal: true, dashboard: false }, '');
+  }
 
   const handlePopState = (event: PopStateEvent) => {
     const state = event.state as any;
 
     if (!state || !state.internal) {
-      // User pressed back to leave the app → log them out
-      logout();
-      navigate('/', { replace: true });
+      // User tried to go back outside SPA → logout
+      logout("Security: Session ended because you left the site.");
+      navigate('/login', { replace: true });
     } else if (state.dashboard) {
-      // Hard start: dashboard → prevent going back anywhere
+      // Hard lock at dashboard → do nothing
       window.history.pushState({ internal: true, dashboard: true }, '');
     } else {
-      // Internal navigation → browser handles back normally
-      // Optional: push current state so multiple internal pages don't break
-      window.history.replaceState({ internal: true }, '');
+      // Internal page → keep state
+      window.history.replaceState({ internal: true, dashboard: false }, '');
     }
   };
 
   window.addEventListener('popstate', handlePopState);
 
-  return () => window.removeEventListener('popstate', handlePopState);
+  return () => {
+    window.removeEventListener('popstate', handlePopState);
+  };
 }, [user, logout, navigate, location.pathname]);
 
   const handleLogout = () => {
@@ -121,6 +133,7 @@ export default function ClientLayout() {
   if (!user) return <Navigate to="/login" replace />;
 
   return (
+    <ErrorWrapper validPaths={navItems.map(item => item.to)} allowedRoles={['client']}>
     <div className="min-h-screen flex flex-col bg-gray-50">
 
       {/* CLIENT HEADER */}
@@ -147,7 +160,7 @@ export default function ClientLayout() {
 
         <NavLink 
           to="/client/profile" 
-          className="transition-transform hover:scale-105 active:scale-95 p-0.5"
+          className="relative hover:ring-2 hover:ring-blue-400 rounded-full transition-all p-0.5"
         >
           <img
             src={avatarUrl}
@@ -290,5 +303,6 @@ export default function ClientLayout() {
           />
         )}
     </div>
+      </ErrorWrapper>
   );
 }
