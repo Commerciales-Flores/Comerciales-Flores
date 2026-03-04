@@ -1,7 +1,19 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { Building2, AlertCircle, CheckCircle, X, ArrowLeft, Mail, Lock } from 'lucide-react';
+import { 
+    Building2, 
+    AlertCircle, 
+    CheckCircle, 
+    X, 
+    ArrowLeft, 
+    Mail, 
+    Lock, 
+    Eye, 
+    EyeOff,
+    UserCircle2,
+    User 
+} from 'lucide-react';
 import { useIndicator } from '../../contexts/IndicatorContext';
 
 const GoogleLogo = () => (
@@ -21,37 +33,75 @@ const FacebookLogo = () => (
 
 export default function Login() {
     const { login, recoverPassword, user } = useAuth();
+    const { showIndicator } = useIndicator();
     const navigate = useNavigate();
+
+    // Form States
     const [formData, setFormData] = useState({ email: '', password: '' });
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
+    const [previousUser, setPreviousUser] = useState<{name: string} | null>(null);
+
+    const emailRef = useRef<HTMLInputElement>(null);
+    const passRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+    // Clear form whenever user logs out
+    if (!user) {
+        setFormData({ email: '', password: '' });
+    }
+    }, [user]);
+
+
+    // Recovery Modal States
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [recoveryEmail, setRecoveryEmail] = useState('');
+    const [recoveryStatus, setRecoveryStatus] = useState({ type: '', msg: '' });
+    const [recoveryLoading, setRecoveryLoading] = useState(false);
+
+    const { formKey } = useAuth();
+
+    // Redirect if already logged in
     if (user) {
         const path = user.role === 'admin' ? '/admin/dashboard' : '/client/dashboard';
         return <Navigate to={path} replace />;
     }
 
-    const { showIndicator } = useIndicator();
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [recoveryEmail, setRecoveryEmail] = useState('');
-    const [recoveryError, setRecoveryError] = useState('');
-    const [recoverySuccess, setRecoverySuccess] = useState('');
-    const [recoveryLoading, setRecoveryLoading] = useState(false);
+    useEffect(() => {
+        const savedName = localStorage.getItem('last_user_name');
+        console.log("CHECKING STORAGE:", savedName);
+
+        if (savedName) {
+            setPreviousUser({ name: savedName });
+        } else {
+            setPreviousUser(null); // Ensure it clears if storage is empty
+        }
+
+        if (!user) {
+            setFormData({ email: '', password: '' });
+        }
+    }, [user, formKey]); // Add formKey here!
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
-        setLoading(true);
+        setLoading(true);   
 
-        const email = formData.email.trim();
-        const password = formData.password;
+        console.log("3. Attempting login for:", formData.email);
 
-        const success = await login(email, password);
+        const success = await login(formData.email.trim(), formData.password);
 
-        setLoading(false);
-
-        if (!success) {
+        if (success) {
+            const nameToSave = formData.email.split('@')[0];
+            console.log("4. Login Success! Saving to storage:", nameToSave);
+            localStorage.setItem('last_user_name', nameToSave);
+            console.log("5. Verified storage after save:", localStorage.getItem('last_user_name'));
+            setFormData({ email: '', password: '' });
+        }else {
             setError('Invalid email or password');
+            setLoading(false);
             return;
         }
 
@@ -60,17 +110,28 @@ export default function Login() {
 
     const handleRecoverPassword = async (e: React.FormEvent) => {
         e.preventDefault();
-        setRecoveryError('');
-        setRecoverySuccess('');
+        setRecoveryStatus({ type: '', msg: '' });
         setRecoveryLoading(true);
 
         const result = await recoverPassword(recoveryEmail);
         if (result) {
-            setRecoverySuccess(`A recovery link has been sent to ${recoveryEmail}.`);
+            setRecoveryStatus({ 
+                type: 'success', 
+                msg: `A recovery link has been sent to ${recoveryEmail}.` 
+            });
         } else {
-            setRecoveryError('No account found with that email address.');
+            setRecoveryStatus({ 
+                type: 'error', 
+                msg: 'No account found with that email address.' 
+            });
         }
         setRecoveryLoading(false);
+    };
+
+    const openRecoveryModal = () => {
+        setRecoveryStatus({ type: '', msg: '' });
+        setRecoveryEmail('');
+        setIsModalOpen(true);
     };
 
     return (
@@ -78,56 +139,39 @@ export default function Login() {
             <div className="w-full max-w-5xl lg:max-w-6xl bg-white rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.05)] overflow-hidden border border-slate-200/60">
                 <div className="grid grid-cols-1 lg:grid-cols-2">
                     
-                    {/* Left Panel */}
-                    <div className="p-5 sm:p-6 lg:p-12 
-                                    bg-slate-900 text-white 
-                                    flex flex-col items-center justify-center 
-                                    min-h-[150px] sm:min-h-[180px] lg:min-h-0 
-                                    relative overflow-hidden">
-
-                        <div className="relative z-10 flex flex-col items-center gap-4 sm:gap-6 lg:gap-8">
-
-                            {/* Avatar Container */}
-                            <div className="size-28 sm:size-36 lg:size-48 
-                                            rounded-[2rem] lg:rounded-[3rem] 
-                                            bg-white/5 backdrop-blur-sm 
-                                            border border-white/10 
-                                            flex items-center justify-center 
-                                            shadow-2xl">
-
-                                <svg viewBox="0 0 24 24" fill="none"
-                                    className="size-14 sm:size-18 lg:size-24 text-blue-400"
-                                    stroke="currentColor">
-                                    <path d="M12 12a4 4 0 100-8 4 4 0 000 8z"
-                                        strokeWidth="1.5"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round" />
-                                    <path d="M20 21v-1a4 4 0 00-4-4H8a4 4 0 00-4 4v1"
-                                        strokeWidth="1.5"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round" />
-                                </svg>
+                    {/* Left Panel: Brand Experience (Dynamic) */}
+                    <div className="p-12 bg-slate-900 text-white flex flex-col items-center justify-center relative overflow-hidden hidden lg:flex transition-all duration-500">
+                        <div className="relative z-10 flex flex-col items-center gap-8 w-full max-w-sm">
+                            
+                            {/* Dynamic Icon/Avatar */}
+                            <div className="size-48 rounded-[3rem] bg-white/5 backdrop-blur-sm border border-white/10 flex items-center justify-center shadow-2xl animate-in zoom-in duration-700">
+                                {previousUser ? (
+                                    <div className="flex flex-col items-center">
+                                        {/* Swapped UserCircle2 for User, removed status dot */}
+                                        <User className="size-24 text-blue-400" strokeWidth={1} />
+                                    </div>
+                                ) : (
+                                    <Lock className="size-24 text-blue-400" strokeWidth={1.5} />
+                                )}
                             </div>
 
-                            {/* Text */}
-                            <div className="text-center">
-                                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight">
-                                    Welcome Back
-                                </h2>
-                                <p className="text-slate-400 mt-1 sm:mt-2 text-sm sm:text-base font-medium">
-                                    Guest
-                                </p>
+                            {/* Dynamic Text */}
+                            <div className="mt-8 text-center space-y-2">
+                            <h2 className="text-3xl font-bold tracking-tight text-white animate-in slide-in-from-bottom-2 duration-700 delay-150">
+                                {previousUser ? `Welcome Back, ${previousUser.name}` : 'Welcome'}
+                            </h2>
+                            <p className="text-blue-200/60 font-medium tracking-wide uppercase text-xs animate-in slide-in-from-bottom-2 duration-700 delay-300">
+                                {previousUser ? 'Login to your account' : 'Secure Access Portal'}
+                            </p>
                             </div>
                         </div>
 
-                        {/* Background Decor */}
-                        <div className="hidden sm:block absolute top-0 right-0 
-                                        size-64 bg-blue-600/10 
-                                        blur-[100px] rounded-full 
-                                        -mr-32 -mt-32" />
+                        {/* Background blobs */}
+                        <div className="absolute top-0 right-0 size-64 bg-blue-600/10 blur-[100px] rounded-full -mr-32 -mt-32" />
+                        <div className="absolute bottom-0 left-0 size-64 bg-blue-900/20 blur-[100px] rounded-full -ml-32 -mb-32" />
                     </div>
 
-                    {/* Right Panel: Form maintained */}
+                    {/* Right Panel: Auth Form */}
                     <main className="p-8 sm:p-10 lg:p-16 flex flex-col justify-center bg-white">
                         <div className="text-center mb-10">
                             <div className="inline-flex items-center justify-center size-16 rounded-2xl bg-blue-50 text-blue-600 mb-4 shadow-sm">
@@ -144,64 +188,83 @@ export default function Login() {
                             </div>
                         )}
 
-                        <form onSubmit={handleLogin} className="space-y-5 max-w-md lg:max-w-[400px] mx-auto w-full">
-                            <div className="space-y-1.5 group">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
-                                <div className="relative">
-                                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-300 group-focus-within:text-blue-500 transition-colors" />
-                                    <input
-                                        type="email" required value={formData.email}
-                                        onChange={(e) => {
-                                            setFormData({ ...formData, email: e.target.value });
-                                            if (error) setError('');
-                                        }}
-                                        className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
-                                        placeholder="you@example.com"
-                                    />
-                                </div>
+                        <form key={formKey} onSubmit={handleLogin} className="space-y-5 max-w-md mx-auto w-full" autoComplete="off">
+                        {/* 1. Sacrificial Hidden Fields: Browsers fill these instead of your real ones */}
+                        <div className="sr-only" aria-hidden="true">
+                            <input type="text" name="fake_email_remembered" tabIndex={-1} />
+                            <input type="password" name="fake_password_remembered" tabIndex={-1} />
+                        </div>
+
+                        {/* Email Field */}
+                        <div className="space-y-1.5 group">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
+                            <div className="relative">
+                                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-300 group-focus-within:text-blue-500 transition-colors" />
+                                <input
+                                    type="email" 
+                                    required 
+                                    ref={emailRef}
+                                    autoComplete="username"
+                                    value={formData.email}
+                                    onChange={(e) => {
+                                        setFormData({ ...formData, email: e.target.value });
+                                        if (error) setError('');
+                                    }}
+                                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
+                                    placeholder="you@example.com"
+                                />
                             </div>
+                        </div>
 
-                            <div className="space-y-1.5 group">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                Password
-                            </label>
-
+                        {/* Password Field */}
+                        <div className="space-y-1.5 group">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password</label>
                             <div className="relative">
                                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-300 group-focus-within:text-blue-500 transition-colors" />
                                 <input
-                                type="password"
-                                required
-                                value={formData.password}
-                                onChange={(e) => {
-                                    setFormData({ ...formData, password: e.target.value });
-                                    if (error) setError('');
-                                }}
-                                className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
-                                placeholder="••••••••"
+                                    type={showPassword ? "text" : "password"}
+                                    required
+                                    ref={passRef}
+                                    autoComplete="current-password"
+                                    value={formData.password}
+                                    onChange={(e) => {
+                                        setFormData({ ...formData, password: e.target.value });
+                                        if (error) setError('');
+                                    }}
+                                    className="w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
+                                    placeholder="••••••••"
                                 />
-                            </div>
-
-                            <div className="text-right">
-                                <button
-                                type="button"
-                                onClick={() => setIsModalOpen(true)}
-                                className="text-[11px] font-bold text-blue-600 hover:underline"
+                                <button 
+                                    type="button"
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                                 >
-                                Forgot Password?
+                                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                                 </button>
                             </div>
+                        
+                                <div className="text-right">
+                                    <button
+                                        type="button"
+                                        onClick={openRecoveryModal}
+                                        className="text-[11px] font-bold text-blue-600 hover:underline"
+                                    >
+                                        Forgot Password?
+                                    </button>
+                                </div>
                             </div>
 
                             <button
-                                type="submit" disabled={loading}
-                                className="w-full bg-blue-600 text-white py-2 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/10 disabled:opacity-50 mt-2 active:scale-[0.98]"
+                                type="submit" 
+                                disabled={loading}
+                                className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/10 disabled:opacity-50 mt-2 active:scale-[0.98]"
                             >
                                 {loading ? 'Signing in...' : 'Sign In'}
                             </button>
                         </form>
 
                         {/* Social Logins */}
-                        <div className="mt-8 max-w-[400px] mx-auto w-full">
+                        <div className="mt-8 max-w-md mx-auto w-full">
                             <div className="relative flex items-center justify-center mb-6">
                                 <div className="w-full border-t border-slate-100" />
                                 <span className="absolute bg-white px-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">Or login with</span>
@@ -217,7 +280,7 @@ export default function Login() {
                             </div>
                         </div>
 
-                        {/* Bigger Footer Links */}
+                        {/* Footer Links */}
                         <div className="mt-12 text-center space-y-3">
                             <p className="text-slate-500 text-sm font-medium">
                                 Don't have an account?{' '}
@@ -227,7 +290,6 @@ export default function Login() {
                                 <ArrowLeft className="size-4 transition-transform group-hover:-translate-x-1" /> 
                                 Back to Home
                             </Link>
-                            
                         </div>
                     </main>
                 </div>
@@ -235,7 +297,7 @@ export default function Login() {
 
             {/* Password Recovery Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-[2rem] shadow-2xl max-w-md w-full p-10 animate-in zoom-in-95 duration-200">
                         <div className="flex justify-between items-center mb-8">
                             <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Recovery</h2>
@@ -244,19 +306,19 @@ export default function Login() {
                             </button>
                         </div>
 
-                        {recoveryError && (
+                        {recoveryStatus.type === 'error' && (
                             <div className="mb-6 p-4 bg-rose-50 text-rose-700 text-xs font-bold rounded-xl flex items-center gap-3">
-                                <AlertCircle className="size-4" /> {recoveryError}
+                                <AlertCircle className="size-4" /> {recoveryStatus.msg}
                             </div>
                         )}
 
-                        {recoverySuccess ? (
+                        {recoveryStatus.type === 'success' ? (
                             <div className="text-center py-6">
                                 <div className="size-16 rounded-full bg-green-50 text-green-500 flex items-center justify-center mx-auto mb-4">
                                     <CheckCircle className="size-8" />
                                 </div>
-                                <p className="text-slate-600 font-medium mb-8 leading-relaxed">{recoverySuccess}</p>
-                                <button onClick={() => setIsModalOpen(false)} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold">Close</button>
+                                <p className="text-slate-600 font-medium mb-8 leading-relaxed">{recoveryStatus.msg}</p>
+                                <button onClick={() => setIsModalOpen(false)} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold hover:bg-black transition-colors">Close</button>
                             </div>
                         ) : (
                             <form onSubmit={handleRecoverPassword} className="space-y-6">
@@ -264,14 +326,17 @@ export default function Login() {
                                 <div className="space-y-1.5">
                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
                                     <input
-                                        type="email" required value={recoveryEmail}
+                                        type="email" 
+                                        required 
+                                        value={recoveryEmail}
                                         onChange={(e) => setRecoveryEmail(e.target.value)}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none text-sm"
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none text-sm font-medium"
                                         placeholder="you@example.com"
                                     />
                                 </div>
                                 <button
-                                    type="submit" disabled={recoveryLoading}
+                                    type="submit" 
+                                    disabled={recoveryLoading}
                                     className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-500/10 transition-all disabled:opacity-50"
                                 >
                                     {recoveryLoading ? 'Processing...' : 'Send Recovery Link'}
@@ -283,4 +348,4 @@ export default function Login() {
             )}
         </div>
     );
-}   
+}
