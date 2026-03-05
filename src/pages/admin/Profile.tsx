@@ -1,25 +1,28 @@
 import { useState, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { User, Mail, Phone, Lock, CheckCircle, AlertCircle, Camera } from 'lucide-react';
+import { User, Mail, Phone, Lock, CheckCircle, AlertCircle, Camera, Loader2 } from 'lucide-react';
 
 export default function AdminProfile() {
-  const { user, updateProfile, changePassword } = useAuth();
+  // ✅ FIX: Brought in uploadProfilePicture
+  const { user, updateProfile, changePassword, uploadProfilePicture } = useAuth();
   const [editing, setEditing] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Avatar URL fallback (prefers user.avatarUrl, then generated initials based on first name)
+  // ✅ FIX: Updated to use profilePictureUrl
   const avatarUrl =
-      (user as any)?.avatarUrl ||
+      user?.profilePictureUrl ||
       `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.firstName || 'Admin')}&background=0D8ABC&color=fff&size=512`;
 
+  // ✅ FIX: Changed keys to firstName, lastName, and contactNumber to match AuthContext
   const [profileForm, setProfileForm] = useState({
-    first_name: user?.firstName || '',
-    last_name: user?.lastName || '',
+    firstName: user?.firstName || '',
+    lastName: user?.lastName || '',
     email: user?.email || '',
-    phone: user?.contactNumber || ''
+    contactNumber: user?.contactNumber || ''
   });
 
   const [passwordForm, setPasswordForm] = useState({
@@ -53,7 +56,6 @@ export default function AdminProfile() {
     }
 
     try {
-      // Pass both old and new passwords to match your AuthContext
       const success = await changePassword(passwordForm.oldPassword, passwordForm.newPassword);
       
       if (success !== false) {
@@ -77,19 +79,33 @@ export default function AdminProfile() {
       fileInputRef.current?.click();
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ✅ FIX: Integrated the real Supabase upload logic
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
 
-      const reader = new FileReader();
-      reader.onload = () => {
-          const dataUrl = reader.result as string;
-          // Note: Full image upload requires storage bucket in Supabase. This updates local/auth metadata.
-          Promise.resolve(updateProfile({ avatarUrl: dataUrl } as any))
-              .then(() => showMessage('success', 'Profile picture updated!'))
-              .catch(() => showMessage('error', 'Failed to update profile picture'));
-      };
-      reader.readAsDataURL(file);
+      if (file.size > 2 * 1024 * 1024) {
+          showMessage('error', 'Image must be 2MB or smaller.');
+          return;
+      }
+
+      setIsUploadingImage(true);
+      try {
+          const newUrl = await uploadProfilePicture(file);
+          if (newUrl) {
+              await updateProfile({ profilePictureUrl: newUrl });
+              showMessage('success', 'Profile picture updated successfully!');
+          } else {
+              showMessage('error', 'Failed to upload profile picture.');
+          }
+      } catch (error) {
+          showMessage('error', 'An unexpected error occurred during upload.');
+      } finally {
+          setIsUploadingImage(false);
+          if (fileInputRef.current) {
+              fileInputRef.current.value = '';
+          }
+      }
   };
 
   return (
@@ -137,8 +153,8 @@ export default function AdminProfile() {
                       <input
                         type="text"
                         required
-                        value={profileForm.first_name}
-                        onChange={(e) => setProfileForm({ ...profileForm, first_name: e.target.value })}
+                        value={profileForm.firstName}
+                        onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })}
                         className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
                       />
                     </div>
@@ -150,8 +166,8 @@ export default function AdminProfile() {
                       <input
                         type="text"
                         required
-                        value={profileForm.last_name}
-                        onChange={(e) => setProfileForm({ ...profileForm, last_name: e.target.value })}
+                        value={profileForm.lastName}
+                        onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })}
                         className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
                       />
                     </div>
@@ -179,8 +195,8 @@ export default function AdminProfile() {
                     <Phone className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
                     <input
                       type="tel"
-                      value={profileForm.phone}
-                      onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                      value={profileForm.contactNumber}
+                      onChange={(e) => setProfileForm({ ...profileForm, contactNumber: e.target.value })}
                       className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
                       placeholder="+63 900 000 0000"
                     />
@@ -193,10 +209,10 @@ export default function AdminProfile() {
                     onClick={() => {
                       setEditing(false);
                       setProfileForm({
-                        first_name: user?.firstName || '',
-                        last_name: user?.lastName || '',
+                        firstName: user?.firstName || '',
+                        lastName: user?.lastName || '',
                         email: user?.email || '',
-                        phone: user?.contactNumber || ''
+                        contactNumber: user?.contactNumber || ''
                       });
                     }}
                     className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
@@ -327,10 +343,15 @@ export default function AdminProfile() {
 
         {/* Right Column: Avatar & Account Summary */}
         <div className="lg:w-80 space-y-6">
-           
+            
           {/* Avatar Card */}
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 flex flex-col items-center justify-center text-center">
               <div className="relative group">
+                 {isUploadingImage && (
+                     <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 rounded-full w-32 h-32 backdrop-blur-sm">
+                         <Loader2 className="size-8 text-blue-600 animate-spin" />
+                     </div>
+                 )}
                  <img
                     src={avatarUrl}
                     alt={user?.firstName || 'Admin avatar'}
@@ -344,7 +365,8 @@ export default function AdminProfile() {
                  <button
                     type="button"
                     onClick={handleEditPictureClick}
-                    className="absolute bottom-0 right-0 p-2.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-md border-2 border-white"
+                    disabled={isUploadingImage}
+                    className="absolute bottom-0 right-0 p-2.5 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors shadow-md border-2 border-white disabled:opacity-50"
                     title="Change picture"
                  >
                     <Camera className="size-4" />

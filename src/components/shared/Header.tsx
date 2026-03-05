@@ -1,6 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Building2, Bell, User, LogOut } from 'lucide-react'; 
-// ✅ FIX 1: Changed 'context' to 'contexts' to match your actual folder structure
+import { Building2, Bell, LogOut } from 'lucide-react'; 
 import { useAuth } from '../../contexts/AuthContext'; 
 import { useData } from '../../contexts/DataContext';
 import { useState } from 'react';
@@ -12,18 +11,19 @@ export default function Header() {
   const location = useLocation();
   const [showNotifications, setShowNotifications] = useState(false);
 
-  // ✅ FIX 2: Explicitly typed 'n' as 'any' (or it will auto-infer once the import is fixed)
-  // Added optional chaining (?.) and fallback (|| 0) just to be perfectly safe
   const unreadCount = notifications?.filter((n: any) => n.userId === user?.id && !n.read).length || 0;
   
-  // ✅ FIX: Removed the 'customer' check to match your strict AuthContext types
   const isClient = user?.role === 'client';
   const basePath = isClient ? '/client' : '/admin';
 
-  // Format the display name safely
-  const displayName = user?.firstName 
-    ? `${user.firstName} ${user.lastName || ''}`.trim() 
-    : 'Profile';
+  const fullName = user ? `${user.firstName} ${user.lastName || ''}`.trim() : 'User';
+
+  // ✅ FIX: Extract the actual URL (if it exists) from any possible state it might be saved in
+  const activeImageUrl = 
+      (user as any)?.profilePictureUrl || 
+      (user as any)?.profile_picture_url || 
+      (user as any)?.avatarUrl || 
+      null;
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
@@ -135,10 +135,23 @@ export default function Header() {
             
             <Link
               to="/profile"
-              className="flex items-center gap-2 p-2 text-gray-600 hover:text-blue-600 hover:bg-gray-100 rounded-lg transition-colors"
+              className="flex items-center gap-2 p-1.5 pr-3 text-gray-600 hover:text-blue-600 hover:bg-gray-100 rounded-full md:rounded-lg transition-colors"
             >
-              <User className="w-5 h-5" />
-              <span className="hidden md:inline text-sm font-medium">{displayName}</span>
+              {/* ✅ FIX: We actually use the variable now! */}
+              {activeImageUrl ? (
+                <img 
+                  src={activeImageUrl} 
+                  alt={fullName} 
+                  className="w-7 h-7 rounded-full object-cover border border-gray-200 bg-white"
+                />
+              ) : (
+                <img 
+                  src={`https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=0D8ABC&color=fff&size=128`} 
+                  alt={fullName} 
+                  className="w-7 h-7 rounded-full object-cover border border-gray-200 bg-white"
+                />
+              )}
+              <span className="hidden md:inline text-sm font-medium">{fullName}</span>
             </Link>
 
             <div className="w-px h-6 bg-gray-200 hidden md:block"></div>

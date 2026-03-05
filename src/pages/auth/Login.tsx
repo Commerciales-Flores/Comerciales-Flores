@@ -20,7 +20,8 @@ const FacebookLogo = () => (
 );
 
 export default function Login() {
-    const { login, recoverPassword } = useAuth();
+    // ✅ FIX: Added logout to the destructured functions
+    const { login, recoverPassword, logout } = useAuth();
     const navigate = useNavigate();
     const [formData, setFormData] = useState({
         email: '',
@@ -47,6 +48,15 @@ export default function Login() {
             const storedUser = localStorage.getItem('currentUser');
             if (storedUser) {
                 const user = JSON.parse(storedUser);
+
+                // ✅ FIX: Instantly reject deactivated users
+                if (user.is_active === false) {
+                    logout(); // Wipe the session that was just created
+                    setError('Your account has been deactivated. Please contact support.');
+                    setLoading(false);
+                    return; // Stop the redirect
+                }
+
                 if (user.role === 'admin') {
                     navigate('/admin/dashboard');
                 } else {
@@ -59,7 +69,6 @@ export default function Login() {
         }
     };
 
-    // ✅ START: New function to handle the recovery form submission
     const handleRecoverPassword = async (e: React.FormEvent) => {
         e.preventDefault();
         setRecoveryError('');
@@ -69,7 +78,6 @@ export default function Login() {
         const result = await recoverPassword(recoveryEmail);
 
         if (result) {
-            // For demo purposes, we show the password in an alert.
             setRecoverySuccess(`A recovery link has been sent to ${recoveryEmail} (simulation). You can now close this window.`);
         } else {
             setRecoveryError('No account found with that email address.');
@@ -78,14 +86,11 @@ export default function Login() {
     };
 
     const openModal = () => {
-        // Reset modal state when opening
         setRecoveryEmail('');
         setRecoveryError('');
         setRecoverySuccess('');
         setIsModalOpen(true);
     }
-    // ✅ END: New function
-
 
     return (
         <div className="h-screen bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center p-12">
@@ -163,7 +168,6 @@ export default function Login() {
                                 />
                             </div>
 
-                            {/* ✅ START: NEW FORGOT PASSWORD LINK */}
                             <div className="flex justify-end">
                                 <button
                                     type="button"
@@ -173,7 +177,6 @@ export default function Login() {
                                     Forgot Password?
                                 </button>
                             </div>
-                            {/* ✅ END: NEW FORGOT PASSWORD LINK */}
 
                             <button
                                 type="submit"
@@ -195,7 +198,6 @@ export default function Login() {
                             </div>
 
                             <div className="mt-6 grid grid-cols-2 gap-4">
-                                {/* Google Button */}
                                 <button
                                     type="button"
                                     onClick={() => alert("Google login not implemented")}
@@ -205,7 +207,6 @@ export default function Login() {
                                     <span>Google</span>
                                 </button>
 
-                                {/* Facebook Button */}
                                 <button
                                     type="button"
                                     onClick={() => alert("Facebook login not implemented")}
@@ -216,8 +217,6 @@ export default function Login() {
                                 </button>
                             </div>
                         </div>
-                        {/* ✅ END: Social Login Section */}
-
 
                         <div className="mt-6 text-center space-y-2">
                             <p className="text-gray-600">
@@ -230,19 +229,10 @@ export default function Login() {
                                 Back to Home
                             </Link>
                         </div>
-
-                        {/*<div className="mt-8 pt-6 border-t border-gray-200">*/}
-                        {/*    <p className="text-sm text-gray-500 mb-2">Demo Accounts:</p>*/}
-                        {/*    <div className="text-xs space-y-1 text-gray-600">*/}
-                        {/*        <p>Admin: admin@flores.com / admin123</p>*/}
-                        {/*        <p>Client: client@example.com / client123</p>*/}
-                        {/*    </div>*/}
-                        {/*</div>*/}
                     </main>
                 </div>
             </div>
 
-            {/* ✅ START: FORGOT PASSWORD MODAL JSX */}
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 bg-gray-900/20 backdrop-blur-sm flex items-center justify-center p-4">          <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-8" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-between items-center mb-6">
@@ -292,7 +282,6 @@ export default function Login() {
                 </div>
                 </div>
             )}
-            {/* ✅ END: FORGOT PASSWORD MODAL JSX */}
         </div>
     );
 }

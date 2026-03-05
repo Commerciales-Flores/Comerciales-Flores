@@ -27,14 +27,6 @@ export default function Register() {
 
     const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
-    const readFileAsDataURL = (file: File): Promise<string> =>
-        new Promise((resolve, reject) => {
-            const fr = new FileReader();
-            fr.onload = () => resolve(String(fr.result));
-            fr.onerror = () => reject(new Error('Failed to read file'));
-            fr.readAsDataURL(file);
-        });
-
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setProfileError(null);
         const file = e.target.files?.[0] ?? null;
@@ -76,6 +68,7 @@ export default function Register() {
 
         setLoading(true);
 
+        // ✅ FIX: Clean, elegant call. Context handles the upload automatically!
         const success = await register({
             firstName: formData.firstName,
             lastName: formData.lastName,
@@ -84,6 +77,7 @@ export default function Register() {
             role: 'client',
             contactNumber: formData.contactNumber,
             address: formData.address,
+            profileFile: profileFile // Send the File object straight to AuthContext
         });
 
         setLoading(false);
@@ -164,11 +158,15 @@ export default function Register() {
                                     </div>
                                 ) : (
                                     <div className="w-full flex items-center gap-3">
-                                        <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center border">
-                                            <svg className="w-8 h-8 text-gray-400" viewBox="0 0 24 24" fill="none">
-                                                <path d="M12 12a4 4 0 100-8 4 4 0 000 8z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                                <path d="M20 21v-1a4 4 0 00-4-4H8a4 4 0 00-4 4v1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                                            </svg>
+                                        <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center border overflow-hidden">
+                                            {profilePreview ? (
+                                                <img src={profilePreview} alt="Preview" className="w-full h-full object-cover" />
+                                            ) : (
+                                                <svg className="w-8 h-8 text-gray-400" viewBox="0 0 24 24" fill="none">
+                                                    <path d="M12 12a4 4 0 100-8 4 4 0 000 8z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                                    <path d="M20 21v-1a4 4 0 00-4-4H8a4 4 0 00-4 4v1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                                </svg>
+                                            )}
                                         </div>
                                         <div>
                                             <label htmlFor="profile-upload" className="inline-flex items-center px-3 py-2 border rounded-lg cursor-pointer text-sm bg-white hover:bg-blue-50">

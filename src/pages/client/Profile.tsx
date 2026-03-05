@@ -1,24 +1,23 @@
 import { useState, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { User, Mail, Phone, MapPin, Lock, CheckCircle, AlertCircle } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Lock, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 
 export default function ClientProfile() {
-    const { user, updateProfile, changePassword } = useAuth();
+    // ✅ FIX: Brought in uploadProfilePicture
+    const { user, updateProfile, changePassword, uploadProfilePicture } = useAuth();
     const [editing, setEditing] = useState(false);
     const [changingPassword, setChangingPassword] = useState(false);
+    const [isUploadingImage, setIsUploadingImage] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-    // ✅ FIX 1: Safely combine first and last name for the avatar fallback
     const fullName = user ? `${user.firstName} ${user.lastName}` : 'User';
     
-    // Avatar URL fallback
+    // ✅ FIX: Updated to use profilePictureUrl which maps directly from your DB
     const avatarUrl =
-        (user as any)?.avatarUrl ||
-        (user as any)?.photoURL ||
+        user?.profilePictureUrl ||
         `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=0D8ABC&color=fff&size=512`;
 
-    // ✅ FIX 2: Split name into firstName and lastName to match AuthContext
     const [profileForm, setProfileForm] = useState({
         firstName: user?.firstName || '',
         lastName: user?.lastName || '',
@@ -72,18 +71,35 @@ export default function ClientProfile() {
         fileInputRef.current?.click();
     };
 
-    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // ✅ FIX: Integrated the real Supabase upload logic
+    const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        const reader = new FileReader();
-        reader.onload = () => {
-            const dataUrl = reader.result as string;
-            Promise.resolve(updateProfile({ ...user, avatarUrl: dataUrl } as any))
-                .then(() => showMessage('success', 'Profile picture updated!'))
-                .catch(() => showMessage('error', 'Failed to update profile picture'));
-        };
-        reader.readAsDataURL(file);
+        // Ensure file size is reasonable (e.g., max 2MB)
+        if (file.size > 2 * 1024 * 1024) {
+            showMessage('error', 'Image must be 2MB or smaller.');
+            return;
+        }
+
+        setIsUploadingImage(true);
+        try {
+            const newUrl = await uploadProfilePicture(file);
+            if (newUrl) {
+                await updateProfile({ profilePictureUrl: newUrl });
+                showMessage('success', 'Profile picture updated successfully!');
+            } else {
+                showMessage('error', 'Failed to upload profile picture.');
+            }
+        } catch (error) {
+            showMessage('error', 'An unexpected error occurred during upload.');
+        } finally {
+            setIsUploadingImage(false);
+            // Reset input so the same file can be uploaded again if needed
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
     };
 
     return (
@@ -122,7 +138,6 @@ export default function ClientProfile() {
 
                         {editing ? (
                             <form onSubmit={handleProfileSubmit} className="p-6 space-y-4">
-                                {/* ✅ FIX 3: Split into First and Last Name Inputs */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
@@ -160,7 +175,7 @@ export default function ClientProfile() {
                                         <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
                                         <input
                                             type="email"
-                                            disabled // ✅ Disabled to prevent accidental edits since AuthContext doesn't update this column
+                                            disabled
                                             value={user?.email || ''}
                                             className="w-full pl-10 pr-4 py-2 border border-gray-200 bg-gray-50 text-gray-500 rounded-lg cursor-not-allowed"
                                         />
@@ -267,7 +282,12 @@ export default function ClientProfile() {
 
                 {/* Right: Larger avatar placed outside the personal information box */}
                 <div className="mt-6 lg:mt-0 lg:w-80 lg:pl-10 flex justify-center items-start pt-6">
-                    <div className="flex flex-col items-center">
+                    <div className="flex flex-col items-center relative">
+                        {isUploadingImage && (
+                            <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 rounded-full w-32 h-32 lg:w-48 lg:h-48 backdrop-blur-sm">
+                                <Loader2 className="size-8 text-blue-600 animate-spin" />
+                            </div>
+                        )}
                         <img
                             src={avatarUrl}
                             alt={fullName}
@@ -282,9 +302,10 @@ export default function ClientProfile() {
                             <button
                                 type="button"
                                 onClick={handleEditPictureClick}
-                                className="px-5 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors"
+                                disabled={isUploadingImage}
+                                className="px-5 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-full transition-colors disabled:opacity-50"
                             >
-                                Edit Picture
+                                {isUploadingImage ? 'Uploading...' : 'Edit Picture'}
                             </button>
                             <input
                                 ref={fileInputRef}
