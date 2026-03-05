@@ -44,7 +44,7 @@ export interface Reservation {
   duration: number;
   totalAmount: number;
   paidAmount: number;
-  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+  status: 'pending' | 'confirmed' | 'cancelled' | 'completed' |'approved';
   notes?: string;
     paymentMethod?: 'cash' | 'cheque' | 'gcash' | 'paymaya' | 'bank_transfer' | 'credit_card' | 'not_applicable'; // ✅ ADD THIS LINE
 

@@ -102,9 +102,9 @@ export default function AdminDashboard() {
       </header>
 
       {/* --- KPI Cards --- */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {/* Total Reservations */}
-        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col">
+        <div className="bg-white p-3 sm:p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-medium text-gray-500">Total Reservations</p>
             <Activity className="size-5 text-purple-500" />
@@ -116,7 +116,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Confirmed Reservations */}
-        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col">
+        <div className="bg-white p-3 sm:p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-medium text-gray-500">Confirmed</p>
             <CheckCircle2 className="size-5 text-green-500" />
@@ -127,7 +127,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Cancelled Reservations */}
-        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col">
+        <div className="bg-white p-3 sm:p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col">  
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-medium text-gray-500">Cancelled</p>
             <AlertCircle className="size-5 text-red-500" />
@@ -138,7 +138,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Total Paid Payments */}
-        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col">
+        <div className="bg-white p-3 sm:p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-medium text-gray-500">Paid Payments</p>
             <CreditCard className="size-5 text-blue-500" />
@@ -260,10 +260,13 @@ export default function AdminDashboard() {
                       <XAxis dataKey="label" tick={{ fontSize: 10 }} /> {/* smaller X-axis font */}
                       <Line type="monotone" dataKey="occupancy" stroke="#7c3aed" strokeWidth={2} dot={false} />
                       <Tooltip 
-                        contentStyle={{ fontSize: 10 }} 
-                        formatter={(value) => [`${value.toFixed(1)}%`, "Occupancy"]} 
-                        labelFormatter={(label) => `Month: ${label}`} 
-                      />
+                    contentStyle={{ fontSize: 10 }} 
+                    formatter={(value: number | undefined) => [
+                      `${(value ?? 0).toFixed(1)}%`,
+                      "Occupancy"
+                    ]}
+                      labelFormatter={(label) => `Month: ${label}`}
+                    />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -284,10 +287,13 @@ export default function AdminDashboard() {
                       <XAxis dataKey="label" tick={{ fontSize: 10 }} /> {/* smaller X-axis font */}
                       <Line type="monotone" dataKey="revenue" stroke="#16a34a" strokeWidth={2} dot={false} />
                       <Tooltip 
-                        contentStyle={{ fontSize: 10 }} 
-                        formatter={(value) => [`₱${(value/1000).toFixed(1)}k`, "Revenue"]} 
-                        labelFormatter={(label) => `Month: ${label}`} 
-                      />
+                      contentStyle={{ fontSize: 10 }} 
+                      formatter={(value: number | undefined) => [
+                        `₱${((value ?? 0) / 1000).toFixed(1)}k`,
+                        "Revenue"
+                      ]}
+                      labelFormatter={(label) => `Month: ${label}`}
+                    />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>

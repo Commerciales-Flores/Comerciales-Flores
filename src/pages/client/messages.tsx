@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
-import { Mail, Send, X, PlusCircle, CheckCircle, Clock, MessageSquare, ArrowLeft } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Mail, Send, X, PlusCircle, CheckCircle, Clock, ArrowLeft, Bell, Info, MessageSquare } from 'lucide-react';
 
 export default function ClientMessages() {
   const { user } = useAuth();
@@ -11,8 +12,6 @@ export default function ClientMessages() {
 
   const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
-  // State for mobile view toggle
   const [showDetail, setShowDetail] = useState(false);
 
   const userInquiries = user ? getInquiriesByUserId(user.id) : [];
@@ -50,7 +49,7 @@ export default function ClientMessages() {
       "Inquiry Submitted",
       `We've received your inquiry: "${newInquiryForm.subject}".`
     );
-    
+
     setLoading(false);
     setFormSuccess(true);
 
@@ -66,37 +65,47 @@ export default function ClientMessages() {
     setShowDetail(true);
   };
 
-  return (
-    <div className="max-w-6xl mx-auto py-8 px-4 h-[calc(100vh-140px)] flex flex-col space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Message Center</h1>
-          <p className="text-gray-500">Track your support tickets and inquiries.</p>
-        </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="group flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
-        >
-          <PlusCircle className="size-5 group-hover:rotate-90 transition-transform" />
-          <span className="font-semibold">New Inquiry</span>
-        </button>
-      </div>
+  const deselectInquiry = () => {
+    setSelectedInquiryId(null);
+    setShowDetail(false);
+  };
 
+  return (
+    <div className="bg-gray-50 min-h-screen">
+  <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
+      {/* Header */}
+        <header>
+
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
+          Messages
+        </h1>
+        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+          Track your support tickets and inquiries.
+        </p>
+      </header>
+
+      {/* Floating Action Button restored to bottom right */}
+      <button
+        onClick={() => setIsModalOpen(true)}
+        className="fixed bottom-8 md:hidden right-8 z-[55] size-14 bg-blue-600 text-white rounded-full shadow-2xl shadow-blue-400 flex items-center justify-center hover:bg-blue-700 hover:scale-110 active:scale-95 transition-all"
+      >
+        <PlusCircle className="size-8" />
+      </button>
+
+      {/* Main Content Area */}
       {sortedInquiries.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-3xl border border-dashed border-gray-300 p-12 text-center">
-          <div className="bg-blue-50 p-6 rounded-full mb-4">
-            <Mail className="size-12 text-blue-400" />
+        <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-[32px] border border-dashed border-gray-200 p-12 text-center">
+          <div className="bg-blue-50 p-6 rounded-full mb-4 text-blue-500">
+            <Mail className="size-12" />
           </div>
           <h3 className="text-lg font-bold text-gray-900">No messages yet</h3>
-          <p className="text-gray-500 max-w-sm mx-auto mt-2">
-            Have a question about your booking or parking rates? Start a conversation with our team.
-          </p>
+          <p className="text-gray-500 max-w-xs mx-auto mt-2 text-sm">Need help? Start a conversation with our team.</p>
         </div>
       ) : (
-        <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0">
-          {/* Left: List (Hidden on mobile when detail is shown) */}
-          <div className={`lg:w-1/3 flex flex-col gap-3 overflow-y-auto pr-2 custom-scrollbar ${showDetail ? 'hidden lg:flex' : 'flex'}`}>
+        <div className="flex-1 flex gap-6 overflow-hidden relative">
+          
+          {/* Left Side: List */}
+          <div className={`w-full lg:w-1/3 flex flex-col gap-3 overflow-y-auto custom-scrollbar pb-24 lg:pb-0 ${showDetail ? 'hidden lg:flex' : 'flex'}`}>
             {sortedInquiries.map((inq) => (
               <button
                 key={inq.id}
@@ -108,143 +117,162 @@ export default function ClientMessages() {
                 }`}
               >
                 <div className="flex justify-between items-start mb-2">
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase border ${statusStyles[inq.status].bg} ${statusStyles[inq.status].text} ${statusStyles[inq.status].border}`}>
+                  <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase border ${statusStyles[inq.status].bg} ${statusStyles[inq.status].text} ${statusStyles[inq.status].border}`}>
                     {statusStyles[inq.status].label}
                   </span>
-                  <span className="text-[11px] text-gray-400 font-medium">
-                    {new Date(inq.date).toLocaleDateString()}
-                  </span>
+                  <span className="text-[11px] text-gray-400">{new Date(inq.date).toLocaleDateString()}</span>
                 </div>
                 <h3 className="font-bold text-gray-900 text-sm mb-1 truncate">{inq.subject}</h3>
-                <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">{inq.message}</p>
+                <p className="text-xs text-gray-500 line-clamp-2">{inq.message}</p>
               </button>
             ))}
           </div>
 
-          {/* Right: Detail View */}
-          <div className={`lg:w-2/3 bg-white rounded-3xl border border-gray-200 shadow-sm flex flex-col overflow-hidden min-h-0 ${!showDetail ? 'hidden lg:flex' : 'flex'}`}>
-            {!selectedInquiry ? (
-              <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-                <MessageSquare className="size-12 text-gray-200 mb-4" />
-                <p className="text-gray-400 font-medium">Select a conversation to read</p>
-              </div>
-            ) : (
-              <>
-                <div className="p-6 border-b border-gray-50 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <button onClick={() => setShowDetail(false)} className="lg:hidden p-2 -ml-2 hover:bg-gray-100 rounded-full">
-                      <ArrowLeft className="size-5" />
+          {/* Right Side: Detail Panel */}
+          <div className={`fixed inset-0 z-[60] lg:relative lg:inset-auto lg:z-auto lg:flex-1 bg-white lg:bg-transparent ${showDetail ? 'flex' : 'hidden lg:flex'}`}>
+            <AnimatePresence mode="wait">
+              {selectedInquiry ? (
+                <motion.div
+                  key={selectedInquiry.id}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  className="flex-1 bg-white lg:rounded-[32px] border-none lg:border lg:border-gray-100 flex flex-col overflow-hidden h-full"
+                >
+                  {/* DETAIL HEADER - Fixed to show back/close buttons */}
+                  <div className="p-4 lg:p-6 border-b border-gray-100 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-4">
+                      {/* Back Arrow - Always visible on mobile, used to deselect */}
+                      <button 
+                        onClick={deselectInquiry} 
+                        className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors lg:hidden"
+                      >
+                        <ArrowLeft className="size-6 text-gray-900" />
+                      </button>
+                      <div>
+                        <h2 className="text-base lg:text-lg font-bold text-gray-900 leading-tight">
+                          {selectedInquiry.subject}
+                        </h2>
+                        <div className="flex items-center gap-2 mt-0.5">
+                           <span className={`text-[10px] font-bold uppercase ${statusStyles[selectedInquiry.status].text}`}>
+                            {statusStyles[selectedInquiry.status].label}
+                           </span>
+                           <span className="text-[10px] text-gray-400 font-mono hidden sm:inline">• ID: #{selectedInquiry.id.slice(-6).toUpperCase()}</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Desktop Close Button */}
+                    <button 
+                      onClick={deselectInquiry} 
+                      className="hidden lg:flex p-2 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
+                    >
+                      <X className="size-5" />
                     </button>
-                    <div>
-                      <h2 className="text-lg font-bold text-gray-900">{selectedInquiry.subject}</h2>
-                      <p className="text-xs text-gray-500">Ticket ID: #{selectedInquiry.id.slice(-6).toUpperCase()}</p>
-                    </div>
-                  </div>
-                  <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold ${statusStyles[selectedInquiry.status].bg} ${statusStyles[selectedInquiry.status].text}`}>
-                    <div className={`size-1.5 rounded-full ${selectedInquiry.status === 'open' ? 'bg-amber-500 animate-pulse' : 'bg-current'}`} />
-                    {statusStyles[selectedInquiry.status].label}
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
-                  {/* Client Message */}
-                  <div className="flex flex-col items-end">
-                    <div className="max-w-[85%] bg-blue-600 text-white p-4 rounded-2xl rounded-tr-none shadow-md shadow-blue-100">
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{selectedInquiry.message}</p>
-                    </div>
-                    <span className="text-[10px] text-gray-400 mt-2 font-medium">You • {new Date(selectedInquiry.date).toLocaleString()}</span>
                   </div>
 
-                  {/* Admin Response */}
-                  {selectedInquiry.response ? (
-                    <div className="flex flex-col items-start">
-                      <div className="max-w-[85%] bg-gray-100 text-gray-800 p-4 rounded-2xl rounded-tl-none border border-gray-200">
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap">{selectedInquiry.response}</p>
+                  {/* Message Body */}
+                  <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-white">
+                    <div className="flex flex-col items-end">
+                      <div className="max-w-[90%] bg-blue-600 text-white p-4 rounded-2xl rounded-tr-none shadow-sm">
+                        <p className="text-sm whitespace-pre-wrap">{selectedInquiry.message}</p>
                       </div>
-                      <span className="text-[10px] text-gray-400 mt-2 font-medium">Support Team • {new Date(selectedInquiry.responseDate!).toLocaleString()}</span>
+                      <span className="text-[10px] text-gray-400 mt-2">You • {new Date(selectedInquiry.date).toLocaleString()}</span>
                     </div>
-                  ) : (
-                    selectedInquiry.status === 'open' && (
-                      <div className="flex items-center gap-3 py-4 px-6 bg-amber-50 rounded-2xl border border-amber-100 text-amber-800 mx-auto max-w-sm">
-                        <Clock className="size-5 shrink-0" />
-                        <p className="text-xs font-medium">We've received your message. A team member will respond shortly.</p>
-                      </div>
-                    )
-                  )}
-                </div>
 
-                {selectedInquiry.status === 'resolved' && (
-                  <div className="p-4 bg-green-50 border-t border-green-100 flex items-center justify-center gap-2 text-green-700 font-bold text-xs uppercase tracking-wider">
-                    <CheckCircle className="size-4" />
-                    This issue has been marked as resolved
+                    {selectedInquiry.response ? (
+                      <div className="flex flex-col items-start">
+                        <div className="max-w-[90%] bg-gray-100 text-gray-800 p-4 rounded-2xl rounded-tl-none border border-gray-200">
+                          <p className="text-sm whitespace-pre-wrap">{selectedInquiry.response}</p>
+                        </div>
+                        <span className="text-[10px] text-gray-400 mt-2">Support Team • {new Date(selectedInquiry.responseDate!).toLocaleString()}</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3 p-4 bg-amber-50 rounded-2xl border border-amber-100 text-amber-800 max-w-sm mx-auto">
+                        <Clock className="size-5 shrink-0 animate-pulse" />
+                        <p className="text-xs font-medium">Wait tight! We're reviewing your inquiry.</p>
+                      </div>
+                    )}
                   </div>
-                )}
-              </>
-            )}
+                </motion.div>
+              ) : (
+                <div className="hidden lg:flex flex-1 flex-col items-center justify-center bg-white rounded-[32px] border border-gray-100 text-center p-12">
+                   <div className="bg-gray-50 p-6 rounded-full mb-4">
+                     <MessageSquare className="size-10 text-gray-300" />
+                   </div>
+                  <h3 className="text-gray-900 font-bold">Your conversation</h3>
+                  <p className="text-gray-500 text-sm mt-1">Select a ticket from the list to view the full chat history.</p>
+                </div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       )}
 
       {/* New Inquiry Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-gray-900/40 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center p-6 border-b border-gray-50">
-              <h2 className="text-xl font-bold text-gray-900">New Support Ticket</h2>
-              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400">
-                <X className="size-6" />
-              </button>
-            </div>
-            
-            {formSuccess ? (
-              <div className="p-12 text-center">
-                <div className="size-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <CheckCircle className="size-10 text-green-500" />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-2">Message Sent!</h3>
-                <p className="text-gray-500">We'll notify you as soon as an admin responds.</p>
+      <AnimatePresence>
+        {isModalOpen && (
+          <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setIsModalOpen(false)}
+              className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+              className="relative bg-white w-full max-w-lg rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-gray-50 flex justify-between items-center">
+                <h2 className="text-xl font-bold text-gray-900">New Support Ticket</h2>
+                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full text-blue-600">
+                  <X className="size-6" />
+                </button>
               </div>
-            ) : (
-              <form onSubmit={handleNewInquirySubmit}>
-                <div className="p-6 space-y-5">
+
+              {formSuccess ? (
+                <div className="p-12 text-center">
+                  <div className="size-16 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle className="size-10" />
+                  </div>
+                  <h3 className="text-lg font-bold">Message Sent</h3>
+                  <p className="text-sm text-gray-500">We'll notify you as soon as we reply.</p>
+                </div>
+              ) : (
+                <form onSubmit={handleNewInquirySubmit} className="p-6 space-y-4">
                   <div>
-                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Topic / Subject</label>
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Subject</label>
                     <input
-                      type="text"
-                      required
+                      type="text" required
                       value={newInquiryForm.subject}
                       onChange={(e) => setNewInquiryForm({ ...newInquiryForm, subject: e.target.value })}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                      placeholder="e.g. Issues with my reservation"
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="What is this regarding?"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Detailed Message</label>
+                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Message</label>
                     <textarea
-                      rows={5}
-                      required
+                      rows={4} required
                       value={newInquiryForm.message}
                       onChange={(e) => setNewInquiryForm({ ...newInquiryForm, message: e.target.value })}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none"
-                      placeholder="Describe your question or issue in detail..."
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                      placeholder="Tell us more about your inquiry..."
                     />
                   </div>
-                </div>
-                <div className="p-6 bg-gray-50 flex justify-end">
                   <button
-                    type="submit"
                     disabled={loading}
-                    className="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all disabled:opacity-50 shadow-lg shadow-blue-100"
+                    className="w-full py-4 bg-blue-600 text-white font-bold rounded-2xl shadow-lg shadow-blue-100 flex items-center justify-center gap-2"
                   >
                     <Send className="size-4" />
-                    {loading ? 'Sending...' : 'Submit Inquiry'}
+                    {loading ? 'Sending...' : 'Send Message'}
                   </button>
-                </div>
-              </form>
-            )}
+                </form>
+              )}
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
+    </div>
     </div>
   );
 }

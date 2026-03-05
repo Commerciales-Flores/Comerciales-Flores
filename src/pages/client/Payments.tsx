@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import { useNotifications } from '../../contexts/NotificationContext';
-import { CreditCard, CheckCircle, Clock, Plus, Download, FileDown, X, XCircle, Paperclip, Trash2 } from 'lucide-react'; // Added FileDown and Ximport { formatCurrency } from '../../utils/currency';
+import { CreditCard, CheckCircle, Clock, Plus, Download, FileDown, X, XCircle, Paperclip, Trash2, Eye } from 'lucide-react'; // Added FileDown and Ximport { formatCurrency } from '../../utils/currency';
 import { getPropertyTypeLabel } from '../../utils/propertyHelpers';
 import Papa from 'papaparse'; // Import PapaParse for CSV export
 import { formatCurrency } from '../../utils/currency';
@@ -16,6 +16,7 @@ export default function ClientPayments() {
     const [viewingImage, setViewingImage] = useState<string | null>(null);
 
     const [proofFile, setProofFile] = useState<File | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
   const [proofPreviewUrl, setProofPreviewUrl] = useState<string | null>(null);
   
   const [paymentForm, setPaymentForm] = useState({
@@ -45,6 +46,20 @@ export default function ClientPayments() {
     }
   };
 
+  const filteredPayments = userPayments.filter(payment => {
+  const reservation = userReservations.find(r => r.id === payment.reservationId);
+  const query = searchQuery.toLowerCase();
+
+  return (
+    payment.id.toLowerCase().includes(query) ||
+    payment.method.toLowerCase().includes(query) ||
+    payment.notes?.toLowerCase().includes(query) ||
+    payment.amount.toString().includes(query) || // ✅ include amount
+    (reservation?.propertyName.toLowerCase().includes(query)) ||
+    (reservation?.id.toLowerCase().includes(query))
+  );
+});
+
   // ✅ Function to clear the file selection
   const handleRemoveImage = () => {
     setProofFile(null);
@@ -57,34 +72,55 @@ export default function ClientPayments() {
     setPaymentForm({ amount: '', method: 'gcash', proofOfPayment: '', notes: '' });
   };
 
-  
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setViewingImage(null);
+        setShowPaymentModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handlePaymentSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedReservation || !user) return;
-    const reservation = userReservations.find(b => b.id === selectedReservation);
-    if (!reservation) return;
-    const amount = parseFloat(paymentForm.amount);
-    addPayment({
-      reservationId: selectedReservation,
-      userId: user.id,
-      amount,
-      method: paymentForm.method,
-      status: 'unpaid',
-      proofOfPayment: proofPreviewUrl || '',
-      notes: paymentForm.notes
-    });
-    sendSystemNotification(
-      user.id,
-      'Payment Submitted',
-      `Your payment of ${formatCurrency(amount)} for ${reservation.propertyName} has been submitted and is pending verification.`
-    );
-    setPaymentSuccess(true);
-    setTimeout(() => {
-      setShowPaymentModal(false);
-      setPaymentSuccess(false);
-    }, 2000);
-  };
+  e.preventDefault();
+  if (!selectedReservation || !user) return;
+
+  const reservation = userReservations.find(b => b.id === selectedReservation);
+  if (!reservation) return;
+
+  const amount = parseFloat(paymentForm.amount);
+  const balance = reservation.totalAmount - reservation.paidAmount;
+
+  // Safety Check: Prevent invalid amounts
+  if (isNaN(amount) || amount <= 0 || amount > balance) {
+    alert("Please enter a valid payment amount.");
+    return;
+  }
+
+  addPayment({
+    reservationId: selectedReservation,
+    userId: user.id,
+    amount,
+    method: paymentForm.method,
+    status: 'unpaid',
+    // Note: In production, upload proofFile to S3/Firebase here
+    proofOfPayment: proofPreviewUrl || '', 
+    notes: paymentForm.notes
+  });
+  
+  sendSystemNotification(
+    user.id,
+    'Payment Submitted',
+    `Your payment of ${formatCurrency(amount)} for ${reservation.propertyName} is pending verification.`
+  );
+  setPaymentSuccess(true);
+  setTimeout(() => {
+    setShowPaymentModal(false);
+    setPaymentSuccess(false);
+  }, 2000);
+};
 
   useEffect(() => {
     // This function will be called when the component unmounts
@@ -183,12 +219,18 @@ export default function ClientPayments() {
   // ✅ END: NEW INVOICE & CSV EXPORT FUNCTIONS
 
   return (
-    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
+    <div className="bg-gray-50 min-h-screen">
+  <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Payments</h1>
-          <p className="text-gray-500">Manage your payment records and view payment history.</p>
-        </div>
+        <header>
+
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
+          Payments
+        </h1>
+        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+          Manage your payment records and view payment history
+        </p>
+      </header>
       </div>
 
       {/* Pending Payments Section is unchanged */}
@@ -211,10 +253,13 @@ export default function ClientPayments() {
                       <span className="text-red-600">Balance: {formatCurrency(balance)}</span>
                     </div>
                   </div>
-                  <button onClick={() => handleMakePayment(reservation.id)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                    <Plus className="size-4" />
-                    Make Payment
-                  </button>
+                  <button
+                  onClick={() => handleMakePayment(reservation.id)}
+                  className="flex items-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors w-full sm:w-auto justify-center"
+                >
+                  <Plus className="size-4" />
+                  Make Payment
+                </button>
                 </div>
               );
             })}
@@ -224,132 +269,197 @@ export default function ClientPayments() {
 
       {/* ✅ START: REFACTORED PAYMENT HISTORY SECTION */}
       <div className="bg-white rounded-lg border border-gray-200">
-        <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-          <h2>Payment History</h2>
-          {userPayments.length > 0 && (
-            <button
-              onClick={handleExportCSV}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors"
-            >
-              <FileDown className="size-4" />
-              Export as .csv
-            </button>
-          )}
+        {/* Header with Export Button */}
+          <div className="p-6 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+  {/* History Heading with Icon */}
+  <h2 className="text-lg font-semibold flex items-center gap-2">
+    <Clock className="size-5 text-gray-600" />
+    History
+  </h2>
+
+  {/* Container for search + export, responsive */}
+  <div className="flex w-full sm:w-auto gap-2 mt-3 sm:mt-0 sm:ml-auto">
+    {/* Search bar */}
+    <input
+      type="text"
+      placeholder="Search payments..."
+      value={searchQuery}
+      onChange={(e) => setSearchQuery(e.target.value)}
+      className="flex-1 sm:flex-[2] md:flex-[3] px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm outline-none"
+    />
+
+    {/* Export CSV Button */}
+    {userPayments.length > 0 && (
+      <button
+        onClick={handleExportCSV}
+        className="flex items-center justify-center gap-2 px-3 py-2 bg-gray-700 text-white text-sm rounded-lg hover:bg-gray-800 transition-colors"
+      >
+        {/* Mobile: icon only */}
+        <FileDown className="size-4 sm:hidden" />
+
+        {/* Desktop: icon + text */}
+        <div className="hidden sm:flex items-center gap-2">
+          <FileDown className="size-4" />
+          Export as CSV
         </div>
-
-        {userPayments.length === 0 ? (
-          <div className="p-12 text-center">
-            <CreditCard className="size-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-gray-600 mb-2">No payments yet</h3>
-            <p className="text-sm text-gray-500">Your payment records will appear here</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-200">
-            {/* NEW CARD-BASED LAYOUT */}
-            {[...userPayments]
-              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-              .map((payment) => {
-                const reservation = userReservations.find(r => r.id === payment.reservationId );
-                const StatusIcon = paymentStatusIcons[payment.status];
-
-                return (
-                  <div key={payment.id} className="p-6 hover:bg-gray-50/50">
-                    {/* -- Card Header -- */}
-                    <div className="flex justify-between items-start gap-4">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded-full ${paymentStatusColors[payment.status]}`}>
-                            <StatusIcon className="size-3" />
-                            {payment.status.toUpperCase()}
-                          </span>
-<span className="text-xs font-semibold text-gray-500 tracking-wider">{getPropertyTypeLabel(reservation?.propertyType || 'rental_space').toUpperCase()}</span>                        </div>
-                        <h3 className="font-bold text-gray-800">{formatCurrency(payment.amount)}</h3>
-                        <p className="text-sm text-gray-500">Paid on {new Date(payment.date).toLocaleDateString()}</p>
-                      </div>
-                      <button
-                        onClick={() => handleDownloadInvoice(payment)}
-                        className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
-                      >
-                        <Download className="size-4" />
-                        Invoice
-                      </button>
-                    </div>
-
-                    {/* -- Card Body -- */}
-                    <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                      <h4 className="text-sm font-semibold mb-2">{reservation?.propertyName}</h4>
-                      {/* ✅ START: NEW, SIMPLIFIED CARD DETAILS */}
-<div className="grid sm:grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-sm">
-  <div className="flex justify-between md:block">
-    <span className="text-gray-600">Reservation ID: </span>
-    <span className="text-gray-900">{reservation?.id}</span>
-  </div>
-  <div className="flex justify-between md:block">
-    <span className="text-gray-600">Method: </span>
-    <span className="text-gray-900 capitalize">{payment.method.replace('_', ' ')}</span>
-  </div>
-  {reservation?.paymentCycle && (
-    <div className="flex justify-between md:block">
-      <span className="text-gray-600">Cycle: </span>
-      <span className="text-gray-900 capitalize">{reservation.paymentCycle}</span>
-    </div>
-  )}
-  <div className="flex justify-between md:block">
-    <span className="text-gray-600">Total Bill: </span>
-    <span className="text-gray-900">{formatCurrency(reservation?.totalAmount || 0)}</span>
-  </div>
-  <div className="flex justify-between md:block">
-    <span className="text-gray-600">Total Paid: </span>
-    <span className="font-semibold text-green-600">{formatCurrency(reservation?.paidAmount || 0)}</span>
-  </div>
-  <div className="flex justify-between md:block">
-    <span className="text-gray-600">Balance: </span>
-    <span className="font-semibold text-red-600">{formatCurrency((reservation?.totalAmount || 0) - (reservation?.paidAmount || 0))}</span>
+      </button>
+    )}
   </div>
 </div>
-{/* ✅ END: NEW, SIMPLIFIED CARD DETAILS */}
 
-                      {payment.notes && (
-                        <div className="mt-2 pt-2 border-t border-gray-200">
-                          <p className="text-sm"><strong>Notes:</strong> {payment.notes}</p>
-                        </div>
-                      )}
-                      {payment.proofOfPayment && (
-  <div className="mt-2 pt-2 border-t border-gray-200">
-    <button
-      onClick={() => setViewingImage(payment.proofOfPayment || null)}
-      className="text-sm text-blue-600 hover:underline font-medium"
-    >
-      View Proof of Payment
-    </button>
-  </div>
-)}
-                    </div>
+        {userPayments.length > 0 ? (
+  filteredPayments.length > 0 ? (
+    <div className="divide-y divide-gray-200">
+      {[...filteredPayments]
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .map((payment) => {
+          const reservation = userReservations.find(r => r.id === payment.reservationId);
+          const StatusIcon = paymentStatusIcons[payment.status];
+
+          return (
+            <div key={payment.id} className="p-4 sm:p-6 hover:bg-gray-50/50">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row justify-between items-start gap-3">
+                <div className="flex flex-col gap-1 w-full">
+                  <div className="flex items-center justify-between sm:justify-start gap-2">
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold rounded-md ${paymentStatusColors[payment.status]}`}>
+                      <StatusIcon className="size-3" />
+                      {payment.status.toUpperCase()}
+                    </span>
+
+                    {/* Mobile Invoice button */}
+                    <button 
+                      onClick={() => handleDownloadInvoice(payment)}
+                      className="sm:hidden flex items-center gap-1 text-blue-600 text-xs font-semibold"
+                    >
+                      <Download className="size-3" />
+                      Invoice
+                    </button>
                   </div>
-                );
-              })}
-          </div>
-        )}
+
+                  <h3 className="text-lg font-bold text-gray-900 mt-1">{formatCurrency(payment.amount)}</h3>
+                  <p className="text-xs text-gray-500 font-medium">Paid on {new Date(payment.date).toLocaleDateString()}</p>
+                </div>
+
+                {/* Desktop Invoice button */}
+                <button
+                  onClick={() => handleDownloadInvoice(payment)}
+                  className="hidden sm:flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100"
+                >
+                  <Download className="size-4" />
+                  Invoice
+                </button>
+              </div>
+
+              {/* Card Body */}
+              <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <h4 className="text-sm font-semibold mb-2">{reservation?.propertyName}</h4>
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                  {[
+                    { label: 'Reservation ID', value: reservation?.id },
+                    { label: 'Method', value: payment.method.replace('_', ' '), className: 'capitalize' },
+                    { label: 'Cycle', value: reservation?.paymentCycle, hide: !reservation?.paymentCycle },
+                    { label: 'Total Bill', value: formatCurrency(reservation?.totalAmount || 0) },
+                    { label: 'Total Paid', value: formatCurrency(reservation?.paidAmount || 0), className: 'text-green-600 font-medium' },
+                    { label: 'Balance', value: formatCurrency((reservation?.totalAmount || 0) - (reservation?.paidAmount || 0)), className: 'text-red-600 font-medium' },
+                  ].map((item, idx) => !item.hide && (
+                    <div key={idx} className="flex flex-col border-l-2 border-gray-100 pl-3">
+                      <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">{item.label}</span>
+                      <span className={`text-gray-900 ${item.className || ''}`}>{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {payment.notes && (
+                  <div className="mt-2 pt-2 border-t border-gray-200">
+                    <p className="text-sm"><strong>Notes:</strong> {payment.notes}</p>
+                  </div>
+                )}
+
+                {payment.proofOfPayment && (
+                  <div className="mt-2 pt-2 border-t border-gray-200">
+                    <button
+                      onClick={() => setViewingImage(payment.proofOfPayment || null)}
+                      className="text-sm text-blue-600 hover:underline font-medium"
+                    >
+                      <Eye className="size-4 text-blue-600 sm:hidden" /> {/* Mobile: eye icon */}
+                      <span className="hidden sm:inline">View Proof of Payment</span> {/* Desktop: text */}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+    </div>
+  ) : (
+    <div className="p-12 text-center">
+      <CreditCard className="size-16 text-gray-400 mx-auto mb-4" />
+      <h3 className="text-gray-600 mb-2">No payments matched your search</h3>
+      <p className="text-sm text-gray-500">Try a different keyword or amount</p>
+    </div>
+  )
+) : null} {/* Render nothing if userPayments.length === 0 */}
+        
       </div>
       {/* ✅ END: REFACTORED PAYMENT HISTORY SECTION */}
       
       {/* Payment Summary section is unchanged */}
       {/* ✅ START: NEW, SMALLER SUMMARY CARDS */}
 {userPayments.length > 0 && (
-  <div className="grid md:grid-cols-3 gap-6">
-    <div className="bg-white p-6 rounded-lg border border-gray-200">
-      <p className="text-sm text-gray-600 mb-2">Total Paid</p>
-      <p className="text-xl font-semibold text-green-600">{formatCurrency(userPayments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0))}</p>
+  <section className="w-full">
+    <h3 className="text-[12px] font-bold uppercase tracking-widest text-gray-400 mb-3 px-1">
+      Payment Overview
+    </h3>
+
+    
+
+    <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
+      
+      {/* Total Paid Card - Prominent layout */}
+      <div className="col-span-2 sm:col-span-1 bg-gradient-to-br from-green-50 to-white p-5 rounded-2xl border border-green-100 shadow-sm flex flex-col justify-between">
+        <div className="flex justify-between items-start">
+          <div className="p-2 bg-green-500/10 rounded-lg text-green-600">
+            <CheckCircle className="size-5" />
+          </div>
+          <span className="text-[10px] font-bold text-green-700 bg-green-500/10 px-2 py-0.5 rounded-full uppercase">Verified</span>
+        </div>
+        <div className="mt-5">
+          <p className="text-xs font-medium text-green-700/70">Total Paid</p>
+          <p className="text-2xl font-bold text-gray-900 leading-none mt-1">
+            {formatCurrency(userPayments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0))}
+          </p>
+        </div>
+      </div>
+
+      {/* Pending Card */}
+      <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between transition-all active:scale-95">
+        <div className="p-2 bg-amber-500/10 rounded-lg text-amber-600 w-fit">
+          <Clock className="size-5" />
+        </div>
+        <div className="mt-4">
+          <p className="text-xs font-medium text-gray-500">Pending</p>
+          <p className="text-lg font-bold text-amber-600 mt-1">
+            {formatCurrency(userPayments.filter(p => p.status === 'unpaid').reduce((sum, p) => sum + p.amount, 0))}
+          </p>
+        </div>
+      </div>
+
+      {/* Transactions Card */}
+      <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between transition-all active:scale-95">
+        <div className="p-2 bg-blue-500/10 rounded-lg text-blue-600 w-fit">
+          <CreditCard className="size-5" />
+        </div>
+        <div className="mt-4">
+          <p className="text-xs font-medium text-gray-500">Transactions</p>
+          <p className="text-lg font-bold text-gray-900 mt-1">
+            {userPayments.length}
+          </p>
+        </div>
+      </div>
+
     </div>
-    <div className="bg-white p-6 rounded-lg border border-gray-200">
-      <p className="text-sm text-gray-600 mb-2">Pending Verification</p>
-      <p className="text-xl font-semibold text-yellow-600">{formatCurrency(userPayments.filter(p => p.status === 'unpaid').reduce((sum, p) => sum + p.amount, 0))}</p>
-    </div>
-    <div className="bg-white p-6 rounded-lg border border-gray-200">
-      <p className="text-sm text-gray-600 mb-2">Total Transactions</p>
-      <p className="text-xl font-semibold text-gray-900">{userPayments.length}</p>
-    </div>
-  </div>
+  </section>
 )}
 {/* ✅ END: NEW, SMALLER SUMMARY CARDS */}
 
@@ -369,7 +479,7 @@ export default function ClientPayments() {
                   <p className="text-gray-600">Your payment is pending admin verification. You can now close this window.</p>
               </div>
             ) : (
-<form id="payment-form" onSubmit={handlePaymentSubmit} className="p-6 space-y-4 overflow-y-auto">                {(() => {
+                <form id="payment-form" onSubmit={handlePaymentSubmit} className="p-6 space-y-4 overflow-y-auto">                {(() => {
                   const reservation = userReservations.find(r => r.id === selectedReservation);
                   if (!reservation) return null;
                   const balance = reservation.totalAmount - reservation.paidAmount;
@@ -446,34 +556,38 @@ export default function ClientPayments() {
       )}
       {/* ✅ START: NEW IMAGE VIEWER MODAL */}
       {viewingImage && (
-        <div
-          className="fixed inset-0 z-50 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
-          onClick={() => setViewingImage(null)} // Click backdrop to close
-        >
-          {/* Close Button (Top Right) */}
-          <button
-            onClick={() => setViewingImage(null)}
-            className="absolute top-4 right-4 z-50 text-white bg-black/50 rounded-full p-2 hover:bg-black/75 transition-colors"
-            aria-label="Close image viewer"
-          >
-            <X className="size-6" />
-          </button>
-
-          {/* Image Container */}
           <div
-            className="relative max-w-4xl max-h-[90vh] p-4"
-            onClick={(e) => e.stopPropagation()} // Prevent click inside image from closing modal
+            className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+            onClick={() => setViewingImage(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Proof of payment viewer"
           >
-            <img
-              src={viewingImage}
-              alt="Proof of Payment"
-              className="w-full h-full object-contain rounded-lg shadow-2xl"
-            />
+            <button
+              onClick={() => setViewingImage(null)}
+              className="absolute top-6 right-6 text-white/70 hover:text-white transition-colors"
+              title="Close (Esc)"
+            >
+              <X className="size-8" />
+            </button>
+
+            <div className="relative max-w-full sm:max-w-5xl max-h-screen p-2"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                  src={viewingImage}
+                  alt="Proof of Payment Receipt"
+                  className="max-w-full max-h-[85vh] object-contain rounded-md shadow-2xl border border-white/10"
+                />
+              <p className="text-white/60 text-center mt-4 text-sm font-light">
+                Click anywhere outside to close
+              </p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
       {/* ✅ END: NEW IMAGE VIEWER MODAL */}
       
+    </div>
     </div>
   );
 }

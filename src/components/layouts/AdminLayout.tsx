@@ -4,6 +4,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import LogoutConfirmModal from "../LogoutConfirmModal";
 import ErrorWrapper from "./ErrorWrapper";
+import { AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
   Users,
@@ -20,6 +21,7 @@ import {
   Menu,
   X
 } from 'lucide-react';
+import { motion } from "framer-motion";
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
@@ -139,64 +141,47 @@ export default function AdminLayout() {
 
       {/* HEADER */}
 <header className="bg-blue-900 text-white sticky top-0 z-50 shadow-md border-b border-blue-800">
-  <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 flex justify-between items-center h-14 sm:h-16 md:h-16">
+          <div className="max-w-7xl mx-auto px-4 flex justify-between items-center h-16">
 
-    {/* Brand Identity */}
-    <div className="flex items-center gap-3">
-      <div className="bg-blue-800 p-2 rounded-lg">
-        <Building2 className="size-6 text-blue-300" />
-      </div>
-      <div className="hidden sm:block max-w-[180px] md:max-w-none truncate">
-        <h1 className="font-bold tracking-tight text-base md:text-lg leading-none truncate">Commerciales Flores</h1>
-        <p className="text-[10px] uppercase font-bold text-blue-400 tracking-widest mt-1">Admin Portal</p>
-      </div>
-    </div>
+            {/* Brand Identity - Now visible on all screen sizes */}
+            <div className="flex items-center gap-3">
+              <div className="bg-blue-800 p-2 rounded-lg">
+                <Building2 className="size-6 text-blue-300" />
+              </div>
+              <div className="flex flex-col">
+                <h1 className="font-bold tracking-tight text-sm md:text-lg leading-none">
+                  Commerciales Flores
+                </h1>
+                <p className="text-[10px] uppercase font-bold text-blue-400 tracking-widest mt-1">
+                  Admin Portal
+                </p>
+              </div>
+            </div>
 
-    {/* DESKTOP NAV + AVATAR */}
-    <div className="hidden lg:flex items-center gap-4 xl:gap-6">
-      <div className="flex items-center gap-4 pr-6 border-r border-blue-800">
-        <span className="text-sm font-medium text-blue-100">
-          Welcome, <span className="text-white font-semibold">{user?.name}</span>
-        </span>
-        <NavLink 
-          to="/admin/profile" 
-          className="relative hover:ring-2 hover:ring-blue-400 rounded-full transition-all p-0.5"
-        >
-          <img
-            src={avatarUrl}
-            alt={user?.name || "Admin avatar"}
-            className="w-9 h-9 rounded-full object-cover border border-blue-700 shadow-sm"
-            onError={(e) => {
-              const target = e.currentTarget as HTMLImageElement;
-              target.onerror = null;
-              target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                user?.name || "Admin"
-              )}&background=3b82f6&color=fff&size=128`;
-            }}
-          />
-          <span className="absolute bottom-0.5 right-0.5 size-2.5 bg-emerald-500 border-2 border-blue-900 rounded-full"></span>
-        </NavLink>
-      </div>
+            {/* DESKTOP NAV + AVATAR (Lg screens) */}
+            <div className="hidden lg:flex items-center gap-6">
+              <div className="flex items-center gap-4 pr-6 border-r border-blue-800">
+                <span className="text-sm font-medium text-blue-100">
+                  Welcome, <span className="text-white font-semibold">{user?.name}</span>
+                </span>
+                <NavLink to="/admin/profile" className="p-0.5 hover:ring-2 hover:ring-blue-400 rounded-full transition-all">
+                  <img src={avatarUrl} className="w-9 h-9 rounded-full border border-blue-700 shadow-sm" alt="Avatar" />
+                </NavLink>
+              </div>
+              <button onClick={handleLogout} className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors text-sm font-bold shadow-sm">
+                <LogOut className="size-4" /> Logout
+              </button>
+            </div>
 
-      <button
-        onClick={handleLogout}
-        className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors text-sm font-bold shadow-sm active:scale-95"
-      >
-        <LogOut className="size-4" />
-        Logout
-      </button>
-    </div>
-
-    {/* MOBILE HAMBURGER */}
-    <button
-      className="lg:hidden flex items-center p-2 rounded-lg bg-blue-800 hover:bg-blue-700 transition-colors border border-blue-700"
-      onClick={() => setMobileNavOpen(true)}
-      aria-label="Open mobile menu"
-    >
-      <Menu className="size-6 text-blue-100" />
-    </button>
-  </div>
-</header>
+            {/* MOBILE HAMBURGER (Visible below lg) */}
+            <button
+              className="lg:hidden p-2 rounded-lg bg-blue-800 hover:bg-blue-700 border border-blue-700"
+              onClick={() => setMobileNavOpen(true)}
+            >
+              <Menu className="size-6 text-blue-100" />
+            </button>
+          </div>
+        </header>
 
       {/* DESKTOP NAVBAR */}
       <nav className="hidden lg:block bg-white border-b border-gray-200 shadow-sm relative">
@@ -229,53 +214,108 @@ export default function AdminLayout() {
       </div>
     </nav>
 
-      {/* MOBILE SLIDE-OUT MENU */}
-      {mobileNavOpen && (
-        <div className="fixed inset-0 z-50">
-          <div
-            className="absolute inset-0 bg-black/30"
-            onClick={() => setMobileNavOpen(false)}
-          />
+      {/* MOBILE SLIDE-OUT MENU (Matches Client style) */}
+        <AnimatePresence>
+          {mobileNavOpen && (
+            <div className="fixed inset-0 z-[100]">
+              {/* Backdrop */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setMobileNavOpen(false)}
+                className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm"
+              />
 
-          <div className="absolute left-0 top-0 bottom-0 w-64 sm:w-72 bg-white shadow-lg flex flex-col">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200">
-              <span className="font-bold">Menu</span>
-              <button onClick={() => setMobileNavOpen(false)}>
-                <X className="size-6" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto">
-              {navItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  onClick={() => setMobileNavOpen(false)}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 px-4 py-3 border-l-4 transition-colors ${
-                      isActive
-                        ? 'border-blue-600 text-blue-600 bg-blue-50'
-                        : 'border-transparent text-gray-700 hover:bg-gray-100'
-                    }`
-                  }
-                >
-                  <item.icon className="size-5" />
-                  {item.label}
-                </NavLink>
-              ))}
-            </div>
-
-            <div className="p-4 border-t border-gray-200">
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-2 w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              {/* Drawer Content */}
+              <motion.div
+                initial={{ x: "-100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "-100%" }}
+                transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                className="absolute left-0 top-0 bottom-0 w-72 sm:w-80 bg-white shadow-2xl flex flex-col overflow-hidden"
               >
-                <LogOut className="size-4" /> Logout
-              </button>
+                {/* White Profile Header */}
+                {/* Dark Admin Header - Matches Admin Header Color */}
+                  <div className="p-6 bg-blue-900 text-white relative">
+                    <div className="flex justify-between items-start mb-4">
+                      <NavLink 
+                        to="/admin/profile" 
+                        onClick={() => setMobileNavOpen(false)}
+                        className="relative group"
+                      >
+                        <img
+                          src={avatarUrl}
+                          alt={user?.name || "Admin avatar"}
+                          className="w-16 h-16 rounded-2xl object-cover border-2 border-blue-800 shadow-md bg-white" 
+                        />
+                        <div className="absolute -bottom-1 -right-1 bg-emerald-500 border-2 border-blue-900 size-4 rounded-full" />
+                      </NavLink>
+                      <button 
+                        onClick={() => setMobileNavOpen(false)}
+                        className="p-2 hover:bg-blue-800 rounded-xl text-blue-200 transition-colors"
+                      >
+                        <X className="size-6" />
+                      </button>
+                    </div>
+                    <div>
+                      <h2 className="font-bold text-white text-lg leading-tight">{user?.name}</h2>
+                      <p className="text-blue-300 text-xs truncate font-medium mt-0.5">{user?.email}</p>
+                      <div className="mt-3 flex items-center gap-2">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-blue-800 text-blue-100 uppercase tracking-tighter border border-blue-700">
+                          Administrator
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* Subtle Decorative Icon */}
+                    <Building2 className="absolute bottom-4 right-4 size-12 text-blue-800/50 -rotate-12" />
+                  </div>
+
+                {/* Navigation Items */}
+                <div className="flex-1 overflow-y-auto py-6">
+                  <p className="px-6 text-[10px] font-black uppercase text-gray-400 tracking-[0.15em] mb-4">
+                    Admin Menu
+                  </p>
+                  <div className="space-y-1">
+                    {navItems.map((item) => {
+                      const isActive = location.pathname === item.to;
+                      return (
+                        <NavLink
+                          key={item.to}
+                          to={item.to}
+                          onClick={() => setMobileNavOpen(false)}
+                          className={`flex items-center gap-4 px-6 py-3 transition-all relative ${
+                            isActive ? "text-blue-600 font-bold bg-blue-50/50" : "text-gray-600"
+                          }`}
+                        >
+                          {isActive && (
+                            <motion.div layoutId="activeNavAdmin" className="absolute left-0 w-1 h-6 bg-blue-600 rounded-r-full" />
+                          )}
+                          <item.icon className={`size-5 ${isActive ? 'text-blue-600' : 'text-gray-400'}`} />
+                          <span className="text-sm">{item.label}</span>
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Bottom Logout */}
+                <div className="p-4 border-t border-gray-50 bg-gray-50/50">
+                  <button
+                    onClick={() => {
+                      handleLogout();
+                      setMobileNavOpen(false);
+                    }}
+                    className="flex items-center gap-3 w-full px-4 py-3 text-rose-600 hover:bg-rose-50 rounded-xl transition-all text-sm font-bold"
+                  >
+                    <LogOut className="size-5" /> Logout
+                  </button>
+                </div>
+              </motion.div>
             </div>
-          </div>
-        </div>
-      )}
+          )}
+        </AnimatePresence>
 
       {/* MAIN CONTENT */}
       <main className="flex-1 w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-6 md:py-8">

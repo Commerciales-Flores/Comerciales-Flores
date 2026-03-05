@@ -199,117 +199,108 @@ export default function AdminPropertyManagement() {
   const closeLightbox = () => setLightboxImage(null);
 
   return (
-    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Property Management</h1>
-            <p className="text-gray-500">Manage all your rentable properties, halls, and parking slots.</p>
-          </div>
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus className="size-4" />
-            Add Property
-          </button>
+    <div className="bg-gray-50 min-h-screen p-4 md:p-8 flex flex-col gap-6">
+      {/* Header - Stacked on mobile, row on desktop */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Property Management</h1>
+          <p className="text-sm text-gray-500">Manage all your rentable properties and slots.</p>
         </div>
+        <button
+      onClick={() => setShowModal(true)}
+      className="hidden md:flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+    >
+      <Plus className="size-4" />
+      Add Property
+    </button>
+      </div>
+      <button
+        onClick={() => setShowModal(true)}
+        className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center z-40 active:scale-90 transition-transform"
+        aria-label="Add Property"
+      >
+        <Plus className="size-8" />
+      </button>
 
-      {/* Properties Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+      {/* Properties Container */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        {/* Desktop Table View (Hidden on mobile) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Name
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Price
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Capacity
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Price</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {properties.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
-                    No properties listed yet. Click "Add Property" to get started.
+            <tbody className="divide-y divide-gray-200">
+              {properties.map((property) => (
+                <tr key={property.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">{property.name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap"><PropertyTypeDisplay type={property.type} /></td>
+                  <td className="px-6 py-4 text-sm text-gray-900">{formatCurrency(property.price)}</td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2 py-1 text-xs rounded-full font-bold ${property.available ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {property.available ? 'AVAILABLE' : 'UNAVAILABLE'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <div className="flex gap-3">
+                      <button onClick={() => handleEdit(property.id)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"><Edit className="size-5" /></button>
+                      <button onClick={() => handleDelete(property.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="size-5" /></button>
+                    </div>
                   </td>
                 </tr>
-              ) : (
-                properties.map((property) => (
-                  <tr key={property.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                      {property.name}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      <PropertyTypeDisplay type={property.type} />
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {formatCurrency(property.price)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 py-1 text-xs rounded-full font-semibold ${
-                        property.available 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {property.available ? 'AVAILABLE' : 'UNAVAILABLE'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                      {property.capacity || 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleEdit(property.id)}
-                          className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                          title="Edit"
-                        >
-                          <Edit className="size-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(property.id)}
-                          className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="size-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
+              ))}
             </tbody>
           </table>
         </div>
+
+        {/* Mobile "Card" View (Visible only on mobile/small tablets) */}
+        <div className="md:hidden divide-y divide-gray-200">
+          {properties.length === 0 ? (
+             <div className="p-8 text-center text-gray-500">No properties listed yet.</div>
+          ) : (
+            properties.map((property) => (
+              <div key={property.id} className="p-4 space-y-3">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="font-bold text-gray-900">{property.name}</h3>
+                    <div className="mt-1"><PropertyTypeDisplay type={property.type} /></div>
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => handleEdit(property.id)} className="p-3 text-blue-600 active:bg-blue-50 rounded-full"><Edit className="size-5" /></button>
+                    <button onClick={() => handleDelete(property.id)} className="p-3 text-red-600 active:bg-red-50 rounded-full"><Trash2 className="size-5" /></button>
+                  </div>
+                </div>
+                <div className="flex justify-between items-center text-sm border-t pt-3">
+                  <span className="text-gray-500 font-medium">{formatCurrency(property.price)}</span>
+                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold ${property.available ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    {property.available ? 'AVAILABLE' : 'UNAVAILABLE'}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
-      {/* Add/Edit Modal */}
+      {/* Modal Adjustments */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center z-50">
+          <div className="bg-white w-full sm:max-w-2xl h-[90vh] sm:h-auto sm:max-h-[90vh] rounded-t-2xl sm:rounded-2xl overflow-hidden flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-300">
             {/* Modal Header */}
-            <div className="p-6 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white z-10">
-              <h2 className="text-xl font-semibold">{editingPropertyId ? 'Edit' : 'Add'} Property</h2>
-              <button onClick={resetForm} className="text-gray-400 hover:text-gray-600">
+            <div className="p-4 border-b flex justify-between items-center bg-white">
+              <h2 className="text-lg font-bold">{editingPropertyId ? 'Edit' : 'Add'} Property</h2>
+              <button onClick={resetForm} className="p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100">
                 <X className="size-6" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleSubmit} className="p-4 md:p-6 overflow-y-auto space-y-5 pb-24 sm:pb-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Name */}
                 <div>
@@ -563,21 +554,12 @@ export default function AdminPropertyManagement() {
                 </label>
               </div>
 
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  {editingPropertyId ? 'Update' : 'Add'} Property
-                </button>
-              </div>
+              <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t sm:relative sm:p-0 sm:border-0 sm:flex sm:gap-3 sm:pt-4">
+                  <button type="button" onClick={resetForm} className="hidden sm:block flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl font-medium">Cancel</button>
+                  <button type="submit" className="w-full sm:flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-200">
+                    {editingPropertyId ? 'Update Property' : 'Add Property'}
+                  </button>
+               </div>
             </form>
           </div>
         </div>

@@ -204,6 +204,7 @@ export default function ClientProperties() {
   // reserved-slot overlap detection with proper handling of hours/days/months
   const getReservedSlotIds = () => {
     if (!reservationForm.startDate || !reservationForm.duration) return new Set<string>();
+    
 
     const formStart = new Date(reservationForm.startDate);
     const formEnd = computeEndFromForm(formStart, reservationForm.duration, reservationForm.durationType);
@@ -336,70 +337,98 @@ export default function ClientProperties() {
     }
   };
 
-  return (
-    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
+  const [showFilterModal, setShowFilterModal] = useState(false);
 
-      <div>
-          <h1 className="text-2xl font-bold text-gray-900">Browse Properties</h1>
-          <p className="text-gray-500">Secure a space or book an appointment for a tour</p>
-        </div>
+  return (
+    <div className="bg-gray-50 min-h-screen">
+  <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
+
+      <header>
+
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
+          Browse Properties
+        </h1>
+        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+          Secure a space or book an appointment for a tour
+        </p>
+      </header>
 
       {/* Search and Filter */}
-      <div className="bg-white p-4 rounded-lg border border-gray-200">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search properties..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div className="relative">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
-            <select
-              value={filterType}
-              onChange={(e) =>
-                setFilterType(e.target.value as PropertyType | "all")
-              }
-              className="pl-10 pr-8 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Types</option>
-              <option value="rental_space">Rental Spaces</option>
-              <option value="function_hall">Function Halls</option>
-              <option value="parking_slot">Parking Slots</option>
-            </select>
-          </div>
+<div className="bg-white p-4 rounded-lg border border-gray-200">
 
-          <div className="relative">
-            <select
-              value={priceRange}
-              onChange={(e) => setPriceRange(e.target.value as any)}
-              className="pl-3 pr-8 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">All Prices</option>
-              <option value="0-1000">₱0 - ₱1,000</option>
-              <option value="1001-5000">₱1,001 - ₱5,000</option>
-              <option value="5001-10000">₱5,001 - ₱10,000</option>
-              <option value="10001+">₱10,001+</option>
-            </select>
-          </div>
+  {/* Mobile Layout */}
+  <div className="flex gap-2 sm:hidden">
+    <div className="flex-1 relative">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
+      <input
+        type="text"
+        placeholder="Search properties..."
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+      />
+    </div>
 
-          <div className="relative">
-            <select
-              value={filterLocation}
-              onChange={(e) => setFilterLocation(e.target.value)}
-              className="pl-3 pr-8 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {locations.map((loc) => (
-                <option key={loc} value={loc}>{loc}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
+    <button
+      onClick={() => setShowFilterModal(true)}
+      className="flex items-center justify-center px-3 border border-gray-300 rounded-lg hover:bg-gray-50"
+    >
+      <Filter className="size-5 text-gray-600" />
+    </button>
+  </div>
+
+  {/* Desktop Layout */}
+  <div className="hidden sm:flex gap-4">
+    <div className="flex-1 relative">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
+      <input
+        type="text"
+        placeholder="Search properties..."
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+      />
+    </div>
+
+    {/* Type */}
+    <select
+      value={filterType}
+      onChange={(e) =>
+        setFilterType(e.target.value as PropertyType | "all")
+      }
+      className="px-3 py-2 border border-gray-300 rounded-lg"
+    >
+      <option value="all">All Types</option>
+      <option value="rental_space">Rental Spaces</option>
+      <option value="function_hall">Function Halls</option>
+      <option value="parking_slot">Parking Slots</option>
+    </select>
+
+    {/* Price */}
+    <select
+      value={priceRange}
+      onChange={(e) => setPriceRange(e.target.value as any)}
+      className="px-3 py-2 border border-gray-300 rounded-lg"
+    >
+      <option value="all">All Prices</option>
+      <option value="0-1000">₱0 - ₱1,000</option>
+      <option value="1001-5000">₱1,001 - ₱5,000</option>
+      <option value="5001-10000">₱5,001 - ₱10,000</option>
+      <option value="10001+">₱10,001+</option>
+    </select>
+
+    {/* Location */}
+    <select
+      value={filterLocation}
+      onChange={(e) => setFilterLocation(e.target.value)}
+      className="px-3 py-2 border border-gray-300 rounded-lg"
+    >
+      {locations.map((loc) => (
+        <option key={loc} value={loc}>{loc}</option>
+      ))}
+    </select>
+  </div>
+</div>
 
       {/* Properties Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -448,6 +477,90 @@ export default function ClientProperties() {
           <p className="text-gray-500">No properties found matching your criteria</p>
         </div>
       )}
+
+      {showFilterModal && (
+  <div className="fixed inset-0 z-50 flex items-end sm:hidden">
+
+    {/* Background overlay */}
+    <div
+      className="absolute inset-0 bg-black/40"
+      onClick={() => setShowFilterModal(false)}
+    />
+
+    {/* Bottom Sheet */}
+    <div className="relative w-full bg-white rounded-t-2xl p-6 max-h-[80vh] overflow-y-auto">
+
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="font-semibold text-lg">Filters</h3>
+        <button onClick={() => setShowFilterModal(false)}>
+          <X className="size-6 text-gray-500" />
+        </button>
+      </div>
+
+      {/* Type */}
+      <div className="mb-4">
+        <label className="text-sm text-gray-600 mb-1 block">
+          Property Type
+        </label>
+        <select
+          value={filterType}
+          onChange={(e) =>
+            setFilterType(e.target.value as PropertyType | "all")
+          }
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+        >
+          <option value="all">All Types</option>
+          <option value="rental_space">Rental Spaces</option>
+          <option value="function_hall">Function Halls</option>
+          <option value="parking_slot">Parking Slots</option>
+        </select>
+      </div>
+
+      {/* Price */}
+      <div className="mb-4">
+        <label className="text-sm text-gray-600 mb-1 block">
+          Price Range
+        </label>
+        <select
+          value={priceRange}
+          onChange={(e) => setPriceRange(e.target.value as any)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+        >
+          <option value="all">All Prices</option>
+          <option value="0-1000">₱0 - ₱1,000</option>
+          <option value="1001-5000">₱1,001 - ₱5,000</option>
+          <option value="5001-10000">₱5,001 - ₱10,000</option>
+          <option value="10001+">₱10,001+</option>
+        </select>
+      </div>
+
+      {/* Location */}
+      <div className="mb-6">
+        <label className="text-sm text-gray-600 mb-1 block">
+          Location
+        </label>
+        <select
+          value={filterLocation}
+          onChange={(e) => setFilterLocation(e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+        >
+          {locations.map((loc) => (
+            <option key={loc} value={loc}>{loc}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Apply Button */}
+      <button
+        onClick={() => setShowFilterModal(false)}
+        className="w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+      >
+        Apply Filters
+      </button>
+
+    </div>
+  </div>
+)}
 
       {/* Reservation Modal */}
 
@@ -796,6 +909,8 @@ export default function ClientProperties() {
                       </>
                     )}
 
+                    
+
 
                     {/* Function hall: date range (days) */}
                     {property.type === "function_hall" && (
@@ -1121,6 +1236,7 @@ export default function ClientProperties() {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

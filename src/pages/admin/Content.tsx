@@ -145,11 +145,11 @@ export default function AdminContent() {
           <ContentCard title="Contact Info" icon={<Phone className="text-green-600 size-5" />}>
             <div className="space-y-4">
               <SidebarField label="Public Email" value={formData.contactEmail} editing={editing} 
-                onChange={(v) => setFormData({...formData, contactEmail: v})} />
+                onChange={(v:string) => setFormData({...formData, contactEmail: v})} />
               <SidebarField label="Public Phone" value={formData.contactPhone} editing={editing} 
-                onChange={(v) => setFormData({...formData, contactPhone: v})} />
+                onChange={(v:string) => setFormData({...formData, contactPhone: v})} />
               <SidebarField label="Office Address" value={formData.contactAddress} editing={editing} isTextArea
-                onChange={(v) => setFormData({...formData, contactAddress: v})} />
+                onChange={(v:string) => setFormData({...formData, contactAddress: v})} />
             </div>
           </ContentCard>
 

@@ -4,6 +4,7 @@ import { useData } from "../../contexts/DataContext";
 import LogoutConfirmModal from "../LogoutConfirmModal";
 import { useLocation } from "react-router-dom";
 import ErrorWrapper from "./ErrorWrapper";
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
   Building2,
@@ -74,6 +75,10 @@ export default function ClientLayout() {
     window.removeEventListener('popstate', handlePopState);
   };
 }, [user, logout, navigate, location.pathname]);
+
+useEffect(() => {
+    document.body.style.overflow = mobileNavOpen ? "hidden" : "";
+  }, [mobileNavOpen]);
 
   const handleLogout = () => {
     setShowLogoutConfirm(true);
@@ -178,7 +183,11 @@ export default function ClientLayout() {
       </div>
 
       <button
-        onClick={handleLogout}
+
+        onClick={() => {
+        setMobileNavOpen(false); // close panel
+        handleLogout(); // show logout modal
+      }}
         className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all text-sm font-semibold"
       >
         <LogOut className="size-4" />
@@ -198,7 +207,7 @@ export default function ClientLayout() {
 </header>
 
       {/* DESKTOP NAVBAR */}
-    <nav className="bg-white border-b border-gray-200 relative">
+    <nav className="hidden md:block bg-white border-b border-gray-200 relative">
       <div ref={navRef} className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 flex gap-1 sm:gap-2 md:gap-4 overflow-x-auto relative">
         {navItems.map((item) => (
           <NavLink
@@ -229,54 +238,122 @@ export default function ClientLayout() {
     </nav>
 
       {/* MOBILE SLIDE-OUT MENU */}
-      {mobileNavOpen && (
-        <div className="fixed inset-0 z-50">
-          <div
-            className="absolute inset-0 bg-black/30"
-            onClick={() => setMobileNavOpen(false)}
-          />
-          <div className="absolute left-0 top-0 bottom-0 w-64 sm:w-72 md:w-80 bg-white shadow-lg flex flex-col">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200">
-              <span className="font-bold">Menu</span>
-              <button onClick={() => setMobileNavOpen(false)}>
-                <X className="size-6" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {navItems.map((item) => (
+<AnimatePresence>
+  {mobileNavOpen && (
+    <div className="fixed inset-0 z-[100]">
+      {/* Backdrop */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={() => setMobileNavOpen(false)}
+        className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm"
+      />
+
+      {/* Drawer Content */}
+      <motion.div
+        initial={{ x: "-100%" }}
+        animate={{ x: 0 }}
+        exit={{ x: "-100%" }}
+        transition={{ type: "spring", damping: 25, stiffness: 200 }}
+        className="absolute left-0 top-0 bottom-0 w-72 sm:w-80 bg-white shadow-2xl flex flex-col overflow-hidden"
+      >
+        {/* White Profile Header - Matches Main Header */}
+        <div className="p-6 border-b border-gray-100">
+          <div className="flex justify-between items-start mb-4">
+            <NavLink 
+              to="/client/profile" 
+              onClick={() => setMobileNavOpen(false)}
+              className="relative group"
+            >
+              <img
+                src={avatarUrl}
+                alt={user?.name || "User avatar"}
+                className="w-16 h-16 rounded-2xl object-cover border border-gray-100 shadow-sm transition-transform group-active:scale-95" 
+              />
+              <div className="absolute -bottom-1 -right-1 bg-green-500 border-2 border-white size-4 rounded-full" />
+            </NavLink>
+            <button 
+              onClick={() => setMobileNavOpen(false)}
+              className="p-2 hover:bg-gray-50 rounded-xl text-gray-400 transition-colors"
+            >
+              <X className="size-6" />
+            </button>
+          </div>
+          <div>
+            <h2 className="font-bold text-gray-900 text-lg leading-tight">{user?.name}</h2>
+            <p className="text-gray-500 text-xs truncate font-medium mt-0.5">{user?.email}</p>
+          </div>
+        </div>
+
+        {/* Navigation Items */}
+        <div className="flex-1 overflow-y-auto py-6">
+          <p className="px-6 text-[10px] font-black uppercase text-gray-400 tracking-[0.15em] mb-4">
+            Main Menu
+          </p>
+          <div className="space-y-1">
+            {navItems.map((item) => {
+              const isActive = location.pathname === item.to;
+              return (
                 <NavLink
                   key={item.to}
                   to={item.to}
                   onClick={() => setMobileNavOpen(false)}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 px-4 py-3 border-l-4 transition-colors ${
-                      isActive
-                        ? "border-blue-600 text-blue-600 bg-blue-50"
-                        : "border-transparent text-gray-700 hover:bg-gray-100"
-                    }`
-                  }
+                  className={`flex items-center gap-4 px-6 py-3.5 transition-all relative ${
+                    isActive
+                      ? "text-blue-600 font-bold bg-blue-50/50"
+                      : "text-gray-600 hover:bg-gray-50"
+                  }`}
                 >
-                  <item.icon className="size-5" />
-                  {item.label}
+                  {/* Active Indicator Line */}
+                  {isActive && (
+                    <motion.div 
+                      layoutId="activeNavMobile"
+                      className="absolute left-0 w-1 h-8 bg-blue-600 rounded-r-full"
+                    />
+                  )}
+                  
+                  <item.icon className={`size-5 ${isActive ? 'text-blue-600' : 'text-gray-400'}`} />
+                  <span className="text-sm tracking-tight">{item.label}</span>
+                  
                   {item.badge !== undefined && item.badge > 0 && (
-                    <span className="ml-auto bg-red-500 text-white text-[10px] sm:text-xs rounded-full w-5 h-5 sm:w-5 sm:h-5 flex items-center justify-center">
+                    <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[20px] h-5 px-1.5 flex items-center justify-center">
                       {item.badge > 9 ? "9+" : item.badge}
                     </span>
                   )}
                 </NavLink>
-              ))}
-            </div>
-            <div className="p-4 border-t border-gray-200">
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-2 w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <LogOut className="size-4" /> Logout
-              </button>
-            </div>
+              );
+            })}
           </div>
         </div>
-      )}
+
+        {/* Bottom Actions */}
+        <div className="p-4 border-t border-gray-50 bg-gray-50/50">
+          <button
+            onClick={() => {
+              setMobileNavOpen(false);
+              setShowSupport(true);
+
+            }}
+            className="flex items-center gap-3 px-4 py-3 text-gray-600 hover:text-gray-900 w-full rounded-xl transition-colors text-sm font-semibold"
+          >
+            <MessageCircle className="size-5 text-gray-400" />
+            Help & Support
+          </button>
+          <button
+            onClick={() => {
+              handleLogout();
+              setMobileNavOpen(false);
+            }}
+            className="flex items-center gap-3 w-full px-4 py-3 text-rose-600 hover:bg-rose-50 rounded-xl transition-all text-sm font-bold mt-1"
+          >
+            <LogOut className="size-5" /> Logout
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>
 
       {/* MAIN CONTENT */}
       <main className="flex-1 w-full max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-6 md:py-8">
@@ -286,7 +363,7 @@ export default function ClientLayout() {
       {/* Floating Support Button */}
       <button
         onClick={() => setShowSupport(true)}
-        className="fixed bottom-4 sm:bottom-6 right-4 sm:right-6 bg-blue-600 text-white p-3 sm:p-4 rounded-full shadow-lg hover:bg-blue-700 transition-colors z-50"
+        className="hidden md:flex fixed bottom-6 right-6 bg-blue-600 text-white p-3 sm:p-4 rounded-full shadow-lg hover:bg-blue-700 transition-colors z-50"
         aria-label="Contact Support"
       >
         <MessageCircle className="size-6" />
