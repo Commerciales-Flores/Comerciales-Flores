@@ -137,23 +137,8 @@ export interface ParkingSlot {
   imageUrl: string;
 }
 
-export interface GuestParkingReservation {
-  id: string;
-  name: string;
-  contact: string;
-  vehicleInfo: string;
-  vehicleType?: string;
-  plateNumber?: string;
-  slotId: string;
-  slotName: string;
-  paymentMethod: PaymentMethod | '';
-  reference: string;
-  status: GuestParkingReservationStatus;
-  createdAt: string;
-  is_a_user: boolean;
-}
-
 export interface ContentSettings {
+  content_id?: string; // ✅ ADDED: Needed to target the correct row for updates
   heroTitle: string;
   heroSubtitle: string;
   aboutUs: string;
@@ -177,13 +162,13 @@ interface DataContextType {
   businessSlots: BusinessSlot[];
   contentSettings: ContentSettings;
   parkingSlots: ParkingSlot[];
-  guestParkingReservations: GuestParkingReservation[];
+  guestParkingReservations: GuestParkingReservationStatus[];
 
   addUnit: (unit: Omit<Unit, 'id'>) => Promise<void>;
   updateUnit: (id: string, unit: Partial<Unit>) => Promise<void>;
   deleteUnit: (id: string) => Promise<void>;
 
-  addParkingReservation: (reservation: Omit<GuestParkingReservation, 'id' | 'status' | 'createdAt' | 'is_a_user' | 'slotName'>) => void;
+  addParkingReservation: (reservation: Omit<GuestParkingReservationStatus, 'id' | 'status' | 'createdAt' | 'is_a_user' | 'slotName'>) => void;
 
   addBooking: (booking: Omit<Booking, 'id' | 'requestDate' | 'status' | 'paidAmount'>) => Promise<string>;
   updateBooking: (id: string, booking: Partial<Booking>) => Promise<void>;
@@ -193,7 +178,7 @@ interface DataContextType {
   updatePayment: (id: string, payment: Partial<Payment>) => Promise<void>;
   
   uploadPaymentProof: (file: File) => Promise<string | null>;
-  uploadPropertyImage: (file: File) => Promise<string | null>; // ✅ Added this
+  uploadPropertyImage: (file: File) => Promise<string | null>;
 
   addLedgerEntry: (entry: Omit<LedgerEntry, 'id'>) => Promise<string>;
   addAuditLog: (log: Omit<AuditLog, 'id' | 'timestamp'>) => Promise<string>;
@@ -209,7 +194,7 @@ interface DataContextType {
   updateBusinessSlot: (id: string, slot: Partial<BusinessSlot>) => void;
   deleteBusinessSlot: (id: string) => void;
 
-  updateContentSettings: (settings: Partial<ContentSettings>) => void;
+  updateContentSettings: (settings: Partial<ContentSettings>) => Promise<void>; // ✅ UPDATED: Now returns a promise
 
   getUnitById: (id: string) => Unit | undefined;
   getBookingsByUserId: (userId: string) => Booking[];
@@ -219,21 +204,23 @@ interface DataContextType {
   getUserById: (id: string) => User | undefined;
 }
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
+// ─── Default Data ─────────────────────────────────────────────────────────────
 const MOCK_PARKING_SLOTS: ParkingSlot[] = Array.from({ length: 10 }, (_, i) => ({
   id: `slot-${i + 1}`,
   name: `Slot ${i + 1}`,
   imageUrl: `https://placehold.co/400x300/e2e8f0/475569?text=Slot%20${i + 1}`,
 }));
-const MOCK_CONTENT: ContentSettings = {
-  heroTitle: 'Welcome to Commerciales Flores',
-  heroSubtitle: 'Your Premier Rental Management Partner',
-  aboutUs: 'Providing quality commercial spaces, event venues, and parking facilities.',
-  contactEmail: 'info@comercialesflores.ph',
-  contactPhone: '+63 2 8123 4567',
-  contactAddress: '123 Business Avenue, Manila, Philippines 1000',
+
+// ✅ ADDED: Empty default so the UI doesn't crash before DB loads
+const DEFAULT_CONTENT: ContentSettings = {
+  heroTitle: '',
+  heroSubtitle: '',
+  aboutUs: '',
+  contactEmail: '',
+  contactPhone: '',
+  contactAddress: '',
   announcements: [],
-  policies: 'All bookings subject to admin approval.',
+  policies: '',
 };
 
 // ─── Context & Provider ───────────────────────────────────────────────────────
@@ -248,10 +235,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   
-  const [guestParkingReservations, _setGuestParkingReservations] = useState<GuestParkingReservation[]>([]);
+  const [guestParkingReservations, _setGuestParkingReservations] = useState<GuestParkingReservationStatus[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [businessSlots, _setBusinessSlots] = useState<BusinessSlot[]>([]);
-  const [contentSettings, _setContentSettings] = useState<ContentSettings>(MOCK_CONTENT);
+  const [contentSettings, setContentSettings] = useState<ContentSettings>(DEFAULT_CONTENT); // ✅ FIX: Now uses the setter
 
   useEffect(() => {
     // Fetch all unified property data
@@ -274,8 +261,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
             specific = parkingUnits?.find(p => p.unit_id === base.unit_id);
           }
 
-          // ✅ BULLETPROOF JSONB PARSING: Handles Strings, Objects, and Arrays securely
-          // Grab ALL media rows associated with this unit
           const unitMediaRecords = media?.filter(m => m.unit_id === base.unit_id) || [];
           let imagesArray: string[] = [];
 
@@ -285,23 +270,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
             const rawUrl = record.url;
 
             if (typeof rawUrl === 'string') {
-              // If it's a direct URL link string
               if (rawUrl.startsWith('http')) {
                 imagesArray.push(rawUrl);
               } else {
-                // If it's a stringified JSON object
                 try {
                   const parsed = JSON.parse(rawUrl);
                   imagesArray.push(...Object.values(parsed).filter(v => typeof v === 'string') as string[]);
                 } catch (e) { /* ignore broken strings */ }
               }
             } else if (typeof rawUrl === 'object' && rawUrl !== null) {
-              // If it correctly returned as a JSONB Object: { "room": "http...", "hall": "http..." }
               imagesArray.push(...Object.values(rawUrl).filter(v => typeof v === 'string') as string[]);
             }
           });
 
-          // Format _text array safely
           let parsedFeatures: string[] = [];
           if (Array.isArray(specific?.features)) {
             parsedFeatures = specific.features;
@@ -453,6 +434,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    // ✅ NEW: Fetch Content Settings from Supabase
+    const fetchContentSettings = async () => {
+      const { data, error } = await supabase.from('site_content').select('*').limit(1).single();
+      if (!error && data) {
+        setContentSettings({
+          content_id: data.content_id,
+          heroTitle: data.heroTitle || '',
+          heroSubtitle: data.heroSubtitle || '',
+          aboutUs: data.aboutUs || '',
+          contactEmail: data.contactEmail || '',
+          contactPhone: data.contactPhone || '',
+          contactAddress: data.contactAddress || '', // Will be empty if column doesn't exist
+          announcements: data.announcements || [],
+          policies: data.policies || ''
+        });
+      }
+    };
+
     fetchAllProperties();
     fetchUsers();
     fetchBookings();
@@ -461,6 +460,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     fetchPayments();
     fetchLedgers();
     fetchAuditLogs();
+    fetchContentSettings(); // ✅ Called here
   }, []);
 
   // ── Storage ─────────────────────────────────────────────────────────────────
@@ -487,7 +487,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // ✅ NEW: Upload property images
   const uploadPropertyImage = async (file: File): Promise<string | null> => {
     try {
       const fileExt = file.name.split('.').pop();
@@ -495,7 +494,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const filePath = `properties/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('property_images') // Must match your public bucket name exactly
+        .from('property_images') 
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
@@ -1062,11 +1061,39 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // ── Content Settings (NEW) ───────────────────────────────────────────────
+  const updateContentSettings = async (settings: Partial<ContentSettings>): Promise<void> => {
+    try {
+      // Prevent running if there is no row loaded yet
+      if (!contentSettings.content_id) {
+        console.error("Cannot update: Content ID not found.");
+        return;
+      }
+
+      // Strip out the ID so we don't accidentally try to overwrite the Primary Key
+      const dbPayload = { ...settings } as any;
+      delete dbPayload.content_id;
+      dbPayload.updated_at = new Date().toISOString();
+
+      const { error } = await supabase
+        .from('site_content')
+        .update(dbPayload)
+        .eq('content_id', contentSettings.content_id);
+
+      if (error) throw error;
+
+      // Update the local state to match the new DB values instantly
+      setContentSettings(prev => ({ ...prev, ...settings }));
+    } catch (error) {
+      console.error("Error updating content settings:", error);
+      throw error;
+    }
+  };
+
   // ─────────────────────────────────────────────────────────────────────────────
   const addBusinessSlot = (_s: any) => {};
   const updateBusinessSlot = (_id: string, _s: any) => {};
   const deleteBusinessSlot = (_id: string) => {};
-  const updateContentSettings = (_s: any) => {};
   const addParkingReservation = (_r: any) => {};
 
   return (

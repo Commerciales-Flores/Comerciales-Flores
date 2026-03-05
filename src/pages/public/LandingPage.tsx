@@ -10,6 +10,9 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Calendar,
+  CreditCard,
+  Shield
 } from "lucide-react";
 import { formatCurrency } from "../../utils/currency";
 import {
@@ -17,10 +20,9 @@ import {
   getPriceLabel,
 } from "../../utils/propertyHelpers";
 
-
 export default function LandingPage() {
   const {
-    units,              // ✅ was "properties" — context exposes "units"
+    units, 
     contentSettings,
     addInquiry,
   } = useData();
@@ -35,10 +37,8 @@ export default function LandingPage() {
     message: "",
   });
 
-  // ✅ renamed from featuredProperties → featuredUnits; filter on units - Check if available
   const featuredUnits = units.filter((u) => u.available).slice(0, 6);
 
-  // ✅ look up the selected unit from the units array
   const selectedUnitData = selectedUnit
     ? units.find((u) => u.id === selectedUnit)
     : null;
@@ -155,8 +155,58 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ✅ RESTORED: Features Section */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-white border-t border-gray-100">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-gray-900 mb-4">Why Choose Commerciales Flores</h2>
+            <p className="text-gray-600">
+              Complete rental management solution for your business needs
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                <Building2 className="w-6 h-6 text-blue-600" />
+              </div>
+              <h3 className="text-gray-900 mb-2 font-semibold">Diverse Spaces</h3>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                Office units, function halls, and parking areas to meet all your needs
+              </p>
+            </div>
+            <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+                <Calendar className="w-6 h-6 text-green-600" />
+              </div>
+              <h3 className="text-gray-900 mb-2 font-semibold">Easy Booking</h3>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                View availability and book spaces online with instant confirmation
+              </p>
+            </div>
+            <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
+                <CreditCard className="w-6 h-6 text-purple-600" />
+              </div>
+              <h3 className="text-gray-900 mb-2 font-semibold">Payment Tracking</h3>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                Keep track of all your payments and transaction history securely
+              </p>
+            </div>
+            <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
+                <Shield className="w-6 h-6 text-orange-600" />
+              </div>
+              <h3 className="text-gray-900 mb-2 font-semibold">Secure & Reliable</h3>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                Your data and transactions are protected with enterprise-grade security
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Featured Properties */}
-      <section id="properties" className="py-16">
+      <section id="properties" className="py-16 bg-gray-50 border-t border-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="mb-4">Featured Properties</h2>
@@ -166,7 +216,6 @@ export default function LandingPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {/* ✅ iterate featuredUnits; use "unit" consistently throughout */}
             {featuredUnits.map((unit) => (
               <div
                 key={unit.id}
@@ -191,7 +240,7 @@ export default function LandingPage() {
                   </p>
                   <div className="flex justify-between items-center">
                     <div>
-                      <div className="text-blue-600">
+                      <div className="text-blue-600 font-semibold">
                         {formatCurrency(unit.price)}
                       </div>
                       <div className="text-xs text-gray-500">
@@ -210,7 +259,7 @@ export default function LandingPage() {
       </section>
 
       {/* Contact Section */}
-      <section id="contact" className="py-16 bg-gray-50">
+      <section id="contact" className="py-16 bg-white border-t border-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid md:grid-cols-2 gap-12">
             <div>
@@ -326,17 +375,18 @@ export default function LandingPage() {
       {/* Property Detail Modal */}
       {selectedUnitData && (
         <div className="fixed inset-0 z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-lg max-w-4xl w-full mx-auto my-8 shadow-xl">
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedUnit(null)}></div>
+          <div className="relative bg-white rounded-lg max-w-4xl w-full mx-auto my-8 shadow-xl">
             <div className="flex justify-between items-start p-6 border-b border-gray-200">
               <div>
-                <div className="text-sm text-blue-600 mb-1">
+                <div className="text-sm text-blue-600 mb-1 font-medium">
                   {getPropertyTypeLabel(selectedUnitData.type)}
                 </div>
-                <h2 className="text-lg font-semibold">{selectedUnitData.name}</h2>
+                <h2 className="text-xl font-bold">{selectedUnitData.name}</h2>
               </div>
               <button
                 onClick={() => setSelectedUnit(null)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-2 rounded-lg transition-colors"
               >
                 <X className="size-6" />
               </button>
@@ -353,15 +403,15 @@ export default function LandingPage() {
                   <>
                     <button
                       onClick={prevImage}
-                      className="absolute left-2 top-1/2 -translate-y-1/2 bg-white bg-opacity-80 p-2 rounded-full hover:bg-opacity-100 transition-all"
+                      className="absolute left-2 top-1/2 -translate-y-1/2 bg-white bg-opacity-80 p-2 rounded-full hover:bg-opacity-100 transition-all shadow-md"
                     >
-                      <ChevronLeft className="size-6" />
+                      <ChevronLeft className="size-6 text-gray-800" />
                     </button>
                     <button
                       onClick={nextImage}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 bg-white bg-opacity-80 p-2 rounded-full hover:bg-opacity-100 transition-all"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 bg-white bg-opacity-80 p-2 rounded-full hover:bg-opacity-100 transition-all shadow-md"
                     >
-                      <ChevronRight className="size-6" />
+                      <ChevronRight className="size-6 text-gray-800" />
                     </button>
                     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
                       {selectedUnitData.images.map((_, index) => (
@@ -380,47 +430,47 @@ export default function LandingPage() {
               </div>
 
               <div>
-                <h3 className="mb-2 font-semibold">Description</h3>
-                <p className="text-gray-600">{selectedUnitData.description}</p>
+                <h3 className="mb-2 font-semibold text-lg text-gray-900">Description</h3>
+                <p className="text-gray-600 leading-relaxed">{selectedUnitData.description}</p>
               </div>
 
               <div>
-                <h3 className="mb-2 font-semibold">Features</h3>
-                <ul className="grid grid-cols-2 gap-2">
+                <h3 className="mb-3 font-semibold text-lg text-gray-900">Features</h3>
+                <ul className="grid grid-cols-2 gap-3">
                   {selectedUnitData.features.map((feature, index) => (
-                    <li key={index} className="flex items-center gap-2 text-gray-600">
-                      <div className="size-1.5 bg-blue-600 rounded-full" />
-                      {feature}
+                    <li key={index} className="flex items-center gap-3 text-gray-600">
+                      <div className="size-2 bg-blue-600 rounded-full flex-shrink-0" />
+                      <span>{feature}</span>
                     </li>
                   ))}
                 </ul>
               </div>
 
-              <div className="bg-blue-50 p-4 rounded-lg flex justify-between items-center">
+              <div className="bg-blue-50/50 p-6 rounded-xl border border-blue-100 flex flex-col sm:flex-row justify-between gap-4">
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Price</p>
-                  <div className="text-blue-600">
+                  <p className="text-sm font-medium text-gray-500 mb-1 uppercase tracking-wide">Price</p>
+                  <div className="text-blue-600 text-xl font-bold">
                     {formatCurrency(selectedUnitData.price)}{" "}
-                    <span className="text-sm">{getPriceLabel(selectedUnitData.type)}</span>
+                    <span className="text-sm font-normal text-blue-600/70">{getPriceLabel(selectedUnitData.type)}</span>
                   </div>
                 </div>
                 {selectedUnitData.capacity && (
                   <div>
-                    <p className="text-sm text-gray-600 mb-1">Capacity</p>
-                    <p className="text-gray-900">{selectedUnitData.capacity} persons</p>
+                    <p className="text-sm font-medium text-gray-500 mb-1 uppercase tracking-wide">Capacity</p>
+                    <p className="text-gray-900 font-medium">{selectedUnitData.capacity} persons</p>
                   </div>
                 )}
               </div>
 
               <div>
-                <h3 className="mb-2 font-semibold">Policies</h3>
-                <p className="text-sm text-gray-600">{selectedUnitData.policies}</p>
+                <h3 className="mb-2 font-semibold text-lg text-gray-900">Policies</h3>
+                <p className="text-sm text-gray-600 leading-relaxed bg-gray-50 p-4 rounded-lg border border-gray-100">{selectedUnitData.policies}</p>
               </div>
 
-              <div className="pt-4 border-t border-gray-200">
+              <div className="pt-6 mt-6 border-t border-gray-200">
                 <Link
                   to="/register"
-                  className="block w-full text-center px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  className="block w-full text-center px-6 py-4 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-colors shadow-sm hover:shadow-md"
                 >
                   Book Now - Sign Up Required
                 </Link>
