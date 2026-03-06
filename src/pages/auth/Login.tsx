@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../contexts/AuthContext'; 
 import { Building2, AlertCircle, CheckCircle, X } from 'lucide-react';
 
 const GoogleLogo = () => (
@@ -20,13 +20,11 @@ const FacebookLogo = () => (
 );
 
 export default function Login() {
-    // ✅ FIX: Added logout to the destructured functions
-    const { login, recoverPassword, logout } = useAuth();
+    // ✅ Added loginWithFacebook
+    const { user, login, loginWithGoogle, loginWithFacebook, recoverPassword, logout } = useAuth();
     const navigate = useNavigate();
-    const [formData, setFormData] = useState({
-        email: '',
-        password: ''
-    });
+    
+    const [formData, setFormData] = useState({ email: '', password: '' });
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -36,6 +34,20 @@ export default function Login() {
     const [recoverySuccess, setRecoverySuccess] = useState('');
     const [recoveryLoading, setRecoveryLoading] = useState(false);
 
+    useEffect(() => {
+        if (user) {
+            if (user.is_active === false) {
+                logout();
+                setError('Your account has been deactivated. Please contact support.');
+                setLoading(false);
+            } else if (user.role === 'admin') {
+                navigate('/admin/dashboard');
+            } else {
+                navigate('/client/dashboard');
+            }
+        }
+    }, [user, navigate, logout]);
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
@@ -43,27 +55,7 @@ export default function Login() {
 
         const success = await login(formData.email, formData.password);
 
-        if (success) {
-            // Check user role and redirect
-            const storedUser = localStorage.getItem('currentUser');
-            if (storedUser) {
-                const user = JSON.parse(storedUser);
-
-                // ✅ FIX: Instantly reject deactivated users
-                if (user.is_active === false) {
-                    logout(); // Wipe the session that was just created
-                    setError('Your account has been deactivated. Please contact support.');
-                    setLoading(false);
-                    return; // Stop the redirect
-                }
-
-                if (user.role === 'admin') {
-                    navigate('/admin/dashboard');
-                } else {
-                    navigate('/client/dashboard');
-                }
-            }
-        } else {
+        if (!success) {
             setError('Invalid email or password');
             setLoading(false);
         }
@@ -78,7 +70,7 @@ export default function Login() {
         const result = await recoverPassword(recoveryEmail);
 
         if (result) {
-            setRecoverySuccess(`A recovery link has been sent to ${recoveryEmail} (simulation). You can now close this window.`);
+            setRecoverySuccess(`A recovery link has been sent to ${recoveryEmail}. You can now close this window.`);
         } else {
             setRecoveryError('No account found with that email address.');
         }
@@ -95,19 +87,12 @@ export default function Login() {
     return (
         <div className="h-screen bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center p-12">
             <div className="w-[800px] md:w-[1000px] bg-white rounded-lg shadow-xl">
-
                 <div className="grid grid-cols-1 md:grid-cols-2 w-full">
-                    {/* Left panel: Profile */}
                     <div className="p-12 bg-gradient-to-b from-blue-100 to-blue-200 text-blue-900 flex flex-col justify-center gap-6 w-full">
                         <div className="flex flex-col items-center gap-4 mx-8">
                             <div className="rounded-full bg-gray-100 flex items-center justify-center border-2 border-blue-300"
                                 style={{ width: '200px', height: '200px' }}>
-                                <svg
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    style={{ width: '120px', height: '120px' }}
-                                >
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '120px', height: '120px' }}>
                                     <path d="M12 12a4 4 0 100-8 4 4 0 000 8z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                                     <path d="M20 21v-1a4 4 0 00-4-4H8a4 4 0 00-4 4v1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                                 </svg>
@@ -116,13 +101,12 @@ export default function Login() {
                         </div>
                     </div>
 
-                    {/* Right form panel */}
                     <main className="p-12 flex flex-col justify-center w-full">
                         <div className="text-center mb-8">
                             <div className="flex justify-center mb-4">
                                 <Building2 className="size-16 text-blue-600" />
                             </div>
-                            <h1 className="text-blue-600 mb-2">Commerciales Flores</h1>
+                            <h1 className="text-blue-600 mb-2">Comerciales Flores</h1>
                             <p className="text-gray-600">Sign in to your account</p>
                         </div>
 
@@ -134,11 +118,8 @@ export default function Login() {
                         )}
 
                         <form onSubmit={handleSubmit} className="space-y-4 w-[400px] max-w-full">
-
                             <div>
-                                <label className="block text-sm text-gray-700 mb-2">
-                                    Email Address
-                                </label>
+                                <label className="block text-sm text-gray-700 mb-2">Email Address</label>
                                 <input
                                     type="email"
                                     required
@@ -147,17 +128,10 @@ export default function Login() {
                                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     placeholder="you@example.com"
                                 />
-
-                                <label className="invisible select-none pointer-events-none opacity-0 cursor-default">
-                                    xxxxxxxxxxxxxxxxxxxxxxxxxxx
-                                </label>
-
                             </div>
 
                             <div>
-                                <label className="block text-sm text-gray-700 mb-2">
-                                    Password
-                                </label>
+                                <label className="block text-sm text-gray-700 mb-2">Password</label>
                                 <input
                                     type="password"
                                     required
@@ -169,11 +143,7 @@ export default function Login() {
                             </div>
 
                             <div className="flex justify-end">
-                                <button
-                                    type="button"
-                                    onClick={openModal}
-                                    className="text-sm text-blue-600 hover:text-blue-700"
-                                >
+                                <button type="button" onClick={openModal} className="text-sm text-blue-600 hover:text-blue-700">
                                     Forgot Password?
                                 </button>
                             </div>
@@ -200,16 +170,17 @@ export default function Login() {
                             <div className="mt-6 grid grid-cols-2 gap-4">
                                 <button
                                     type="button"
-                                    onClick={() => alert("Google login not implemented")}
+                                    onClick={loginWithGoogle}
                                     className="w-full inline-flex justify-center items-center gap-3 py-2 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                                 >
                                     <GoogleLogo />
                                     <span>Google</span>
                                 </button>
 
+                                {/* ✅ Facebook button hooked up */}
                                 <button
                                     type="button"
-                                    onClick={() => alert("Facebook login not implemented")}
+                                    onClick={loginWithFacebook}
                                     className="w-full inline-flex justify-center items-center gap-3 py-2 px-4 border border-transparent rounded-lg shadow-sm bg-[#1877F2] text-sm font-medium text-white hover:bg-[#166fe5] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1877F2]"
                                 >
                                     <FacebookLogo />
@@ -221,65 +192,56 @@ export default function Login() {
                         <div className="mt-6 text-center space-y-2">
                             <p className="text-gray-600">
                                 Don't have an account?{' '}
-                                <Link to="/register" className="text-blue-600 hover:text-blue-700">
-                                    Sign up
-                                </Link>
+                                <Link to="/register" className="text-blue-600 hover:text-blue-700">Sign up</Link>
                             </p>
-                            <Link to="/" className="block text-blue-600 hover:text-blue-700">
-                                Back to Home
-                            </Link>
+                            <Link to="/" className="block text-blue-600 hover:text-blue-700">Back to Home</Link>
                         </div>
                     </main>
                 </div>
             </div>
 
+            {/* Password Recovery Modal */}
             {isModalOpen && (
-                <div className="fixed inset-0 z-50 bg-gray-900/20 backdrop-blur-sm flex items-center justify-center p-4">          <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-8" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-bold text-gray-800">Password Recovery</h2>
-                        <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
-                            <X className="size-6" />
-                        </button>
-                    </div>
-
-                    {recoveryError && (
-                        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
-                            <AlertCircle className="size-5" />
-                            {recoveryError}
-                        </div>
-                    )}
-
-                    {recoverySuccess && (
-                        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-700">
-                            <CheckCircle className="size-5" />
-                            {recoverySuccess}
-                        </div>
-                    )}
-
-                    {!recoverySuccess && (
-                        <form onSubmit={handleRecoverPassword} className="space-y-4">
-                            <p className="text-sm text-gray-600">Enter your account's email address and we will send you a password recovery link (simulation).</p>
-                            <div>
-                                <label className="block text-sm text-gray-700 mb-2">Email Address</label>
-                                <input
-                                    type="email"
-                                    required
-                                    value={recoveryEmail}
-                                    onChange={(e) => setRecoveryEmail(e.target.value)}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="you@example.com"
-                                />
-                            </div>
-                            <button
-                                type="submit"
-                                disabled={recoveryLoading}
-                                className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                            >
-                                {recoveryLoading ? 'Searching...' : 'Recover Password'}
+                <div className="fixed inset-0 z-50 bg-gray-900/20 backdrop-blur-sm flex items-center justify-center p-4">
+                    <div className="bg-white rounded-lg shadow-2xl max-w-md w-full p-8" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl font-bold text-gray-800">Password Recovery</h2>
+                            <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                                <X className="size-6" />
                             </button>
-                        </form>
-                    )}
-                </div>
+                        </div>
+                        {recoveryError && (
+                            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
+                                <AlertCircle className="size-5" />
+                                {recoveryError}
+                            </div>
+                        )}
+                        {recoverySuccess && (
+                            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-700">
+                                <CheckCircle className="size-5" />
+                                {recoverySuccess}
+                            </div>
+                        )}
+                        {!recoverySuccess && (
+                            <form onSubmit={handleRecoverPassword} className="space-y-4">
+                                <p className="text-sm text-gray-600">Enter your account's email address and we will send you a password recovery link.</p>
+                                <div>
+                                    <label className="block text-sm text-gray-700 mb-2">Email Address</label>
+                                    <input
+                                        type="email"
+                                        required
+                                        value={recoveryEmail}
+                                        onChange={(e) => setRecoveryEmail(e.target.value)}
+                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        placeholder="you@example.com"
+                                    />
+                                </div>
+                                <button type="submit" disabled={recoveryLoading} className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50">
+                                    {recoveryLoading ? 'Searching...' : 'Recover Password'}
+                                </button>
+                            </form>
+                        )}
+                    </div>
                 </div>
             )}
         </div>

@@ -11,15 +11,17 @@ interface User {
   address: string;
   is_active: boolean; 
   profilePictureUrl?: string; 
+  lastLogin?: string;
 }
 
 interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<boolean>;
-  // ✅ FIX: Updated register signature to accept profileFile and omit profilePictureUrl
+  loginWithGoogle: () => Promise<void>; 
+  loginWithFacebook: () => Promise<void>; // ✅ Added Facebook Login
   register: (userData: Omit<User, 'id' | 'is_active' | 'profilePictureUrl'> & { password: string, profileFile?: File | null }) => Promise<boolean>;
-  logout: () => void;
-  updateProfile: (userData: Partial<User>) => void;
+  logout: () => Promise<void>;
+  updateProfile: (userData: Partial<User>) => Promise<void>;
   changePassword: (oldPassword: string, newPassword: string) => Promise<boolean>;
   recoverPassword: (email: string) => Promise<boolean>;
   uploadProfilePicture: (file: File) => Promise<string | null>; 
@@ -31,123 +33,177 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('currentUser');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        fetchAndSetUserProfile(session.user);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        fetchAndSetUserProfile(session.user);
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const fetchAndSetUserProfile = async (authUser: any) => {
     const { data, error } = await supabase
-      .from('users')   
+      .from('users')
       .select('*')
-      .eq('email', email)
-      .eq('password_hash', password)  
+      .eq('user_id', authUser.id)
       .single();
 
-    if (error || !data) return false;
+    if (data && !error) {
+      setUser({
+        id: data.user_id,
+        email: data.email,
+        firstName: data.first_name,
+        lastName: data.last_name,
+        role: data.role,
+        contactNumber: data.phone,
+        address: data.address,
+        is_active: data.is_active, 
+        profilePictureUrl: data.profile_picture_url, 
+        lastLogin: data.last_login,
+      });
+    } else if (error) {
+      console.error("Error fetching user profile:", error);
+    }
+  };
 
-    const loggedInUser: User = {
-      id: data.user_id, 
-      email: data.email,
-      firstName: data.first_name,
-      lastName: data.last_name,
-      role: data.role,
-      contactNumber: data.phone,
-      address: data.address,
-      is_active: data.is_active, 
-      profilePictureUrl: data.profile_picture_url, 
-    };
+  const login = async (email: string, password: string): Promise<boolean> => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    
+    if (error) {
+      console.error("Login failed:", error.message);
+      return false;
+    }
 
-    setUser(loggedInUser);
-    localStorage.setItem('currentUser', JSON.stringify(loggedInUser));
+    if (data.user) {
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ last_login: new Date().toISOString() })
+        .eq('user_id', data.user.id);
+
+      if (updateError) {
+        console.error("Failed to update last_login timestamp:", updateError.message);
+      }
+    }
+
     return true;
   };
 
-  // ✅ FIX: Register now handles the file upload internally
+  // ✅ Google OAuth
+  const loginWithGoogle = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/login`, 
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
+      },
+    });
+
+    if (error) {
+      console.error("Google Auth failed:", error.message);
+    }
+  };
+
+  // ✅ Facebook OAuth
+  const loginWithFacebook = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'facebook',
+      options: {
+        redirectTo: `${window.location.origin}/login`, 
+      },
+    });
+
+    if (error) {
+      console.error("Facebook Auth failed:", error.message);
+    }
+  };
+
   const register = async (userData: Omit<User, 'id' | 'is_active' | 'profilePictureUrl'> & { password: string, profileFile?: File | null }): Promise<boolean> => {
-    const { data: existing } = await supabase
-      .from('users')
-      .select('user_id') 
-      .eq('email', userData.email)
-      .single();
-
-    if (existing) return false;
-
     let avatarUrl: string | null = null;
 
-    // 1. If a file was provided, upload it first
     if (userData.profileFile) {
-        try {
-            const fileExt = userData.profileFile.name.split('.').pop();
-            const fileName = `new-${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-            
-            const { error: uploadError } = await supabase.storage
-                .from('avatars')
-                .upload(fileName, userData.profileFile);
+      try {
+        const fileExt = userData.profileFile.name.split('.').pop();
+        const fileName = `new-${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(fileName, userData.profileFile);
 
-            if (!uploadError) {
-                const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
-                avatarUrl = data.publicUrl;
-            } else {
-                console.error("Avatar upload failed during registration:", uploadError);
-            }
-        } catch (err) {
-            console.error("Avatar upload failed:", err);
+        if (!uploadError) {
+          const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
+          avatarUrl = data.publicUrl;
         }
+      } catch (err) {
+        console.error("Avatar upload failed:", err);
+      }
     }
 
-    // 2. Insert the new user with the generated avatar URL
-    const { data, error } = await supabase
-      .from('users')
-      .insert([{
-        first_name: userData.firstName,
-        last_name: userData.lastName,
-        email: userData.email,
-        password_hash: userData.password,
-        role: 'client',
-        phone: userData.contactNumber,
-        address: userData.address,
-        is_active: true,
-        profile_picture_url: avatarUrl, // Will be string or null
-        created_at: new Date().toISOString(),
-        last_login: new Date().toISOString(),
-      }])
-      .select()
-      .single();
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: userData.email,
+      password: userData.password,
+      options: {
+        data: {
+          first_name: userData.firstName,
+          last_name: userData.lastName,
+        }
+      }
+    });
 
-    if (error || !data) return false;
+    if (authError || !authData.user) {
+      console.error("Auth registration failed:", authError?.message);
+      return false;
+    }
 
-    const newUser: User = {
-      id: data.user_id, 
-      email: data.email,
-      firstName: data.first_name,
-      lastName: data.last_name,
-      role: data.role,
-      contactNumber: data.phone,
-      address: data.address,
-      is_active: data.is_active, 
-      profilePictureUrl: data.profile_picture_url, 
-    };
+    const dbPayload: any = {};
+    if (userData.contactNumber) dbPayload.phone = userData.contactNumber;
+    if (userData.address) dbPayload.address = userData.address;
+    if (avatarUrl) dbPayload.profile_picture_url = avatarUrl;
 
-    setUser(newUser);
-    localStorage.setItem('currentUser', JSON.stringify(newUser));
+    if (Object.keys(dbPayload).length > 0) {
+      const { error: updateError } = await supabase
+        .from('users')
+        .update(dbPayload)
+        .eq('user_id', authData.user.id);
+
+      if (updateError) {
+        console.error("Failed to append extra profile details:", updateError.message);
+      }
+    }
+
     return true;
   };
 
   const recoverPassword = async (email: string): Promise<boolean> => {
-    const { data, error } = await supabase
-      .from('users')
-      .select('user_id') 
-      .eq('email', email)
-      .single();
-
-    return !error && !!data;
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    
+    if (error) {
+      console.error("Password recovery failed:", error.message);
+      return false;
+    }
+    return true;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) console.error("Logout error:", error.message);
     setUser(null);
-    localStorage.removeItem('currentUser');
   };
 
   const updateProfile = async (userData: Partial<User>) => {
@@ -166,50 +222,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq('user_id', user.id); 
 
     if (!error) {
-      const updatedUser = { ...user, ...userData };
-      setUser(updatedUser);
-      localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+      setUser({ ...user, ...userData });
+    } else {
+      console.error("Failed to update profile:", error.message);
     }
   };
 
   const changePassword = async (oldPassword: string, newPassword: string): Promise<boolean> => {
     if (!user) return false;
-
-    const { data, error } = await supabase
-      .from('users')
-      .select('user_id') 
-      .eq('user_id', user.id) 
-      .eq('password_hash', oldPassword)
-      .single();
-
-    if (error || !data) return false;
-
-    const { error: updateError } = await supabase
-      .from('users')
-      .update({ password_hash: newPassword })
-      .eq('user_id', user.id); 
-
-    return !updateError;
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) return false;
+    return true;
   };
 
   const uploadProfilePicture = async (file: File): Promise<string | null> => {
     if (!user) return null;
-
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}-${Date.now()}.${fileExt}`;
-      const filePath = `${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(filePath, file, { upsert: true });
+        .upload(fileName, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
-      const { data } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath);
-
+      const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
       return data.publicUrl;
     } catch (error) {
       console.error("Error uploading profile picture:", error);
@@ -221,6 +259,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider value={{ 
         user, 
         login, 
+        loginWithGoogle,
+        loginWithFacebook,
         register, 
         logout, 
         updateProfile, 

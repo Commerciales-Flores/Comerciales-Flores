@@ -6,19 +6,32 @@ import { Calendar, CreditCard, AlertCircle, TrendingUp } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { Link } from 'react-router-dom';
 
+// ✅ Pulled outside the component so it isn't re-created on every single loop iteration
+const STATUS_COLORS: Record<string, string> = {
+  pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  approved: 'bg-blue-100 text-blue-800 border-blue-200',
+  confirmed: 'bg-green-100 text-green-800 border-green-200',
+  completed: 'bg-gray-100 text-gray-800 border-gray-200',
+  cancelled: 'bg-red-100 text-red-800 border-red-200'
+};
+
 export default function ClientDashboard() {
   const { user } = useAuth();
   
-  // ✅ NEW: Added local state to hold the Supabase data
   const [userBookings, setUserBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ✅ NEW: Fetch reservations from Supabase on mount
   useEffect(() => {
-    const fetchDashboardData = async () => {
-      if (!user?.id) return;
+    // ✅ Fix: Only attempt to fetch if user exists. If no user, stop loading so ProtectedRoutes can handle redirection.
+    if (!user?.id) {
+      setIsLoading(false);
+      return;
+    }
 
+    const fetchDashboardData = async () => {
       try {
+        setIsLoading(true); // Ensure loading is true when we start a fresh fetch
+        
         const { data, error } = await supabase
           .from('reservations')
           .select('*')
@@ -27,25 +40,24 @@ export default function ClientDashboard() {
 
         if (error) throw error;
 
-        // Map the snake_case DB columns to your camelCase frontend interface
-        const mappedBookings: Booking[] = data.map((row: any) => ({
+        // ✅ Fix: Wrapped data in a fallback array (data || []) to prevent .map crashes if the DB returns null
+        const mappedBookings: Booking[] = (data || []).map((row: any) => ({
           id: row.reservation_id,
           userId: row.user_id,
           unitId: row.unit_id,
-          propertyName: row.title,
+          propertyName: row.title || 'Unknown Property', // Fallback if title is missing
           unitType: row.unit_type as UnitType,
           startDate: row.start_date,
           endDate: row.end_date,
           duration: row.duration,
-          totalAmount: Number(row.total_amount),
-          status: row.status as BookingStatus,
+          totalAmount: Number(row.total_amount) || 0, // Fallback to 0 if null
+          status: (row.status || 'pending') as BookingStatus, // Fallback to prevent charAt() crashes later
           notes: row.notes,
-          paidAmount: Number(row.paid_amount || 0),
-          requestDate: row.created_at,
+          paidAmount: Number(row.paid_amount) || 0,
+          requestDate: row.created_at || new Date().toISOString(),
           paymentMethod: row.payment_method,
           paymentIntent: row.payment_intent,
           modeOfVisit: row.mode_of_visit,
-          // Unpack JSONB details
           paymentCycle: row.details?.paymentCycle,
           businessType: row.details?.businessType,
           eventPurpose: row.details?.eventPurpose,
@@ -66,23 +78,23 @@ export default function ClientDashboard() {
     };
 
     fetchDashboardData();
-  }, [user?.id]);
+  }, [user?.id]); // Safely depends on user.id
 
-  // Calculate stats based on the live data
   const totalBookings = userBookings.length;
   const upcomingBookings = userBookings.filter(b => {
+    if (!b.startDate) return false;
     const startDate = new Date(b.startDate);
     const today = new Date();
-    return startDate > today && (b.status === 'approved' || b.status === 'confirmed');
+    // ✅ Optional tweak: Zero out today's time so bookings starting *today* show up as upcoming
+    today.setHours(0, 0, 0, 0); 
+    return startDate >= today && (b.status === 'approved' || b.status === 'confirmed');
   });
   const pendingBookings = userBookings.filter(b => b.status === 'pending');
   
-  // Payment reminders - bookings with an outstanding balance
   const paymentReminders = userBookings.filter(b => {
     return (b.status === 'approved' || b.status === 'confirmed') && b.paidAmount < b.totalAmount;
   });
 
-  // Recent activity (latest 5 bookings)
   const recentBookings = [...userBookings]
     .sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime())
     .slice(0, 5);
@@ -90,7 +102,10 @@ export default function ClientDashboard() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <p className="text-gray-500 text-lg">Loading your dashboard...</p>
+        <div className="text-center">
+            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-gray-500 text-lg">Loading your dashboard...</p>
+        </div>
       </div>
     );
   }
@@ -98,7 +113,6 @@ export default function ClientDashboard() {
   return (
     <div className="space-y-6">
       <div>
-        {/* ✅ FIX: Changed user.name to user.firstName based on AuthContext */}
         <h1 className="mb-2 text-2xl font-bold text-gray-900">Welcome back, {user?.firstName || 'Guest'}!</h1>
         <p className="text-gray-600">Here's an overview of your reservations and payments</p>
       </div>
@@ -199,7 +213,7 @@ export default function ClientDashboard() {
         )}
 
         {/* Recent Activity */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6 flex-1 shadow-sm">
+        <div className="bg-white rounded-lg border border-gray-200 p-6 flex-1 shadow-sm h-fit">
           <h2 className="mb-4 text-lg font-semibold text-gray-900">Recent Activity</h2>
           {recentBookings.length === 0 ? (
             <div className="text-center py-8">
@@ -214,13 +228,8 @@ export default function ClientDashboard() {
           ) : (
             <div className="space-y-3">
               {recentBookings.map(booking => {
-                const statusColors: Record<BookingStatus, string> = {
-                  pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-                  approved: 'bg-blue-100 text-blue-800 border-blue-200',
-                  confirmed: 'bg-green-100 text-green-800 border-green-200',
-                  completed: 'bg-gray-100 text-gray-800 border-gray-200',
-                  cancelled: 'bg-red-100 text-red-800 border-red-200'
-                };
+                const currentStatus = booking.status || 'pending';
+                const statusColorClass = STATUS_COLORS[currentStatus] || STATUS_COLORS.pending;
                 
                 return (
                   <div key={booking.id} className="flex justify-between items-center p-4 bg-gray-50 border border-gray-100 rounded-lg">
@@ -230,8 +239,8 @@ export default function ClientDashboard() {
                         Requested on {new Date(booking.requestDate).toLocaleDateString()}
                       </p>
                     </div>
-                    <span className={`px-3 py-1 text-xs font-medium rounded-full border ${statusColors[booking.status]}`}>
-                      {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
+                    <span className={`px-3 py-1 text-xs font-medium rounded-full border ${statusColorClass}`}>
+                      {currentStatus.charAt(0).toUpperCase() + currentStatus.slice(1)}
                     </span>
                   </div>
                 );
