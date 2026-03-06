@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import supabase from '../../supabaseClient';
 import { useAuth } from '../../contexts/AuthContext';
-import { useData } from '../../contexts/DataContext';
+// ✅ FIX: Removed the unused useData import
 import type { BookingStatus, Booking, UnitType } from '../../contexts/DataContext';
 import { Calendar, Clock, CreditCard, FileText } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
@@ -10,12 +10,10 @@ import { getPropertyTypeLabel } from '../../utils/propertyHelpers';
 export default function ClientBookings() {
   const { user } = useAuth();
   
-  // ✅ NEW: Added local state for live Supabase data
   const [userBookings, setUserBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<BookingStatus | 'all'>('all');
 
-  // ✅ NEW: Fetch directly from Supabase on mount
   useEffect(() => {
     const fetchReservations = async () => {
       if (!user?.id) return;
@@ -68,7 +66,6 @@ export default function ClientBookings() {
     fetchReservations();
   }, [user?.id]);
 
-  // ✅ NEW: Direct Supabase Update for Cancellations
   const handleDeleteBooking = async (bookingId: string, propertyName: string) => {
     if (window.confirm(`Are you sure you want to cancel your reservation for "${propertyName}"?`)) {
       try {
@@ -94,23 +91,28 @@ export default function ClientBookings() {
     ? userBookings 
     : userBookings.filter(b => b.status === filterStatus);
 
+  // ✅ FIX: Added 'rejected' to satisfy the Record<BookingStatus, string> requirement
   const statusColors: Record<BookingStatus, string> = {
     pending: 'bg-yellow-100 text-yellow-800 border-yellow-200',
     approved: 'bg-blue-100 text-blue-800 border-blue-200',
     confirmed: 'bg-green-100 text-green-800 border-green-200',
     completed: 'bg-gray-100 text-gray-800 border-gray-200',
-    cancelled: 'bg-red-100 text-red-800 border-red-200'
+    cancelled: 'bg-red-100 text-red-800 border-red-200',
+    rejected: 'bg-red-100 text-red-900 border-red-300' 
   };
 
+  // ✅ FIX: Added 'rejected' icon
   const statusIcons: Record<BookingStatus, string> = {
     pending: '⏳',
     approved: '👍',
     confirmed: '✓',
     completed: '🏁',
-    cancelled: '✗'
+    cancelled: '✗',
+    rejected: '🚫' 
   };
 
-  const FILTER_TABS: Array<BookingStatus | 'all'> = ['all', 'pending', 'approved', 'confirmed', 'completed', 'cancelled'];
+  // ✅ FIX: Also added 'rejected' to the filter tabs so users can sort by it
+  const FILTER_TABS: Array<BookingStatus | 'all'> = ['all', 'pending', 'approved', 'confirmed', 'completed', 'cancelled', 'rejected'];
 
   return (
     <div className="space-y-6">
@@ -328,6 +330,14 @@ export default function ClientBookings() {
                     <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
                       <p className="text-sm text-red-800">
                         This reservation has been cancelled. Please contact support if you have questions.
+                      </p>
+                    </div>
+                  )}
+                  {/* ✅ FIX: Added a message for rejected status */}
+                  {booking.status === 'rejected' && (
+                    <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <p className="text-sm text-red-800">
+                        This reservation was rejected by the administration. Please contact support for details.
                       </p>
                     </div>
                   )}

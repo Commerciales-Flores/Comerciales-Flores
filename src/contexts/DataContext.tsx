@@ -138,7 +138,7 @@ export interface ParkingSlot {
 }
 
 export interface ContentSettings {
-  content_id?: string; // ✅ ADDED: Needed to target the correct row for updates
+  content_id?: string;
   heroTitle: string;
   heroSubtitle: string;
   aboutUs: string;
@@ -194,7 +194,7 @@ interface DataContextType {
   updateBusinessSlot: (id: string, slot: Partial<BusinessSlot>) => void;
   deleteBusinessSlot: (id: string) => void;
 
-  updateContentSettings: (settings: Partial<ContentSettings>) => Promise<void>; // ✅ UPDATED: Now returns a promise
+  updateContentSettings: (settings: Partial<ContentSettings>) => Promise<void>;
 
   getUnitById: (id: string) => Unit | undefined;
   getBookingsByUserId: (userId: string) => Booking[];
@@ -211,7 +211,6 @@ const MOCK_PARKING_SLOTS: ParkingSlot[] = Array.from({ length: 10 }, (_, i) => (
   imageUrl: `https://placehold.co/400x300/e2e8f0/475569?text=Slot%20${i + 1}`,
 }));
 
-// ✅ ADDED: Empty default so the UI doesn't crash before DB loads
 const DEFAULT_CONTENT: ContentSettings = {
   heroTitle: '',
   heroSubtitle: '',
@@ -238,7 +237,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [guestParkingReservations, _setGuestParkingReservations] = useState<GuestParkingReservationStatus[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
   const [businessSlots, _setBusinessSlots] = useState<BusinessSlot[]>([]);
-  const [contentSettings, setContentSettings] = useState<ContentSettings>(DEFAULT_CONTENT); // ✅ FIX: Now uses the setter
+  const [contentSettings, setContentSettings] = useState<ContentSettings>(DEFAULT_CONTENT);
 
   useEffect(() => {
     // Fetch all unified property data
@@ -246,6 +245,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       try {
         const { data: baseUnits, error: baseError } = await supabase.from('units').select('*');
         const { data: rentalUnits } = await supabase.from('rental_units').select('*');
+        // ✅ NEW: Added fetch for function_units
+        const { data: functionUnits } = await supabase.from('function_units').select('*');
         const { data: parkingUnits } = await supabase.from('parking_units').select('*');
         const { data: media } = await supabase.from('media').select('*');
 
@@ -255,8 +256,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const combinedUnits: Unit[] = baseUnits.map(base => {
           let specific = null;
           
-          if (base.unit_type === 'rental_space' || base.unit_type === 'function_hall') {
+          // ✅ FIX: 3-way split based on new schema
+          if (base.unit_type === 'rental_space') {
             specific = rentalUnits?.find(r => r.unit_id === base.unit_id);
+          } else if (base.unit_type === 'function_hall') {
+            specific = functionUnits?.find(f => f.unit_id === base.unit_id);
           } else if (base.unit_type === 'parking_slot') {
             specific = parkingUnits?.find(p => p.unit_id === base.unit_id);
           }
@@ -434,7 +438,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    // ✅ NEW: Fetch Content Settings from Supabase
     const fetchContentSettings = async () => {
       const { data, error } = await supabase.from('site_content').select('*').limit(1).single();
       if (!error && data) {
@@ -445,7 +448,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           aboutUs: data.aboutUs || '',
           contactEmail: data.contactEmail || '',
           contactPhone: data.contactPhone || '',
-          contactAddress: data.contactAddress || '', // Will be empty if column doesn't exist
+          contactAddress: data.contactAddress || '',
           announcements: data.announcements || [],
           policies: data.policies || ''
         });
@@ -460,7 +463,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     fetchPayments();
     fetchLedgers();
     fetchAuditLogs();
-    fetchContentSettings(); // ✅ Called here
+    fetchContentSettings();
   }, []);
 
   // ── Storage ─────────────────────────────────────────────────────────────────
@@ -537,16 +540,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       let tableError = null;
 
-      if (unitData.type === 'rental_space' || unitData.type === 'function_hall') {
-        const { error } = await supabase.from('rental_units').insert([specificData]);
-        tableError = error;
-      } else if (unitData.type === 'parking_slot') {
-        const { error } = await supabase.from('parking_units').insert([specificData]);
+      // ✅ FIX: Determine which of the 3 sub-tables to save into based on type
+      let targetTable = '';
+      if (unitData.type === 'rental_space') targetTable = 'rental_units';
+      else if (unitData.type === 'function_hall') targetTable = 'function_units';
+      else if (unitData.type === 'parking_slot') targetTable = 'parking_units';
+
+      if (targetTable) {
+        const { error } = await supabase.from(targetTable).insert([specificData]);
         tableError = error;
       }
 
       if (tableError) {
-        console.error("Sub-table insert failed, rolling back base unit...", tableError);
+        console.error(`Sub-table insert failed for ${targetTable}, rolling back base unit...`, tableError);
         await supabase.from('units').delete().eq('unit_id', newUnitId);
         throw tableError;
       }
@@ -596,12 +602,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (unitUpdate.features !== undefined) specificPayload.features = unitUpdate.features;
 
       if (Object.keys(specificPayload).length > 0) {
-        const tableName = (existingUnit.type === 'rental_space' || existingUnit.type === 'function_hall') 
-                          ? 'rental_units' 
-                          : 'parking_units';
+        // ✅ FIX: Determine which of the 3 sub-tables to update
+        let tableName = '';
+        if (existingUnit.type === 'rental_space') tableName = 'rental_units';
+        else if (existingUnit.type === 'function_hall') tableName = 'function_units';
+        else if (existingUnit.type === 'parking_slot') tableName = 'parking_units';
         
-        const { error } = await supabase.from(tableName).update(specificPayload).eq('unit_id', id);
-        if (error) throw error;
+        if (tableName) {
+          const { error } = await supabase.from(tableName).update(specificPayload).eq('unit_id', id);
+          if (error) throw error;
+        }
       }
 
       if (unitUpdate.images !== undefined) {
@@ -635,11 +645,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       await supabase.from('media').delete().eq('unit_id', id);
       
-      const tableName = (existingUnit.type === 'rental_space' || existingUnit.type === 'function_hall') 
-                        ? 'rental_units' 
-                        : 'parking_units';
+      // ✅ FIX: Determine which of the 3 sub-tables to delete from
+      let tableName = '';
+      if (existingUnit.type === 'rental_space') tableName = 'rental_units';
+      else if (existingUnit.type === 'function_hall') tableName = 'function_units';
+      else if (existingUnit.type === 'parking_slot') tableName = 'parking_units';
                       
-      await supabase.from(tableName).delete().eq('unit_id', id);
+      if (tableName) {
+        await supabase.from(tableName).delete().eq('unit_id', id);
+      }
 
       const { error } = await supabase.from('units').delete().eq('unit_id', id);
       if (error) throw error;
@@ -1061,16 +1075,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // ── Content Settings (NEW) ───────────────────────────────────────────────
+  // ── Content Settings ───────────────────────────────────────────────
   const updateContentSettings = async (settings: Partial<ContentSettings>): Promise<void> => {
     try {
-      // Prevent running if there is no row loaded yet
       if (!contentSettings.content_id) {
         console.error("Cannot update: Content ID not found.");
         return;
       }
 
-      // Strip out the ID so we don't accidentally try to overwrite the Primary Key
       const dbPayload = { ...settings } as any;
       delete dbPayload.content_id;
       dbPayload.updated_at = new Date().toISOString();
@@ -1082,7 +1094,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
 
-      // Update the local state to match the new DB values instantly
       setContentSettings(prev => ({ ...prev, ...settings }));
     } catch (error) {
       console.error("Error updating content settings:", error);

@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { useNotifications } from '../../contexts/NotificationContext';
-import { Search, Eye, CheckCircle, XCircle, X, Plus, Loader2 } from 'lucide-react';
+import { Search, Eye, CheckCircle, XCircle, X, Plus, Loader2, Calendar } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { getPropertyTypeLabel } from '../../utils/propertyHelpers';
 import AdminActionModal from '../../pages/admin/AdminActionModal';
 
 export default function AdminBookings() {
-  // ✅ 100% Clean: Fetching directly from the global context
-  const { bookings, updateBooking, getUserById, payments } = useData(); 
+  // ✅ Cleaned up unused 'payments' import
+  const { bookings, updateBooking, getUserById } = useData(); 
   const { sendBookingNotification } = useNotifications();
   
   const [isUpdating, setIsUpdating] = useState(false);
@@ -28,9 +28,9 @@ export default function AdminBookings() {
     return matchesStatus && matchesSearch;
   });
 
-  const sortedBookings = [...filteredBookings]; // DataContext already sorts them by creation date
+  // DataContext already sorts them by creation date
+  const sortedBookings = [...filteredBookings]; 
 
-  // ✅ Context handles Supabase update and local state simultaneously
   const handleApprove = async (bookingId: string, userId: string) => {
     if (isUpdating) return;
     setIsUpdating(true);
@@ -73,7 +73,7 @@ export default function AdminBookings() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-2">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 mb-1">Reservation Management</h1>
           <p className="text-gray-600">Review and manage customer reservation requests</p>
@@ -96,6 +96,26 @@ export default function AdminBookings() {
         />
       )}
 
+      {/* ✅ RESTORED: Summary Cards from the first file */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 text-center">
+          <p className="text-gray-500 text-sm font-medium uppercase tracking-wider mb-2">Total</p>
+          <p className="text-3xl font-bold text-gray-900">{bookings.length}</p>
+        </div>
+        <div className="bg-yellow-50 rounded-lg shadow-sm border border-yellow-100 p-6 text-center">
+          <p className="text-yellow-600 text-sm font-medium uppercase tracking-wider mb-2">Pending</p>
+          <p className="text-3xl font-bold text-yellow-700">{bookings.filter(b => b.status === 'pending').length}</p>
+        </div>
+        <div className="bg-green-50 rounded-lg shadow-sm border border-green-100 p-6 text-center">
+          <p className="text-green-600 text-sm font-medium uppercase tracking-wider mb-2">Approved</p>
+          <p className="text-3xl font-bold text-green-700">{bookings.filter(b => b.status === 'approved' || b.status === 'confirmed').length}</p>
+        </div>
+        <div className="bg-red-50 rounded-lg shadow-sm border border-red-100 p-6 text-center">
+          <p className="text-red-600 text-sm font-medium uppercase tracking-wider mb-2">Rejected/Cancelled</p>
+          <p className="text-3xl font-bold text-red-700">{bookings.filter(b => b.status === 'rejected' || b.status === 'cancelled').length}</p>
+        </div>
+      </div>
+
       {/* Filters and Search */}
       <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row gap-4">
@@ -106,11 +126,11 @@ export default function AdminBookings() {
               placeholder="Search by Booking ID, Property, or Customer Name..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
+              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow bg-gray-50"
             />
           </div>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap border-t border-gray-100 pt-4">
           {(['all', 'pending', 'approved', 'rejected'] as const).map((status) => (
             <button
               key={status}
@@ -138,45 +158,45 @@ export default function AdminBookings() {
           <table className="w-full text-left">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">ID</th>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">User ID</th>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Property</th>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Date Range</th>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Visit Type</th>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">Actions</th>
+                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">ID / User ID</th>
+                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Property</th>
+                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date Range</th>
+                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
+                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Visit Type</th>
+                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
               {sortedBookings.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-12 text-center text-gray-500">No bookings found matching your criteria.</td>
+                  <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
+                    <Calendar className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    No bookings found matching your criteria.
+                  </td>
                 </tr>
               ) : (
                 sortedBookings.map((b) => {
                   return (
                     <tr key={b.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 font-mono">
-                        {b.id.split('-')[0]}...
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 font-mono">
-                        {b.userId.split('-')[0]}...
+                        <div className="text-gray-900 font-medium mb-0.5">{b.id.split('-')[0]}...</div>
+                        <div>User: {b.userId.split('-')[0]}...</div>
                       </td>
                       <td className="px-6 py-4 text-sm">
-                        <div className="text-gray-900 font-medium">{b.propertyName}</div>
-                        <div className="text-xs text-gray-500">{getPropertyTypeLabel(b.unitType as any)}</div>
+                        <div className="text-gray-900 font-medium mb-0.5">{b.propertyName}</div>
+                        <div className="text-xs text-gray-500 uppercase tracking-wider font-semibold">{getPropertyTypeLabel(b.unitType as any)}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        <div className="font-medium">{new Date(b.startDate).toLocaleDateString()}</div>
-                        <div className="text-xs text-gray-400">{new Date(b.endDate).toLocaleDateString()}</div>
+                        <div className="font-medium text-gray-900 mb-0.5">{new Date(b.startDate).toLocaleDateString()}</div>
+                        <div className="text-xs text-gray-500">to {new Date(b.endDate).toLocaleDateString()}</div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
                         {formatCurrency(b.totalAmount)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                         {b.unitType === 'parking_slot' ? (
-                          <span className="text-gray-400 font-medium">N/A</span>
+                          <span className="text-gray-400 font-medium italic">N/A</span>
                         ) : (
                           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full border ${
                             b.modeOfVisit === 'onsite' 
@@ -194,15 +214,15 @@ export default function AdminBookings() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <div className="flex justify-end gap-2">
-                          <button onClick={() => setSelectedBooking(b.id)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md transition-colors" title="View Details">
+                          <button onClick={() => setSelectedBooking(b.id)} className="p-1.5 text-blue-600 hover:bg-blue-100 rounded-md transition-colors border border-transparent hover:border-blue-200" title="View Details">
                              <Eye className="size-4" />
                           </button>
                           {b.status === 'pending' && (
                             <>
-                              <button onClick={() => handleApprove(b.id, b.userId)} disabled={isUpdating} className="p-1.5 text-green-600 hover:bg-green-100 rounded-md transition-colors disabled:opacity-50" title="Approve">
+                              <button onClick={() => handleApprove(b.id, b.userId)} disabled={isUpdating} className="p-1.5 text-green-600 hover:bg-green-100 rounded-md transition-colors border border-transparent hover:border-green-200 disabled:opacity-50" title="Approve">
                                  <CheckCircle className="size-4" />
                               </button>
-                              <button onClick={() => handleReject(b.id, b.userId)} disabled={isUpdating} className="p-1.5 text-red-600 hover:bg-red-100 rounded-md transition-colors disabled:opacity-50" title="Reject">
+                              <button onClick={() => handleReject(b.id, b.userId)} disabled={isUpdating} className="p-1.5 text-red-600 hover:bg-red-100 rounded-md transition-colors border border-transparent hover:border-red-200 disabled:opacity-50" title="Reject">
                                  <XCircle className="size-4" />
                               </button>
                             </>
@@ -248,7 +268,7 @@ export default function AdminBookings() {
                   <div><span className="text-gray-500 block mb-1 uppercase text-xs font-semibold">Type</span> <span className="text-gray-900 font-medium">{getPropertyTypeLabel(booking.unitType as any)}</span></div>
                   <div><span className="text-gray-500 block mb-1 uppercase text-xs font-semibold">Start Date</span> <span className="text-gray-900 font-medium">{new Date(booking.startDate).toLocaleDateString()}</span></div>
                   <div><span className="text-gray-500 block mb-1 uppercase text-xs font-semibold">End Date</span> <span className="text-gray-900 font-medium">{new Date(booking.endDate).toLocaleDateString()}</span></div>
-                  <div><span className="text-gray-500 block mb-1 uppercase text-xs font-semibold">Total Duration</span> <span className="text-gray-900 font-medium">{booking.duration} {booking.unitType === 'rental_space' ? 'years' : booking.unitType === 'function_hall' ? 'days' : booking.durationType || 'hours'}</span></div>
+                  <div><span className="text-gray-500 block mb-1 uppercase text-xs font-semibold">Total Duration</span> <span className="text-gray-900 font-medium">{booking.duration} {booking.unitType === 'rental_space' ? 'months' : booking.unitType === 'function_hall' ? 'days' : booking.durationType || 'hours'}</span></div>
                   
                   {booking.unitType === 'rental_space' && booking.paymentCycle && (
                     <div><span className="text-gray-500 block mb-1 uppercase text-xs font-semibold">Payment Cycle</span> <span className="text-blue-700 font-bold capitalize bg-blue-50 px-2 py-1 rounded">{booking.paymentCycle}</span></div>
@@ -315,7 +335,7 @@ export default function AdminBookings() {
               {booking.notes && (
                 <div>
                   <h3 className="mb-2 font-bold text-gray-900">Customer Notes</h3>
-                  <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg text-sm text-gray-800 shadow-inner">
+                  <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg text-sm text-gray-800 shadow-inner whitespace-pre-wrap">
                     {booking.notes}
                   </div>
                 </div>

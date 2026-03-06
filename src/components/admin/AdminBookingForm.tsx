@@ -30,8 +30,8 @@ interface BookingFormState {
 }
 
 export default function AdminBookingForm({ userId, propertyId, onComplete }: AdminBookingFormProps) {
-  // ✅ FIX 1: Pulled 'units' instead of 'properties'
-  const { units, bookings, users, parkingSlots, addBooking, updateBooking } = useData();
+  // ✅ FIX 1: Removed unused 'updateBooking'
+  const { units, bookings, users, parkingSlots, addBooking } = useData();
   const unit = units.find(p => p.id === propertyId);
   const user = users.find(u => u.id === userId); 
 
@@ -95,7 +95,6 @@ export default function AdminBookingForm({ userId, propertyId, onComplete }: Adm
 
     const reservedIds = bookings
       .filter((booking) => {
-        // ✅ FIX 2: Updated to use unitType
         if (booking.unitType !== 'parking_slot' || !booking.slotId) return false;
 
         const resStart = new Date(booking.startDate);
@@ -119,7 +118,6 @@ export default function AdminBookingForm({ userId, propertyId, onComplete }: Adm
 
   const selectedSlotObject = formState.slotId ? parkingSlots.find((slot) => slot.id === formState.slotId) : null;
   
-  // Cleaned up the math calculation to guarantee it relies on the correct duration scope
   const durationInMonths = unit.type === 'rental_space' ? Number(formState.duration) * 12 : Number(formState.duration);
   const totalAmount = calculateTotalAmount(unit.type as any, unit.price, durationInMonths, formState.paymentCycle);
   
@@ -134,7 +132,6 @@ export default function AdminBookingForm({ userId, propertyId, onComplete }: Adm
 
     setIsSubmitting(true);
 
-    // ✅ FIX 3: Fully matched the Omit interface from DataContext
     const finalBookingData: Omit<Booking, 'id' | 'requestDate' | 'status' | 'paidAmount'> = {
       userId,
       unitId: propertyId,
@@ -145,8 +142,8 @@ export default function AdminBookingForm({ userId, propertyId, onComplete }: Adm
       duration: formState.duration,
       totalAmount: totalAmount,
       notes: formState.notes,
-      modeOfVisit: 'online', // Defaulted to online for admin creation
-      paymentIntent: 'pay_later', // Required by the new DB schema
+      modeOfVisit: 'online', 
+      paymentIntent: 'pay_later', 
       paymentMethod: formState.paymentMethod,
       ...(unit.type === 'rental_space' && { paymentCycle: formState.paymentCycle, businessType: formState.businessType }),
       ...(unit.type === 'function_hall' && { eventPurpose: formState.eventPurpose, attendees: Number(formState.attendees) || 0 }),
@@ -154,13 +151,8 @@ export default function AdminBookingForm({ userId, propertyId, onComplete }: Adm
     };
 
     try {
-        // ✅ FIX 4: Await the Supabase insertion
-        const newBookingId = await addBooking(finalBookingData);
-
-        // Optional: Because the Admin created this, it makes sense for it to be confirmed instantly.
-        // If your Supabase is set up to allow instant updates, you can run an update right here:
-        // await supabase.from('reservations').update({ status: 'confirmed' }).eq('reservation_id', newBookingId);
-
+        // ✅ FIX 2: Removed unused 'const newBookingId =' variable
+        await addBooking(finalBookingData);
         onComplete();
     } catch (error) {
         console.error("Failed to submit admin booking:", error);
@@ -182,7 +174,6 @@ export default function AdminBookingForm({ userId, propertyId, onComplete }: Adm
             <p className="text-xs text-gray-500 mb-1">For User</p>
              <div className="flex items-center gap-2 bg-blue-50/50 p-2 rounded-lg border border-blue-100">
                 <UserIcon className="size-4 text-blue-600"/>
-                {/* Fixed the User mapping to match DataContext mapping */}
                 <p className="font-semibold text-gray-800">
                   {user.first_name} {user.last_name} 
                   <span className="font-mono text-gray-400 font-normal ml-2 text-xs">(ID: {user.id})</span>
@@ -420,7 +411,7 @@ export default function AdminBookingForm({ userId, propertyId, onComplete }: Adm
         </div>
       </form>
 
-      {/* ✅ PARKING SLOT SELECTOR PANEL */}
+      {/* PARKING SLOT SELECTOR PANEL */}
       {isSlotPanelOpen && (
         <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" onClick={() => setIsSlotPanelOpen(false)}>
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>

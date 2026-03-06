@@ -1,27 +1,25 @@
 import { useState } from "react";
 import { useData } from "../../contexts/DataContext";
 import type { UnitType } from "../../contexts/DataContext";
-import { useAuth } from "../../contexts/AuthContext";
+// ✅ FIX: Removed the unused useAuth import
 import {
   Search,
   Filter,
   MapPin,
   Users,
-  Maximize,
+  // ✅ FIX: Removed the unused Maximize icon
   Calendar,
   CheckCircle,
 } from "lucide-react";
 import { ImageWithFallback } from "../figma/ImageWithFallback";
 import BookingModal from "./BookingModal";
-import { formatCurrency } from "../../utils/currency"; // ✅ Good to use consistent currency formatting
+import { formatCurrency } from "../../utils/currency";
 
 export default function BrowseSpaces() {
-  // ✅ FIX 1: Grab 'units' instead of 'spaces'
   const { units } = useData();
-  const { user } = useAuth();
-  const [searchTerm, setSearchTerm] = useState("");
+  // ✅ FIX: Removed const { user } = useAuth();
   
-  // ✅ FIX 2: Use UnitType from DataContext
+  const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<UnitType | "all">("all");
   const [filterAvailability, setFilterAvailability] = useState<"all" | "available" | "occupied">("all");
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
@@ -32,7 +30,6 @@ export default function BrowseSpaces() {
                           unit.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = filterType === 'all' || unit.type === filterType;
     
-    // ✅ FIX 3: Evaluate the boolean `unit.available`
     const matchesAvailability = filterAvailability === 'all' || 
                                 (filterAvailability === 'available' && unit.available) ||
                                 (filterAvailability === 'occupied' && !unit.available);
@@ -173,7 +170,6 @@ export default function BrowseSpaces() {
             className="bg-white rounded-lg shadow-sm overflow-hidden hover:shadow-md transition-shadow flex flex-col"
           >
             <div className="relative h-48">
-              {/* ✅ FIX 4: Used unit.images[0] */}
               <ImageWithFallback
                 src={unit.images && unit.images.length > 0 ? unit.images[0] : ''}
                 alt={unit.name}
@@ -217,7 +213,6 @@ export default function BrowseSpaces() {
                 )}
               </div>
 
-              {/* ✅ FIX 5: Updated from amenities to features */}
               {unit.features && unit.features.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-6">
                   {unit.features.slice(0, 3).map((feature, index) => (
@@ -280,7 +275,6 @@ export default function BrowseSpaces() {
         </div>
       )}
 
-      {/* ✅ FIX 6: Changed spaceId to unitId to match the new Modal signature */}
       {selectedUnitId && (
         <BookingModal
           unitId={selectedUnitId}

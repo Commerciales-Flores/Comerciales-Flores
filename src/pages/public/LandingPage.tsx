@@ -155,56 +155,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ✅ RESTORED: Features Section */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-white border-t border-gray-100">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-gray-900 mb-4">Why Choose Commerciales Flores</h2>
-            <p className="text-gray-600">
-              Complete rental management solution for your business needs
-            </p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 hover:shadow-md transition-shadow">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
-                <Building2 className="w-6 h-6 text-blue-600" />
-              </div>
-              <h3 className="text-gray-900 mb-2 font-semibold">Diverse Spaces</h3>
-              <p className="text-sm text-gray-600 leading-relaxed">
-                Office units, function halls, and parking areas to meet all your needs
-              </p>
-            </div>
-            <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 hover:shadow-md transition-shadow">
-              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
-                <Calendar className="w-6 h-6 text-green-600" />
-              </div>
-              <h3 className="text-gray-900 mb-2 font-semibold">Easy Booking</h3>
-              <p className="text-sm text-gray-600 leading-relaxed">
-                View availability and book spaces online with instant confirmation
-              </p>
-            </div>
-            <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 hover:shadow-md transition-shadow">
-              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
-                <CreditCard className="w-6 h-6 text-purple-600" />
-              </div>
-              <h3 className="text-gray-900 mb-2 font-semibold">Payment Tracking</h3>
-              <p className="text-sm text-gray-600 leading-relaxed">
-                Keep track of all your payments and transaction history securely
-              </p>
-            </div>
-            <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 hover:shadow-md transition-shadow">
-              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
-                <Shield className="w-6 h-6 text-orange-600" />
-              </div>
-              <h3 className="text-gray-900 mb-2 font-semibold">Secure & Reliable</h3>
-              <p className="text-sm text-gray-600 leading-relaxed">
-                Your data and transactions are protected with enterprise-grade security
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* Featured Properties */}
       <section id="properties" className="py-16 bg-gray-50 border-t border-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -254,6 +204,56 @@ export default function LandingPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ✅ RESTORED: Features Section */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8 bg-white border-t border-gray-100">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-gray-900 mb-4">Why Choose Commerciales Flores</h2>
+            <p className="text-gray-600">
+              Complete rental management solution for your business needs
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                <Building2 className="w-6 h-6 text-blue-600" />
+              </div>
+              <h3 className="text-gray-900 mb-2 font-semibold">Diverse Spaces</h3>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                Office units, function halls, and parking areas to meet all your needs
+              </p>
+            </div>
+            <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+                <Calendar className="w-6 h-6 text-green-600" />
+              </div>
+              <h3 className="text-gray-900 mb-2 font-semibold">Easy Booking</h3>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                View availability and book spaces online with instant confirmation
+              </p>
+            </div>
+            <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
+                <CreditCard className="w-6 h-6 text-purple-600" />
+              </div>
+              <h3 className="text-gray-900 mb-2 font-semibold">Payment Tracking</h3>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                Keep track of all your payments and transaction history securely
+              </p>
+            </div>
+            <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
+                <Shield className="w-6 h-6 text-orange-600" />
+              </div>
+              <h3 className="text-gray-900 mb-2 font-semibold">Secure & Reliable</h3>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                Your data and transactions are protected with enterprise-grade security
+              </p>
+            </div>
           </div>
         </div>
       </section>

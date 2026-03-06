@@ -41,7 +41,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       userId,
       title: 'Inquiry Response',
       message: `Admin has responded to your inquiry: "${inquirySubject}"`,
-      type: 'inquiry'
+      type: 'inquiry' // ✅ This is the key we use to filter!
     });
   };
 
