@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Search, Calendar, User, Tag, Layers, Info, Hash, Filter, RotateCcw, X } from 'lucide-react';
+import type { AuditModule } from '../../contexts/DataContext';
 
 // Mock audit data
 const MOCK_AUDIT_LOGS = [
@@ -131,7 +132,7 @@ export default function AdminAudit() {
 
           <select
             value={selectedModule}
-            onChange={(e) => setSelectedModule(e.target.value)}
+            onChange={(e) => setSelectedModule(e.target.value as AuditModule | 'All')}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
           >
             {modules.map((m) => (
