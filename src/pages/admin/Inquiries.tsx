@@ -115,7 +115,7 @@ export default function AdminInquiries() {
                 </h3>
                 <p className="text-xs text-gray-500 line-clamp-2 mt-1">{inq.message}</p>
                 <div className="mt-3 flex items-center gap-2 text-[11px] text-gray-400 italic">
-                  <User className="size-3" /> {inq.name}
+                  <User className="size-3" /> {inq.first_name} {inq.last_name}
                 </div>
               </button>
             ))
@@ -147,7 +147,7 @@ export default function AdminInquiries() {
                   <div>
                     <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-1">{inquiry.subject}</h2>
                     <div className="flex flex-col md:flex-row md:flex-wrap md:gap-4 text-xs md:text-sm text-gray-500">
-                      <span className="flex items-center gap-1.5"><User className="size-3 md:size-4" /> {inquiry.name}</span>
+                      <span className="flex items-center gap-1.5"><User className="size-3 md:size-4" /> {inquiry.first_name} {inquiry.last_name}</span>
                       <span className="flex items-center gap-1.5"><Calendar className="size-3 md:size-4" /> {new Date(inquiry.date).toLocaleString()}</span>
                     </div>
                   </div>

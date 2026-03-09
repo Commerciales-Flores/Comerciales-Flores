@@ -131,7 +131,7 @@ export default function AdminLayout() {
     (user as any)?.avatarUrl ||
     (user as any)?.photoURL ||
     `https://ui-avatars.com/api/?name=${encodeURIComponent(
-      user?.name || "User"
+      (user?.first_name && user.last_name) ? `${user.first_name} ${user.last_name}` : "User"
     )}&background=0D8ABC&color=fff&size=128`;
 
 
@@ -162,7 +162,7 @@ export default function AdminLayout() {
             <div className="hidden lg:flex items-center gap-6">
               <div className="flex items-center gap-4 pr-6 border-r border-blue-800">
                 <span className="text-sm font-medium text-blue-100">
-                  Welcome, <span className="text-white font-semibold">{user?.name}</span>
+                  Welcome, <span className="text-white font-semibold">{(user?.first_name && user.last_name) ? `${user.first_name} ${user.last_name}` : "User"}</span>
                 </span>
                 <NavLink to="/admin/profile" className="p-0.5 hover:ring-2 hover:ring-blue-400 rounded-full transition-all">
                   <img src={avatarUrl} className="w-9 h-9 rounded-full border border-blue-700 shadow-sm" alt="Avatar" />
@@ -246,7 +246,7 @@ export default function AdminLayout() {
                       >
                         <img
                           src={avatarUrl}
-                          alt={user?.name || "Admin avatar"}
+                          alt={user?.first_name || "Admin avatar"}
                           className="w-16 h-16 rounded-2xl object-cover border-2 border-blue-800 shadow-md bg-white" 
                         />
                         <div className="absolute -bottom-1 -right-1 bg-emerald-500 border-2 border-blue-900 size-4 rounded-full" />
@@ -259,7 +259,7 @@ export default function AdminLayout() {
                       </button>
                     </div>
                     <div>
-                      <h2 className="font-bold text-white text-lg leading-tight">{user?.name}</h2>
+                      <h2 className="font-bold text-white text-lg leading-tight">{(user?.first_name && user.last_name) ? `${user.first_name} ${user.last_name}` : "User"}</h2>
                       <p className="text-blue-300 text-xs truncate font-medium mt-0.5">{user?.email}</p>
                       <div className="mt-3 flex items-center gap-2">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-blue-800 text-blue-100 uppercase tracking-tighter border border-blue-700">

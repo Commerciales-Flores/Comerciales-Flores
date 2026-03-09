@@ -5,7 +5,8 @@ import { useIndicator } from './IndicatorContext';
 interface User {
   id: string;
   email: string;
-  name: string;
+  first_name: string;
+  last_name: string;
   role: 'client' | 'admin';
   contactNumber: string;
   address: string;
@@ -34,7 +35,8 @@ const MOCK_USERS = [
     id: '1',
     email: 'admin@flores.com',
     password: 'admin123',
-    name: 'Admin User',
+    first_name: 'Admin',
+    last_name: 'User',
     role: 'admin' as const,
     contactNumber: '+63 917 123 4567',
     address: 'Manila, Philippines'
@@ -43,7 +45,8 @@ const MOCK_USERS = [
     id: '2',
     email: 'client@example.com',
     password: 'client123',
-    name: 'John Doe',
+    first_name: 'John',
+    last_name: 'Doe',
     role: 'client' as const,
     contactNumber: '+63 918 765 4321',
     address: 'Quezon City, Philippines'

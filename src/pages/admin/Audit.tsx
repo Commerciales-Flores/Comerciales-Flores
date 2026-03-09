@@ -40,6 +40,8 @@ export default function AdminAudit() {
       case 'UPDATE': return 'bg-yellow-100 text-yellow-800';
       case 'DELETE': return 'bg-red-100 text-red-800';
       case 'DEACTIVATE': return 'bg-gray-200 text-gray-800';
+      case 'LOGIN': return 'bg-blue-100 text-blue-800';
+      case 'LOGOUT': return 'bg-purple-100 text-purple-800';
       default: return 'bg-blue-100 text-blue-800';
     }
   };
@@ -123,6 +125,8 @@ export default function AdminAudit() {
             <option value="UPDATE">Update</option>
             <option value="DEACTIVATE">Deactivate</option>
             <option value="DELETE">Delete</option>
+            <option value="LOGIN">Login</option>
+            <option value="LOGOUT">Logout</option>
           </select>
 
           <select
@@ -253,6 +257,8 @@ export default function AdminAudit() {
                   <option value="UPDATE">Update</option>
                   <option value="DEACTIVATE">Deactivate</option>
                   <option value="DELETE">Delete</option>
+                  <option value="LOGIN">Login</option>
+                  <option value="LOGOUT">Logout</option>
                 </select>
               </div>
 
@@ -309,4 +315,4 @@ export default function AdminAudit() {
       </div>
     </div>
   );
-}
+} 

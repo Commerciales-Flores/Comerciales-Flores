@@ -11,7 +11,8 @@ export default function Register() {
     const navigate = useNavigate();
     
     const [formData, setFormData] = useState({
-        name: '',
+        firstName: '',
+        lastName: '',
         email: '',
         contactNumber: '',
         address: '',
@@ -80,7 +81,8 @@ export default function Register() {
     const validate = () => {
         const errs: { [key: string]: string } = {};
 
-        if (!formData.name.trim()) errs.name = 'Name is required.';
+        if (!formData.firstName.trim()) errs.firstName = 'First name is required.';
+        if (!formData.lastName.trim()) errs.lastName = 'Last name is required.';
         if (!formData.email.trim()) errs.email = 'Email is required.';
         else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) errs.email = 'Invalid email format.';
         
@@ -114,7 +116,8 @@ export default function Register() {
         setLoading(true);
         try {
             const success = await register({
-                name: formData.name.trim(),
+                first_name: formData.firstName.trim(),
+                last_name: formData.lastName.trim(),
                 email: formData.email.trim(),
                 contactNumber: formData.contactNumber.trim(),
                 address: formData.address.trim(),
@@ -237,14 +240,39 @@ export default function Register() {
 
                             <div className="grid grid-cols-1 gap-5">
                                 <div className="space-y-1.5">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Full Name</label>
-                                    <input
-                                        type="text" value={formData.name}
-                                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                        onBlur={() => handleBlur('name')}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
-                                        placeholder="John Doe"
-                                    />
+                                    <div className="grid grid-cols-2 gap-4">
+    
+    {/* First Name */}
+    <div className="space-y-1.5">
+        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+            First Name
+        </label>
+        <input
+            type="text"
+            value={formData.firstName}
+            onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+            onBlur={() => handleBlur('firstName')}
+            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
+            placeholder="John"
+        />
+    </div>
+
+    {/* Last Name */}
+    <div className="space-y-1.5">
+        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+            Last Name
+        </label>
+        <input
+            type="text"
+            value={formData.lastName}
+            onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+            onBlur={() => handleBlur('lastName')}
+            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
+            placeholder="Doe"
+        />
+    </div>
+
+</div>
                                 </div>
 
                                 <div className="space-y-1.5">

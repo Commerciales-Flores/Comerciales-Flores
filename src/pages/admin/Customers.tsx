@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { 
   Search, Eye, Plus, X, Mail, Phone, MapPin, 
-  ShieldCheck, ShieldAlert, Hash, Trash2, RotateCcw, AlertTriangle 
+  ShieldCheck, ShieldAlert, Hash, Trash2, RotateCcw, AlertTriangle, EyeOff
 } from 'lucide-react';
 
 // Mock users data
@@ -26,6 +26,7 @@ export default function AdminCustomers() {
   const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [confirmDeactivateId, setConfirmDeactivateId] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const [newCustomer, setNewCustomer] = useState({
     first_name: '',
@@ -48,6 +49,24 @@ export default function AdminCustomers() {
   }, [customers, searchTerm]);
 
   const customer = selectedCustomer ? customers.find(c => c.id === selectedCustomer) : null;
+
+  const passwordStrength = useMemo(() => {
+        const { password } = newCustomer;
+        if (!password) return '';
+        let score = 0;
+        if (password.length >= 8) score++;
+        if (/[A-Z]/.test(password)) score++;
+        if (/[0-9]/.test(password)) score++;
+        if (/[^A-Za-z0-9]/.test(password)) score++;
+        
+        switch(score) {
+            case 0: case 1: return 'Very Weak';
+            case 2: return 'Weak';
+            case 3: return 'Medium';
+            case 4: return 'Strong';
+            default: return '';
+        }
+    }, [newCustomer.password]);
 
   const handleAddCustomer = () => {
     if (!newCustomer.first_name || !newCustomer.email) return;
@@ -117,7 +136,7 @@ export default function AdminCustomers() {
                 </div>
               </div>
               <div className="flex flex-col items-end gap-3 shrink-0 ml-2">
-                <span className={`px-2 py-0.5 text-[9px] font-black uppercase rounded-md tracking-wider ${c.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                <span className={`px-2 py-0.5 text-[9px] font-bold uppercase rounded-md tracking-wider ${c.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                   {c.is_active ? 'Active' : 'Inactive'}
                 </span>
                 <Eye size={20} className="text-blue-500 bg-blue-50 p-1 rounded-lg" /> 
@@ -134,7 +153,7 @@ export default function AdminCustomers() {
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 {['Name', 'User ID', 'Email', 'Contact', 'Address', 'Status', 'Actions'].map((h) => (
-                  <th key={h} className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">{h}</th>
+                  <th key={h} className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -204,7 +223,7 @@ export default function AdminCustomers() {
              <div className="relative h-28 bg-gradient-to-br from-blue-600 to-blue-800 flex items-end px-8 pb-4 shrink-0">
                <button onClick={() => setSelectedCustomer(null)} className="absolute top-5 right-5 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all"><X size={20}/></button>
                <div className="absolute -bottom-12 left-8 size-28 bg-white p-2 rounded-[2rem] shadow-xl">
-                 <div className="w-full h-full bg-blue-50 rounded-[1.5rem] flex items-center justify-center text-4xl font-black text-blue-600">
+                 <div className="w-full h-full bg-blue-50 rounded-[1.5rem] flex items-center justify-center text-4xl font-bold text-blue-600">
                    {customer.first_name[0]}{customer.last_name[0]}
                  </div>
                </div>
@@ -212,12 +231,12 @@ export default function AdminCustomers() {
              <div className="pt-16 px-8 pb-8 flex-1 overflow-y-auto">
                 <div className="flex justify-between items-start">
                   <div>
-                    <h2 className="text-2xl font-black text-gray-900 tracking-tight">{customer.first_name} {customer.last_name}</h2>
+                    <h2 className="text-2xl font-bold text-gray-900 tracking-tight">{customer.first_name} {customer.last_name}</h2>
                     <p className="text-sm font-mono text-gray-400 mt-1 flex items-center gap-1.5 uppercase">
                       <Hash size={12}/> {customer.id}
                     </p>
                   </div>
-                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider ${customer.is_active ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'}`}>
+                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider ${customer.is_active ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'}`}>
                     {customer.is_active ? <ShieldCheck size={14}/> : <ShieldAlert size={14}/>}
                     {customer.is_active ? 'Active' : 'Inactive'}
                   </div>
@@ -226,31 +245,31 @@ export default function AdminCustomers() {
                    <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-2xl">
                      <div className="p-2 bg-white rounded-lg shadow-sm text-blue-600"><Mail size={18}/></div>
                      <div>
-                       <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Email Address</p>
+                       <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Email Address</p>
                        <p className="text-sm font-bold text-gray-800">{customer.email}</p>
                      </div>
                    </div>
                    <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-2xl">
                      <div className="p-2 bg-white rounded-lg shadow-sm text-blue-600"><Phone size={18}/></div>
                      <div>
-                       <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Contact Number</p>
+                       <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Contact Number</p>
                        <p className="text-sm font-bold text-gray-800">{customer.contactNumber}</p>
                      </div>
                    </div>
                    <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-2xl">
                      <div className="p-2 bg-white rounded-lg shadow-sm text-blue-600"><MapPin size={18}/></div>
                      <div>
-                       <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Physical Address</p>
+                       <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Physical Address</p>
                        <p className="text-sm font-bold text-gray-800 leading-relaxed">{customer.address}</p>
                      </div>
                    </div>
                 </div>
                 <div className="mt-10 flex flex-col sm:flex-row gap-3">
-                  <button onClick={() => setSelectedCustomer(null)} className="flex-1 py-4 bg-gray-100 rounded-2xl font-black text-xs uppercase tracking-widest">Close Detail</button>
+                  <button onClick={() => setSelectedCustomer(null)} className="flex-1 py-4 bg-gray-100 rounded-2xl font-bold text-xs uppercase tracking-widest">Close Detail</button>
                   {customer.is_active ? (
-                    <button onClick={() => setConfirmDeactivateId(customer.id)} className="flex-1 py-4 bg-red-50 text-red-600 rounded-2xl font-black text-xs uppercase tracking-widest border border-red-100">Deactivate</button>
+                    <button onClick={() => setConfirmDeactivateId(customer.id)} className="flex-1 py-4 bg-red-50 text-red-600 rounded-2xl font-bold text-xs uppercase tracking-widest border border-red-100">Deactivate</button>
                   ) : (
-                    <button onClick={() => toggleStatus(customer.id, true)} className="flex-1 py-4 bg-green-50 text-green-600 rounded-2xl font-black text-xs uppercase tracking-widest border border-green-100">Reactivate</button>
+                    <button onClick={() => toggleStatus(customer.id, true)} className="flex-1 py-4 bg-green-50 text-green-600 rounded-2xl font-bold text-xs uppercase tracking-widest border border-green-100">Reactivate</button>
                   )}
                 </div>
              </div>
@@ -260,24 +279,142 @@ export default function AdminCustomers() {
 
       {/* Add Customer Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl space-y-6 animate-in slide-in-from-bottom-5 duration-300">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-900 tracking-tight">Add Customer</h2>
-              <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-gray-100 rounded-full text-gray-400 transition-all"><X size={20}/></button>
+  <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4 transition-all duration-300">
+    <div className="bg-white rounded-[2rem] max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200/60 animate-in fade-in zoom-in-95 duration-300">
+      
+      {/* Header with Register.tsx Style */}
+      <div className="bg-slate-900 p-6 flex justify-between items-center">
+        <div>
+          <h2 className="text-xl font-bold text-white tracking-tight">Add New Customer</h2>
+          <p className="text-slate-400 text-xs font-medium mt-1">Create a new client profile for Comerciales Flores</p>
+        </div>
+        <button 
+          onClick={() => setShowAddModal(false)} 
+          className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-slate-400 transition-all"
+        >
+          <X size={20}/>
+        </button>
+      </div>
+
+      <div className="p-8 space-y-6">
+        <div className="grid grid-cols-2 gap-4">
+          
+          {/* First Name */}
+          <div className="space-y-1.5">
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">First Name</label>
+            <input 
+              type="text" 
+              placeholder="John"
+              value={newCustomer.first_name} 
+              onChange={e => setNewCustomer({...newCustomer, first_name: e.target.value})} 
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
+            />
+          </div>
+
+          {/* Last Name */}
+          <div className="space-y-1.5">
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Last Name</label>
+            <input 
+              type="text" 
+              placeholder="Doe"
+              value={newCustomer.last_name} 
+              onChange={e => setNewCustomer({...newCustomer, last_name: e.target.value})} 
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
+            />
+          </div>
+          
+          
+          {/* Email */}
+          <div className="col-span-2 space-y-1.5">
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
+            <input 
+              type="email" 
+              autoComplete="none"
+              placeholder="customer@example.com"
+              value={newCustomer.email} 
+              onChange={e => setNewCustomer({...newCustomer, email: e.target.value})} 
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
+            />
+          </div>
+
+          {/* Contact Number */}
+          <div className="col-span-2 space-y-1.5">
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contact Number</label>
+            <input 
+              type="tel" 
+              placeholder="+63 9xx..."
+              value={newCustomer.contactNumber} 
+              onChange={e => setNewCustomer({...newCustomer, contactNumber: e.target.value})} 
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
+            />
+          </div>
+
+          {/* Address */}
+          <div className="col-span-2 space-y-1.5">
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Complete Address</label>
+            <textarea 
+              placeholder="House No., Street, City"
+              value={newCustomer.address} 
+              onChange={e => setNewCustomer({...newCustomer, address: e.target.value})} 
+              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium resize-none h-20"
+            />
+          </div>
+
+          {/* Password with Strength UI */}
+          <div className="col-span-2 space-y-1.5">
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Set Password</label>
+            <div className="relative">
+              <input 
+                type={showPassword ? "text" : "password"} 
+                autoComplete="new-password"
+                placeholder="••••••••"
+                value={newCustomer.password} 
+                onChange={e => setNewCustomer({...newCustomer, password: e.target.value})} 
+                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium pr-12"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-blue-600 transition-colors"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <input type="text" placeholder="First Name" value={newCustomer.first_name} onChange={e => setNewCustomer({...newCustomer, first_name: e.target.value})} className="col-span-1 border-gray-200 border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 transition-all" />
-              <input type="text" placeholder="Last Name" value={newCustomer.last_name} onChange={e => setNewCustomer({...newCustomer, last_name: e.target.value})} className="col-span-1 border-gray-200 border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 transition-all" />
-              <input type="email" placeholder="Email Address" value={newCustomer.email} onChange={e => setNewCustomer({...newCustomer, email: e.target.value})} className="col-span-2 border-gray-200 border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 transition-all" />
-              <input type="text" placeholder="Contact Number" value={newCustomer.contactNumber} onChange={e => setNewCustomer({...newCustomer, contactNumber: e.target.value})} className="col-span-2 border-gray-200 border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 transition-all" />
-              <textarea placeholder="Complete Address" value={newCustomer.address} onChange={e => setNewCustomer({...newCustomer, address: e.target.value})} className="col-span-2 border-gray-200 border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 resize-none h-24 transition-all" />
-              <input type="password" placeholder="Set Password" value={newCustomer.password} onChange={e => setNewCustomer({...newCustomer, password: e.target.value})} className="col-span-2 border-gray-200 border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 transition-all" />
-            </div>
-            <button onClick={handleAddCustomer} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all">Register Account</button>
+            
+            {/* Password Strength Indicator */}
+            {newCustomer.password && (
+              <div className="mt-2 space-y-1.5 px-1">
+                <div className="flex gap-1 h-1">
+                  {[1, 2, 3, 4].map((step) => {
+                    const score = (newCustomer.password.length >= 8 ? 1 : 0) +
+                                  (/[A-Z]/.test(newCustomer.password) ? 1 : 0) +
+                                  (/[0-9]/.test(newCustomer.password) ? 1 : 0) +
+                                  (/[^{A-Za-z0-9}]/.test(newCustomer.password) ? 1 : 0);
+                    return (
+                      <div key={step} className={`h-full flex-1 rounded-full transition-all duration-500 ${score >= step ? (score <= 2 ? 'bg-rose-500' : score === 3 ? 'bg-amber-500' : 'bg-emerald-500') : 'bg-slate-200'}`} />
+                    );
+                  })}
+                  
+                </div>
+                <p className="text-[10px] text-slate-400 italic">
+                  {passwordStrength}
+                </p>
+              </div>
+              
+            )}
           </div>
         </div>
-      )}
+
+        <button 
+          onClick={handleAddCustomer} 
+          className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest shadow-xl shadow-blue-600/20 hover:bg-blue-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+        >
+          Register Customer Account
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }

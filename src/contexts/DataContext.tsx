@@ -2,11 +2,12 @@ import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
 
 export type PropertyType = 'rental_space' | 'function_hall' | 'parking_slot';
-export type ReservationStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed';
+export type ReservationStatus = 'pending' | 'approved' |'confirmed' | 'cancelled' | 'completed';
 export type PaymentStatus = 'unpaid' | 'partial' | 'paid';
 export type PaymentMethod = 'cash' | 'cheque' | 'gcash' | 'paymaya' | 'bank_transfer' | 'credit_card' | 'not_applicable';
 export type PaymentCycle = 'monthly' | 'quarterly' | 'full';
 export type InquiryStatus = 'open' | 'responded' | 'resolved';
+export type AuditModule = 'Customer' | 'Booking' |'Admin'|'System';
 
 export type ParkingFormState = {
   name: string;
@@ -44,9 +45,9 @@ export interface Reservation {
   duration: number;
   totalAmount: number;
   paidAmount: number;
-  status: 'pending' | 'confirmed' | 'cancelled' | 'completed' |'approved';
+  status: ReservationStatus;
   notes?: string;
-    paymentMethod?: 'cash' | 'cheque' | 'gcash' | 'paymaya' | 'bank_transfer' | 'credit_card' | 'not_applicable'; // ✅ ADD THIS LINE
+    paymentMethod?: PaymentMethod; // ✅ ADD THIS LINE
 
   // --- Type-Specific Fields ---
 
@@ -102,7 +103,8 @@ export interface User {
 export interface Inquiry {
   id: string;
   userId?: string;
-  name: string;
+  first_name?: string;
+  last_name?: string;
   email: string;
   subject: string;
   message: string;
@@ -156,7 +158,7 @@ export interface AuditLog {
   id: string;
   action: string;
   target: string;
-  performedBy: string;
+  performedBy: AuditModule;
   date: string;
   details?: string;
 }
@@ -179,11 +181,15 @@ interface DataContextType {
   businessSlots: BusinessSlot[];
   locations: Location[];
   contentSettings: ContentSettings;
+  addUser: (user: Omit<User, 'id'>) => void;
+  addAuditLog: (log: Omit<AuditLog, 'id' | 'date'>) => void;
   addProperty: (property: Omit<Property, 'id'>) => void;
   updateProperty: (id: string, property: Partial<Property>) => void;
   deleteProperty: (id: string) => void;
   parkingSlots: ParkingSlot[];
-  addReservation: (reservation: Omit<Reservation, 'id' | 'requestDate' | 'paidAmount'>) => string;
+  addReservation: (
+    reservation: Omit<Reservation, 'id' | 'requestDate' | 'status' | 'paidAmount'>
+    ) => string;
   updateReservation: (id: string, reservation: Partial<Reservation>) => void;
   deleteReservation: (id: string) => void;
   addPayment: (payment: Omit<Payment, 'id' | 'date'>) => void;
@@ -354,7 +360,8 @@ const MOCK_PAYMENTS: Payment[] = [
 const MOCK_INQUIRIES: Inquiry[] = [
   {
     id: 'inq1',
-    name: 'Maria Santos',
+    first_name: 'Maria',
+    last_name: 'Santos',
     email: 'maria@example.com',
     subject: 'Availability for December wedding',
     message: 'Hi, I would like to inquire about the Grand Function Hall availability for December 25, 2025. We are expecting around 150 guests.',
@@ -382,7 +389,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [properties, setProperties] = useState<Property[]>(MOCK_PROPERTIES);
   const [reservations, setReservations] = useState<Reservation[]>(MOCK_RESERVATIONS);
   const [payments, setPayments] = useState<Payment[]>(MOCK_PAYMENTS);
-  const [users] = useState(MOCK_USERS);
+  const [users, setUsers] = useState<User[]>(MOCK_USERS);
 
   // ✅ ADD THIS HELPER FUNCTION
   const getUserById = (id: string) => users.find(u => u.id === id);
@@ -413,6 +420,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const [contentSettings, setContentSettings] = useState<ContentSettings>(MOCK_CONTENT);
 
+    const addUser = (user: Omit<User, 'id'>) => {
+    const newUser = {
+      ...user,
+      id: 'user' + Date.now().toString(),
+    };
+
+    setUsers(prev => [...prev, newUser]);
+  };
+
   // Properties
   const addProperty = (property: Omit<Property, 'id'>) => {
     const newProperty = { ...property, id: Date.now().toString() };
@@ -425,6 +441,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const deleteProperty = (id: string) => {
     setProperties(properties.filter(p => p.id !== id));
+  };
+
+    const addAuditLog = (log: Omit<AuditLog, 'id' | 'date'>) => {
+    const newLog: AuditLog = {
+      ...log,
+      id: 'log-' + crypto.randomUUID(),
+      date: new Date().toISOString()
+    };
+
+    setAuditLogs(prev => [...prev, newLog]);
   };
 
   // Reservations
@@ -452,22 +478,33 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   // Payments
   const addPayment = (payment: Omit<Payment, 'id' | 'date'>) => {
-    const newPayment: Payment = {
-      ...payment,
-      id: 'pay' + Date.now().toString(),
-      date: new Date().toISOString().split('T')[0]
-    };
-    setPayments([...payments, newPayment]);
-
-    // Update reservation paid amount
-    const reservation = reservations.find(r => r.id === payment.reservationId);
-    if (reservation) {
-      const newPaidAmount = reservation.paidAmount + payment.amount;
-      updateReservation(payment.reservationId, { 
-        paidAmount: newPaidAmount,
-      });
-    }
+  const newPayment: Payment = {
+    ...payment,
+    id: 'pay-' + crypto.randomUUID(),
+    date: new Date().toISOString().split('T')[0]
   };
+
+  setPayments(prev => [...prev, newPayment]);
+
+  const reservation = reservations.find(r => r.id === payment.reservationId);
+
+  if (!reservation) return;
+
+  const newPaidAmount = reservation.paidAmount + payment.amount;
+
+  // Determine payment status
+  let paymentStatus: PaymentStatus = 'partial';
+
+  if (newPaidAmount <= 0) {
+    paymentStatus = 'unpaid';
+  } else if (newPaidAmount >= reservation.totalAmount) {
+    paymentStatus = 'paid';
+  }
+
+  updateReservation(payment.reservationId, {
+    paidAmount: newPaidAmount,
+  });
+};
 
   const updatePayment = (id: string, payment: Partial<Payment>) => {
     setPayments(payments.map(p => p.id === id ? { ...p, ...payment } : p));
@@ -554,6 +591,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         parkingSlots: MOCK_PARKING_SLOTS,  // ✅ new
         auditLogs, // Placeholder for audit logs
         locations,
+        addUser,
+        addAuditLog,
         deleteNotification,
         addProperty,
         updateProperty,
