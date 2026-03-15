@@ -1,13 +1,59 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { 
     Building2, AlertCircle, X, Eye, EyeOff, Camera, CheckCircle2, 
-    User, Mail, Phone, MapPin, Lock, ArrowRight, ArrowLeft 
+    ArrowRight, ArrowLeft 
 } from 'lucide-react';
 
 export default function Register() {
-    const { register } = useAuth();
+
+    async function compressProfileImage(file: File): Promise<File> {
+    const img = document.createElement("img");
+    const reader = new FileReader();
+
+    const dataUrl: string = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+
+    await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = reject;
+        img.src = dataUrl;
+    });
+
+    const maxSize = 512;
+    const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Could not create canvas context.");
+
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    const blob: Blob = await new Promise((resolve, reject) => {
+        canvas.toBlob(
+        (result) => {
+            if (result) resolve(result);
+            else reject(new Error("Image compression failed."));
+        },
+        "image/webp",
+        0.82
+        );
+    });
+
+    const baseName = file.name.replace(/\.[^.]+$/, "");
+    return new File([blob], `${baseName}.webp`, {
+        type: "image/webp",
+        lastModified: Date.now(),
+    });
+    }
+        const { register } = useAuth();
     const navigate = useNavigate();
     
     const [formData, setFormData] = useState({
@@ -50,33 +96,44 @@ export default function Register() {
         }
     }, [formData.password]);
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setErrors(prev => ({ ...prev, profile: '' }));
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        setErrors((prev) => ({ ...prev, profile: "" }));
         const file = e.target.files?.[0] ?? null;
         if (!file) return;
 
-        if (!['image/jpeg', 'image/png'].includes(file.type)) {
-            setErrors(prev => ({ ...prev, profile: 'Only JPG or PNG files allowed.' }));
+        if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+            setErrors((prev) => ({ ...prev, profile: "Only JPG, PNG, or WEBP files allowed." }));
             return;
         }
 
         if (file.size > MAX_FILE_BYTES) {
-            setErrors(prev => ({ ...prev, profile: 'Image must be 2MB or smaller.' }));
+            setErrors((prev) => ({ ...prev, profile: "Image must be 2MB or smaller." }));
             return;
         }
 
-        const url = URL.createObjectURL(file);
-        if (profilePreview) URL.revokeObjectURL(profilePreview);
-        setProfileFile(file);
-        setProfilePreview(url);
-    };
+        try {
+            const optimizedFile = await compressProfileImage(file);
 
-    const removeProfileImage = () => {
-        if (profilePreview) URL.revokeObjectURL(profilePreview);
-        setProfileFile(null);
-        setProfilePreview(null);
-        setShowImageModal(false);
-    };
+            const url = URL.createObjectURL(optimizedFile);
+            if (profilePreview) URL.revokeObjectURL(profilePreview);
+
+            setProfileFile(optimizedFile);
+            setProfilePreview(url);
+        } catch (error) {
+            console.error("Profile image optimization failed:", error);
+            setErrors((prev) => ({
+            ...prev,
+            profile: "Could not process image. Please try another file.",
+            }));
+        }
+        };
+
+    const removeProfileImage = useCallback(() => {
+    if (profilePreview) URL.revokeObjectURL(profilePreview);
+    setProfileFile(null);
+    setProfilePreview(null);
+    setShowImageModal(false);
+    }, [profilePreview]);
 
     const validate = () => {
         const errs: { [key: string]: string } = {};
@@ -108,12 +165,12 @@ export default function Register() {
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (loading) return;
-  if (!validate()) return;
+    e.preventDefault();
+    if (loading) return;
+    if (!validate()) return;
 
-  setLoading(true);
-  setErrors({});
+    setLoading(true);
+    setErrors({});
 
   try {
     const result = await register({
@@ -156,9 +213,14 @@ export default function Register() {
   }
 };
 
-    const handleBlur = (field: keyof typeof formData) => {
-        setFormData(prev => ({ ...prev, [field]: prev[field].trim() }));
-    };
+    const handleBlur = useCallback((field: keyof typeof formData) => {
+    setFormData((prev) => ({ ...prev, [field]: prev[field].trim() }));
+    }, []);
+
+    const visibleErrors = useMemo(
+    () => Object.values(errors).filter(Boolean),
+    [errors]
+    );
 
     useEffect(() => {
     return () => {
@@ -216,17 +278,15 @@ export default function Register() {
                         </div>
 
                         {/* Error Summary */}
-                        {Object.keys(errors).length > 0 && (
-                            <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-xl space-y-1 animate-in fade-in slide-in-from-top-2">
-                                {Object.values(errors).map((err, i) => (
-                                    err && (
-                                        <div key={i} className="flex items-center gap-3 text-rose-700 text-xs font-bold">
-                                            <AlertCircle className="size-4 flex-shrink-0" />
-                                            {err}
-                                        </div>
-                                    )
-                                ))}
+                        {visibleErrors.length > 0 && (
+                        <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-xl space-y-1 animate-in fade-in slide-in-from-top-2">
+                            {visibleErrors.map((err, i) => (
+                            <div key={i} className="flex items-center gap-3 text-rose-700 text-xs font-bold">
+                                <AlertCircle className="size-4 flex-shrink-0" />
+                                {err}
                             </div>
+                            ))}
+                        </div>
                         )}
 
                         <form onSubmit={handleSubmit} className="space-y-5">
@@ -268,7 +328,8 @@ export default function Register() {
         <input
             type="text"
             value={formData.firstName}
-            onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+
+            onChange={(e) => setFormData((prev) => ({ ...prev, firstName: e.target.value }))}
             onBlur={() => handleBlur('firstName')}
             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
             placeholder="John"
@@ -283,7 +344,9 @@ export default function Register() {
         <input
             type="text"
             value={formData.lastName}
-            onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+            onChange={(e) =>
+            setFormData((prev) => ({ ...prev, lastName: e.target.value }))
+            }
             onBlur={() => handleBlur('lastName')}
             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
             placeholder="Doe"
@@ -300,7 +363,9 @@ export default function Register() {
                                     type="email"
                                     autoComplete="email"
                                     value={formData.email}
-                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                    onChange={(e) =>
+                                    setFormData((prev) => ({ ...prev, email: e.target.value }))
+                                    }
                                     onBlur={() => handleBlur('email')}
                                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
                                     placeholder="john@example.com"
@@ -315,7 +380,10 @@ export default function Register() {
                                         type="tel"
                                         autoComplete="tel"
                                         value={formData.contactNumber}
-                                        onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })}
+                                        onChange={(e) =>
+                                        setFormData((prev) => ({ ...prev, contactNumber: e.target.value }))
+                                        }
+                                                                                
                                         onBlur={() => handleBlur('contactNumber')}
                                         className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
                                         placeholder="+63 9xx..."
@@ -328,7 +396,9 @@ export default function Register() {
                                         type="text"
                                         autoComplete="street-address"
                                         value={formData.address}
-                                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                                        onChange={(e) =>
+                                        setFormData((prev) => ({ ...prev, address: e.target.value }))
+                                        }
                                         onBlur={() => handleBlur('address')}
                                         className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
                                         placeholder="Manila, PH"
@@ -348,7 +418,9 @@ export default function Register() {
                 type={showPassword ? "text" : "password"}
                 autoComplete="new-password"
                 value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                onChange={(e) =>
+                setFormData((prev) => ({ ...prev, password: e.target.value }))
+                }
                 className="w-full px-4 py-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
                 placeholder="••••••••"
             />
@@ -413,7 +485,9 @@ export default function Register() {
                 type={showConfirmPassword ? "text" : "password"}
                 autoComplete="new-password"
                 value={formData.confirmPassword}
-                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                onChange={(e) =>
+                setFormData((prev) => ({ ...prev, confirmPassword: e.target.value }))
+                }
                 className="w-full px-4 py-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
                 placeholder="••••••••"
             />
@@ -444,7 +518,7 @@ export default function Register() {
                             </div>
 
                             <button
-                                type="submit" disabled={loading}
+                                type="submit" disabled={loading || !formData.password || formData.password !== formData.confirmPassword}
                                 className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/10 disabled:opacity-50 mt-6 active:scale-[0.99] flex items-center justify-center gap-2"
                             >
                                 {loading ? 'Creating Account...' : (

@@ -25,6 +25,55 @@ export default function AdminContent() {
 
   useEffect(() => setFormData(contentSettings), [contentSettings]);
 
+  const updateHero = (patch: Partial<typeof formData.hero>) => {
+  setFormData((prev) => ({
+    ...prev,
+    hero: { ...prev.hero, ...patch },
+  }));
+};
+
+const updateAbout = (patch: Partial<typeof formData.about>) => {
+  setFormData((prev) => ({
+    ...prev,
+    about: { ...prev.about, ...patch },
+  }));
+};
+
+const updateHistory = (patch: Partial<typeof formData.history>) => {
+  setFormData((prev) => ({
+    ...prev,
+    history: { ...prev.history, ...patch },
+  }));
+};
+
+const updateFeatured = (patch: Partial<typeof formData.featured>) => {
+  setFormData((prev) => ({
+    ...prev,
+    featured: { ...prev.featured, ...patch },
+  }));
+};
+
+const updateContact = (patch: Partial<typeof formData.contact>) => {
+  setFormData((prev) => ({
+    ...prev,
+    contact: { ...prev.contact, ...patch },
+  }));
+};
+
+const updateFooter = (patch: Partial<typeof formData.footer>) => {
+  setFormData((prev) => ({
+    ...prev,
+    footer: { ...prev.footer, ...patch },
+  }));
+};
+
+const updateMenu = (patch: Partial<typeof formData.menu>) => {
+  setFormData((prev) => ({
+    ...prev,
+    menu: { ...prev.menu, ...patch },
+  }));
+};
+
   const handleSave = async () => {
     try {
       await updateContentSettings(formData);
@@ -122,714 +171,696 @@ export default function AdminContent() {
           <SectionLabel title="Landing Page" />
 
           <ContentCard
-            title="Hero Section"
-            description="Controls the main headline, badge, calls-to-action, and visual shown at the top of the homepage."
-            icon={<Layout className="text-blue-600 size-5" />}
-          >
-            <div className="space-y-5">
-              <FieldWrapper label="Hero Badge">
-                {editing ? (
-                  <input
-                    type="text"
-                    value={formData.heroBadge}
-                    onChange={(e) => setFormData({ ...formData, heroBadge: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                  />
-                ) : (
-                  <p className="text-sm font-medium text-slate-700">
-                    {contentSettings.heroBadge || 'None'}
-                  </p>
-                )}
-              </FieldWrapper>
-
-              <FieldWrapper label="Main Title">
-                {editing ? (
-                  <input
-                    type="text"
-                    value={formData.heroTitle}
-                    onChange={(e) => setFormData({ ...formData, heroTitle: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-base"
-                  />
-                ) : (
-                  <p className="text-lg font-semibold text-slate-900">
-                    {contentSettings.heroTitle || 'None'}
-                  </p>
-                )}
-              </FieldWrapper>
-
-              <FieldWrapper label="Sub-headline">
-                {editing ? (
-                  <textarea
-                    value={formData.heroSubtitle}
-                    onChange={(e) =>
-                      setFormData({ ...formData, heroSubtitle: e.target.value })
-                    }
-                    rows={3}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
-                  />
-                ) : (
-                  <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-line">
-                    {contentSettings.heroSubtitle || 'None'}
-                  </p>
-                )}
-              </FieldWrapper>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FieldWrapper label="Primary CTA Text">
-                  {editing ? (
-                    <input
-                      type="text"
-                      value={formData.heroPrimaryCtaText}
-                      onChange={(e) =>
-                        setFormData({ ...formData, heroPrimaryCtaText: e.target.value })
-                      }
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                    />
-                  ) : (
-                    <p className="text-sm font-medium text-slate-700">
-                      {contentSettings.heroPrimaryCtaText || 'None'}
-                    </p>
-                  )}
-                </FieldWrapper>
-
-                <FieldWrapper label="Primary CTA Link">
-                  {editing ? (
-                    <input
-                      type="text"
-                      value={formData.heroPrimaryCtaLink}
-                      onChange={(e) =>
-                        setFormData({ ...formData, heroPrimaryCtaLink: e.target.value })
-                      }
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                    />
-                  ) : (
-                    <p className="text-sm text-slate-700 break-all">
-                      {contentSettings.heroPrimaryCtaLink || 'None'}
-                    </p>
-                  )}
-                </FieldWrapper>
-
-                <FieldWrapper label="Secondary CTA Text">
-                  {editing ? (
-                    <input
-                      type="text"
-                      value={formData.heroSecondaryCtaText}
-                      onChange={(e) =>
-                        setFormData({ ...formData, heroSecondaryCtaText: e.target.value })
-                      }
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                    />
-                  ) : (
-                    <p className="text-sm font-medium text-slate-700">
-                      {contentSettings.heroSecondaryCtaText || 'None'}
-                    </p>
-                  )}
-                </FieldWrapper>
-
-                <FieldWrapper label="Secondary CTA Link">
-                  {editing ? (
-                    <input
-                      type="text"
-                      value={formData.heroSecondaryCtaLink}
-                      onChange={(e) =>
-                        setFormData({ ...formData, heroSecondaryCtaLink: e.target.value })
-                      }
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                    />
-                  ) : (
-                    <p className="text-sm text-slate-700 break-all">
-                      {contentSettings.heroSecondaryCtaLink || 'None'}
-                    </p>
-                  )}
-                </FieldWrapper>
-              </div>
-
-              <FieldWrapper label="Hero Image URL">
-                {editing ? (
-                  <input
-                    type="text"
-                    value={formData.heroImage || ''}
-                    onChange={(e) => setFormData({ ...formData, heroImage: e.target.value })}
-                    placeholder="https://example.com/hero-image.jpg"
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                  />
-                ) : (
-                  <div className="space-y-3">
-                    <p className="text-sm text-slate-700 break-all">
-                      {contentSettings.heroImage || 'None'}
-                    </p>
-                    {contentSettings.heroImage && (
-                      <img
-                        src={contentSettings.heroImage}
-                        alt="Hero preview"
-                        className="w-full max-h-72 object-cover rounded-2xl border border-slate-200"
-                      />
-                    )}
-                  </div>
-                )}
-              </FieldWrapper>
-            </div>
-          </ContentCard>
-
-          <ContentCard
-            title="About Us"
-            description="Displays the introduction and supporting value cards for your business."
-            icon={<Info className="text-purple-600 size-5" />}
-          >
-            <div className="space-y-5">
-              <FieldWrapper label="About Eyebrow">
-                {editing ? (
-                  <input
-                    type="text"
-                    value={formData.aboutEyebrow}
-                    onChange={(e) => setFormData({ ...formData, aboutEyebrow: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                  />
-                ) : (
-                  <p className="text-sm font-medium text-slate-700">
-                    {contentSettings.aboutEyebrow || 'None'}
-                  </p>
-                )}
-              </FieldWrapper>
-
-              <FieldWrapper label="About Title">
-                {editing ? (
-                  <input
-                    type="text"
-                    value={formData.aboutTitle}
-                    onChange={(e) => setFormData({ ...formData, aboutTitle: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-base"
-                  />
-                ) : (
-                  <p className="text-lg font-semibold text-slate-900">
-                    {contentSettings.aboutTitle || 'None'}
-                  </p>
-                )}
-              </FieldWrapper>
-
-              <FieldWrapper label="About Description">
-                {editing ? (
-                  <textarea
-                    value={formData.aboutUs}
-                    onChange={(e) => setFormData({ ...formData, aboutUs: e.target.value })}
-                    rows={7}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
-                  />
-                ) : (
-                  <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-line">
-                    {contentSettings.aboutUs || 'None'}
-                  </p>
-                )}
-              </FieldWrapper>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <MiniCardEditor
-                  titleLabel="Card 1 Title"
-                  textLabel="Card 1 Text"
-                  titleValue={formData.aboutCard1Title}
-                  textValue={formData.aboutCard1Text}
-                  editing={editing}
-                  onTitleChange={(v: string) => setFormData({ ...formData, aboutCard1Title: v })}
-                  onTextChange={(v: string) => setFormData({ ...formData, aboutCard1Text: v })}
-                />
-
-                <MiniCardEditor
-                  titleLabel="Card 2 Title"
-                  textLabel="Card 2 Text"
-                  titleValue={formData.aboutCard2Title}
-                  textValue={formData.aboutCard2Text}
-                  editing={editing}
-                  onTitleChange={(v: string) => setFormData({ ...formData, aboutCard2Title: v })}
-                  onTextChange={(v: string) => setFormData({ ...formData, aboutCard2Text: v })}
-                />
-
-                <MiniCardEditor
-                  titleLabel="Card 3 Title"
-                  textLabel="Card 3 Text"
-                  titleValue={formData.aboutCard3Title}
-                  textValue={formData.aboutCard3Text}
-                  editing={editing}
-                  onTitleChange={(v: string) => setFormData({ ...formData, aboutCard3Title: v })}
-                  onTextChange={(v: string) => setFormData({ ...formData, aboutCard3Text: v })}
-                />
-              </div>
-            </div>
-          </ContentCard>
-
-          <ContentCard
-            title="History Section"
-            description="Tells the story of your business with supporting text, image, and milestone points."
-            icon={<ImageIcon className="text-amber-600 size-5" />}
-          >
-            <div className="space-y-5">
-              <FieldWrapper label="History Eyebrow">
-                {editing ? (
-                  <input
-                    type="text"
-                    value={formData.historyEyebrow}
-                    onChange={(e) => setFormData({ ...formData, historyEyebrow: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                  />
-                ) : (
-                  <p className="text-sm font-medium text-slate-700">
-                    {contentSettings.historyEyebrow || 'None'}
-                  </p>
-                )}
-              </FieldWrapper>
-
-              <FieldWrapper label="History Title">
-                {editing ? (
-                  <input
-                    type="text"
-                    value={formData.historyTitle}
-                    onChange={(e) =>
-                      setFormData({ ...formData, historyTitle: e.target.value })
-                    }
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-base"
-                  />
-                ) : (
-                  <p className="text-lg font-semibold text-slate-900">
-                    {contentSettings.historyTitle || 'None'}
-                  </p>
-                )}
-              </FieldWrapper>
-
-              <FieldWrapper label="History Subtitle">
-                {editing ? (
-                  <input
-                    type="text"
-                    value={formData.historySubtitle}
-                    onChange={(e) =>
-                      setFormData({ ...formData, historySubtitle: e.target.value })
-                    }
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                  />
-                ) : (
-                  <p className="text-sm text-slate-600">
-                    {contentSettings.historySubtitle || 'None'}
-                  </p>
-                )}
-              </FieldWrapper>
-
-              <FieldWrapper label="History Description">
-                {editing ? (
-                  <textarea
-                    value={formData.historyText}
-                    onChange={(e) =>
-                      setFormData({ ...formData, historyText: e.target.value })
-                    }
-                    rows={7}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
-                  />
-                ) : (
-                  <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-line">
-                    {contentSettings.historyText || 'None'}
-                  </p>
-                )}
-              </FieldWrapper>
-
-              <FieldWrapper label="History Images">
-  {editing ? (
-    <div className="space-y-3">
-      {(formData.historyImages ?? []).length > 0 ? (
-        <div className="space-y-3">
-          {(formData.historyImages ?? []).map((img, index) => (
-            <div
-              key={index}
-              className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-3"
-            >
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={img}
-                  onChange={(e) => {
-                    const updated = [...(formData.historyImages ?? [])];
-                    updated[index] = e.target.value;
-                    setFormData({ ...formData, historyImages: updated });
-                  }}
-                  placeholder="https://example.com/history-image.jpg"
-                  className="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const updated = (formData.historyImages ?? []).filter(
-                      (_, i) => i !== index
-                    );
-                    setFormData({ ...formData, historyImages: updated });
-                  }}
-                  className="px-3 py-3 bg-rose-50 text-rose-600 rounded-xl hover:bg-rose-100 transition-colors"
-                >
-                  <X className="size-4" />
-                </button>
-              </div>
-
-              {img && (
-                <img
-                  src={img}
-                  alt={`History preview ${index + 1}`}
-                  className="w-full max-h-52 object-cover rounded-xl border border-slate-200"
-                />
-              )}
-            </div>
-          ))}
-        </div>
+  title="Hero Section"
+  description="Controls the main headline, badge, calls-to-action, and visual shown at the top of the homepage."
+  icon={<Layout className="text-blue-600 size-5" />}
+>
+  <div className="space-y-5">
+    <FieldWrapper label="Hero Badge">
+      {editing ? (
+        <input
+          type="text"
+          value={formData.hero.badge}
+          onChange={(e) => updateHero({ badge: e.target.value })}
+          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+        />
       ) : (
-        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
-          <p className="text-sm text-slate-500">No history images added yet.</p>
-        </div>
+        <p className="text-sm font-medium text-slate-700">
+          {contentSettings.hero.badge || 'None'}
+        </p>
       )}
+    </FieldWrapper>
 
-      <button
-        type="button"
-        onClick={() =>
-          setFormData({
-            ...formData,
-            historyImages: [...(formData.historyImages ?? []), ''],
-          })
-        }
-        className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors text-sm font-medium"
-      >
-        <Plus className="size-4" />
-        Add Image URL
-      </button>
+    <FieldWrapper label="Main Title">
+      {editing ? (
+        <input
+          type="text"
+          value={formData.hero.title}
+          onChange={(e) => updateHero({ title: e.target.value })}
+          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-base"
+        />
+      ) : (
+        <p className="text-lg font-semibold text-slate-900">
+          {contentSettings.hero.title || 'None'}
+        </p>
+      )}
+    </FieldWrapper>
 
-      <p className="text-xs text-slate-400">
-        Add one or more image URLs for the History slideshow.
-      </p>
+    <FieldWrapper label="Sub-headline">
+      {editing ? (
+        <textarea
+          value={formData.hero.subtitle}
+          onChange={(e) => updateHero({ subtitle: e.target.value })}
+          rows={3}
+          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
+        />
+      ) : (
+        <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-line">
+          {contentSettings.hero.subtitle || 'None'}
+        </p>
+      )}
+    </FieldWrapper>
+
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <FieldWrapper label="Primary CTA Text">
+        {editing ? (
+          <input
+            type="text"
+            value={formData.hero.primaryCtaText}
+            onChange={(e) => updateHero({ primaryCtaText: e.target.value })}
+            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+          />
+        ) : (
+          <p className="text-sm font-medium text-slate-700">
+            {contentSettings.hero.primaryCtaText || 'None'}
+          </p>
+        )}
+      </FieldWrapper>
+
+      <FieldWrapper label="Primary CTA Link">
+        {editing ? (
+          <input
+            type="text"
+            value={formData.hero.primaryCtaLink}
+            onChange={(e) => updateHero({ primaryCtaLink: e.target.value })}
+            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+          />
+        ) : (
+          <p className="text-sm text-slate-700 break-all">
+            {contentSettings.hero.primaryCtaLink || 'None'}
+          </p>
+        )}
+      </FieldWrapper>
+
+      <FieldWrapper label="Secondary CTA Text">
+        {editing ? (
+          <input
+            type="text"
+            value={formData.hero.secondaryCtaText}
+            onChange={(e) => updateHero({ secondaryCtaText: e.target.value })}
+            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+          />
+        ) : (
+          <p className="text-sm font-medium text-slate-700">
+            {contentSettings.hero.secondaryCtaText || 'None'}
+          </p>
+        )}
+      </FieldWrapper>
+
+      <FieldWrapper label="Secondary CTA Link">
+        {editing ? (
+          <input
+            type="text"
+            value={formData.hero.secondaryCtaLink}
+            onChange={(e) => updateHero({ secondaryCtaLink: e.target.value })}
+            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+          />
+        ) : (
+          <p className="text-sm text-slate-700 break-all">
+            {contentSettings.hero.secondaryCtaLink || 'None'}
+          </p>
+        )}
+      </FieldWrapper>
     </div>
-  ) : (
-    <div className="space-y-3">
-      {(contentSettings.historyImages && contentSettings.historyImages.length > 0) ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {contentSettings.historyImages.map((img, index) => (
-            <div key={index} className="space-y-2">
-              <p className="text-xs text-slate-500 break-all">{img}</p>
-              <img
-                src={img}
-                alt={`History preview ${index + 1}`}
-                className="w-full h-40 object-cover rounded-2xl border border-slate-200"
-              />
-            </div>
-          ))}
-        </div>
-      ) : contentSettings.historyImage ? (
+
+    <FieldWrapper label="Hero Image URL">
+      {editing ? (
+        <input
+          type="text"
+          value={formData.hero.image || ''}
+          onChange={(e) => updateHero({ image: e.target.value })}
+          placeholder="https://example.com/hero-image.jpg"
+          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+        />
+      ) : (
         <div className="space-y-3">
           <p className="text-sm text-slate-700 break-all">
-            {contentSettings.historyImage}
+            {contentSettings.hero.image || 'None'}
           </p>
-          <img
-            src={contentSettings.historyImage}
-            alt="History preview"
-            className="w-full max-h-72 object-cover rounded-2xl border border-slate-200"
-          />
+          {contentSettings.hero.image && (
+            <img
+              src={contentSettings.hero.image}
+              alt="Hero preview"
+              className="w-full max-h-72 object-cover rounded-2xl border border-slate-200"
+            />
+          )}
+        </div>
+      )}
+    </FieldWrapper>
+  </div>
+</ContentCard>
+
+<ContentCard
+  title="About Us"
+  description="Displays the introduction and supporting value cards for your business."
+  icon={<Info className="text-purple-600 size-5" />}
+>
+  <div className="space-y-5">
+    <FieldWrapper label="About Eyebrow">
+      {editing ? (
+        <input
+          type="text"
+          value={formData.about.eyebrow}
+          onChange={(e) => updateAbout({ eyebrow: e.target.value })}
+          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+        />
+      ) : (
+        <p className="text-sm font-medium text-slate-700">
+          {contentSettings.about.eyebrow || 'None'}
+        </p>
+      )}
+    </FieldWrapper>
+
+    <FieldWrapper label="About Title">
+      {editing ? (
+        <input
+          type="text"
+          value={formData.about.title}
+          onChange={(e) => updateAbout({ title: e.target.value })}
+          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-base"
+        />
+      ) : (
+        <p className="text-lg font-semibold text-slate-900">
+          {contentSettings.about.title || 'None'}
+        </p>
+      )}
+    </FieldWrapper>
+
+    <FieldWrapper label="About Description">
+      {editing ? (
+        <textarea
+          value={formData.about.text}
+          onChange={(e) => updateAbout({ text: e.target.value })}
+          rows={7}
+          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
+        />
+      ) : (
+        <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-line">
+          {contentSettings.about.text || 'None'}
+        </p>
+      )}
+    </FieldWrapper>
+
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <MiniCardEditor
+        titleLabel="Card 1 Title"
+        textLabel="Card 1 Text"
+        titleValue={formData.about.cards[0]?.title || ''}
+        textValue={formData.about.cards[0]?.text || ''}
+        editing={editing}
+        onTitleChange={(v: string) => {
+          const cards = [...formData.about.cards];
+          cards[0] = { ...cards[0], title: v };
+          updateAbout({ cards });
+        }}
+        onTextChange={(v: string) => {
+          const cards = [...formData.about.cards];
+          cards[0] = { ...cards[0], text: v };
+          updateAbout({ cards });
+        }}
+      />
+
+      <MiniCardEditor
+        titleLabel="Card 2 Title"
+        textLabel="Card 2 Text"
+        titleValue={formData.about.cards[1]?.title || ''}
+        textValue={formData.about.cards[1]?.text || ''}
+        editing={editing}
+        onTitleChange={(v: string) => {
+          const cards = [...formData.about.cards];
+          cards[1] = { ...cards[1], title: v };
+          updateAbout({ cards });
+        }}
+        onTextChange={(v: string) => {
+          const cards = [...formData.about.cards];
+          cards[1] = { ...cards[1], text: v };
+          updateAbout({ cards });
+        }}
+      />
+
+      <MiniCardEditor
+        titleLabel="Card 3 Title"
+        textLabel="Card 3 Text"
+        titleValue={formData.about.cards[2]?.title || ''}
+        textValue={formData.about.cards[2]?.text || ''}
+        editing={editing}
+        onTitleChange={(v: string) => {
+          const cards = [...formData.about.cards];
+          cards[2] = { ...cards[2], title: v };
+          updateAbout({ cards });
+        }}
+        onTextChange={(v: string) => {
+          const cards = [...formData.about.cards];
+          cards[2] = { ...cards[2], text: v };
+          updateAbout({ cards });
+        }}
+      />
+    </div>
+  </div>
+</ContentCard>
+
+<ContentCard
+  title="History Section"
+  description="Tells the story of your business with supporting text, image, and milestone points."
+  icon={<ImageIcon className="text-amber-600 size-5" />}
+>
+  <div className="space-y-5">
+    <FieldWrapper label="History Eyebrow">
+      {editing ? (
+        <input
+          type="text"
+          value={formData.history.eyebrow}
+          onChange={(e) => updateHistory({ eyebrow: e.target.value })}
+          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+        />
+      ) : (
+        <p className="text-sm font-medium text-slate-700">
+          {contentSettings.history.eyebrow || 'None'}
+        </p>
+      )}
+    </FieldWrapper>
+
+    <FieldWrapper label="History Title">
+      {editing ? (
+        <input
+          type="text"
+          value={formData.history.title}
+          onChange={(e) => updateHistory({ title: e.target.value })}
+          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-base"
+        />
+      ) : (
+        <p className="text-lg font-semibold text-slate-900">
+          {contentSettings.history.title || 'None'}
+        </p>
+      )}
+    </FieldWrapper>
+
+    <FieldWrapper label="History Subtitle">
+      {editing ? (
+        <input
+          type="text"
+          value={formData.history.subtitle}
+          onChange={(e) => updateHistory({ subtitle: e.target.value })}
+          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+        />
+      ) : (
+        <p className="text-sm text-slate-600">
+          {contentSettings.history.subtitle || 'None'}
+        </p>
+      )}
+    </FieldWrapper>
+
+    <FieldWrapper label="History Description">
+      {editing ? (
+        <textarea
+          value={formData.history.text}
+          onChange={(e) => updateHistory({ text: e.target.value })}
+          rows={7}
+          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
+        />
+      ) : (
+        <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-line">
+          {contentSettings.history.text || 'None'}
+        </p>
+      )}
+    </FieldWrapper>
+
+    <FieldWrapper label="History Images">
+      {editing ? (
+        <div className="space-y-3">
+          {(formData.history.images ?? []).length > 0 ? (
+            <div className="space-y-3">
+              {(formData.history.images ?? []).map((img, index) => (
+                <div
+                  key={index}
+                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-3"
+                >
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={img}
+                      onChange={(e) => {
+                        const updated = [...(formData.history.images ?? [])];
+                        updated[index] = e.target.value;
+                        updateHistory({ images: updated });
+                      }}
+                      placeholder="https://example.com/history-image.jpg"
+                      className="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = (formData.history.images ?? []).filter(
+                          (_, i) => i !== index
+                        );
+                        updateHistory({ images: updated });
+                      }}
+                      className="px-3 py-3 bg-rose-50 text-rose-600 rounded-xl hover:bg-rose-100 transition-colors"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+
+                  {img && (
+                    <img
+                      src={img}
+                      alt={`History preview ${index + 1}`}
+                      className="w-full max-h-52 object-cover rounded-xl border border-slate-200"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
+              <p className="text-sm text-slate-500">No history images added yet.</p>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() =>
+              updateHistory({
+                images: [...(formData.history.images ?? []), ''],
+              })
+            }
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-colors text-sm font-medium"
+          >
+            <Plus className="size-4" />
+            Add Image URL
+          </button>
+
+          <p className="text-xs text-slate-400">
+            Add one or more image URLs for the History slideshow.
+          </p>
         </div>
       ) : (
-        <p className="text-sm text-slate-700">None</p>
-      )}
-    </div>
-  )}
-</FieldWrapper>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <MiniCardEditor
-                  titleLabel="Point 1 Title"
-                  textLabel="Point 1 Text"
-                  titleValue={formData.historyPoint1Title}
-                  textValue={formData.historyPoint1Text}
-                  editing={editing}
-                  onTitleChange={(v: string) => setFormData({ ...formData, historyPoint1Title: v })}
-                  onTextChange={(v: string) => setFormData({ ...formData, historyPoint1Text: v })}
-                />
-
-                <MiniCardEditor
-                  titleLabel="Point 2 Title"
-                  textLabel="Point 2 Text"
-                  titleValue={formData.historyPoint2Title}
-                  textValue={formData.historyPoint2Text}
-                  editing={editing}
-                  onTitleChange={(v: string) => setFormData({ ...formData, historyPoint2Title: v })}
-                  onTextChange={(v: string) => setFormData({ ...formData, historyPoint2Text: v })}
-                />
-
-                <MiniCardEditor
-                  titleLabel="Point 3 Title"
-                  textLabel="Point 3 Text"
-                  titleValue={formData.historyPoint3Title}
-                  textValue={formData.historyPoint3Text}
-                  editing={editing}
-                  onTitleChange={(v: string) => setFormData({ ...formData, historyPoint3Title: v })}
-                  onTextChange={(v: string) => setFormData({ ...formData, historyPoint3Text: v })}
-                />
-              </div>
+        <div className="space-y-3">
+          {contentSettings.history.images?.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {contentSettings.history.images.map((img, index) => (
+                <div key={index} className="space-y-2">
+                  <p className="text-xs text-slate-500 break-all">{img}</p>
+                  <img
+                    src={img}
+                    alt={`History preview ${index + 1}`}
+                    className="w-full h-40 object-cover rounded-2xl border border-slate-200"
+                  />
+                </div>
+              ))}
             </div>
-          </ContentCard>
-
-          <ContentCard
-            title="Featured Section"
-            description="Controls the heading, subheading, and empty-state messaging for featured spaces."
-            icon={<FileText className="text-indigo-600 size-5" />}
-          >
-            <div className="space-y-5">
-              <FieldWrapper label="Featured Title">
-                {editing ? (
-                  <input
-                    type="text"
-                    value={formData.featuredTitle}
-                    onChange={(e) => setFormData({ ...formData, featuredTitle: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-base"
-                  />
-                ) : (
-                  <p className="text-lg font-semibold text-slate-900">
-                    {contentSettings.featuredTitle || 'None'}
-                  </p>
-                )}
-              </FieldWrapper>
-
-              <FieldWrapper label="Featured Subtitle">
-                {editing ? (
-                  <textarea
-                    value={formData.featuredSubtitle}
-                    onChange={(e) =>
-                      setFormData({ ...formData, featuredSubtitle: e.target.value })
-                    }
-                    rows={3}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
-                  />
-                ) : (
-                  <p className="text-slate-600 text-sm leading-relaxed">
-                    {contentSettings.featuredSubtitle || 'None'}
-                  </p>
-                )}
-              </FieldWrapper>
-
-              <FieldWrapper label="View All Button Text">
-                {editing ? (
-                  <input
-                    type="text"
-                    value={formData.featuredViewAllText}
-                    onChange={(e) =>
-                      setFormData({ ...formData, featuredViewAllText: e.target.value })
-                    }
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                  />
-                ) : (
-                  <p className="text-sm font-medium text-slate-700">
-                    {contentSettings.featuredViewAllText || 'None'}
-                  </p>
-                )}
-              </FieldWrapper>
-
-              <FieldWrapper label="Empty State Title">
-                {editing ? (
-                  <input
-                    type="text"
-                    value={formData.featuredEmptyTitle}
-                    onChange={(e) =>
-                      setFormData({ ...formData, featuredEmptyTitle: e.target.value })
-                    }
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
-                  />
-                ) : (
-                  <p className="text-sm font-medium text-slate-700">
-                    {contentSettings.featuredEmptyTitle || 'None'}
-                  </p>
-                )}
-              </FieldWrapper>
-
-              <FieldWrapper label="Empty State Description">
-                {editing ? (
-                  <textarea
-                    value={formData.featuredEmptyText}
-                    onChange={(e) =>
-                      setFormData({ ...formData, featuredEmptyText: e.target.value })
-                    }
-                    rows={3}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
-                  />
-                ) : (
-                  <p className="text-slate-600 text-sm leading-relaxed">
-                    {contentSettings.featuredEmptyText || 'None'}
-                  </p>
-                )}
-              </FieldWrapper>
-            </div>
-          </ContentCard>
-
-          <SectionLabel title="Business Information" />
-
-          <ContentCard
-            title="Business Policies"
-            description="Displays important policies and terms for visitors and customers."
-            icon={<ShieldAlert className="text-red-600 size-5" />}
-          >
-            {editing ? (
-              <textarea
-                value={formData.policies}
-                onChange={(e) => setFormData({ ...formData, policies: e.target.value })}
-                rows={7}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
-              />
-            ) : (
-              <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-line">
-                {contentSettings.policies || 'None'}
+          ) : contentSettings.history.image ? (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-700 break-all">
+                {contentSettings.history.image}
               </p>
-            )}
-          </ContentCard>
+              <img
+                src={contentSettings.history.image}
+                alt="History preview"
+                className="w-full max-h-72 object-cover rounded-2xl border border-slate-200"
+              />
+            </div>
+          ) : (
+            <p className="text-sm text-slate-700">None</p>
+          )}
         </div>
+      )}
+    </FieldWrapper>
 
-        <div className="lg:col-span-4 space-y-6">
-          <SectionLabel title="Sidebar Content" />
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <MiniCardEditor
+        titleLabel="Point 1 Title"
+        textLabel="Point 1 Text"
+        titleValue={formData.history.points[0]?.title || ''}
+        textValue={formData.history.points[0]?.text || ''}
+        editing={editing}
+        onTitleChange={(v: string) => {
+          const points = [...formData.history.points];
+          points[0] = { ...points[0], title: v };
+          updateHistory({ points });
+        }}
+        onTextChange={(v: string) => {
+          const points = [...formData.history.points];
+          points[0] = { ...points[0], text: v };
+          updateHistory({ points });
+        }}
+      />
 
-          <ContentCard
-            title="Content Snapshot"
-            description="Quick overview of what is currently set on the website."
-            icon={<FileText className="text-sky-600 size-5" />}
-          >
-            <div className="space-y-3 text-sm">
-              <SnapshotRow label="Hero title" value={formData.heroTitle || 'Empty'} />
-              <SnapshotRow label="History title" value={formData.historyTitle || 'Empty'} />
-              <SnapshotRow label="Announcements" value={String(formData.announcements.length)} />
-              <SnapshotRow label="Contact email" value={formData.contactEmail || 'Empty'} />
-              <SnapshotRow
-                label="Policies"
-                value={formData.policies ? 'Configured' : 'Empty'}
-              />
-            </div>
-          </ContentCard>
+      <MiniCardEditor
+        titleLabel="Point 2 Title"
+        textLabel="Point 2 Text"
+        titleValue={formData.history.points[1]?.title || ''}
+        textValue={formData.history.points[1]?.text || ''}
+        editing={editing}
+        onTitleChange={(v: string) => {
+          const points = [...formData.history.points];
+          points[1] = { ...points[1], title: v };
+          updateHistory({ points });
+        }}
+        onTextChange={(v: string) => {
+          const points = [...formData.history.points];
+          points[1] = { ...points[1], text: v };
+          updateHistory({ points });
+        }}
+      />
 
-          <ContentCard
-            title="Contact Section"
-            description="Controls the public contact form heading and location card text."
-            icon={<Phone className="text-cyan-600 size-5" />}
-          >
-            <div className="space-y-4">
-              <SidebarField
-                label="Contact Title"
-                value={formData.contactTitle}
-                editing={editing}
-                onChange={(v: string) => setFormData({ ...formData, contactTitle: v })}
-              />
-              <SidebarField
-                label="Contact Subtitle"
-                value={formData.contactSubtitle}
-                editing={editing}
-                isTextArea
-                onChange={(v: string) => setFormData({ ...formData, contactSubtitle: v })}
-              />
-              <SidebarField
-                label="Location Title"
-                value={formData.locationTitle}
-                editing={editing}
-                onChange={(v: string) => setFormData({ ...formData, locationTitle: v })}
-              />
-              <SidebarField
-                label="Location Subtitle"
-                value={formData.locationSubtitle}
-                editing={editing}
-                onChange={(v: string) => setFormData({ ...formData, locationSubtitle: v })}
-              />
-            </div>
-          </ContentCard>
+      <MiniCardEditor
+        titleLabel="Point 3 Title"
+        textLabel="Point 3 Text"
+        titleValue={formData.history.points[2]?.title || ''}
+        textValue={formData.history.points[2]?.text || ''}
+        editing={editing}
+        onTitleChange={(v: string) => {
+          const points = [...formData.history.points];
+          points[2] = { ...points[2], title: v };
+          updateHistory({ points });
+        }}
+        onTextChange={(v: string) => {
+          const points = [...formData.history.points];
+          points[2] = { ...points[2], text: v };
+          updateHistory({ points });
+        }}
+      />
+    </div>
+  </div>
+</ContentCard>
 
-          <ContentCard
-            title="Contact Info"
-            description="Public contact details shown across the website."
-            icon={<Phone className="text-green-600 size-5" />}
-          >
-            <div className="space-y-4">
-              <SidebarField
-                label="Public Email"
-                value={formData.contactEmail}
-                editing={editing}
-                onChange={(v: string) => setFormData({ ...formData, contactEmail: v })}
-                icon={<Mail className="size-4 text-slate-400" />}
-              />
-              <SidebarField
-                label="Public Phone"
-                value={formData.contactPhone}
-                editing={editing}
-                onChange={(v: string) => setFormData({ ...formData, contactPhone: v })}
-              />
-              <SidebarField
-                label="Office Address"
-                value={formData.contactAddress}
-                editing={editing}
-                isTextArea
-                onChange={(v: string) => setFormData({ ...formData, contactAddress: v })}
-              />
-            </div>
-          </ContentCard>
+<ContentCard
+  title="Featured Section"
+  description="Controls the heading, subheading, and empty-state messaging for featured spaces."
+  icon={<FileText className="text-indigo-600 size-5" />}
+>
+  <div className="space-y-5">
+    <FieldWrapper label="Featured Title">
+      {editing ? (
+        <input
+          type="text"
+          value={formData.featured.title}
+          onChange={(e) => updateFeatured({ title: e.target.value })}
+          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-base"
+        />
+      ) : (
+        <p className="text-lg font-semibold text-slate-900">
+          {contentSettings.featured.title || 'None'}
+        </p>
+      )}
+    </FieldWrapper>
 
-          <ContentCard
-            title="Footer & Menu"
-            description="Controls footer text, branding, and mobile menu title."
-            icon={<Layout className="text-slate-600 size-5" />}
-          >
-            <div className="space-y-4">
-              <SidebarField
-                label="Footer Brand Name"
-                value={formData.footerBrandName}
-                editing={editing}
-                onChange={(v: string) => setFormData({ ...formData, footerBrandName: v })}
-              />
+    <FieldWrapper label="Featured Subtitle">
+      {editing ? (
+        <textarea
+          value={formData.featured.subtitle}
+          onChange={(e) => updateFeatured({ subtitle: e.target.value })}
+          rows={3}
+          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
+        />
+      ) : (
+        <p className="text-slate-600 text-sm leading-relaxed">
+          {contentSettings.featured.subtitle || 'None'}
+        </p>
+      )}
+    </FieldWrapper>
 
-              <SidebarField
-                label="Footer Brand Description"
-                value={formData.footerBrandDescription}
-                editing={editing}
-                isTextArea
-                onChange={(v: string) =>
-                  setFormData({ ...formData, footerBrandDescription: v })
-                }
-              />
+    <FieldWrapper label="View All Button Text">
+      {editing ? (
+        <input
+          type="text"
+          value={formData.featured.viewAllText}
+          onChange={(e) => updateFeatured({ viewAllText: e.target.value })}
+          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+        />
+      ) : (
+        <p className="text-sm font-medium text-slate-700">
+          {contentSettings.featured.viewAllText || 'None'}
+        </p>
+      )}
+    </FieldWrapper>
 
-              <SidebarField
-                label="Quick Links Title"
-                value={formData.footerQuickLinksTitle}
-                editing={editing}
-                onChange={(v: string) =>
-                  setFormData({ ...formData, footerQuickLinksTitle: v })
-                }
-              />
+    <FieldWrapper label="Empty State Title">
+      {editing ? (
+        <input
+          type="text"
+          value={formData.featured.emptyTitle}
+          onChange={(e) => updateFeatured({ emptyTitle: e.target.value })}
+          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+        />
+      ) : (
+        <p className="text-sm font-medium text-slate-700">
+          {contentSettings.featured.emptyTitle || 'None'}
+        </p>
+      )}
+    </FieldWrapper>
 
-              <SidebarField
-                label="Footer Contact Title"
-                value={formData.footerContactTitle}
-                editing={editing}
-                onChange={(v: string) =>
-                  setFormData({ ...formData, footerContactTitle: v })
-                }
-              />
+    <FieldWrapper label="Empty State Description">
+      {editing ? (
+        <textarea
+          value={formData.featured.emptyText}
+          onChange={(e) => updateFeatured({ emptyText: e.target.value })}
+          rows={3}
+          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none"
+        />
+      ) : (
+        <p className="text-slate-600 text-sm leading-relaxed">
+          {contentSettings.featured.emptyText || 'None'}
+        </p>
+      )}
+    </FieldWrapper>
+  </div>
+</ContentCard>
 
-              <SidebarField
-                label="Footer Copyright"
-                value={formData.footerCopyright}
-                editing={editing}
-                isTextArea
-                onChange={(v: string) =>
-                  setFormData({ ...formData, footerCopyright: v })
-                }
-              />
+<div className="space-y-3 text-sm">
+  <SnapshotRow label="Hero title" value={formData.hero.title || 'Empty'} />
+  <SnapshotRow label="History title" value={formData.history.title || 'Empty'} />
+  <SnapshotRow label="Announcements" value={String(formData.announcements.length)} />
+  <SnapshotRow label="Contact email" value={formData.contact.email || 'Empty'} />
+  <SnapshotRow
+    label="Policies"
+    value={formData.policies ? 'Configured' : 'Empty'}
+  />
+</div>
 
-              <SidebarField
-                label="Footer Privacy Text"
-                value={formData.footerPrivacyText}
-                editing={editing}
-                isTextArea
-                onChange={(v: string) =>
-                  setFormData({ ...formData, footerPrivacyText: v })
-                }
-              />
+<ContentCard
+  title="Contact Section"
+  description="Controls the public contact form heading and location card text."
+  icon={<Phone className="text-cyan-600 size-5" />}
+>
+  <div className="space-y-4">
+    <SidebarField
+      label="Contact Title"
+      value={formData.contact.title}
+      editing={editing}
+      onChange={(v: string) => updateContact({ title: v })}
+    />
+    <SidebarField
+      label="Contact Subtitle"
+      value={formData.contact.subtitle}
+      editing={editing}
+      isTextArea
+      onChange={(v: string) => updateContact({ subtitle: v })}
+    />
+    <SidebarField
+      label="Location Title"
+      value={formData.contact.locationTitle}
+      editing={editing}
+      onChange={(v: string) => updateContact({ locationTitle: v })}
+    />
+    <SidebarField
+      label="Location Subtitle"
+      value={formData.contact.locationSubtitle}
+      editing={editing}
+      onChange={(v: string) => updateContact({ locationSubtitle: v })}
+    />
+  </div>
+</ContentCard>
 
-              <SidebarField
-                label="Menu Title"
-                value={formData.menuTitle}
-                editing={editing}
-                onChange={(v: string) => setFormData({ ...formData, menuTitle: v })}
-              />
-            </div>
-          </ContentCard>
+<ContentCard
+  title="Contact Info"
+  description="Public contact details shown across the website."
+  icon={<Phone className="text-green-600 size-5" />}
+>
+  <div className="space-y-4">
+    <SidebarField
+      label="Public Email"
+      value={formData.contact.email}
+      editing={editing}
+      onChange={(v: string) => updateContact({ email: v })}
+      icon={<Mail className="size-4 text-slate-400" />}
+    />
+    <SidebarField
+      label="Public Phone"
+      value={formData.contact.phone}
+      editing={editing}
+      onChange={(v: string) => updateContact({ phone: v })}
+    />
+    <SidebarField
+      label="Office Address"
+      value={formData.contact.address}
+      editing={editing}
+      isTextArea
+      onChange={(v: string) => updateContact({ address: v })}
+    />
+  </div>
+</ContentCard>
+
+<ContentCard
+  title="Footer & Menu"
+  description="Controls footer text, branding, and mobile menu title."
+  icon={<Layout className="text-slate-600 size-5" />}
+>
+  <div className="space-y-4">
+    <SidebarField
+      label="Footer Brand Name"
+      value={formData.footer.brandName}
+      editing={editing}
+      onChange={(v: string) => updateFooter({ brandName: v })}
+    />
+
+    <SidebarField
+      label="Footer Brand Description"
+      value={formData.footer.brandDescription}
+      editing={editing}
+      isTextArea
+      onChange={(v: string) => updateFooter({ brandDescription: v })}
+    />
+
+    <SidebarField
+      label="Quick Links Title"
+      value={formData.footer.quickLinksTitle}
+      editing={editing}
+      onChange={(v: string) => updateFooter({ quickLinksTitle: v })}
+    />
+
+    <SidebarField
+      label="Footer Contact Title"
+      value={formData.footer.contactTitle}
+      editing={editing}
+      onChange={(v: string) => updateFooter({ contactTitle: v })}
+    />
+
+    <SidebarField
+      label="Footer Copyright"
+      value={formData.footer.copyright}
+      editing={editing}
+      isTextArea
+      onChange={(v: string) => updateFooter({ copyright: v })}
+    />
+
+    <SidebarField
+      label="Footer Privacy Text"
+      value={formData.footer.privacyText}
+      editing={editing}
+      isTextArea
+      onChange={(v: string) => updateFooter({ privacyText: v })}
+    />
+
+    <SidebarField
+      label="Menu Title"
+      value={formData.menu.title}
+      editing={editing}
+      onChange={(v: string) => updateMenu({ title: v })}
+    />
+  </div>
+</ContentCard>
 
           <ContentCard
             title="Announcements"

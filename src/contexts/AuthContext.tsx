@@ -53,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 const fetchAndSetUserProfile = useCallback(async (authUser: any) => {
   let { data, error } = await supabase
     .from('users')
-    .select('*')
+    .select('user_id, email, first_name, last_name, phone, role, address, is_active, profile_picture_url, last_login')
     .eq('user_id', authUser.id)
     .maybeSingle();
 
@@ -74,7 +74,7 @@ const fetchAndSetUserProfile = useCallback(async (authUser: any) => {
         first_name: firstName,
         last_name: lastName,
         role: 'client',
-        contact_number: meta.phone || '',
+        phone: meta.phone || '',
         address: meta.address || '',
         is_active: true,
         profile_picture_url: meta.avatar_url || meta.picture || null,
@@ -111,7 +111,7 @@ const fetchAndSetUserProfile = useCallback(async (authUser: any) => {
     firstName: data.first_name ?? '',
     lastName: data.last_name ?? '',
     role: data.role,
-    contactNumber: data.contact_number ?? '',
+    contactNumber: data.phone ?? '',
     address: data.address ?? '',
     is_active: data.is_active,
     profilePictureUrl: data.profile_picture_url ?? undefined,
@@ -225,9 +225,9 @@ const fetchAndSetUserProfile = useCallback(async (authUser: any) => {
   // --- 5. AUTH ACTIONS ---
 
   const login = async (
-  email: string,
-  password: string
-): Promise<{ success: boolean; error?: string }> => {
+    email: string,
+    password: string
+  ): Promise<{ success: boolean; error?: string }> => {
 
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
@@ -254,7 +254,7 @@ const fetchAndSetUserProfile = useCallback(async (authUser: any) => {
 
   const { data: profile, error: profileError } = await supabase
     .from('users')
-    .select('*')
+    .select('user_id, is_active')
     .eq('user_id', data.user.id)
     .single();
 
@@ -302,7 +302,17 @@ const fetchAndSetUserProfile = useCallback(async (authUser: any) => {
 
   if (userData.profileFile) {
     try {
-      const fileExt = userData.profileFile.name.split('.').pop();
+      const mimeToExt: Record<string, string> = {
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+        'image/webp': 'webp',
+      };
+
+      const fileExt =
+        mimeToExt[userData.profileFile.type] ||
+        userData.profileFile.name.split('.').pop()?.toLowerCase() ||
+        'bin';
+
       const fileName = `new-${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
@@ -341,8 +351,6 @@ const fetchAndSetUserProfile = useCallback(async (authUser: any) => {
     },
   });
 
-  console.log('signUp user:', authData?.user);
-  console.log('signUp session:', authData?.session);
 
   if (authError) {
     console.error('Auth registration failed:', authError.message);
@@ -424,7 +432,17 @@ const fetchAndSetUserProfile = useCallback(async (authUser: any) => {
 
   const uploadProfilePicture = async (file: File) => {
     if (!user) return null;
-    const fileExt = file.name.split('.').pop();
+    const mimeToExt: Record<string, string> = {
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+    };
+
+    const fileExt =
+      mimeToExt[file.type] ||
+      file.name.split('.').pop()?.toLowerCase() ||
+      'bin';
+
     const fileName = `${user.id}-${Date.now()}.${fileExt}`;
     const { error } = await supabase.storage.from('avatars').upload(fileName, file, { upsert: true });
     return error ? null : supabase.storage.from('avatars').getPublicUrl(fileName).data.publicUrl;

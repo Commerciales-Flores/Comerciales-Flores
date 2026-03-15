@@ -153,66 +153,67 @@ export interface ParkingSlot {
 
 export interface ContentSettings {
   content_id?: string;
-
-  heroBadge: string;
-  heroTitle: string;
-  heroSubtitle: string;
-  heroImage?: string;
-  heroPrimaryCtaText: string;
-  heroPrimaryCtaLink: string;
-  heroSecondaryCtaText: string;
-  heroSecondaryCtaLink: string;
-
-  aboutEyebrow: string;
-  aboutTitle: string;
-  aboutUs: string;
-
-  aboutCard1Title: string;
-  aboutCard1Text: string;
-  aboutCard2Title: string;
-  aboutCard2Text: string;
-  aboutCard3Title: string;
-  aboutCard3Text: string;
-
-  historyEyebrow: string;
-  historyTitle: string;
-  historySubtitle: string;
-  historyText: string;
-  historyImage: string;
-  historyImages?: string[];
-
-  historyPoint1Title: string;
-  historyPoint1Text: string;
-  historyPoint2Title: string;
-  historyPoint2Text: string;
-  historyPoint3Title: string;
-  historyPoint3Text: string;
-
-  featuredTitle: string;
-  featuredSubtitle: string;
-  featuredViewAllText: string;
-  featuredEmptyTitle: string;
-  featuredEmptyText: string;
-
-  contactTitle: string;
-  contactSubtitle: string;
-  locationTitle: string;
-  locationSubtitle: string;
-
-  footerBrandName: string;
-  footerBrandDescription: string;
-  footerQuickLinksTitle: string;
-  footerContactTitle: string;
-  footerCopyright: string;
-  footerPrivacyText: string;
-
-  menuTitle: string;
-
-  contactEmail: string;
-  contactPhone: string;
-  contactAddress: string;
+  hero: {
+    badge: string;
+    title: string;
+    subtitle: string;
+    image: string;
+    primaryCtaText: string;
+    primaryCtaLink: string;
+    secondaryCtaText: string;
+    secondaryCtaLink: string;
+  };
+  about: {
+    eyebrow: string;
+    title: string;
+    text: string;
+    cards: {
+      title: string;
+      text: string;
+    }[];
+  };
+  history: {
+    eyebrow: string;
+    title: string;
+    subtitle: string;
+    text: string;
+    image: string;
+    images: string[];
+    points: {
+      title: string;
+      text: string;
+    }[];
+  };
+  featured: {
+    title: string;
+    subtitle: string;
+    viewAllText: string;
+    emptyTitle: string;
+    emptyText: string;
+  };
+  contact: {
+    title: string;
+    subtitle: string;
+    locationTitle: string;
+    locationSubtitle: string;
+    email: string;
+    phone: string;
+    address: string;
+  };
+  footer: {
+    brandName: string;
+    brandDescription: string;
+    quickLinksTitle: string;
+    contactTitle: string;
+    copyright: string;
+    privacyText: string;
+  };
+  menu: {
+    title: string;
+  };
   announcements: string[];
   policies: string;
+  updated_at?: string;
 }
 
 // ─── Context Type ─────────────────────────────────────────────────────────────
@@ -276,65 +277,93 @@ const MOCK_PARKING_SLOTS: ParkingSlot[] = Array.from({ length: 10 }, (_, i) => (
 }));
 
 const DEFAULT_CONTENT: ContentSettings = {
-  heroBadge: 'Premium Spaces',
-  heroTitle: '',
-  heroSubtitle: '',
-  heroImage: '',
-  heroPrimaryCtaText: 'Get Started',
-  heroPrimaryCtaLink: '/register',
-  heroSecondaryCtaText: 'Browse Collection',
-  heroSecondaryCtaLink: '#properties',
+  hero: {
+    badge: 'Premium Spaces',
+    title: '',
+    subtitle: '',
+    image: '',
+    primaryCtaText: 'Get Started',
+    primaryCtaLink: '/register',
+    secondaryCtaText: 'Browse Collection',
+    secondaryCtaLink: '#properties',
+  },
 
-  aboutEyebrow: 'Who We Are',
-  aboutTitle: 'About Us',
-  aboutUs: '',
+  about: {
+    eyebrow: 'Who We Are',
+    title: 'About Us',
+    text: '',
+    cards: [
+      {
+        title: 'Flexible Spaces',
+        text: 'Rental spaces designed for businesses, events, and evolving needs.',
+      },
+      {
+        title: 'Prime Convenience',
+        text: 'Accessible locations that make bookings easier for clients and guests.',
+      },
+      {
+        title: 'Trusted Service',
+        text: 'A smoother and more reliable way to manage reservations and inquiries.',
+      },
+    ],
+  },
 
-  aboutCard1Title: 'Flexible Spaces',
-  aboutCard1Text: 'Rental spaces designed for businesses, events, and evolving needs.',
-  aboutCard2Title: 'Prime Convenience',
-  aboutCard2Text: 'Accessible locations that make bookings easier for clients and guests.',
-  aboutCard3Title: 'Trusted Service',
-  aboutCard3Text: 'A smoother and more reliable way to manage reservations and inquiries.',
+  history: {
+    eyebrow: 'Our History',
+    title: '',
+    subtitle: '',
+    text: '',
+    image: '',
+    images: [],
+    points: [
+      {
+        title: 'The Beginning',
+        text: 'A vision to create accessible and flexible commercial spaces.',
+      },
+      {
+        title: 'Growth',
+        text: 'Expanded to serve more clients, events, and rental needs.',
+      },
+      {
+        title: 'Today',
+        text: 'A trusted destination for business spaces and function venues.',
+      },
+    ],
+  },
 
-  historyEyebrow: 'Our History',
-  historyTitle: '',
-  historySubtitle: '',
-  historyText: '',
-  historyImage: '',
-  historyImages: [],
+  featured: {
+    title: 'Featured Spaces',
+    subtitle: 'Experience our most premium locations.',
+    viewAllText: 'View all Spaces',
+    emptyTitle: 'No featured spaces yet',
+    emptyText:
+      'There are currently no available featured spaces to display. Please check back later.',
+  },
 
-  historyPoint1Title: 'The Beginning',
-  historyPoint1Text: 'A vision to create accessible and flexible commercial spaces.',
-  historyPoint2Title: 'Growth',
-  historyPoint2Text: 'Expanded to serve more clients, events, and rental needs.',
-  historyPoint3Title: 'Today',
-  historyPoint3Text: 'A trusted destination for business spaces and function venues.',
+  contact: {
+    title: 'Send us a message',
+    subtitle: 'We’ll get back to you as soon as possible.',
+    locationTitle: 'Our Location',
+    locationSubtitle: 'Visit us',
+    email: '',
+    phone: '',
+    address: '',
+  },
 
-  featuredTitle: 'Featured Spaces',
-  featuredSubtitle: 'Experience our most premium locations.',
-  featuredViewAllText: 'View all Spaces',
-  featuredEmptyTitle: 'No featured spaces yet',
-  featuredEmptyText:
-    'There are currently no available featured spaces to display. Please check back later.',
+  footer: {
+    brandName: 'Commerciales Flores',
+    brandDescription:
+      'Premium rental spaces and function halls for your business or event needs.',
+    quickLinksTitle: 'Quick Links',
+    contactTitle: 'Get in Touch',
+    copyright: '© 2025 Commerciales Flores. All rights reserved.',
+    privacyText: 'Compliant with the Philippine Data Privacy Act of 2012',
+  },
 
-  contactTitle: 'Send us a message',
-  contactSubtitle: 'We’ll get back to you as soon as possible.',
-  locationTitle: 'Our Location',
-  locationSubtitle: 'Visit us',
+  menu: {
+    title: 'Menu',
+  },
 
-  footerBrandName: 'Commerciales Flores',
-  footerBrandDescription:
-    'Premium rental spaces and function halls for your business or event needs.',
-  footerQuickLinksTitle: 'Quick Links',
-  footerContactTitle: 'Get in Touch',
-  footerCopyright: '© 2025 Commerciales Flores. All rights reserved.',
-  footerPrivacyText: 'Compliant with the Philippine Data Privacy Act of 2012',
-
-  menuTitle: 'Menu',
-
-  contactEmail: '',
-  contactPhone: '',
-  contactAddress: '',
   announcements: [],
   policies: '',
 };
@@ -358,142 +387,149 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Fetch all unified unit data
     const fetchAllUnits = async () => {
-    try {
-      const { data: baseUnits, error: baseError } = await supabase
-        .from('units')
-        .select('*');
+  try {
+    const { data: baseUnits, error: baseError } = await supabase
+      .from('units')
+      .select('unit_id, property_id, unit_type, title, description, is_available, location');
 
-      if (baseError) throw baseError;
-      if (!baseUnits) return;
+    if (baseError) throw baseError;
+    if (!baseUnits) return;
 
-      const propertyIds = [...new Set(baseUnits.map(u => u.property_id).filter(Boolean))];
+    const propertyIds = [...new Set(baseUnits.map((u) => u.property_id).filter(Boolean))];
 
-      let propertiesData: any[] = [];
+    let propertiesData: any[] = [];
 
-      if (propertyIds.length > 0) {
-        const { data, error: propertiesError } = await supabase
-          .from('properties')
-          .select('id, title, address')
-          .in('id', propertyIds); // ✅ FIXED
+    if (propertyIds.length > 0) {
+      const { data, error: propertiesError } = await supabase
+        .from('properties')
+        .select('id, title, address')
+        .in('id', propertyIds);
 
-        if (propertiesError) throw propertiesError;
-        propertiesData = data ?? [];
+      if (propertiesError) throw propertiesError;
+      propertiesData = data ?? [];
+    }
+
+    const propertiesMap = Object.fromEntries(propertiesData.map((p) => [p.id, p]));
+
+    const [
+      { data: rentalUnits },
+      { data: functionUnits },
+      { data: parkingUnits },
+      { data: media },
+    ] = await Promise.all([
+      supabase.from('rental_units').select('unit_id, rental_price, features, policies, description'),
+      supabase.from('function_units').select('unit_id, price_per_day, capacity, features, policies, description'),
+      supabase.from('parking_units').select('unit_id, price_per_day, price_per_hour, features, policies, description'),
+      supabase.from('media').select('unit_id, url, media_type'),
+    ]);
+
+    const combinedUnits: Unit[] = baseUnits.map((base) => {
+      let specific: any = null;
+
+      if (base.unit_type === 'rental_space') {
+        specific = rentalUnits?.find((r) => r.unit_id === base.unit_id);
+      } else if (base.unit_type === 'function_hall') {
+        specific = functionUnits?.find((f) => f.unit_id === base.unit_id);
+      } else if (base.unit_type === 'parking_slot') {
+        specific = parkingUnits?.find((p) => p.unit_id === base.unit_id);
       }
 
-      const propertiesMap = Object.fromEntries(
-        propertiesData.map((p) => [p.id, p])
-      );
+      const unitMediaRecords = media?.filter((m) => m.unit_id === base.unit_id) || [];
+      let imagesArray: string[] = [];
 
-      const { data: rentalUnits } = await supabase.from('rental_units').select('*');
-      const { data: functionUnits } = await supabase.from('function_units').select('*');
-      const { data: parkingUnits } = await supabase.from('parking_units').select('*');
-      const { data: media } = await supabase.from('media').select('*');
+      unitMediaRecords.forEach((record) => {
+        if (!record.url) return;
 
-      const combinedUnits: Unit[] = baseUnits.map(base => {
-        let specific = null;
+        const rawUrl = record.url;
 
-        if (base.unit_type === 'rental_space') {
-          specific = rentalUnits?.find(r => r.unit_id === base.unit_id);
-        } else if (base.unit_type === 'function_hall') {
-          specific = functionUnits?.find(f => f.unit_id === base.unit_id);
-        } else if (base.unit_type === 'parking_slot') {
-          specific = parkingUnits?.find(p => p.unit_id === base.unit_id);
-        }
-
-        const unitMediaRecords = media?.filter(m => m.unit_id === base.unit_id) || [];
-        let imagesArray: string[] = [];
-
-        unitMediaRecords.forEach(record => {
-          if (!record.url) return;
-
-          const rawUrl = record.url;
-
-          if (typeof rawUrl === 'string') {
-            if (rawUrl.startsWith('http')) {
-              imagesArray.push(rawUrl);
-            } else {
-              try {
-                const parsed = JSON.parse(rawUrl);
-                imagesArray.push(
-                  ...Object.values(parsed).filter(v => typeof v === 'string') as string[]
-                );
-              } catch {
-                // ignore broken strings
-              }
+        if (typeof rawUrl === 'string') {
+          if (rawUrl.startsWith('http')) {
+            imagesArray.push(rawUrl);
+          } else {
+            try {
+              const parsed = JSON.parse(rawUrl);
+              imagesArray.push(
+                ...(Object.values(parsed).filter((v) => typeof v === 'string') as string[])
+              );
+            } catch {
+              // ignore bad strings
             }
-          } else if (typeof rawUrl === 'object' && rawUrl !== null) {
-            imagesArray.push(
-              ...Object.values(rawUrl).filter(v => typeof v === 'string') as string[]
-            );
           }
-        });
-
-        let parsedFeatures: string[] = [];
-        if (Array.isArray(specific?.features)) {
-          parsedFeatures = specific.features;
-        } else if (typeof specific?.features === 'string') {
-          parsedFeatures = specific.features.split(',').map((s: string) => s.trim());
+        } else if (typeof rawUrl === 'object' && rawUrl !== null) {
+          imagesArray.push(
+            ...(Object.values(rawUrl).filter((v) => typeof v === 'string') as string[])
+          );
         }
+      });
 
-        const property = propertiesMap[base.property_id]; // ✅ use the map
+      let parsedFeatures: string[] = [];
+      if (Array.isArray(specific?.features)) {
+        parsedFeatures = specific.features;
+      } else if (typeof specific?.features === 'string') {
+        parsedFeatures = specific.features
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter(Boolean);
+      }
 
-        return {
-          id: base.unit_id,
-          propertyId: base.property_id,
-          name: base.title || '',
-          type: base.unit_type as UnitType,
-          description: base.description || specific?.description || '',
-          price:
-            base.unit_type === 'rental_space'
-              ? Number(specific?.rental_price || 0)
-              : base.unit_type === 'function_hall'
-              ? Number(specific?.price_per_day || 0)
-              : Number(specific?.price_per_day || specific?.price_per_hour || 0),
-          images: imagesArray.length > 0
+      const property = propertiesMap[base.property_id];
+
+      return {
+        id: base.unit_id,
+        propertyId: base.property_id,
+        name: base.title || '',
+        type: base.unit_type as UnitType,
+        description: base.description || specific?.description || '',
+        price:
+          base.unit_type === 'rental_space'
+            ? Number(specific?.rental_price || 0)
+            : base.unit_type === 'function_hall'
+            ? Number(specific?.price_per_day || 0)
+            : Number(specific?.price_per_day || specific?.price_per_hour || 0),
+        images:
+          imagesArray.length > 0
             ? imagesArray
             : ['https://images.unsplash.com/photo-1497366216548-37526070297c?w=800'],
-          policies: specific?.policies || '',
-          available: base.is_available,
-          features: parsedFeatures,
-          location: base.location || '',
-          property: property
-            ? {
-                id: property.id,
-                title: property.title || '',
-                address: property.address || '',
-              }
-            : null,
-          ...(typeof specific?.capacity === 'number'
-            ? { capacity: specific.capacity }
-            : {}),
-        };
-      });
+        policies: specific?.policies || '',
+        available: base.is_available,
+        features: parsedFeatures,
+        location: base.location || '',
+        property: property
+          ? {
+              id: property.id,
+              title: property.title || '',
+              address: property.address || '',
+            }
+          : null,
+        ...(typeof specific?.capacity === 'number' ? { capacity: specific.capacity } : {}),
+      };
+    });
 
-      console.log('combinedUnits:', combinedUnits);
-      setUnits(combinedUnits);
-    } catch (error) {
-      console.error('Error loading units from Supabase:', {
-        message: (error as any)?.message,
-        details: (error as any)?.details,
-        hint: (error as any)?.hint,
-        code: (error as any)?.code,
-      });
-
-
+    setUnits(combinedUnits);
+  } catch (error) {
+    console.error('Error loading units from Supabase:', {
+      message: (error as any)?.message,
+      details: (error as any)?.details,
+      hint: (error as any)?.hint,
+      code: (error as any)?.code,
+    });
   }
+
 };
 
     const fetchUsers = async () => {
-    const { data, error } = await supabase.from('users').select('*');
+    const { data, error } = await supabase
+    .from('users')
+    .select('user_id, public_id, role, first_name, last_name, email, phone, address, is_active');
     if (!error && data) {
       setUsers(data.map((row: any) => ({
-        id: row.id,
+        id: row.user_id,
         publicId: row.public_id,
         role: row.role,
         first_name: row.first_name,
         last_name: row.last_name,
         email: row.email,
-        contactNumber: row.contact_number,
+        contactNumber: row.phone,
         address: row.address,
         is_active: row.is_active,
       })));
@@ -505,13 +541,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const fetchReservations = async () => {
       const { data, error } = await supabase
         .from('reservations')
-        .select('*')
+        .select('reservation_id, public_id, user_id, unit_id, title, unit_type, start_date, end_date, duration, total_amount, status, notes, paid_amount, created_at, payment_method, payment_intent, mode_of_visit, details')
         .order('created_at', { ascending: false });
 
       if (!error && data) {
         setReservations(data.map((row: any) => ({
           id: row.reservation_id,
-          publicId: row.public_Id,
+          publicId: row.public_id,
           userId: row.user_id,
           unitId: row.unit_id,
           unitName: row.title,
@@ -541,7 +577,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
 
     const fetchInquiries = async () => {
-      const { data, error } = await supabase.from('messages').select('*').order('date', { ascending: false });
+      const { data, error } = await supabase.from('messages')
+.select('message_id, user_id, first_name, last_name, email, subject, message, status, date, response, response_date').order('date', { ascending: false });
       if (!error && data) {
         setInquiries(data.map((row: any) => ({
           id: row.message_id,
@@ -560,7 +597,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
     
     const fetchNotifications = async () => {
-      const { data, error } = await supabase.from('notifications').select('*').order('date', { ascending: false });
+      const { data, error } = await supabase.from('notifications')
+.select('notification_id, user_id, title, message, type, is_read, date').order('date', { ascending: false });
       if (!error && data) {
         setNotifications(data.map((row: any) => ({
           id: row.notification_id,
@@ -575,11 +613,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
 
     const fetchPayments = async () => {
-      const { data, error } = await supabase.from('payments').select('*').order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('payments')
+.select('payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at').order('created_at', { ascending: false });
       if (!error && data) {
         setPayments(data.map((row: any) => ({
           id: row.payment_id,
-          publicId: row.public_Id,
+          publicId: row.public_id,
           reservationId: row.reservation_id,
           userId: row.user_id,
           amount: Number(row.amount),
@@ -595,7 +634,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
 
     const fetchLedgers = async () => {
-      const { data, error } = await supabase.from('ledger').select('*').order('date', { ascending: false });
+      const { data, error } = await supabase.from('ledger')
+.select('ledger_id, user_id, amount, date').order('date', { ascending: false });
       if (!error && data) {
         setLedgers(data.map((row: any) => ({
           id: row.ledger_id,
@@ -607,11 +647,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     };
 
     const fetchAuditLogs = async () => {
-      const { data, error } = await supabase.from('audit_log').select('*').order('timestamp', { ascending: false });
+      const { data, error } = await supabase.from('audit_log')
+.select('audit_id, public_id, user_id, action, target_table, target_id, before_value, after_value, changed_fields, timestamp, notes').order('timestamp', { ascending: false });
       if (!error && data) {
         setAuditLogs(data.map((row: any) => ({
           id: row.audit_id,
-          publicId: row.public_Id,
+          publicId: row.public_id,
           userId: row.user_id,
           action: row.action,
           targetTable: row.target_table,
@@ -628,7 +669,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const fetchContentSettings = async () => {
   const { data, error } = await supabase
     .from('site_content')
-    .select('*')
+.select('content_id, hero, about, history, featured, contact, footer, menu, announcements, policies, updated_at')
     .limit(1)
     .single();
 
@@ -636,71 +677,110 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setContentSettings({
       content_id: data.content_id,
 
-      heroBadge: data.heroBadge || 'Premium Spaces',
-      heroTitle: data.heroTitle || '',
-      heroSubtitle: data.heroSubtitle || '',
-      heroImage: data.heroImage || '',
-      heroPrimaryCtaText: data.heroPrimaryCtaText || 'Get Started',
-      heroPrimaryCtaLink: data.heroPrimaryCtaLink || '/register',
-      heroSecondaryCtaText: data.heroSecondaryCtaText || 'Browse Collection',
-      heroSecondaryCtaLink: data.heroSecondaryCtaLink || '#properties',
+      hero: {
+        badge: data.hero?.badge || 'Premium Spaces',
+        title: data.hero?.title || '',
+        subtitle: data.hero?.subtitle || '',
+        image: data.hero?.image || '',
+        primaryCtaText: data.hero?.primaryCtaText || 'Get Started',
+        primaryCtaLink: data.hero?.primaryCtaLink || '/register',
+        secondaryCtaText: data.hero?.secondaryCtaText || 'Browse Collection',
+        secondaryCtaLink: data.hero?.secondaryCtaLink || '#properties',
+      },
 
-      aboutEyebrow: data.aboutEyebrow || 'Who We Are',
-      aboutTitle: data.aboutTitle || 'About Us',
-      aboutUs: data.aboutUs || '',
+      about: {
+        eyebrow: data.about?.eyebrow || 'Who We Are',
+        title: data.about?.title || 'About Us',
+        text: data.about?.text || '',
+        cards:
+          Array.isArray(data.about?.cards) && data.about.cards.length > 0
+            ? data.about.cards
+            : [
+                {
+                  title: 'Flexible Spaces',
+                  text: 'Rental spaces designed for businesses, events, and evolving needs.',
+                },
+                {
+                  title: 'Prime Convenience',
+                  text: 'Accessible locations that make bookings easier for clients and guests.',
+                },
+                {
+                  title: 'Trusted Service',
+                  text: 'A smoother and more reliable way to manage reservations and inquiries.',
+                },
+              ],
+      },
 
-      aboutCard1Title: data.aboutCard1Title || 'Flexible Spaces',
-      aboutCard1Text: data.aboutCard1Text || '',
-      aboutCard2Title: data.aboutCard2Title || 'Prime Convenience',
-      aboutCard2Text: data.aboutCard2Text || '',
-      aboutCard3Title: data.aboutCard3Title || 'Trusted Service',
-      aboutCard3Text: data.aboutCard3Text || '',
+      history: {
+        eyebrow: data.history?.eyebrow || 'Our History',
+        title: data.history?.title || '',
+        subtitle: data.history?.subtitle || '',
+        text: data.history?.text || '',
+        image: data.history?.image || '',
+        images: Array.isArray(data.history?.images) ? data.history.images : [],
+        points:
+          Array.isArray(data.history?.points) && data.history.points.length > 0
+            ? data.history.points
+            : [
+                {
+                  title: 'The Beginning',
+                  text: 'A vision to create accessible and flexible commercial spaces.',
+                },
+                {
+                  title: 'Growth',
+                  text: 'Expanded to serve more clients, events, and rental needs.',
+                },
+                {
+                  title: 'Today',
+                  text: 'A trusted destination for business spaces and function venues.',
+                },
+              ],
+      },
 
-      historyEyebrow: data.historyEyebrow || 'Our History',
-      historyTitle: data.historyTitle || '',
-      historySubtitle: data.historySubtitle || '',
-      historyText: data.historyText || '',
-      historyImage: data.historyImage || '',
-      historyImages: data.historyImages || [],
+      featured: {
+        title: data.featured?.title || 'Featured Spaces',
+        subtitle:
+          data.featured?.subtitle || 'Experience our most premium locations.',
+        viewAllText: data.featured?.viewAllText || 'View all Spaces',
+        emptyTitle: data.featured?.emptyTitle || 'No featured spaces yet',
+        emptyText:
+          data.featured?.emptyText ||
+          'There are currently no available featured spaces to display. Please check back later.',
+      },
 
-      historyPoint1Title: data.historyPoint1Title || 'The Beginning',
-      historyPoint1Text: data.historyPoint1Text || '',
-      historyPoint2Title: data.historyPoint2Title || 'Growth',
-      historyPoint2Text: data.historyPoint2Text || '',
-      historyPoint3Title: data.historyPoint3Title || 'Today',
-      historyPoint3Text: data.historyPoint3Text || '',
+      contact: {
+        title: data.contact?.title || 'Send us a message',
+        subtitle:
+          data.contact?.subtitle || 'We’ll get back to you as soon as possible.',
+        locationTitle: data.contact?.locationTitle || 'Our Location',
+        locationSubtitle: data.contact?.locationSubtitle || 'Visit us',
+        email: data.contact?.email || '',
+        phone: data.contact?.phone || '',
+        address: data.contact?.address || '',
+      },
 
-      featuredTitle: data.featuredTitle || 'Featured Spaces',
-      featuredSubtitle: data.featuredSubtitle || 'Experience our most premium locations.',
-      featuredViewAllText: data.featuredViewAllText || 'View all Spaces',
-      featuredEmptyTitle: data.featuredEmptyTitle || 'No featured spaces yet',
-      featuredEmptyText:
-        data.featuredEmptyText ||
-        'There are currently no available featured spaces to display. Please check back later.',
+      footer: {
+        brandName: data.footer?.brandName || 'Commerciales Flores',
+        brandDescription:
+          data.footer?.brandDescription ||
+          'Premium rental spaces and function halls for your business or event needs.',
+        quickLinksTitle: data.footer?.quickLinksTitle || 'Quick Links',
+        contactTitle: data.footer?.contactTitle || 'Get in Touch',
+        copyright:
+          data.footer?.copyright ||
+          '© 2025 Commerciales Flores. All rights reserved.',
+        privacyText:
+          data.footer?.privacyText ||
+          'Compliant with the Philippine Data Privacy Act of 2012',
+      },
 
-      contactTitle: data.contactTitle || 'Send us a message',
-      contactSubtitle: data.contactSubtitle || 'We’ll get back to you as soon as possible.',
-      locationTitle: data.locationTitle || 'Our Location',
-      locationSubtitle: data.locationSubtitle || 'Visit us',
+      menu: {
+        title: data.menu?.title || 'Menu',
+      },
 
-      footerBrandName: data.footerBrandName || 'Commerciales Flores',
-      footerBrandDescription:
-        data.footerBrandDescription ||
-        'Premium rental spaces and function halls for your business or event needs.',
-      footerQuickLinksTitle: data.footerQuickLinksTitle || 'Quick Links',
-      footerContactTitle: data.footerContactTitle || 'Get in Touch',
-      footerCopyright:
-        data.footerCopyright || '© 2025 Commerciales Flores. All rights reserved.',
-      footerPrivacyText:
-        data.footerPrivacyText || 'Compliant with the Philippine Data Privacy Act of 2012',
-
-      menuTitle: data.menuTitle || 'Menu',
-
-      contactEmail: data.contactEmail || '',
-      contactPhone: data.contactPhone || '',
-      contactAddress: data.contactAddress || '',
-      announcements: data.announcements || [],
+      announcements: Array.isArray(data.announcements) ? data.announcements : [],
       policies: data.policies || '',
+      updated_at: data.updated_at,
     });
   }
 };
@@ -1267,13 +1347,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
         .from('messages')
         .insert([{
           user_id: inquiryData.userId || null,
-          firstName: inquiryData.first_name,
-          lastName: inquiryData.last_name,
+          first_name: inquiryData.first_name,
+          last_name: inquiryData.last_name,
           email: inquiryData.email,
           subject: inquiryData.subject,
           message: inquiryData.message,
           status: 'open',
-          date: new Date().toISOString()
+          date: new Date().toISOString(),
         }])
         .select()
         .single();
@@ -1390,30 +1470,64 @@ export function DataProvider({ children }: { children: ReactNode }) {
   
 
   // ── Content Settings ───────────────────────────────────────────────
-  const updateContentSettings = async (settings: Partial<ContentSettings>): Promise<void> => {
-    try {
-      if (!contentSettings.content_id) {
-        console.error("Cannot update: Content ID not found.");
-        return;
-      }
 
-      const dbPayload = { ...settings } as any;
-      delete dbPayload.content_id;
-      dbPayload.updated_at = new Date().toISOString();
+  const updateContentSettings = async (settings: Partial<ContentSettings>) => {
+  const payload: any = {};
 
-      const { error } = await supabase
-        .from('site_content')
-        .update(dbPayload)
-        .eq('content_id', contentSettings.content_id);
+  if (settings.hero) payload.hero = settings.hero;
+  if (settings.about) payload.about = settings.about;
+  if (settings.history) payload.history = settings.history;
+  if (settings.featured) payload.featured = settings.featured;
+  if (settings.contact) payload.contact = settings.contact;
+  if (settings.footer) payload.footer = settings.footer;
+  if (settings.menu) payload.menu = settings.menu;
+  if (settings.announcements) payload.announcements = settings.announcements;
+  if (settings.policies !== undefined) payload.policies = settings.policies;
 
-      if (error) throw error;
+  const targetId = contentSettings.content_id;
 
-      setContentSettings(prev => ({ ...prev, ...settings }));
-    } catch (error) {
-      console.error("Error updating content settings:", error);
-      throw error;
+  if (!targetId) {
+    const { data, error } = await supabase
+      .from('site_content')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (!error && data) {
+      setContentSettings((prev) => ({
+        ...prev,
+        ...payload,
+        content_id: data.content_id,
+        updated_at: data.updated_at,
+      }));
     }
-  };
+
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from('site_content')
+    .update(payload)
+    .eq('content_id', targetId)
+    .select()
+    .single();
+
+  if (!error && data) {
+    setContentSettings({
+      content_id: data.content_id,
+      hero: data.hero ?? DEFAULT_CONTENT.hero,
+      about: data.about ?? DEFAULT_CONTENT.about,
+      history: data.history ?? DEFAULT_CONTENT.history,
+      featured: data.featured ?? DEFAULT_CONTENT.featured,
+      contact: data.contact ?? DEFAULT_CONTENT.contact,
+      footer: data.footer ?? DEFAULT_CONTENT.footer,
+      menu: data.menu ?? DEFAULT_CONTENT.menu,
+      announcements: data.announcements ?? [],
+      policies: data.policies ?? '',
+      updated_at: data.updated_at,
+    });
+  }
+};
 
   // ─────────────────────────────────────────────────────────────────────────────
   const addBusinessSlot = (_s: any) => {};

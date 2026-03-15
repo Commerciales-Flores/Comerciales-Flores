@@ -1,15 +1,12 @@
-import { Link } from "react-router-dom";
-import { useState, useRef, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useData } from "../../contexts/DataContext";
 import { motion, AnimatePresence } from "framer-motion"; // Modern animations
 import 'react-calendar/dist/Calendar.css';
 import UnitModal from "../../components/PropertyModal";
-import { useNavigate } from 'react-router-dom';
 import {
   Building2,
-  Mail,
   Menu,
-  Phone,
   MapPin,
   LogIn,
   UserPlus,
@@ -22,7 +19,6 @@ import {
 import { formatCurrency } from "../../utils/currency";
 import {
   getUnitTypeLabel,
-  getPriceLabel,
 } from "../../utils/propertyHelpers";
 
 
@@ -30,15 +26,9 @@ export default function LandingPage() {
   const { units, contentSettings, addInquiry } = useData();
   const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
   const [inquirySubmitted, setInquirySubmitted] = useState(false);
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-  const [containerWidth, setContainerWidth] = useState(0);
   const navigate = useNavigate();
-  const visibleCards = 3;
-  const gap = 24; // px
-  const cardWidth = (containerWidth - gap * (visibleCards - 1)) / visibleCards;
   const [inquiryForm, setInquiryForm] = useState({
     first_name: "",
     last_name: "",
@@ -47,76 +37,95 @@ export default function LandingPage() {
     message: "",
   });
 
-  useEffect(() => {
-    if (isMenuOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-  }, [isMenuOpen]);
+    useEffect(() => {
+      document.body.style.overflow = isMenuOpen ? "hidden" : "";
 
-  // Close menu on desktop resize
-  useEffect(() => {
-    const handleResize = () => { if (window.innerWidth >= 768) setIsMenuOpen(false); };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+      return () => {
+        document.body.style.overflow = "";
+      };
+    }, [isMenuOpen]);
 
-  // Filter for slider
-  const featuredProperties = units.filter((p) => p.available && p.type !== "parking_slot");
-  const announcementsToScroll =
-  contentSettings.announcements.length > 3
-    ? contentSettings.announcements.concat(contentSettings.announcements)
-    : contentSettings.announcements;
+    // Close menu on desktop resize
+    useEffect(() => {
+      const handleResize = () => { if (window.innerWidth >= 768) setIsMenuOpen(false); };
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
-  const historyImages =
-  contentSettings.historyImages && contentSettings.historyImages.length > 0
-    ? contentSettings.historyImages
-    : contentSettings.historyImage
-    ? [contentSettings.historyImage]
-    : ['/fallback-history.jpg'];
+    const featuredProperties = useMemo(
+    () => units.filter((p) => p.available && p.type !== "parking_slot"),
+    [units]
+  );
+
+  const announcementsToScroll = useMemo(
+    () =>
+      contentSettings.announcements.length > 3
+        ? contentSettings.announcements.concat(contentSettings.announcements)
+        : contentSettings.announcements,
+    [contentSettings.announcements]
+  );
+
+  const historyImages = useMemo(
+    () =>
+      contentSettings.history.images && contentSettings.history.images.length > 0
+        ? contentSettings.history.images
+        : contentSettings.history.image
+        ? [contentSettings.history.image]
+        : ["/fallback-history.webp"],
+    [contentSettings.history.images, contentSettings.history.image]
+  );
   const [historySlide, setHistorySlide] = useState(0);
 
-  
+  const closeMenu = useCallback(() => setIsMenuOpen(false), []);
 
+  const openUnit = useCallback((unitId: string) => {
+    setSelectedUnit(unitId);
+  }, []);
 
-  const handleInquirySubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    addInquiry(inquiryForm);
-    setInquirySubmitted(true);
-    setInquiryForm({
-      first_name: "",
-      last_name: "",
-      email: "",
-      subject: "",
-      message: ""
-    });
-    setTimeout(() => setInquirySubmitted(false), 3000);
-  };
+  const closeUnit = useCallback(() => {
+    setSelectedUnit(null);
+  }, []);
 
-  const Unit = selectedUnit ? units.find((p) => p.id === selectedUnit) : null;
+  const handleInquirySubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      addInquiry(inquiryForm);
+      setInquirySubmitted(true);
+      setInquiryForm({
+        first_name: "",
+        last_name: "",
+        email: "",
+        subject: "",
+        message: "",
+      });
+      setTimeout(() => setInquirySubmitted(false), 3000);
+    },
+    [addInquiry, inquiryForm]
+  );
+
+  const Unit = useMemo(
+    () => (selectedUnit ? units.find((p) => p.id === selectedUnit) ?? null : null),
+    [selectedUnit, units]
+  );
   // Inside your LandingPage component, above the return statement
   useEffect(() => {
-  if (featuredProperties.length === 0) return;
+    if (featuredProperties.length <= 1 || selectedUnit) return;
 
-  const timer = setInterval(() => {
-    if (!selectedUnit) {
+    const timer = window.setInterval(() => {
       setCurrentSlide((prev) =>
         prev === featuredProperties.length - 1 ? 0 : prev + 1
       );
-    }
-  }, 7000);
+    }, 7000);
 
-  return () => clearInterval(timer);
-}, [featuredProperties.length, selectedUnit]);
+    return () => window.clearInterval(timer);
+  }, [featuredProperties.length, selectedUnit]);
 
   useEffect(() => {
-    setCurrentImageIndex(0);
-  }, [selectedUnit]);
+    if (currentSlide > Math.max(featuredProperties.length - 1, 0)) {
+      setCurrentSlide(0);
+    }
+  }, [currentSlide, featuredProperties.length]);
 
-  console.log("units from context:", units);
-console.log("featuredProperties:", featuredProperties);
-console.log("contentSettings:", contentSettings);
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-slate-900 font-sans">
@@ -167,8 +176,8 @@ console.log("contentSettings:", contentSettings);
           className="fixed right-0 top-0 h-full w-[280px] sm:w-[320px] bg-white z-[70] shadow-2xl md:hidden flex flex-col"
         >
           <div className="p-5 border-b border-slate-100 flex justify-between items-center">
-            <span className="font-bold text-slate-800">{contentSettings.menuTitle}</span>
-            <button onClick={() => setIsMenuOpen(false)} className="p-2 hover:bg-slate-100 rounded-full">
+            <span className="font-bold text-slate-800">{contentSettings.menu.title}</span>
+            <button onClick={closeMenu} className="p-2 hover:bg-slate-100 rounded-full">
               <X className="size-6 text-slate-500" />
             </button>
           </div>
@@ -200,9 +209,11 @@ console.log("contentSettings:", contentSettings);
       <section className="relative min-h-[60vh] md:h-[85vh] flex items-center overflow-hidden">
         <div className="absolute inset-0 z-0">
           <img
-            src={contentSettings.heroImage ?? '/fallback-hero.jpg'}
-            className="w-full h-full object-cover"
+            src={contentSettings.hero.image || "/fallback-hero.webp"}
             alt="Hero"
+            decoding="async"
+            fetchPriority="high"
+            className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-slate-900/90 via-slate-900/40 to-transparent"></div>
         </div>
@@ -215,28 +226,28 @@ console.log("contentSettings:", contentSettings);
             className="max-w-2xl"
           >
             <span className="inline-block px-4 py-1.5 mb-6 text-xs font-bold tracking-widest uppercase bg-blue-600 text-white rounded-full">
-              {contentSettings.heroBadge}
+              {contentSettings.hero.badge}
             </span>
             <h1 className="text-2xl sm:text-3xl md:text-5xl lg:text-7xl font-extrabold text-white mb-4 sm:mb-6 leading-[1.1]">
-              {contentSettings.heroTitle}
+              {contentSettings.hero.title}
             </h1>
             <p className="text-base sm:text-lg text-slate-200 mb-6 sm:mb-10 leading-relaxed">
-              {contentSettings.heroSubtitle}
+              {contentSettings.hero.subtitle}
             </p>
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
               <Link
-                to={contentSettings.heroPrimaryCtaLink || '/register'}
+                to={contentSettings.hero.primaryCtaLink || '/register'}
                 className="px-8 py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2"
               >
-                {contentSettings.heroPrimaryCtaText}
+                {contentSettings.hero.primaryCtaText}
                 <ArrowRight className="size-5" />
               </Link>
 
               <a
-                href={contentSettings.heroSecondaryCtaLink || '#properties'}
+                href={contentSettings.hero.secondaryCtaLink || '#properties'}
                 className="px-8 py-4 bg-white/10 backdrop-blur-md border border-white/20 text-white font-bold rounded-xl hover:bg-white/20 transition-all"
               >
-                {contentSettings.heroSecondaryCtaText}
+                {contentSettings.hero.secondaryCtaText}
               </a>
             </div>
           </motion.div>
@@ -247,7 +258,7 @@ console.log("contentSettings:", contentSettings);
       {/* Announcements: Modern horizontal scroll */}
       {contentSettings.announcements.length > 0 && (
         <section className="bg-yellow-50 py-4 overflow-hidden relative">
-          <div className="max-w-7xl mx-auto px-4 sm:px-4 sm:px-6 lg:px-8 lg:px-8">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <motion.div
   className="flex gap-6 whitespace-nowrap"
   animate={{ x: ["0%", "-100%"] }}
@@ -276,47 +287,47 @@ console.log("contentSettings:", contentSettings);
     viewport={{ once: true }}
     transition={{ duration: 0.8 }}
   >
-    {contentSettings.aboutUs?.trim() ? (
+    {contentSettings.about.text?.trim() ? (
       <>
         <div className="space-y-4">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600">
-            {contentSettings.aboutEyebrow}
+            {contentSettings.about.eyebrow}
           </p>
 
           <h2 className="text-2xl md:text-4xl font-bold text-slate-900">
-            {contentSettings.aboutTitle}
+            {contentSettings.about.title}
           </h2>
 
           <p className="max-w-2xl mx-auto text-slate-600 text-base md:text-lg leading-relaxed">
-            {contentSettings.aboutUs}
+            {contentSettings.about.text}
           </p>
         </div>
 
         <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-4 text-left">
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
             <h3 className="text-sm font-bold text-slate-900 mb-2">
-              {contentSettings.aboutCard1Title}
+              {contentSettings.about.cards[0]?.title}
             </h3>
             <p className="text-sm text-slate-500 leading-relaxed">
-              {contentSettings.aboutCard1Text}
+              {contentSettings.about.cards[0]?.text}
             </p>
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
             <h3 className="text-sm font-bold text-slate-900 mb-2">
-              {contentSettings.aboutCard2Title}
+              {contentSettings.about.cards[1]?.title}
             </h3>
             <p className="text-sm text-slate-500 leading-relaxed">
-              {contentSettings.aboutCard2Text}
+              {contentSettings.about.cards[1]?.text}
             </p>
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
             <h3 className="text-sm font-bold text-slate-900 mb-2">
-              {contentSettings.aboutCard3Title}
+              {contentSettings.about.cards[2]?.title}
             </h3>
             <p className="text-sm text-slate-500 leading-relaxed">
-              {contentSettings.aboutCard3Text}
+              {contentSettings.about.cards[2]?.text}
             </p>
           </div>
         </div>
@@ -328,11 +339,11 @@ console.log("contentSettings:", contentSettings);
         </div>
 
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600">
-          {contentSettings.aboutEyebrow || 'Who We Are'}
+          {contentSettings.about.eyebrow || 'Who We Are'}
         </p>
 
         <h2 className="mt-3 text-2xl md:text-4xl font-bold text-slate-900">
-          {contentSettings.aboutTitle || 'About Us'}
+          {contentSettings.about.title || 'About Us'}
         </h2>
 
         <p className="mt-4 max-w-2xl mx-auto text-slate-500 text-base md:text-lg leading-relaxed">
@@ -344,7 +355,7 @@ console.log("contentSettings:", contentSettings);
 </section>
 
 <section className="py-16 md:py-24 bg-white px-4 sm:px-6 lg:px-8">
-  {contentSettings.historyText?.trim() ? (
+  {contentSettings.history.text?.trim() ? (
     <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
       {/* Slideshow / Image */}
       <motion.div
@@ -357,7 +368,9 @@ console.log("contentSettings:", contentSettings);
         <div className="relative overflow-hidden rounded-[2rem] shadow-xl border border-slate-200">
           <img
             src={historyImages[historySlide]}
-            alt={contentSettings.historyTitle || `History slide ${historySlide + 1}`}
+            alt={contentSettings.history.title || `History slide ${historySlide + 1}`}
+            loading="lazy"
+            decoding="async"
             className="w-full h-[280px] sm:h-[380px] lg:h-[460px] object-cover transition-all duration-500"
           />
 
@@ -412,48 +425,48 @@ console.log("contentSettings:", contentSettings);
         className="space-y-5"
       >
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600">
-          {contentSettings.historyEyebrow}
+          {contentSettings.history.eyebrow}
         </p>
 
         <h2 className="text-2xl md:text-4xl font-bold text-slate-900 leading-tight">
-          {contentSettings.historyTitle || 'Growing Through the Years'}
+          {contentSettings.history.title || 'Growing Through the Years'}
         </h2>
 
-        {contentSettings.historySubtitle && (
+        {contentSettings.history.subtitle && (
           <p className="text-slate-500 text-base md:text-lg leading-relaxed">
-            {contentSettings.historySubtitle}
+            {contentSettings.history.subtitle}
           </p>
         )}
 
         <p className="text-slate-600 text-base md:text-lg leading-relaxed whitespace-pre-line">
-          {contentSettings.historyText}
+          {contentSettings.history.text}
         </p>
 
         <div className="space-y-4 pt-2">
           <div className="border-l-2 border-blue-200 pl-4">
             <h3 className="font-semibold text-slate-900">
-              {contentSettings.historyPoint1Title}
+              {contentSettings.history.points[0]?.title}
             </h3>
             <p className="text-sm text-slate-500 mt-1">
-              {contentSettings.historyPoint1Text}
+              {contentSettings.history.points[0]?.text}
             </p>
           </div>
 
           <div className="border-l-2 border-blue-200 pl-4">
             <h3 className="font-semibold text-slate-900">
-              {contentSettings.historyPoint2Title}
+              {contentSettings.history.points[1]?.title}
             </h3>
             <p className="text-sm text-slate-500 mt-1">
-              {contentSettings.historyPoint2Text}
+              {contentSettings.history.points[1]?.text}
             </p>
           </div>
 
           <div className="border-l-2 border-blue-200 pl-4">
             <h3 className="font-semibold text-slate-900">
-              {contentSettings.historyPoint3Title}
+              {contentSettings.history.points[2]?.title}
             </h3>
             <p className="text-sm text-slate-500 mt-1">
-              {contentSettings.historyPoint3Text}
+              {contentSettings.history.points[2]?.text}
             </p>
           </div>
         </div>
@@ -473,11 +486,11 @@ console.log("contentSettings:", contentSettings);
         </div>
 
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600">
-          {contentSettings.historyEyebrow || 'Our History'}
+          {contentSettings.history.eyebrow || 'Our History'}
         </p>
 
         <h2 className="mt-3 text-2xl md:text-4xl font-bold text-slate-900">
-          {contentSettings.historyTitle || 'Our Story'}
+          {contentSettings.history.title || 'Our Story'}
         </h2>
 
         <p className="mt-4 max-w-2xl mx-auto text-slate-500 text-base md:text-lg leading-relaxed">
@@ -499,11 +512,11 @@ console.log("contentSettings:", contentSettings);
         </div>
 
         <h3 className="text-lg md:text-2xl font-bold text-slate-900">
-          {contentSettings.featuredEmptyTitle}
+          {contentSettings.featured.emptyTitle}
         </h3>
 
         <p className="mt-2 text-sm md:text-base text-slate-500 max-w-xl mx-auto">
-          {contentSettings.featuredEmptyText}
+          {contentSettings.featured.emptyText}
         </p>
       </div>
     </div>
@@ -514,10 +527,10 @@ console.log("contentSettings:", contentSettings);
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
           <div>
             <h2 className="text-xl sm:text-2xl md:text-4xl font-bold text-slate-900 mb-2">
-              {contentSettings.featuredTitle}
+              {contentSettings.featured.title}
             </h2>
             <p className="text-slate-500 text-sm md:text-lg">
-              {contentSettings.featuredSubtitle}
+              {contentSettings.featured.subtitle}
             </p>
           </div>
 
@@ -525,7 +538,7 @@ console.log("contentSettings:", contentSettings);
             to="/spaces"
             className="text-sm md:text-base flex items-center gap-2 text-blue-600 font-bold hover:text-blue-700 transition-colors group"
           >
-            {contentSettings.featuredViewAllText}
+            {contentSettings.featured.viewAllText}
             <ArrowRight className="size-4 md:size-5 group-hover:translate-x-1 transition-transform" />
           </Link>
         </div>
@@ -542,18 +555,17 @@ console.log("contentSettings:", contentSettings);
             <div
               key={Unit.id}
               className="w-full flex-shrink-0 cursor-pointer"
-              onClick={() => {
-                setSelectedUnit(Unit.id);
-                setCurrentImageIndex(0);
-              }}
+              onClick={() => openUnit(Unit.id)}
             >
               <div className="relative bg-slate-50 rounded-2xl md:rounded-[2rem] overflow-hidden border border-slate-100 mx-1">
                 <div className="grid md:grid-cols-2">
                   <div className="relative h-[200px] sm:h-[250px] md:h-[500px] overflow-hidden">
                     <motion.img
                       whileHover={{ scale: 1.05 }}
-                      src={Unit.images?.[0] || "/fallback-property.jpg"}
+                      src={Unit.images?.[0] || "/fallback-property.webp"}
                       alt={Unit.name}
+                      loading="lazy"
+                      decoding="async"
                       className="w-full h-full object-cover"
                     />
                     <div className="absolute top-4 left-4 px-3 py-1 bg-white/90 backdrop-blur-md rounded-full text-[10px] md:text-xs font-bold text-blue-600 shadow-sm">
@@ -641,18 +653,19 @@ console.log("contentSettings:", contentSettings);
     <div className="rounded-2xl overflow-hidden shadow-lg h-full">
 
       <div className="bg-blue-600 text-white px-4 sm:px-6 lg:px-8 py-4">
-        <h4 className="text-xl font-bold">{contentSettings.locationTitle}</h4>
-        <p className="text-sm">{contentSettings.locationSubtitle}</p>
+        <h4 className="text-xl font-bold">{contentSettings.contact.locationTitle}</h4>
+        <p className="text-sm">{contentSettings.contact.locationSubtitle}</p>
       </div>
       <iframe
-        src={`https://www.google.com/maps?q=${encodeURIComponent(contentSettings.contactAddress)}&output=embed`}
-
+        src={`https://www.google.com/maps?q=${encodeURIComponent(contentSettings.contact.address)}&output=embed`}
         width="100%"
         height="100%"
         className="border-0 h-[300px] sm:h-[400px]"
         allowFullScreen
         loading="lazy"
-      ></iframe>
+        referrerPolicy="no-referrer-when-downgrade"
+        title="Business location map"
+      />
     </div>
 
     {/* Modern Form */}
@@ -662,8 +675,8 @@ console.log("contentSettings:", contentSettings);
   viewport={{ once: true }}
   transition={{ duration: 0.8 }}
 >
-  <h3 className="text-lg font-semibold mb-4">{contentSettings.contactTitle}</h3>
-  <p className="text-gray-500 text-sm mb-6">{contentSettings.contactSubtitle}</p>
+  <h3 className="text-lg font-semibold mb-4">{contentSettings.contact.title}</h3>
+  <p className="text-gray-500 text-sm mb-6">{contentSettings.contact.subtitle}</p>
   <form onSubmit={handleInquirySubmit} className="space-y-4">
   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
     <input
@@ -750,10 +763,10 @@ console.log("contentSettings:", contentSettings);
     {/* Branding & Social */}
     <div className="space-y-4">
       <h2 className="text-2xl font-bold text-blue-600">
-        {contentSettings.footerBrandName}
+        {contentSettings.footer.brandName}
       </h2>
       <p className="text-gray-400 max-w-xs">
-        {contentSettings.footerBrandDescription}
+        {contentSettings.footer.brandDescription}
       </p>
       <div className="flex gap-4 mt-2">
         <a href="#" className="p-2 rounded-full bg-blue-600 hover:bg-blue-700 transition-colors">
@@ -768,7 +781,7 @@ console.log("contentSettings:", contentSettings);
     {/* Quick Links */}
     <div className="space-y-4">
       <h3 className="text-lg font-semibold text-gray-100">
-        {contentSettings.footerQuickLinksTitle}
+        {contentSettings.footer.quickLinksTitle}
       </h3>
       <ul className="space-y-2 text-gray-400">
         <li>
@@ -787,25 +800,25 @@ console.log("contentSettings:", contentSettings);
     {/* Contact Info */}
     <div className="space-y-4">
       <h3 className="text-lg font-semibold text-gray-100">Get in Touch</h3>
-      <p className="text-gray-400">Email: <a href={`mailto:${contentSettings.contactEmail}`} className="hover:text-white">{contentSettings.contactEmail}</a></p>
-      <p className="text-gray-400">Phone: <a href={`tel:${contentSettings.contactPhone}`} className="hover:text-white">{contentSettings.contactPhone}</a></p>
-      <p className="text-gray-400">{contentSettings.contactAddress}</p>
+      <p className="text-gray-400">Email: <a href={`mailto:${contentSettings.contact.email}`} className="hover:text-white">{contentSettings.contact.email}</a></p>
+      <p className="text-gray-400">Phone: <a href={`tel:${contentSettings.contact.phone}`} className="hover:text-white">{contentSettings.contact.phone}</a></p>
+      <p className="text-gray-400">{contentSettings.contact.address}</p>
     </div>
 
   </div>
 
   {/* Bottom */}
   <div className="mt-12 border-t border-gray-800 pt-6 text-center text-gray-500 text-sm">
-  {contentSettings.footerCopyright}
+  {contentSettings.footer.copyright}
   <br />
-  {contentSettings.footerPrivacyText}
+  {contentSettings.footer.privacyText}
 </div>
 </footer>
 
       {Unit && (
       <UnitModal
         Unit={Unit}
-        onClose={() => setSelectedUnit(null)}
+        onClose={closeUnit}
       />
     )}
     </div>
