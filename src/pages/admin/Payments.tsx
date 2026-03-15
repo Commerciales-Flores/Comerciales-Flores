@@ -5,28 +5,36 @@ import { CreditCard, CheckCircle, Clock, Download, FileDown, X, XCircle, Search,
 import { formatCurrency } from '../../utils/currency';
 import Papa from 'papaparse';
 import AdminActionModal from '../../pages/admin/AdminActionModal';
+import { motion } from 'framer-motion';
+import EmptyState from '../../components/common/EmptyState';
 
 export default function AdminPayments() {
   const { payments, reservations, updatePayment, getUserById } = useData();
   const { sendPaymentNotification } = useNotifications();
-  const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'unpaid'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'paid' | 'unpaid' | 'partial'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPayment, setSelectedPayment] = useState<string | null>(null);
   const [proofImageUrl, setProofImageUrl] = useState<string | null>(null);
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
-  const filteredPayments = payments.filter(p => {
-    const reservation = reservations.find(r => r.id === p.reservationId);
-    const user = reservation ? getUserById(reservation.userId) : null;
-    const matchesStatus = filterStatus === 'all' || p.status === filterStatus;
-    const matchesSearch = p.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         p.reservationId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (user && `${user.first_name} ${user.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()));
-    return matchesStatus && matchesSearch;
-  });
+  const filteredPayments = payments.filter((p) => {
+  const reservation = reservations.find((r) => r.id === p.reservationId);
+  const user = reservation ? getUserById(reservation.userId) : null;
+  const matchesStatus = filterStatus === 'all' || p.status === filterStatus;
+
+  const matchesSearch =
+    (p.publicId ?? p.id).toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (reservation?.publicId ?? p.reservationId).toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (user?.publicId ?? user?.id ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    `${user?.first_name ?? ''} ${user?.last_name ?? ''}`.toLowerCase().includes(searchTerm.toLowerCase());
+
+  return matchesStatus && matchesSearch;
+});
 
   const sortedPayments = [...filteredPayments].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const hasNoPayments = payments.length === 0;
+  const hasNoSearchResults = payments.length > 0 && sortedPayments.length === 0;  
 
   const handleVerify = (paymentId: string, userId: string, amount: number) => {
     updatePayment(paymentId, { status: 'paid' });
@@ -64,10 +72,10 @@ export default function AdminPayments() {
   const paymentReservation = payment ? reservations.find(r => r.id === payment.reservationId) : null;
   const paymentUser = paymentReservation ? getUserById(paymentReservation.userId) : null;
 
-  const statusColors = {
-    paid: 'bg-green-100 text-green-800',
-    unpaid: 'bg-yellow-100 text-yellow-800',
-    partial: 'bg-blue-100 text-blue-800'
+  const statusColors: Record<string, string> = {
+    paid: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    unpaid: 'bg-amber-100 text-amber-700 border-amber-200',
+    partial: 'bg-blue-100 text-blue-700 border-blue-200'
   };
 
   return (
@@ -88,7 +96,10 @@ export default function AdminPayments() {
         </button>
       </div>
 
+      
+
       {/* SEARCH & FILTERS BOX */}
+      {!hasNoPayments && (
       <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-4 shadow-sm">
         
         {/* TOP ROW: Search Bar (Mobile gets icons beside it) */}
@@ -121,7 +132,7 @@ export default function AdminPayments() {
         {/* BOTTOM ROW: DESKTOP ONLY (Original Style) */}
         <div className="hidden lg:flex items-center justify-between gap-4 border-t border-gray-200 pt-4">
           <div className="flex gap-2">
-            {(['all', 'paid', 'unpaid'] as const).map((status) => (
+            {(['all', 'paid', 'partial', 'unpaid'] as const).map((status) => (
               <button
                 key={status}
                 onClick={() => setFilterStatus(status)}
@@ -129,7 +140,13 @@ export default function AdminPayments() {
                   filterStatus === status ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                {status === 'all' ? 'All' : status === 'paid' ? 'Verified' : 'Pending'}
+                {status === 'all'
+                  ? 'All'
+                  : status === 'paid'
+                  ? 'Verified'
+                  : status === 'partial'
+                  ? 'Partial'
+                  : 'Pending'}
                 {status !== 'all' && (
                   <span className="ml-2 bg-black/10 text-xs px-2 py-0.5 rounded-full">
                     {payments.filter(p => p.status === status).length}
@@ -150,18 +167,25 @@ export default function AdminPayments() {
         {/* MOBILE COLLAPSIBLE FILTERS */}
         {showMobileFilters && (
           <div className="flex lg:hidden gap-2 pt-2 animate-in fade-in slide-in-from-top-1">
-             {(['all', 'paid', 'unpaid'] as const).map((status) => (
+             {(['all', 'paid', 'partial', 'unpaid'] as const).map((status) => (
               <button
                 key={status}
                 onClick={() => setFilterStatus(status)}
                 className={`flex-1 py-2 text-xs rounded-lg font-bold ${filterStatus === status ? 'bg-blue-100 text-blue-700' : 'bg-gray-50 text-gray-500'}`}
               >
-                {status === 'all' ? 'All' : status === 'paid' ? 'Verified' : 'Pending'}
+                {status === 'all'
+                  ? 'All'
+                  : status === 'paid'
+                  ? 'Verified'
+                  : status === 'partial'
+                  ? 'Partial'
+                  : 'Pending'}
               </button>
             ))}
           </div>
         )}
       </div>
+      )}
 
       {/* MOBILE ONLY FLOATING ADD BUTTON */}
       <button
@@ -173,25 +197,53 @@ export default function AdminPayments() {
 
       {/* MOBILE CARD VIEW */}
 <div className="grid grid-cols-1 gap-4 lg:hidden">
-  {sortedPayments.length === 0 ? (
-    <div className="bg-white rounded-2xl border border-dashed border-gray-300 p-8 text-center text-gray-400">
-      <X className="size-10 mx-auto mb-3" />
-      No payments found
-    </div>
+  {hasNoPayments ? (
+  <EmptyState
+    icon={<CreditCard className="size-10 text-blue-500" />}
+    title="No payments yet"
+    description="Payment records will appear here once customers submit payments or an administrator creates one."
+  />
+)  : hasNoSearchResults ? (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+      className="bg-white rounded-2xl border border-gray-200 shadow-sm py-16 px-6"
+    >
+      <div className="flex flex-col items-center justify-center text-center">
+        <div className="bg-gray-50 p-5 rounded-3xl shadow-sm mb-4">
+          <Search className="size-10 text-gray-400" />
+        </div>
+        <h3 className="text-lg font-bold text-gray-900">No matching payments found</h3>
+        <p className="text-sm text-gray-500 mt-1 max-w-sm">
+          Try adjusting your search term or payment status filter.
+        </p>
+      </div>
+    </motion.div>
   ) : (
     sortedPayments.map((p) => {
       const reservation = reservations.find(r => r.id === p.reservationId);
+      
       const user = reservation ? getUserById(reservation.userId) : null;
+      
       return (
         <div key={p.id} className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col gap-2">
           <div className="flex justify-between items-center">
-            <span className="font-mono text-xs text-gray-400">{p.id}</span>
-            <span className={`px-2 py-1 text-[10px] font-semibold rounded-full ${statusColors[p.status]}`}>
-              {p.status === 'paid' ? 'VERIFIED' : 'PENDING'}
+            <span className="font-mono text-xs text-gray-400">{p.publicId ?? p.id}</span>
+            <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full border ${statusColors[p.status]}`}>
+              {
+                p.status === 'paid'
+                  ? 'VERIFIED'
+                  : p.status === 'partial'
+                  ? 'PARTIAL'
+                  : 'PENDING'
+              }
             </span>
           </div>
           <div className="text-sm font-semibold text-gray-900 truncate">{user ? `${user.first_name} ${user.last_name}` : 'Unknown User'}</div>
-          <div className="text-sm text-gray-600 truncate">Reservation: {p.reservationId}</div>
+          <div className="text-sm text-gray-600 truncate">
+            Reservation: {reservation?.publicId ?? p.reservationId}
+          </div>
           <div className="text-sm font-semibold text-gray-900">{formatCurrency(p.amount)}</div>
           <div className="flex gap-2 mt-2">
             <button onClick={() => setSelectedPayment(p.id)} className="flex-1 p-2 text-blue-600 hover:bg-blue-50 rounded-lg flex justify-center items-center gap-1">
@@ -215,51 +267,162 @@ export default function AdminPayments() {
 </div>
 
       {/* TABLE SECTION (Remains the same for all columns) */}
-      <div className="hidden lg:block bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr className="whitespace-nowrap">
-                {['User ID', 'Payment ID', 'Reservation ID', 'Amount', 'Date', 'Status', 'Proof', 'Actions'].map((h) => (
-                  <th key={h} className="px-6 py-3 text-left text-xs text-gray-500 uppercase tracking-wider">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {sortedPayments.map((p) => (
-                <tr key={p.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4 text-sm text-gray-500 font-mono">{p.userId}</td>
-                  <td className="px-6 py-4 text-sm text-gray-500 font-mono">{p.id}</td>
-                  <td className="px-6 py-4 text-sm text-gray-500 font-mono">{p.reservationId}</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-gray-900">{formatCurrency(p.amount)}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{new Date(p.date).toLocaleDateString()}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 text-xs rounded-full font-semibold ${statusColors[p.status]}`}>
-                      {p.status === 'paid' ? 'VERIFIED' : 'PENDING'}
+      <div className="hidden lg:block bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+  {hasNoPayments ? (
+  <EmptyState
+    icon={<CreditCard className="size-10 text-blue-500" />}
+    title="No payments yet"
+    description="Payment records will appear here once customers submit payments or an administrator creates one."
+  />
+) : (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left">
+        <thead className="bg-gray-50 border-b border-gray-200">
+          <tr>
+            {['User ID', 'Payment ID', 'Reservation ID', 'Amount', 'Date', 'Status', 'Proof', 'Actions'].map((h) => (
+              <th key={h} className="px-6 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-widest">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+
+        <tbody className="divide-y divide-gray-100">
+          {hasNoSearchResults ? (
+            <tr>
+              <td colSpan={8} className="px-6 py-20 text-center">
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25 }}
+                  className="flex flex-col items-center justify-center text-center"
+                >
+                  <div className="bg-gray-50 p-5 rounded-3xl shadow-sm mb-4">
+                    <Search className="size-10 text-gray-400" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900">No matching payments found</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Try adjusting your search term or payment status filter.
+                  </p>
+                </motion.div>
+              </td>
+            </tr>
+          ) : (
+            sortedPayments.map((p) => {
+              const reservation = reservations.find((r) => r.id === p.reservationId);
+              const user = reservation ? getUserById(reservation.userId) : null;
+              const progress = Math.min(
+                reservation && reservation.totalAmount > 0
+                  ? (reservation.paidAmount / reservation.totalAmount) * 100
+                  : 0,
+                100
+              );
+
+              return (
+                <tr key={p.id} className="hover:bg-blue-50/30 transition-colors">
+                  <td className="px-6 py-4 text-xs font-mono text-gray-400 w-[140px]">
+                    {user?.publicId ?? p.userId}
+                  </td>
+
+                  <td className="px-6 py-4 text-xs font-mono text-gray-400 w-[140px]">
+                    {p.publicId ?? p.id}
+                  </td>
+
+                  <td className="px-6 py-4 text-xs font-mono text-gray-400 w-[140px]">
+                    {reservation?.publicId ?? p.reservationId}
+                  </td>
+
+                 <td className="px-6 py-4 w-[150px]">
+                  <div className="flex justify-between text-xs text-gray-500 mb-1">
+                    <span>
+                      {formatCurrency(reservation?.paidAmount ?? 0)} / {formatCurrency(reservation?.totalAmount ?? 0)}
+                    </span>
+                  </div>
+
+                  <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all ${
+                        p.status === 'paid'
+                          ? 'bg-emerald-500'
+                          : p.status === 'partial'
+                          ? 'bg-blue-500'
+                          : 'bg-amber-500'
+                      }`}
+                      style={{
+                        width: `${
+                          progress > 0
+                            ? Math.max(Math.min(progress, 100), 2)
+                            : 0
+                        }%`
+                      }}
+                    />
+                  </div>
+
+                  <div className="text-[10px] text-gray-400 mt-1 text-right">
+                    {progress < 1 ? progress.toFixed(2) : progress.toFixed(0)}%
+                  </div>
+                </td>
+
+                  <td className="px-6 py-4 text-sm text-gray-500 w-[140px]">
+                    {new Date(p.date).toLocaleDateString()}
+                  </td>
+
+                  <td className="px-6 py-4 w-[120px]">
+                    <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full ${statusColors[p.status]}`}>
+                      {p.status === 'paid' ? 'VERIFIED' : p.status.toUpperCase()}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm">
+
+                  <td className="px-6 py-4 text-sm w-[120px]">
                     {p.proofOfPayment ? (
-                      <button onClick={() => setProofImageUrl(p.proofOfPayment || null)} className="text-blue-600 hover:underline">View Proof</button>
-                    ) : <span className="text-gray-400">N/A</span>}
+                      <button
+                        onClick={() => setProofImageUrl(p.proofOfPayment || null)}
+                        className="text-blue-600 hover:underline"
+                      >
+                        View Proof
+                      </button>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex gap-2">
-                      <button onClick={() => setSelectedPayment(p.id)} className="p-1 text-blue-600 hover:bg-blue-50 rounded"><Eye className="size-4" /></button>
+
+                  <td className="px-6 py-4 w-[120px]">
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setSelectedPayment(p.id)}
+                        className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg"
+                      >
+                        <Eye className="size-4" />
+                      </button>
+
                       {p.status === 'unpaid' && (
                         <>
-                          <button onClick={() => handleVerify(p.id, p.userId, p.amount)} className="p-1 text-green-600 hover:bg-green-50 rounded"><CheckCircle className="size-4" /></button>
-                          <button onClick={() => handleReject(p.id)} className="p-1 text-red-600 hover:bg-red-50 rounded"><XCircle className="size-4" /></button>
+                          <button
+                            onClick={() => handleVerify(p.id, p.userId, p.amount)}
+                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                          >
+                            <CheckCircle className="size-4" />
+                          </button>
+
+                          <button
+                            onClick={() => handleReject(p.id)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                          >
+                            <XCircle className="size-4" />
+                          </button>
                         </>
                       )}
                     </div>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+  )}
+</div>
 
       {/* MODALS */}
       {isActionModalOpen && <AdminActionModal actionType="payment" onClose={() => setIsActionModalOpen(false)} />}
@@ -283,11 +446,11 @@ export default function AdminPayments() {
             <div className="p-6 space-y-4 overflow-y-auto">
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div><span className="text-gray-600">Payment ID:</span></div>
-                <div className="text-gray-900 font-mono">{payment.id}</div>
+                <div className="text-gray-900 font-mono">{payment.publicId ?? payment.id}</div>
                 <div><span className="text-gray-600">Reservation ID:</span></div>
-                <div className="text-gray-900 font-mono">{payment.reservationId}</div>
-                <div><span className="text-gray-600">Property:</span></div>
-                <div className="text-gray-900">{paymentReservation?.propertyName ?? <span className="text-red-500">Not Found</span>}</div>
+                <div className="text-gray-900 font-mono">{paymentReservation?.publicId ?? payment.reservationId}</div>
+                <div><span className="text-gray-600">Unit:</span></div>
+                <div className="text-gray-900">{paymentReservation?.unitName ?? <span className="text-red-500">Not Found</span>}</div>
                 <div><span className="text-gray-600">Amount:</span></div>
                 <div className="text-gray-900 font-semibold">{formatCurrency(payment.amount)}</div>
                 <div><span className="text-gray-600">Method:</span></div>

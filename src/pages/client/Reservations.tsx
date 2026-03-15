@@ -4,22 +4,22 @@ import { useData } from '../../contexts/DataContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
 Calendar, Clock, MapPin, CreditCard, FileText,
-X, Filter, ChevronRight, ChevronDown, Inbox
+X, Filter, ChevronRight, ChevronDown, Inbox, Notebook
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
-import { getPropertyTypeLabel } from '../../utils/propertyHelpers';
+import { getUnitTypeLabel } from '../../utils/propertyHelpers';
 
-type FilterStatus = 'all' | 'pending' | 'approved' | 'rejected';
+type FilterStatus = 'all' | 'pending' | 'confirmed' | 'cancelled';
 
 export default function ClientReservations() {
 const { user } = useAuth();
-const { getReservationsByUserId, properties, deleteReservation } = useData();
+const { getReservationsByUserId, units, deleteReservation } = useData();
 const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
 const [expandedId, setExpandedId] = useState<string | null>(null);
 const [showFilterMenu, setShowFilterMenu] = useState(false);
 
-const handleDeleteReservation = (reservationId: string, propertyName: string) => {
-if (window.confirm("Are you sure you want to cancel your reservation for \"" + propertyName + "\"?")) {
+const handleDeleteReservation = (reservationId: string, unitName: string) => {
+if (window.confirm("Are you sure you want to cancel your reservation for \"" + unitName + "\"?")) {
   deleteReservation(reservationId);
   }
 };
@@ -62,7 +62,7 @@ pending: '⏳', approved: '✓', rejected: '✗',
 confirmed: '✓', cancelled: '✗', completed: '✓'
 };
 
-const filterOptions: FilterStatus[] = ['all', 'pending', 'approved', 'rejected'];
+const filterOptions: FilterStatus[] = ['all', 'pending', 'confirmed', 'cancelled'];
 
 return (
 <div className="bg-gray-50 min-h-screen">
@@ -81,15 +81,18 @@ return (
       </header>
 
     {/* Mobile Filter Trigger */}
-    <button
-      onClick={() => setShowFilterMenu(true)}
-      className="md:hidden p-3 bg-white border border-gray-200 rounded-2xl shadow-sm active:scale-95 transition"
-    >
-      <Filter className="size-5 text-gray-600" />
-    </button>
+    {userReservations.length > 0 && (
+      <button
+        onClick={() => setShowFilterMenu(true)}
+        className="md:hidden p-3 bg-white border border-gray-200 rounded-2xl shadow-sm active:scale-95 transition"
+      >
+        <Filter className="size-5 text-gray-600" />
+      </button>
+    )}
   </div>
 
   {/* Desktop Filter Tabs (Glass Effect) */}
+  {userReservations.length > 0 && (
   <div className="hidden md:flex gap-1 p-1 bg-gray-200/50 backdrop-blur-md rounded-2xl w-fit border border-white/50 shadow-inner">
     {filterOptions.map((status) => {
       const count = status === 'all' 
@@ -116,21 +119,35 @@ return (
       );
     })}
   </div>
+  )}
 
   {/* List Content */}
   <div className="space-y-4">
-    {sortedReservations.length === 0 ? (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-3xl border border-gray-100 p-16 text-center shadow-sm">
-        <Inbox className="size-16 text-gray-200 mx-auto mb-4" />
-        <h3 className="text-gray-600 font-bold text-lg">No reservations found</h3>
-        <p className="text-sm text-gray-500 mt-1">
-          {filterStatus === 'all' ? "You haven't made any reservations yet" : `No ${filterStatus} reservations`}
-        </p>
-      </motion.div>
-    ) : (
+   {sortedReservations.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="flex flex-col items-center justify-center py-20 text-center"
+          >
+            <div className="bg-blue-50 p-6 rounded-3xl shadow-sm mb-4">
+              <Notebook className="size-12 text-blue-500" />
+            </div>
+
+            <h3 className="text-lg font-bold text-gray-900">
+              No reservations found
+            </h3>
+
+            <p className="text-gray-500 max-w-xs text-sm mt-1">
+              {filterStatus === 'all'
+                ? "You haven't made any reservations yet."
+                : `No ${filterStatus} reservations found.`}
+            </p>
+          </motion.div>
+        )  : (
       <div className="grid gap-4">
             {sortedReservations.map((reservation) => {
-              const property = properties.find(p => p.id === reservation.propertyId);
+              const unit = units.find(p => p.id === reservation.unitId);
               const balance = reservation.totalAmount - reservation.paidAmount;
               const paymentProgress = (reservation.paidAmount / reservation.totalAmount) * 100;
               const isCardExpanded = !isMobile || expandedId === reservation.id;
@@ -150,16 +167,16 @@ return (
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-[10px] sm:text-xs text-blue-600 font-medium">
-                            {getPropertyTypeLabel(reservation.propertyType)}
+                            {getUnitTypeLabel(reservation.unitType)}
                           </span>
                           <span className={`px-2 py-0.5 text-[9px] sm:text-[10px] font-bold rounded-full border shadow-sm ${statusColors[reservation.status as keyof typeof statusColors]}`}>
                              {statusIcons[reservation.status as keyof typeof statusIcons]} {reservation.status.toUpperCase()}
                           </span>
                         </div>
-                        <h3 className="text-base sm:text-lg font-bold text-gray-900 truncate">{reservation.propertyName}</h3>
+                        <h3 className="text-base sm:text-lg font-bold text-gray-900 truncate">{reservation.unitName}</h3>
                         <div className="flex items-center gap-1.5 text-gray-500 mt-1">
                           <MapPin className="size-4 text-blue-600" />
-                          <span className="text-xs sm:text-sm truncate">{property?.location || 'N/A'}</span>
+                          <span className="text-xs sm:text-sm truncate">{unit?.location || 'N/A'}</span>
                         </div>
                       </div>
                       
@@ -186,8 +203,8 @@ return (
                       <div className="pl-1">
                         <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">Duration</p>
                         <p className="text-[11px] sm:text-xs font-semibold text-gray-900">
-                          {reservation.duration} {reservation.propertyType === 'rental_space' ? 'mos' : 
-                           reservation.propertyType === 'function_hall' ? 'days' : 'hrs'}
+                          {reservation.duration} {reservation.unitType === 'rental_space' ? 'mos' : 
+                           reservation.unitType === 'function_hall' ? 'days' : 'hrs'}
                         </p>
                       </div>
                     </div>
@@ -311,7 +328,7 @@ return (
                             </span>
                             {reservation.status === 'pending' && (
                               <button
-                                onClick={() => handleDeleteReservation(reservation.id, reservation.propertyName)}
+                                onClick={() => handleDeleteReservation(reservation.id, reservation.unitName)}
                                 className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 bg-red-600 text-white text-sm sm:text-base font-semibold rounded-xl hover:bg-red-700 transition-colors shadow-sm"
                               >
                                 Cancel Reservation
@@ -332,7 +349,7 @@ return (
 
   {/* MOBILE FILTER BOTTOM SHEET */}
   <AnimatePresence>
-    {showFilterMenu && (
+    {showFilterMenu && userReservations.length > 0 && (
       <>
         <motion.div 
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}

@@ -7,7 +7,7 @@ import { useEffect } from 'react';
 
 export default function ClientDashboard() {
   const { user } = useAuth();
-  const { getReservationsByUserId, getPaymentsByUserId, properties, inquiries, notifications } = useData();
+  const { getReservationsByUserId, getPaymentsByUserId, units, inquiries, notifications } = useData();
 
   const userReservations = getReservationsByUserId(user?.id || '');
   const userPayments = getPaymentsByUserId(user?.id || '');
@@ -16,6 +16,7 @@ export default function ClientDashboard() {
   const upcomingReservations = userReservations.filter(b => new Date(b.startDate) > new Date() && b.status === 'confirmed');
   const pendingReservations = userReservations.filter(b => b.status === 'pending');
   const paymentReminders = userReservations.filter(b => b.status === 'confirmed' && b.paidAmount < b.totalAmount);
+  
 
   const recentReservations = [...userReservations]
     .sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime())
@@ -34,7 +35,7 @@ export default function ClientDashboard() {
       <header>
 
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
-          Welcome back, {user?.name}!
+          Welcome back, {user?.firstName}!
         </h1>
         <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
           Overview of your reservations, payments, and messages
@@ -115,7 +116,7 @@ export default function ClientDashboard() {
 
                     <div>
                       <p className="font-semibold text-gray-900 text-sm">
-                        {reservation.propertyName}
+                        {reservation.unitName}
                       </p>
                       <p className="text-[10px] text-gray-500">
                         ID: {reservation.id}
@@ -168,7 +169,7 @@ export default function ClientDashboard() {
                         <Calendar className="size-5 text-gray-400" />
                       </div>
                       <div>
-                        <p className="font-semibold text-gray-900">{reservation.propertyName}</p>
+                        <p className="font-semibold text-gray-900">{reservation.unitName}</p>
                         <p className="text-xs text-gray-500 italic">Requested {new Date(reservation.requestDate).toLocaleDateString()}</p>
                       </div>
                     </div>

@@ -1,100 +1,110 @@
-import { createContext, useContext, useState } from 'react';
-import type { ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import supabase from '../supabaseClient';
+import { makePublicId } from '../utils/publicId';
 
-export type PropertyType = 'rental_space' | 'function_hall' | 'parking_slot';
-export type ReservationStatus = 'pending' | 'approved' |'confirmed' | 'cancelled' | 'completed';
+
+// ─── Enums / Union Types ──────────────────────────────────────────────────────
+export type UnitType = 'rental_space' | 'function_hall' | 'parking_slot';
+export type ReservationStatus = 'pending' | 'approved' | 'confirmed' | 'completed' | 'cancelled' | 'rejected';
 export type PaymentStatus = 'unpaid' | 'partial' | 'paid';
 export type PaymentMethod = 'cash' | 'cheque' | 'gcash' | 'paymaya' | 'bank_transfer' | 'credit_card' | 'not_applicable';
 export type PaymentCycle = 'monthly' | 'quarterly' | 'full';
-export type InquiryStatus = 'open' | 'responded' | 'resolved';
-export type AuditModule = 'Customer' | 'Booking' |'Admin'|'System';
+export type InquiryStatus = 'open' | 'responded' | 'resolved'; 
 
-export type ParkingFormState = {
-  name: string;
-  contact: string;
-  vehicleInfo: string;
-  slotId: string;
-  paymentMethod: PaymentMethod | "";
-  reference: string;
-};
-
-export interface Property {
+// ─── Interfaces ───────────────────────────────────────────────────────────────
+export interface Unit {
   id: string;
+  propertyId: string;
   name: string;
-  type: PropertyType;
+  type: UnitType;
   description: string;
-  price: number; // hourly for parking, daily for hall, monthly for rental
+  price: number;
   images: string[];
   policies: string;
   capacity?: number;
   available: boolean;
   features: string[];
   location: string;
+  property?: {
+    id: string;
+    title: string;
+    address: string;
+  } | null;
 }
 
-// In src/contexts/DataContext.tsx
 export interface Reservation {
   id: string;
+  publicId?: string;
   userId: string;
-  propertyId: string;
-  propertyName: string;
-  propertyType: PropertyType;
-  requestDate: string;
+  unitId: string;
+  unitName: string;
+  unitType: UnitType;
   startDate: string;
   endDate: string;
   duration: number;
   totalAmount: number;
-  paidAmount: number;
   status: ReservationStatus;
   notes?: string;
-    paymentMethod?: PaymentMethod; // ✅ ADD THIS LINE
-
-  // --- Type-Specific Fields ---
-
-  // For Rental Spaces
-  paymentCycle?: 'monthly' | 'quarterly' | 'full';
+  paidAmount: number; 
+  requestDate: string;
+  paymentMethod?: PaymentMethod;
+  paymentCycle?: PaymentCycle;
   businessType?: string;
   paymentIntent?: 'pay_onsite' | 'pay_later';
-
-  // For Function Halls
   eventPurpose?: string;
   attendees?: number;
-
-  // For Parking Slots (and general visits)
   modeOfVisit: 'online' | 'onsite';
   vehicleType?: string;
   plateNumber?: string;
-
-  // ✅ FIX: Add the new, optional properties for parking slots
-  durationType?: 'hours' | 'days';
+  durationType?: 'hours' | 'days' | 'months' | 'years'; 
   slotId?: string;
   slotName?: string;
-
-  location?: string;
+  location?: string
 }
-
 
 export interface Payment {
   id: string;
-  reservationId: string;
+  publicId?: string;
+  reservationId: string; 
   userId: string;
   amount: number;
   method: PaymentMethod;
   status: PaymentStatus;
   proofOfPayment?: string;
   date: string;
-  notes: string;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface LedgerEntry {
+  id: string; 
+  userId: string;
+  amount: number;
+  date: string;
+}
+
+export interface AuditLog {
+  id: string;
+  publicId?: string; 
+  userId: string;
+  action: string;
+  targetTable: string;
+  targetId: string;
+  beforeValue?: Record<string, any>;
+  afterValue?: Record<string, any>;
+  changedFields?: Record<string, any>;
+  timestamp: string;
+  notes?: string;
 }
 
 export interface User {
   id: string;
-  // Allow all roles you use in your app
+  publicId?: string;
   role: 'admin' | 'client' | 'customer';
   first_name: string;
   last_name: string;
   email: string;
-  // Make these optional with '?' so all user types are valid,
-  // even if an admin user doesn't have an address or contact number.
   contactNumber?: string;
   address?: string;
   is_active?: boolean;
@@ -103,8 +113,8 @@ export interface User {
 export interface Inquiry {
   id: string;
   userId?: string;
-  first_name?: string;
-  last_name?: string;
+  first_name: string;
+  last_name: string;
   email: string;
   subject: string;
   message: string;
@@ -119,34 +129,85 @@ export interface Notification {
   userId: string;
   title: string;
   message: string;
-  type: 'appointment' | 'reservation' | 'payment' | 'inquiry' | 'system';
+  type: 'reservation' | 'payment' | 'inquiry' | 'system';
   read: boolean;
   date: string;
 }
 
 export interface BusinessSlot {
   id: string;
-  propertyId: string;
-  propertyName: string;
+  unitId: string;
+  unitName: string;
   date: string;
   startTime: string;
   endTime: string;
   price: number;
   available: boolean;
-  location?: string;
 }
 
 export interface ParkingSlot {
-  id: string; // e.g., 'slot-1', 'slot-2'
-  name: string; // e.g., 'Slot 1', 'Slot 2'
+  id: string;
+  name: string;
   imageUrl: string;
 }
 
 export interface ContentSettings {
-  heroImage?: string;
+  content_id?: string;
+
+  heroBadge: string;
   heroTitle: string;
   heroSubtitle: string;
+  heroImage?: string;
+  heroPrimaryCtaText: string;
+  heroPrimaryCtaLink: string;
+  heroSecondaryCtaText: string;
+  heroSecondaryCtaLink: string;
+
+  aboutEyebrow: string;
+  aboutTitle: string;
   aboutUs: string;
+
+  aboutCard1Title: string;
+  aboutCard1Text: string;
+  aboutCard2Title: string;
+  aboutCard2Text: string;
+  aboutCard3Title: string;
+  aboutCard3Text: string;
+
+  historyEyebrow: string;
+  historyTitle: string;
+  historySubtitle: string;
+  historyText: string;
+  historyImage: string;
+  historyImages?: string[];
+
+  historyPoint1Title: string;
+  historyPoint1Text: string;
+  historyPoint2Title: string;
+  historyPoint2Text: string;
+  historyPoint3Title: string;
+  historyPoint3Text: string;
+
+  featuredTitle: string;
+  featuredSubtitle: string;
+  featuredViewAllText: string;
+  featuredEmptyTitle: string;
+  featuredEmptyText: string;
+
+  contactTitle: string;
+  contactSubtitle: string;
+  locationTitle: string;
+  locationSubtitle: string;
+
+  footerBrandName: string;
+  footerBrandDescription: string;
+  footerQuickLinksTitle: string;
+  footerContactTitle: string;
+  footerCopyright: string;
+  footerPrivacyText: string;
+
+  menuTitle: string;
+
   contactEmail: string;
   contactPhone: string;
   contactAddress: string;
@@ -154,57 +215,52 @@ export interface ContentSettings {
   policies: string;
 }
 
-export interface AuditLog {
-  id: string;
-  action: string;
-  target: string;
-  performedBy: AuditModule;
-  date: string;
-  details?: string;
-}
-
-export type Location = 
-  | 'Quezon City'; // add more as needed
-
-const locations: Location[] = [
-  'Quezon City'
-];
-
+// ─── Context Type ─────────────────────────────────────────────────────────────
 interface DataContextType {
   users: User[];
-  properties: Property[];
+  units: Unit[];
   reservations: Reservation[];
-  auditLogs: AuditLog[]; 
   payments: Payment[];
+  ledgers: LedgerEntry[];
+  auditLogs: AuditLog[];
   inquiries: Inquiry[];
   notifications: Notification[];
   businessSlots: BusinessSlot[];
-  locations: Location[];
   contentSettings: ContentSettings;
-  addUser: (user: Omit<User, 'id'>) => void;
-  addAuditLog: (log: Omit<AuditLog, 'id' | 'date'>) => void;
-  addProperty: (property: Omit<Property, 'id'>) => void;
-  updateProperty: (id: string, property: Partial<Property>) => void;
-  deleteProperty: (id: string) => void;
   parkingSlots: ParkingSlot[];
-  addReservation: (
-    reservation: Omit<Reservation, 'id' | 'requestDate' | 'status' | 'paidAmount'>
-    ) => string;
-  updateReservation: (id: string, reservation: Partial<Reservation>) => void;
+
+  addUnit: (unit: Omit<Unit, 'id'>) => Promise<void>;
+  updateUnit: (id: string, unit: Partial<Unit>) => Promise<void>;
+  deleteUnit: (id: string) => Promise<void>;
+
+  addReservation: (reservation: Omit<Reservation, 'id' | 'requestDate' | 'status' | 'paidAmount'>) => Promise<string>;
+  updateReservation: (id: string, reservation: Partial<Reservation>) => Promise<void>;
   deleteReservation: (id: string) => void;
-  addPayment: (payment: Omit<Payment, 'id' | 'date'>) => void;
-  updatePayment: (id: string, payment: Partial<Payment>) => void;
-  addInquiry: (inquiry: Omit<Inquiry, 'id' | 'date' | 'status'>) => void;
-  updateInquiry: (id: string, inquiry: Partial<Inquiry>) => void;
-  addNotification: (notification: Omit<Notification, 'id' | 'date' | 'read'>) => void;
-  markNotificationRead: (id: string) => void;
-  markAllNotificationsRead: (userId: string) => void;
-  deleteNotification: (id: string) => void;
+
+  addPayment: (payment: Omit<Payment, 'id' | 'createdAt' | 'updatedAt' | 'date'>) => Promise<string>;
+  updatePayment: (id: string, payment: Partial<Payment>) => Promise<void>;
+  
+  uploadPaymentProof: (file: File) => Promise<string | null>;
+  uploadUnitImage: (file: File) => Promise<string | null>;
+
+  addLedgerEntry: (entry: Omit<LedgerEntry, 'id'>) => Promise<string>;
+  addAuditLog: (log: Omit<AuditLog, 'id' | 'timestamp'>) => Promise<string>;
+
+  addInquiry: (inquiry: Omit<Inquiry, 'id' | 'date' | 'status'>) => Promise<string>;
+  updateInquiry: (id: string, inquiry: Partial<Inquiry>) => Promise<void>;
+
+  addNotification: (notification: Omit<Notification, 'id' | 'date' | 'read'>) => Promise<void>;
+  markNotificationRead: (id: string) => Promise<void>;
+  markAllNotificationsRead: (userId: string) => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
+
   addBusinessSlot: (slot: Omit<BusinessSlot, 'id'>) => void;
   updateBusinessSlot: (id: string, slot: Partial<BusinessSlot>) => void;
   deleteBusinessSlot: (id: string) => void;
-  updateContentSettings: (settings: Partial<ContentSettings>) => void;
-  getPropertyById: (id: string) => Property | undefined;
+
+  updateContentSettings: (settings: Partial<ContentSettings>) => Promise<void>;
+
+  getUnitById: (id: string) => Unit | undefined;
   getReservationsByUserId: (userId: string) => Reservation[];
   getPaymentsByUserId: (userId: string) => Payment[];
   getNotificationsByUserId: (userId: string) => Notification[];
@@ -212,413 +268,1172 @@ interface DataContextType {
   getUserById: (id: string) => User | undefined;
 }
 
-const DataContext = createContext<DataContextType | undefined>(undefined);
-
-// Mock data
-const MOCK_PROPERTIES: Property[] = [
-  {
-    id: 'p1',
-    name: 'Commercial Unit 101',
-    type: 'rental_space',
-    description: 'Spacious commercial unit perfect for retail or office space. Located in prime business district with high foot traffic.',
-    price: 25000, // monthly
-    images: ['https://images.unsplash.com/photo-1497366216548-37526070297c?w=800', 'https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=800'],
-    policies: 'Minimum 1-year contract. Security deposit equivalent to 2 months rent required. No subleasing without approval.',
-    available: true,
-    features: ['50 sqm floor area', 'Air-conditioned', '24/7 security', 'Parking space included', 'Restroom'],
-    location: "Quezon City, Metro Manila",
-  },
-  {
-    id: 'p2',
-    name: 'Grand Function Hall',
-    type: 'function_hall',
-    description: 'Elegant function hall suitable for weddings, conferences, and special events. Fully equipped with audio-visual systems.',
-    price: 15000, // daily
-    images: ['https://images.unsplash.com/photo-1497366811353-6870744d04b2?w=800', 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800'],
-    policies: 'Minimum 1-day reservation. Full payment required 7 days before event. Damages will be charged separately.',
-    capacity: 200,
-    available: true,
-    features: ['200 person capacity', 'Stage and sound system', 'Air-conditioned', 'Catering area', 'Restrooms', 'LED screen'],
-    location: "Quezon City, Metro Manila",
-  },
-  {
-    id: 'p3',
-    name: 'Parking Area',
-    type: 'parking_slot',
-    description: 'Secure covered parking slots available for hourly, daily, or monthly rental. CCTV monitored 24/7.',
-    price: 3000, 
-    images: ['https://images.unsplash.com/photo-1590674899484-d5640e854abe?w=800'],
-    policies: 'Minimum 1-hour reservation. Vehicle must be registered. Not responsible for items left in vehicle.',
-    available: true,
-    features: ['Covered parking', '24/7 CCTV', 'Security guard', 'Well-lit area'],
-    location: "Quezon City, Metro Manila"
-  },
-  {
-    id: 'p4',
-    name: 'Commercial Unit 205',
-    type: 'rental_space',
-    description: 'Modern office space with panoramic windows. Ideal for startups and small businesses.',
-    price: 30000, // monthly
-    images: ['https://images.unsplash.com/photo-1497366754035-f200968a6e72?w=800'],
-    policies: 'Minimum 1-year contract. Utilities not included. Advance and deposit required.',
-    available: true,
-    features: ['75 sqm floor area', 'Panoramic windows', 'Fiber internet ready', 'Pantry area', 'Executive washroom'],
-    location: "Quezon City, Metro Manila"
-  },
-  {
-    id: 'p5',
-    name: 'Intimate Event Space',
-    type: 'function_hall',
-    description: 'Cozy event space perfect for small gatherings, meetings, and celebrations.',
-    price: 8000, // daily
-    images: ['https://images.unsplash.com/photo-1511578314322-379afb476865?w=800'],
-    policies: 'Minimum 1-day reservation. Decorations must be approved. External catering allowed.',
-    capacity: 50,
-    available: true,
-    features: ['50 person capacity', 'Basic sound system', 'Air-conditioned', 'WiFi included', 'Kitchen access'],
-    location: "Quezon City, Metro Manila"
-  }
-];
-
+// ─── Default Data ─────────────────────────────────────────────────────────────
 const MOCK_PARKING_SLOTS: ParkingSlot[] = Array.from({ length: 10 }, (_, i) => ({
   id: `slot-${i + 1}`,
   name: `Slot ${i + 1}`,
   imageUrl: `https://placehold.co/400x300/e2e8f0/475569?text=Slot%20${i + 1}`,
 }));
 
-const MOCK_RESERVATIONS: Reservation[] = [
-  {
-    id: 'r1',
-    userId: '2',
-    propertyId: 'p1',
-    propertyName: 'Commercial Unit 101',
-    propertyType: 'rental_space',
-    startDate: '2025-01-15',
-    endDate: '2026-01-14',
-    duration: 12, // months
-    modeOfVisit: 'online',
-    status: 'confirmed',
-    paymentMethod: 'bank_transfer',
-    paymentIntent: 'pay_later',
-    paymentCycle: 'monthly',
-    totalAmount: 300000, // 12 months x 25000
-    paidAmount: 50000, // 2 months paid
-    notes: 'Opening a small restaurant',
-    requestDate: '2024-12-15',
-    businessType: 'Food & Beverage'
-  },
-  {
-    id: 'r2',
-    userId: '2',
-    propertyId: 'p3',
-    propertyName: 'Covered Parking - Section A',
-    propertyType: 'parking_slot',
-    startDate: '2025-12-05',
-    endDate: '2025-12-05',
-    duration: 5, // hours
-    modeOfVisit: 'online',
-    paymentIntent: 'pay_later',
-    status: 'pending',
-    paymentMethod: 'gcash',
-    totalAmount: 250, // 5 hours x 50
-    paidAmount: 0,
-    notes: 'Client meeting in the area',
-    requestDate: '2025-12-03',
-    vehicleType: 'Sedan',
-    plateNumber: 'ABC 1234'
-  }
-];
+const DEFAULT_CONTENT: ContentSettings = {
+  heroBadge: 'Premium Spaces',
+  heroTitle: '',
+  heroSubtitle: '',
+  heroImage: '',
+  heroPrimaryCtaText: 'Get Started',
+  heroPrimaryCtaLink: '/register',
+  heroSecondaryCtaText: 'Browse Collection',
+  heroSecondaryCtaLink: '#properties',
 
-const MOCK_USERS: User[] = [
-  {
-    id: '2',
-    first_name: 'John',
-    last_name: 'Doe',
-    email: 'client@example.com',
-    contactNumber: '+63 918 765 4321',
-    address: '123 Business Avenue, Manila, Philippines 1000',
-    role: 'customer',
-    is_active: true,
-  },
-  // Add other mock users as needed
-];
+  aboutEyebrow: 'Who We Are',
+  aboutTitle: 'About Us',
+  aboutUs: '',
 
-const MOCK_PAYMENTS: Payment[] = [
-  {
-    id: 'pay1',
-    reservationId: 'r1',
-    userId: '2',
-    amount: 50000,
-    method: 'bank_transfer',
-    status: 'paid',
-    proofOfPayment: 'https://images.unsplash.com/photo-1554224311-beee4f9866a1?w=400',
-    date: '2024-12-20',
-    notes: 'First 2 months payment - advance and deposit'
-  }
-];
+  aboutCard1Title: 'Flexible Spaces',
+  aboutCard1Text: 'Rental spaces designed for businesses, events, and evolving needs.',
+  aboutCard2Title: 'Prime Convenience',
+  aboutCard2Text: 'Accessible locations that make bookings easier for clients and guests.',
+  aboutCard3Title: 'Trusted Service',
+  aboutCard3Text: 'A smoother and more reliable way to manage reservations and inquiries.',
 
-const MOCK_INQUIRIES: Inquiry[] = [
-  {
-    id: 'inq1',
-    first_name: 'Maria',
-    last_name: 'Santos',
-    email: 'maria@example.com',
-    subject: 'Availability for December wedding',
-    message: 'Hi, I would like to inquire about the Grand Function Hall availability for December 25, 2025. We are expecting around 150 guests.',
-    status: 'open',
-    date: '2025-12-01'
-  }
-];
+  historyEyebrow: 'Our History',
+  historyTitle: '',
+  historySubtitle: '',
+  historyText: '',
+  historyImage: '',
+  historyImages: [],
 
-const MOCK_CONTENT: ContentSettings = {
-  heroImage: 'https://images.unsplash.com/photo-1590674899484-d5640e854abe?q=80&w=2000&auto=format&fit=crop',
-  heroTitle: 'Welcome to Commerciales Flores',
-  heroSubtitle: 'Your Premier Rental Management Partner',
-  aboutUs: 'Commerciales Flores has been serving the community for over 20 years, providing quality commercial spaces, event venues, and parking facilities. We pride ourselves on excellent customer service and well-maintained properties.',
-  contactEmail: 'info@comercialesflores.ph',
-  contactPhone: '+63 2 8123 4567',
-  contactAddress: '16 Rd 23, Project 8, Quezon City, Metro Manila',
-  announcements: [
-    'New parking rates effective January 2026',
-    'Holiday promo: 10% off on function hall reservations for December'
-  ],
-  policies: 'All reservations are subject to admin approval. Payment terms vary by property type. Cancellations must be made 7 days in advance for refund eligibility.'
+  historyPoint1Title: 'The Beginning',
+  historyPoint1Text: 'A vision to create accessible and flexible commercial spaces.',
+  historyPoint2Title: 'Growth',
+  historyPoint2Text: 'Expanded to serve more clients, events, and rental needs.',
+  historyPoint3Title: 'Today',
+  historyPoint3Text: 'A trusted destination for business spaces and function venues.',
+
+  featuredTitle: 'Featured Spaces',
+  featuredSubtitle: 'Experience our most premium locations.',
+  featuredViewAllText: 'View all Spaces',
+  featuredEmptyTitle: 'No featured spaces yet',
+  featuredEmptyText:
+    'There are currently no available featured spaces to display. Please check back later.',
+
+  contactTitle: 'Send us a message',
+  contactSubtitle: 'We’ll get back to you as soon as possible.',
+  locationTitle: 'Our Location',
+  locationSubtitle: 'Visit us',
+
+  footerBrandName: 'Commerciales Flores',
+  footerBrandDescription:
+    'Premium rental spaces and function halls for your business or event needs.',
+  footerQuickLinksTitle: 'Quick Links',
+  footerContactTitle: 'Get in Touch',
+  footerCopyright: '© 2025 Commerciales Flores. All rights reserved.',
+  footerPrivacyText: 'Compliant with the Philippine Data Privacy Act of 2012',
+
+  menuTitle: 'Menu',
+
+  contactEmail: '',
+  contactPhone: '',
+  contactAddress: '',
+  announcements: [],
+  policies: '',
 };
+
+// ─── Context & Provider ───────────────────────────────────────────────────────
+const DataContext = createContext<DataContextType | undefined>(undefined);
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const [properties, setProperties] = useState<Property[]>(MOCK_PROPERTIES);
-  const [reservations, setReservations] = useState<Reservation[]>(MOCK_RESERVATIONS);
-  const [payments, setPayments] = useState<Payment[]>(MOCK_PAYMENTS);
-  const [users, setUsers] = useState<User[]>(MOCK_USERS);
-
-  // ✅ ADD THIS HELPER FUNCTION
-  const getUserById = (id: string) => users.find(u => u.id === id);
-  const [inquiries, setInquiries] = useState<Inquiry[]>(MOCK_INQUIRIES);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [ledgers, setLedgers] = useState<LedgerEntry[]>([]); 
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]); 
+  const [users, setUsers] = useState<User[]>([]);
+  const [inquiries, setInquiries] = useState<Inquiry[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [businessSlots, setBusinessSlots] = useState<BusinessSlot[]>([
-  {
-    id: 'slot1',
-    propertyId: 'p1',
-    propertyName: 'Commercial Unit 101',
-    date: '2025-12-10',
-    startTime: '09:00',
-    endTime: '17:00',
-    price: 25000,
-    available: true
-  },
-  {
-    id: 'slot2',
-    propertyId: 'p2',
-    propertyName: 'Grand Function Hall',
-    date: '2025-12-15',
-    startTime: '10:00',
-    endTime: '22:00',
-    price: 15000,
-    available: true
+  
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [businessSlots, _setBusinessSlots] = useState<BusinessSlot[]>([]);
+  const [contentSettings, setContentSettings] = useState<ContentSettings>(DEFAULT_CONTENT);
+
+  useEffect(() => {
+    // Fetch all unified unit data
+    const fetchAllUnits = async () => {
+    try {
+      const { data: baseUnits, error: baseError } = await supabase
+        .from('units')
+        .select('*');
+
+      if (baseError) throw baseError;
+      if (!baseUnits) return;
+
+      const propertyIds = [...new Set(baseUnits.map(u => u.property_id).filter(Boolean))];
+
+      let propertiesData: any[] = [];
+
+      if (propertyIds.length > 0) {
+        const { data, error: propertiesError } = await supabase
+          .from('properties')
+          .select('id, title, address')
+          .in('id', propertyIds); // ✅ FIXED
+
+        if (propertiesError) throw propertiesError;
+        propertiesData = data ?? [];
+      }
+
+      const propertiesMap = Object.fromEntries(
+        propertiesData.map((p) => [p.id, p])
+      );
+
+      const { data: rentalUnits } = await supabase.from('rental_units').select('*');
+      const { data: functionUnits } = await supabase.from('function_units').select('*');
+      const { data: parkingUnits } = await supabase.from('parking_units').select('*');
+      const { data: media } = await supabase.from('media').select('*');
+
+      const combinedUnits: Unit[] = baseUnits.map(base => {
+        let specific = null;
+
+        if (base.unit_type === 'rental_space') {
+          specific = rentalUnits?.find(r => r.unit_id === base.unit_id);
+        } else if (base.unit_type === 'function_hall') {
+          specific = functionUnits?.find(f => f.unit_id === base.unit_id);
+        } else if (base.unit_type === 'parking_slot') {
+          specific = parkingUnits?.find(p => p.unit_id === base.unit_id);
+        }
+
+        const unitMediaRecords = media?.filter(m => m.unit_id === base.unit_id) || [];
+        let imagesArray: string[] = [];
+
+        unitMediaRecords.forEach(record => {
+          if (!record.url) return;
+
+          const rawUrl = record.url;
+
+          if (typeof rawUrl === 'string') {
+            if (rawUrl.startsWith('http')) {
+              imagesArray.push(rawUrl);
+            } else {
+              try {
+                const parsed = JSON.parse(rawUrl);
+                imagesArray.push(
+                  ...Object.values(parsed).filter(v => typeof v === 'string') as string[]
+                );
+              } catch {
+                // ignore broken strings
+              }
+            }
+          } else if (typeof rawUrl === 'object' && rawUrl !== null) {
+            imagesArray.push(
+              ...Object.values(rawUrl).filter(v => typeof v === 'string') as string[]
+            );
+          }
+        });
+
+        let parsedFeatures: string[] = [];
+        if (Array.isArray(specific?.features)) {
+          parsedFeatures = specific.features;
+        } else if (typeof specific?.features === 'string') {
+          parsedFeatures = specific.features.split(',').map((s: string) => s.trim());
+        }
+
+        const property = propertiesMap[base.property_id]; // ✅ use the map
+
+        return {
+          id: base.unit_id,
+          propertyId: base.property_id,
+          name: base.title || '',
+          type: base.unit_type as UnitType,
+          description: base.description || specific?.description || '',
+          price:
+            base.unit_type === 'rental_space'
+              ? Number(specific?.rental_price || 0)
+              : base.unit_type === 'function_hall'
+              ? Number(specific?.price_per_day || 0)
+              : Number(specific?.price_per_day || specific?.price_per_hour || 0),
+          images: imagesArray.length > 0
+            ? imagesArray
+            : ['https://images.unsplash.com/photo-1497366216548-37526070297c?w=800'],
+          policies: specific?.policies || '',
+          available: base.is_available,
+          features: parsedFeatures,
+          location: base.location || '',
+          property: property
+            ? {
+                id: property.id,
+                title: property.title || '',
+                address: property.address || '',
+              }
+            : null,
+          ...(typeof specific?.capacity === 'number'
+            ? { capacity: specific.capacity }
+            : {}),
+        };
+      });
+
+      console.log('combinedUnits:', combinedUnits);
+      setUnits(combinedUnits);
+    } catch (error) {
+      console.error('Error loading units from Supabase:', {
+        message: (error as any)?.message,
+        details: (error as any)?.details,
+        hint: (error as any)?.hint,
+        code: (error as any)?.code,
+      });
+
+
   }
-]);
-
-  const [contentSettings, setContentSettings] = useState<ContentSettings>(MOCK_CONTENT);
-
-    const addUser = (user: Omit<User, 'id'>) => {
-    const newUser = {
-      ...user,
-      id: 'user' + Date.now().toString(),
-    };
-
-    setUsers(prev => [...prev, newUser]);
-  };
-
-  // Properties
-  const addProperty = (property: Omit<Property, 'id'>) => {
-    const newProperty = { ...property, id: Date.now().toString() };
-    setProperties([...properties, newProperty]);
-  };
-
-  const updateProperty = (id: string, property: Partial<Property>) => {
-    setProperties(properties.map(p => p.id === id ? { ...p, ...property } : p));
-  };
-
-  const deleteProperty = (id: string) => {
-    setProperties(properties.filter(p => p.id !== id));
-  };
-
-    const addAuditLog = (log: Omit<AuditLog, 'id' | 'date'>) => {
-    const newLog: AuditLog = {
-      ...log,
-      id: 'log-' + crypto.randomUUID(),
-      date: new Date().toISOString()
-    };
-
-    setAuditLogs(prev => [...prev, newLog]);
-  };
-
-  // Reservations
-  const addReservation = (reservation: Omit<Reservation, 'id' | 'requestDate' | 'status' | 'paidAmount'>): string => {
-    const property = getPropertyById(reservation.propertyId);
-    const newReservation: Reservation = {
-      ...reservation,
-      id: 'r' + Date.now().toString(),
-      requestDate: new Date().toISOString().split('T')[0],
-      status: 'pending',
-      paidAmount: 0,
-      location: property?.location, // ✅ copy from property
-    };
-    setReservations([...reservations, newReservation]);
-    return newReservation.id;
-  };
-
-  const updateReservation = (id: string, reservation: Partial<Reservation>) => {
-    setReservations(reservations.map(r => r.id === id ? { ...r, ...reservation } : r));
-  };
-
-  const deleteReservation = (id: string) => {
-    setReservations(reservations.filter(r => r.id !== id));
-  };
-
-  // Payments
-  const addPayment = (payment: Omit<Payment, 'id' | 'date'>) => {
-  const newPayment: Payment = {
-    ...payment,
-    id: 'pay-' + crypto.randomUUID(),
-    date: new Date().toISOString().split('T')[0]
-  };
-
-  setPayments(prev => [...prev, newPayment]);
-
-  const reservation = reservations.find(r => r.id === payment.reservationId);
-
-  if (!reservation) return;
-
-  const newPaidAmount = reservation.paidAmount + payment.amount;
-
-  // Determine payment status
-  let paymentStatus: PaymentStatus = 'partial';
-
-  if (newPaidAmount <= 0) {
-    paymentStatus = 'unpaid';
-  } else if (newPaidAmount >= reservation.totalAmount) {
-    paymentStatus = 'paid';
-  }
-
-  updateReservation(payment.reservationId, {
-    paidAmount: newPaidAmount,
-  });
 };
 
-  const updatePayment = (id: string, payment: Partial<Payment>) => {
-    setPayments(payments.map(p => p.id === id ? { ...p, ...payment } : p));
+    const fetchUsers = async () => {
+    const { data, error } = await supabase.from('users').select('*');
+    if (!error && data) {
+      setUsers(data.map((row: any) => ({
+        id: row.id,
+        publicId: row.public_id,
+        role: row.role,
+        first_name: row.first_name,
+        last_name: row.last_name,
+        email: row.email,
+        contactNumber: row.contact_number,
+        address: row.address,
+        is_active: row.is_active,
+      })));
+    }
   };
 
-  // Inquiries
-  const addInquiry = (inquiry: Omit<Inquiry, 'id' | 'date' | 'status'>) => {
-    const newInquiry: Inquiry = {
-      ...inquiry,
-      id: 'inq' + Date.now().toString(),
-      date: new Date().toISOString().split('T')[0],
-      status: 'open'
+  
+
+    const fetchReservations = async () => {
+      const { data, error } = await supabase
+        .from('reservations')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        setReservations(data.map((row: any) => ({
+          id: row.reservation_id,
+          publicId: row.public_Id,
+          userId: row.user_id,
+          unitId: row.unit_id,
+          unitName: row.title,
+          unitType: row.unit_type,
+          startDate: row.start_date,
+          endDate: row.end_date,
+          duration: row.duration,
+          totalAmount: Number(row.total_amount),
+          status: row.status as ReservationStatus,
+          notes: row.notes,
+          paidAmount: Number(row.paid_amount || 0), 
+          requestDate: row.created_at,
+          paymentMethod: row.payment_method,
+          paymentIntent: row.payment_intent,
+          modeOfVisit: row.mode_of_visit,
+          paymentCycle: row.details?.paymentCycle,
+          businessType: row.details?.businessType,
+          eventPurpose: row.details?.eventPurpose,
+          attendees: row.details?.attendees,
+          slotId: row.details?.slotId,
+          slotName: row.details?.slotName,
+          vehicleType: row.details?.vehicleType,
+          plateNumber: row.details?.plateNumber,
+          durationType: row.details?.durationType,
+        })));
+      }
     };
-    setInquiries([...inquiries, newInquiry]);
-  };
 
-  const updateInquiry = (id: string, inquiry: Partial<Inquiry>) => {
-    setInquiries(inquiries.map(i => i.id === id ? { ...i, ...inquiry } : i));
-  };
-
-  // Notifications
-  const addNotification = (notification: Omit<Notification, 'id' | 'date' | 'read'>) => {
-    const newNotification: Notification = {
-      ...notification,
-      id: 'notif' + Date.now().toString(),
-      date: new Date().toISOString(),
-      read: false
+    const fetchInquiries = async () => {
+      const { data, error } = await supabase.from('messages').select('*').order('date', { ascending: false });
+      if (!error && data) {
+        setInquiries(data.map((row: any) => ({
+          id: row.message_id,
+          userId: row.user_id,
+          first_name: row.first_name ?? '',
+          last_name: row.last_name ?? '',
+          email: row.email,
+          subject: row.subject,
+          message: row.message,
+          status: row.status as InquiryStatus,
+          date: row.date,
+          response: row.response,
+          responseDate: row.response_date,
+        })));
+      }
     };
-    setNotifications([...notifications, newNotification]);
+    
+    const fetchNotifications = async () => {
+      const { data, error } = await supabase.from('notifications').select('*').order('date', { ascending: false });
+      if (!error && data) {
+        setNotifications(data.map((row: any) => ({
+          id: row.notification_id,
+          userId: row.user_id,
+          title: row.title,
+          message: row.message,
+          type: row.type as any,
+          read: row.is_read,
+          date: row.date,
+        })));
+      }
+    };
+
+    const fetchPayments = async () => {
+      const { data, error } = await supabase.from('payments').select('*').order('created_at', { ascending: false });
+      if (!error && data) {
+        setPayments(data.map((row: any) => ({
+          id: row.payment_id,
+          publicId: row.public_Id,
+          reservationId: row.reservation_id,
+          userId: row.user_id,
+          amount: Number(row.amount),
+          method: row.method as PaymentMethod,
+          status: row.status as PaymentStatus,
+          proofOfPayment: row.proofOfPayment,
+          date: row.date,
+          notes: row.notes,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at
+        })));
+      }
+    };
+
+    const fetchLedgers = async () => {
+      const { data, error } = await supabase.from('ledger').select('*').order('date', { ascending: false });
+      if (!error && data) {
+        setLedgers(data.map((row: any) => ({
+          id: row.ledger_id,
+          userId: row.user_id,
+          amount: Number(row.amount),
+          date: row.date
+        })));
+      }
+    };
+
+    const fetchAuditLogs = async () => {
+      const { data, error } = await supabase.from('audit_log').select('*').order('timestamp', { ascending: false });
+      if (!error && data) {
+        setAuditLogs(data.map((row: any) => ({
+          id: row.audit_id,
+          publicId: row.public_Id,
+          userId: row.user_id,
+          action: row.action,
+          targetTable: row.target_table,
+          targetId: row.target_id,
+          beforeValue: row.before_value,
+          afterValue: row.after_value,
+          changedFields: row.changed_fields,
+          timestamp: row.timestamp,
+          notes: row.notes
+        })));
+      }
+    };
+
+    const fetchContentSettings = async () => {
+  const { data, error } = await supabase
+    .from('site_content')
+    .select('*')
+    .limit(1)
+    .single();
+
+  if (!error && data) {
+    setContentSettings({
+      content_id: data.content_id,
+
+      heroBadge: data.heroBadge || 'Premium Spaces',
+      heroTitle: data.heroTitle || '',
+      heroSubtitle: data.heroSubtitle || '',
+      heroImage: data.heroImage || '',
+      heroPrimaryCtaText: data.heroPrimaryCtaText || 'Get Started',
+      heroPrimaryCtaLink: data.heroPrimaryCtaLink || '/register',
+      heroSecondaryCtaText: data.heroSecondaryCtaText || 'Browse Collection',
+      heroSecondaryCtaLink: data.heroSecondaryCtaLink || '#properties',
+
+      aboutEyebrow: data.aboutEyebrow || 'Who We Are',
+      aboutTitle: data.aboutTitle || 'About Us',
+      aboutUs: data.aboutUs || '',
+
+      aboutCard1Title: data.aboutCard1Title || 'Flexible Spaces',
+      aboutCard1Text: data.aboutCard1Text || '',
+      aboutCard2Title: data.aboutCard2Title || 'Prime Convenience',
+      aboutCard2Text: data.aboutCard2Text || '',
+      aboutCard3Title: data.aboutCard3Title || 'Trusted Service',
+      aboutCard3Text: data.aboutCard3Text || '',
+
+      historyEyebrow: data.historyEyebrow || 'Our History',
+      historyTitle: data.historyTitle || '',
+      historySubtitle: data.historySubtitle || '',
+      historyText: data.historyText || '',
+      historyImage: data.historyImage || '',
+      historyImages: data.historyImages || [],
+
+      historyPoint1Title: data.historyPoint1Title || 'The Beginning',
+      historyPoint1Text: data.historyPoint1Text || '',
+      historyPoint2Title: data.historyPoint2Title || 'Growth',
+      historyPoint2Text: data.historyPoint2Text || '',
+      historyPoint3Title: data.historyPoint3Title || 'Today',
+      historyPoint3Text: data.historyPoint3Text || '',
+
+      featuredTitle: data.featuredTitle || 'Featured Spaces',
+      featuredSubtitle: data.featuredSubtitle || 'Experience our most premium locations.',
+      featuredViewAllText: data.featuredViewAllText || 'View all Spaces',
+      featuredEmptyTitle: data.featuredEmptyTitle || 'No featured spaces yet',
+      featuredEmptyText:
+        data.featuredEmptyText ||
+        'There are currently no available featured spaces to display. Please check back later.',
+
+      contactTitle: data.contactTitle || 'Send us a message',
+      contactSubtitle: data.contactSubtitle || 'We’ll get back to you as soon as possible.',
+      locationTitle: data.locationTitle || 'Our Location',
+      locationSubtitle: data.locationSubtitle || 'Visit us',
+
+      footerBrandName: data.footerBrandName || 'Commerciales Flores',
+      footerBrandDescription:
+        data.footerBrandDescription ||
+        'Premium rental spaces and function halls for your business or event needs.',
+      footerQuickLinksTitle: data.footerQuickLinksTitle || 'Quick Links',
+      footerContactTitle: data.footerContactTitle || 'Get in Touch',
+      footerCopyright:
+        data.footerCopyright || '© 2025 Commerciales Flores. All rights reserved.',
+      footerPrivacyText:
+        data.footerPrivacyText || 'Compliant with the Philippine Data Privacy Act of 2012',
+
+      menuTitle: data.menuTitle || 'Menu',
+
+      contactEmail: data.contactEmail || '',
+      contactPhone: data.contactPhone || '',
+      contactAddress: data.contactAddress || '',
+      announcements: data.announcements || [],
+      policies: data.policies || '',
+    });
+  }
+};
+
+    fetchAllUnits();
+    fetchUsers();
+    fetchReservations();
+    fetchInquiries();
+    fetchNotifications();
+    fetchPayments();
+    fetchLedgers();
+    fetchAuditLogs();
+    fetchContentSettings();
+  }, []);
+
+  // ── Storage ─────────────────────────────────────────────────────────────────
+  const uploadPaymentProof = async (file: File): Promise<string | null> => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `receipts/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('payment_proofs')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('payment_proofs')
+        .getPublicUrl(filePath);
+
+      return data.publicUrl;
+    } catch (error) {
+      console.error("Error uploading proof:", error);
+      return null;
+    }
   };
 
-  const markNotificationRead = (id: string) => {
-    setNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n));
+  const uploadUnitImage = async (file: File): Promise<string | null> => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `units/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('unit_images') 
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('unit_images')
+        .getPublicUrl(filePath);
+
+      return data.publicUrl;
+    } catch (error) {
+      console.error("Error uploading unit image:", error);
+      return null;
+    }
   };
 
-  const markAllNotificationsRead = (userId: string) => {
-    setNotifications(notifications.map(n => n.userId === userId ? { ...n, read: true } : n));
+  // ── Units ──────────────────────────────────────────────────────────────────
+  const addUnit = async (unitData: Omit<Unit, 'id'>): Promise<void> => {
+    try {
+      const { data: baseUnit, error: baseError } = await supabase
+        .from('units')
+        .insert([{
+          property_id: unitData.propertyId,
+          unit_type: unitData.type,
+          title: unitData.name,
+          description: unitData.description,
+          is_available: unitData.available,
+          location: unitData.location,
+        }])
+        .select()
+        .single();
+
+      if (baseError) throw baseError;
+      const newUnitId = baseUnit.unit_id;
+
+      const specificData: any = {
+        unit_id: newUnitId,
+      };
+
+      if (unitData.type === 'rental_space') {
+        specificData.rental_price = unitData.price;
+      }
+      if (unitData.type === 'function_hall') {
+        specificData.price_per_day = unitData.price;
+        if (unitData.capacity !== undefined) specificData.capacity = unitData.capacity;
+      }
+      if (unitData.type === 'parking_slot') {
+        specificData.price_per_day = unitData.price;
+      }
+
+      let tableError = null;
+
+      // ✅ FIX: Determine which of the 3 sub-tables to save into based on type
+      let targetTable = '';
+      if (unitData.type === 'rental_space') targetTable = 'rental_units';
+      else if (unitData.type === 'function_hall') targetTable = 'function_units';
+      else if (unitData.type === 'parking_slot') targetTable = 'parking_units';
+
+      if (targetTable) {
+        const { error } = await supabase.from(targetTable).insert([specificData]);
+        tableError = error;
+      }
+
+      if (tableError) {
+        console.error(`Sub-table insert failed for ${targetTable}, rolling back base unit...`, tableError);
+        await supabase.from('units').delete().eq('unit_id', newUnitId);
+        throw tableError;
+      }
+
+      if (unitData.images && unitData.images.length > 0) {
+        const jsonbUrls = unitData.images.reduce((acc, url, index) => {
+          acc[`image_${index + 1}`] = url;
+          return acc;
+        }, {} as Record<string, string>);
+        
+        const { error: mediaError } = await supabase.from('media').insert([{
+          unit_id: newUnitId,
+          url: jsonbUrls, 
+          media_type: 'image'
+        }]);
+        
+        if (mediaError) console.error("Media insert failed, but unit was saved:", mediaError);
+      }
+
+      setUnits(prev => [...prev, { ...unitData, id: newUnitId }]);
+    } catch (error) {
+      console.error("Error adding unit:", error);
+      throw error;
+    }
   };
 
-  const deleteNotification = (id: string) => {
+  const updateUnit = async (id: string, unitUpdate: Partial<Unit>): Promise<void> => {
+    try {
+      const existingUnit = units.find(u => u.id === id);
+      if (!existingUnit) return;
+
+      const basePayload: any = {};
+      if (unitUpdate.name !== undefined) basePayload.title = unitUpdate.name;
+      if (unitUpdate.description !== undefined) basePayload.description = unitUpdate.description;
+      if (unitUpdate.available !== undefined) basePayload.is_available = unitUpdate.available;
+      if (unitUpdate.location !== undefined) basePayload.location = unitUpdate.location;
+
+      if (Object.keys(basePayload).length > 0) {
+        const { error } = await supabase.from('units').update(basePayload).eq('unit_id', id);
+        if (error) throw error;
+      }
+
+      const specificPayload: any = {};
+
+      if (existingUnit.type === 'rental_space') {
+        if (unitUpdate.price !== undefined) specificPayload.rental_price = unitUpdate.price;
+        // add these only if your Unit type supports them
+        if ((unitUpdate as any).size !== undefined) specificPayload.size = (unitUpdate as any).size;
+        if ((unitUpdate as any).amenities !== undefined) specificPayload.amenities = (unitUpdate as any).amenities;
+      }
+
+      if (existingUnit.type === 'function_hall') {
+        if (unitUpdate.price !== undefined) specificPayload.price_per_day = unitUpdate.price;
+        if (unitUpdate.capacity !== undefined) specificPayload.capacity = unitUpdate.capacity;
+      }
+
+      if (existingUnit.type === 'parking_slot') {
+        // choose whichever pricing model you want your UI to edit
+        if (unitUpdate.price !== undefined) specificPayload.price_per_day = unitUpdate.price;
+        if ((unitUpdate as any).pricePerHour !== undefined) specificPayload.price_per_hour = (unitUpdate as any).pricePerHour;
+        if ((unitUpdate as any).dimensions !== undefined) specificPayload.dimensions = (unitUpdate as any).dimensions;
+      }
+
+      if (Object.keys(specificPayload).length > 0) {
+        // ✅ FIX: Determine which of the 3 sub-tables to update
+        let tableName = '';
+        if (existingUnit.type === 'rental_space') tableName = 'rental_units';
+        else if (existingUnit.type === 'function_hall') tableName = 'function_units';
+        else if (existingUnit.type === 'parking_slot') tableName = 'parking_units';
+        
+        if (tableName) {
+          const { error } = await supabase.from(tableName).update(specificPayload).eq('unit_id', id);
+          if (error) throw error;
+        }
+      }
+
+      if (unitUpdate.images !== undefined) {
+        await supabase.from('media').delete().eq('unit_id', id);
+        
+        if (unitUpdate.images.length > 0) {
+          const jsonbUrls = unitUpdate.images.reduce((acc, url, index) => {
+            acc[`image_${index + 1}`] = url;
+            return acc;
+          }, {} as Record<string, string>);
+
+          await supabase.from('media').insert([{
+            unit_id: id,
+            url: jsonbUrls, 
+            media_type: 'image'
+          }]);
+        }
+      }
+
+      setUnits(prev => prev.map(u => (u.id === id ? { ...u, ...unitUpdate } : u)));
+    } catch (error) {
+      console.error("Error updating unit:", error);
+      throw error;
+    }
+  };
+
+  const deleteUnit = async (id: string): Promise<void> => {
+    try {
+      const existingUnit = units.find(u => u.id === id);
+      if (!existingUnit) return;
+
+      await supabase.from('media').delete().eq('unit_id', id);
+      
+      // ✅ FIX: Determine which of the 3 sub-tables to delete from
+      let tableName = '';
+      if (existingUnit.type === 'rental_space') tableName = 'rental_units';
+      else if (existingUnit.type === 'function_hall') tableName = 'function_units';
+      else if (existingUnit.type === 'parking_slot') tableName = 'parking_units';
+                      
+      if (tableName) {
+        await supabase.from(tableName).delete().eq('unit_id', id);
+      }
+
+      const { error } = await supabase.from('units').delete().eq('unit_id', id);
+      if (error) throw error;
+
+      setUnits(prev => prev.filter(u => u.id !== id));
+    } catch (error) {
+      console.error("Error deleting unit:", error);
+      throw error;
+    }
+  };
+
+  const addReservation = async (reservationData: Omit<Reservation, 'id' | 'requestDate' | 'status' | 'paidAmount'>): Promise<string> => {
+    try {
+      const details = {
+        paymentCycle: reservationData.paymentCycle,
+        businessType: reservationData.businessType,
+        eventPurpose: reservationData.eventPurpose,
+        attendees: reservationData.attendees,
+        slotId: reservationData.slotId,
+        slotName: reservationData.slotName,
+        vehicleType: reservationData.vehicleType,
+        plateNumber: reservationData.plateNumber,
+        durationType: reservationData.durationType,
+      };
+
+      const cleanDetails = Object.fromEntries(Object.entries(details).filter(([_, v]) => v !== undefined));
+
+      const { data, error } = await supabase
+        .from('reservations')
+        .insert([{
+          user_id: reservationData.userId,
+          unit_id: reservationData.unitId,
+          title: reservationData.unitName,
+          unit_type: reservationData.unitType,
+          start_date: reservationData.startDate,
+          end_date: reservationData.endDate,
+          duration: reservationData.duration,
+          total_amount: reservationData.totalAmount,
+          status: 'pending',
+          payment_method: reservationData.paymentMethod,
+          payment_intent: reservationData.paymentIntent,
+          mode_of_visit: reservationData.modeOfVisit,
+          notes: reservationData.notes,
+          details: cleanDetails
+        }])
+        .select() 
+        .single();
+
+        const publicId = makePublicId("RSV", { uuid: data.reservation_id });
+
+        await supabase
+          .from('reservations')
+          .update({ public_id: publicId })
+          .eq('reservation_id', data.reservation_id);
+
+      if (error) throw error;
+
+      const newReservation: Reservation = {
+        id: data.reservation_id,
+        publicId, 
+        userId: data.user_id,
+        unitId: data.unit_id,
+        unitName: data.title,
+        unitType: data.unit_type as UnitType,
+        startDate: data.start_date,
+        endDate: data.end_date,
+        duration: data.duration,
+        totalAmount: Number(data.total_amount), 
+        status: data.status as ReservationStatus,
+        notes: data.notes,
+        paidAmount: Number(data.paid_amount || 0),
+        requestDate: data.created_at, 
+        paymentMethod: data.payment_method as any,
+        paymentIntent: data.payment_intent as any,
+        modeOfVisit: data.mode_of_visit as any,
+        ...cleanDetails
+      };
+
+      setReservations(prev => [newReservation, ...prev]);
+      return newReservation.id;
+    } catch (error) {
+      console.error("Error inserting reservation:", error);
+      throw error; 
+    }
+  };
+
+  const updateReservation = async (id: string, reservation: Partial<Reservation>): Promise<void> => {
+    try {
+      const dbPayload: any = {};
+      if (reservation.status) dbPayload.status = reservation.status;
+      if (reservation.paidAmount !== undefined) dbPayload.paid_amount = reservation.paidAmount;
+
+      const { error } = await supabase
+        .from('reservations')
+        .update(dbPayload)
+        .eq('reservation_id', id);
+
+      if (error) throw error;
+
+      setReservations(prev => prev.map(b => (b.id === id ? { ...b, ...reservation } : b)));
+    } catch (error) {
+      console.error("Error updating reservation:", error);
+      throw error;
+    }
+  };
+
+  const deleteReservation = (id: string) => { setReservations(prev => prev.filter(b => b.id !== id)); };
+
+  // ── Payments (WITH AUTO AUDIT, LEDGER, & RESERVATION SYNC) ─────────────────────────
+  const addPayment = async (paymentData: Omit<Payment, 'id' | 'createdAt' | 'updatedAt' | 'date'>): Promise<string> => {
+    try {
+      const paymentDate = new Date().toISOString(); 
+      const { data, error } = await supabase
+        .from('payments')
+        .insert([{
+          user_id: paymentData.userId,
+          reservation_id: paymentData.reservationId,
+          amount: paymentData.amount,
+          method: paymentData.method,
+          status: paymentData.status,
+          proofOfPayment: paymentData.proofOfPayment,
+          date: paymentDate, 
+          notes: paymentData.notes
+        }])
+        .select()
+        .single();
+
+        const publicId = makePublicId("PAY", { uuid: data.payment_id });
+
+        await supabase
+          .from('payments')
+          .update({ public_id: publicId })
+          .eq('payment_id', data.payment_id);
+
+      if (error) throw error;
+
+      const newPayment: Payment = {
+        id: data.payment_id,
+        publicId,
+        reservationId: data.reservation_id,
+        userId: data.user_id,
+        amount: Number(data.amount),
+        method: data.method as PaymentMethod,
+        status: data.status as PaymentStatus,
+        proofOfPayment: data.proofOfPayment,
+        date: data.date,
+        notes: data.notes,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      };
+
+      addAuditLog({
+        userId: newPayment.userId,
+        action: 'INSERT',
+        targetTable: 'payments',
+        targetId: newPayment.id,
+        afterValue: newPayment,
+        notes: `Created new payment for reservation ${newPayment.reservationId}`
+      }).catch(err => console.error("Failed to write audit log:", err));
+
+      if (newPayment.status === 'paid') {
+        addLedgerEntry({
+          userId: newPayment.userId,
+          amount: newPayment.amount,
+          date: newPayment.date
+        }).catch(err => console.error("Failed to write ledger entry:", err));
+
+        const reservation = reservations.find(b => b.id === newPayment.reservationId);
+        if (reservation) {
+          updateReservation(reservation.id, { paidAmount: reservation.paidAmount + newPayment.amount })
+            .catch(err => console.error("Failed to update reservation paid amount:", err));
+        }
+      }
+
+      setPayments(prev => [newPayment, ...prev]);
+      return newPayment.id;
+    } catch (error) {
+      console.error("Error inserting payment:", error);
+      throw error;
+    }
+  };
+
+  const updatePayment = async (id: string, paymentUpdate: Partial<Payment>): Promise<void> => {
+    try {
+      const existingPayment = payments.find(p => p.id === id);
+      
+      const dbPayload: any = {};
+      if (paymentUpdate.status) dbPayload.status = paymentUpdate.status;
+      if (paymentUpdate.amount !== undefined) dbPayload.amount = paymentUpdate.amount;
+      if (paymentUpdate.method) dbPayload.method = paymentUpdate.method;
+      if (paymentUpdate.proofOfPayment) dbPayload.proofOfPayment = paymentUpdate.proofOfPayment;
+      if (paymentUpdate.notes) dbPayload.notes = paymentUpdate.notes;
+
+      const { error } = await supabase
+        .from('payments')
+        .update(dbPayload)
+        .eq('payment_id', id);
+
+      if (error) throw error;
+
+      if (existingPayment) {
+        addAuditLog({
+          userId: existingPayment.userId, 
+          action: 'UPDATE',
+          targetTable: 'payments',
+          targetId: id,
+          beforeValue: existingPayment,
+          afterValue: { ...existingPayment, ...paymentUpdate },
+          changedFields: paymentUpdate,
+          notes: `Updated payment ${id}`
+        }).catch(err => console.error("Failed to write audit log:", err));
+
+        if (existingPayment.status !== 'paid' && paymentUpdate.status === 'paid') {
+          const finalAmount = paymentUpdate.amount !== undefined ? paymentUpdate.amount : existingPayment.amount;
+          addLedgerEntry({
+            userId: existingPayment.userId,
+            amount: finalAmount,
+            date: new Date().toISOString()
+          }).catch(err => console.error("Failed to write ledger entry:", err));
+        }
+
+        const reservation = reservations.find(b => b.id === existingPayment.reservationId);
+        if (reservation) {
+          let newPaidAmount = reservation.paidAmount;
+          let needsReservationUpdate = false;
+
+          if (existingPayment.status !== 'paid' && paymentUpdate.status === 'paid') {
+            newPaidAmount += (paymentUpdate.amount ?? existingPayment.amount);
+            needsReservationUpdate = true;
+          } 
+          else if (existingPayment.status === 'paid' && paymentUpdate.status && paymentUpdate.status !== 'paid') {
+            newPaidAmount -= existingPayment.amount;
+            needsReservationUpdate = true;
+          }
+          else if (existingPayment.status === 'paid' && (!paymentUpdate.status || paymentUpdate.status === 'paid') && paymentUpdate.amount !== undefined && paymentUpdate.amount !== existingPayment.amount) {
+            newPaidAmount = newPaidAmount - existingPayment.amount + paymentUpdate.amount;
+            needsReservationUpdate = true;
+          }
+
+          if (needsReservationUpdate) {
+            updateReservation(reservation.id, { paidAmount: Math.max(0, newPaidAmount) })
+              .catch(err => console.error("Failed to update reservation paid amount:", err));
+          }
+        }
+      }
+
+      setPayments(prev => prev.map(p => (p.id === id ? { ...p, ...paymentUpdate } : p)));
+    } catch (error) {
+      console.error("Error updating payment:", error);
+      throw error;
+    }
+  };
+
+  // ── Ledger ──────────────────────────────────────────────────────────────────
+  const addLedgerEntry = async (entry: Omit<LedgerEntry, 'id'>): Promise<string> => {
+    try {
+      const { data, error } = await supabase
+        .from('ledger')
+        .insert([{
+          user_id: entry.userId,
+          amount: entry.amount,
+          date: entry.date || new Date().toISOString()
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newEntry: LedgerEntry = {
+        id: data.ledger_id,
+        userId: data.user_id,
+        amount: Number(data.amount),
+        date: data.date
+      };
+
+      setLedgers(prev => [newEntry, ...prev]);
+      return newEntry.id;
+    } catch (error) {
+      console.error("Error inserting ledger entry:", error);
+      throw error;
+    }
+  };
+
+  // ── Audit Log ───────────────────────────────────────────────────────────────
+  const addAuditLog = async (log: Omit<AuditLog, 'id' | 'timestamp'>): Promise<string> => {
+    try {
+      const { data, error } = await supabase
+        .from('audit_log')
+        .insert([{
+          user_id: log.userId,
+          action: log.action,
+          target_table: log.targetTable,
+          target_id: log.targetId,
+          before_value: log.beforeValue,
+          after_value: log.afterValue,
+          changed_fields: log.changedFields,
+          timestamp: new Date().toISOString(),
+          notes: log.notes
+        }])
+        .select()
+        .single();
+        const publicId = makePublicId("AUD", { uuid: data.audit_id });
+
+        await supabase
+          .from('audit_log')
+          .update({ public_id: publicId })
+          .eq('audit_id', data.audit_id);
+
+      if (error) throw error;
+
+      const newLog: AuditLog = {
+        id: data.audit_id,
+        publicId,
+        userId: data.user_id,
+        action: data.action,
+        targetTable: data.target_table,
+        targetId: data.target_id,
+        beforeValue: data.beforeValue,
+        afterValue: data.afterValue,
+        changedFields: data.changedFields,
+        timestamp: data.timestamp,
+        notes: data.notes
+      };
+
+      setAuditLogs(prev => [newLog, ...prev]);
+      return newLog.id;
+    } catch (error) {
+      console.error("Error inserting audit log:", error);
+      throw error;
+    }
+  };
+
+  // ── Inquiries ─────────────────────────────────────────────────────────────
+  const addInquiry = async (inquiryData: Omit<Inquiry, 'id' | 'date' | 'status'>): Promise<string> => {
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .insert([{
+          user_id: inquiryData.userId || null,
+          firstName: inquiryData.first_name,
+          lastName: inquiryData.last_name,
+          email: inquiryData.email,
+          subject: inquiryData.subject,
+          message: inquiryData.message,
+          status: 'open',
+          date: new Date().toISOString()
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newInquiry: Inquiry = {
+        id: data.message_id,
+        userId: data.user_id,
+        first_name: data.first_name ?? '',
+        last_name: data.last_name ?? '',
+        email: data.email,
+        subject: data.subject,
+        message: data.message,
+        status: data.status as InquiryStatus,
+        date: data.date,
+        response: data.response,
+        responseDate: data.response_date,
+      };
+
+      setInquiries(prev => [newInquiry, ...prev]);
+      return newInquiry.id;
+    } catch (error) {
+      console.error("Error inserting message:", error);
+      throw error;
+    }
+  };
+
+  const updateInquiry = async (id: string, inquiry: Partial<Inquiry>): Promise<void> => {
+    try {
+      const dbPayload: any = {};
+      if (inquiry.status) dbPayload.status = inquiry.status;
+      if (inquiry.response) dbPayload.response = inquiry.response;
+      if (inquiry.responseDate) dbPayload.response_date = inquiry.responseDate;
+
+      const { error } = await supabase.from('messages').update(dbPayload).eq('message_id', id);
+      if (error) throw error;
+
+      setInquiries(prev => prev.map(i => (i.id === id ? { ...i, ...inquiry } : i)));
+    } catch (error) {
+      console.error("Error updating inquiry in Supabase:", error);
+      throw error;
+    }
+  };
+
+  // ── Notifications ────────────────────────────────────────────────────────
+  const addNotification = async (notification: Omit<Notification, 'id' | 'date' | 'read'>): Promise<void> => {
+    try {
+      const { data, error } = await supabase
+        .from('notifications')
+        .insert([{
+          user_id: notification.userId,
+          title: notification.title,
+          message: notification.message,
+          type: notification.type,
+          is_read: false,
+          date: new Date().toISOString()
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newNotification: Notification = {
+        id: data.notification_id,
+        userId: data.user_id,
+        title: data.title,
+        message: data.message,
+        type: data.type as any,
+        read: data.is_read,
+        date: data.date,
+      };
+
+      setNotifications(prev => [newNotification, ...prev]);
+    } catch (error) {
+      console.error("Error inserting notification:", error);
+    }
+  };
+
+  const markNotificationRead = async (id: string): Promise<void> => {
+    try {
+      const { error } = await supabase.from('notifications').update({ is_read: true }).eq('notification_id', id);
+      if (error) throw error;
+      setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
+    } catch (error) {
+      console.error("Error marking notification read:", error);
+    }
+  };
+
+  const markAllNotificationsRead = async (userId: string): Promise<void> => {
+    try {
+      const { error } = await supabase.from('notifications').update({ is_read: true }).eq('user_id', userId).eq('is_read', false);
+      if (error) throw error;
+      setNotifications(prev => prev.map(n => (n.userId === userId ? { ...n, read: true } : n)));
+    } catch (error) {
+      console.error("Error marking all notifications read:", error);
+    }
+  };
+
+  const deleteNotification = async (id: string): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('notification_id', id);
+
+    if (error) throw error;
+
     setNotifications((prev) => prev.filter((n) => n.id !== id));
+  } catch (error) {
+    console.error('Error deleting notification:', error);
+  }
+};
+  
+
+  // ── Content Settings ───────────────────────────────────────────────
+  const updateContentSettings = async (settings: Partial<ContentSettings>): Promise<void> => {
+    try {
+      if (!contentSettings.content_id) {
+        console.error("Cannot update: Content ID not found.");
+        return;
+      }
+
+      const dbPayload = { ...settings } as any;
+      delete dbPayload.content_id;
+      dbPayload.updated_at = new Date().toISOString();
+
+      const { error } = await supabase
+        .from('site_content')
+        .update(dbPayload)
+        .eq('content_id', contentSettings.content_id);
+
+      if (error) throw error;
+
+      setContentSettings(prev => ({ ...prev, ...settings }));
+    } catch (error) {
+      console.error("Error updating content settings:", error);
+      throw error;
+    }
   };
 
-  // Business Slots
-  const addBusinessSlot = (slot: Omit<BusinessSlot, 'id'>) => {
-    const newSlot = { ...slot, id: 'slot' + Date.now().toString() };
-    setBusinessSlots([...businessSlots, newSlot]);
-  };
-
-  const updateBusinessSlot = (id: string, slot: Partial<BusinessSlot>) => {
-    setBusinessSlots(businessSlots.map(s => s.id === id ? { ...s, ...slot } : s));
-  };
-
-  const deleteBusinessSlot = (id: string) => {
-    setBusinessSlots(businessSlots.filter(s => s.id !== id));
-  };
-
-  // Content Settings
-  const updateContentSettings = (settings: Partial<ContentSettings>) => {
-    setContentSettings({ ...contentSettings, ...settings });
-  };
-
-
-  // Helper functions
-  const getPropertyById = (id: string) => properties.find(p => p.id === id);
-  const getReservationsByUserId = (userId: string) => reservations.filter(r => r.userId === userId);
-  const getPaymentsByUserId = (userId: string) => payments.filter(p => p.userId === userId);
-  const getNotificationsByUserId = (userId: string) => notifications.filter(n => n.userId === userId);
-  const getInquiriesByUserId = (userId: string) => inquiries.filter(i => i.userId === userId);
-
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]); // ✅ Add this
+  // ─────────────────────────────────────────────────────────────────────────────
+  const addBusinessSlot = (_s: any) => {};
+  const updateBusinessSlot = (_id: string, _s: any) => {};
+  const deleteBusinessSlot = (_id: string) => {};
 
   return (
-    <DataContext.Provider
-      value={{
-        users,
-        properties,
-        reservations,
-        payments,
-        inquiries,
-        notifications,
-        businessSlots,
-        contentSettings,
-        parkingSlots: MOCK_PARKING_SLOTS,  // ✅ new
-        auditLogs, // Placeholder for audit logs
-        locations,
-        addUser,
-        addAuditLog,
-        deleteNotification,
-        addProperty,
-        updateProperty,
-        deleteProperty,
-        addReservation,
-        updateReservation,
-        deleteReservation,
-        addPayment,
-        updatePayment,
-        addInquiry,
-        updateInquiry,
-        addNotification,
-        markNotificationRead,
-        markAllNotificationsRead,
-        addBusinessSlot,
-        updateBusinessSlot,
-        deleteBusinessSlot,
-        updateContentSettings,
-        getPropertyById,
-        getReservationsByUserId,
-        getPaymentsByUserId,
-        getNotificationsByUserId,
-        getInquiriesByUserId,
-        getUserById
-      }}
-    >
+    <DataContext.Provider value={{
+      users, units, reservations, payments, ledgers, auditLogs, inquiries, notifications, businessSlots, contentSettings, parkingSlots: MOCK_PARKING_SLOTS,
+      addUnit, updateUnit, deleteUnit, addReservation, updateReservation, deleteReservation, 
+      addPayment, updatePayment, uploadPaymentProof, uploadUnitImage, addLedgerEntry, addAuditLog, 
+      addInquiry, updateInquiry, addNotification, markNotificationRead, markAllNotificationsRead, deleteNotification,
+      addBusinessSlot, updateBusinessSlot, deleteBusinessSlot, updateContentSettings,
+      getUnitById: (id) => units.find(p => p.id === id),
+      getReservationsByUserId: (userId) => reservations.filter(b => b.userId === userId),
+      getPaymentsByUserId: (userId) => payments.filter(p => p.userId === userId),
+      getNotificationsByUserId: (userId) => notifications.filter(n => n.userId === userId),
+      getInquiriesByUserId: (userId) => inquiries.filter(i => i.userId === userId),
+      getUserById: (id) => users.find(u => u.id === id),
+    }}>
       {children}
     </DataContext.Provider>
   );
@@ -626,8 +1441,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
 export function useData() {
   const context = useContext(DataContext);
-  if (context === undefined) {
-    throw new Error('useData must be used within a DataProvider');
-  }
+  if (context === undefined) throw new Error('useData must be used within a DataProvider');
   return context;
 }

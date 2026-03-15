@@ -14,7 +14,7 @@ import {
 } from 'recharts';
 
 export default function AdminDashboard() {
-  const { reservations, payments, properties, inquiries, auditLogs } = useData();
+  const { reservations, payments, units, inquiries, auditLogs } = useData();
 
   // --- Time helpers ---
   const now = new Date();
@@ -39,9 +39,9 @@ export default function AdminDashboard() {
     const monthRevenue = payments.filter(p => p.date.startsWith(yearMonth) && p.status === 'paid')
       .reduce((sum, p) => sum + p.amount, 0);
 
-    // Calculate occupancy for this month: (Active Bookings / Total Properties) * 100
-    const monthOccupancy = properties.length > 0 
-      ? (monthReservations.length / properties.length) * 100 
+    // Calculate occupancy for this month: (Active Bookings / Total units) * 100
+    const monthOccupancy = units.length > 0 
+      ? (monthReservations.length / units.length) * 100 
       : 0;
 
     return {
@@ -67,8 +67,8 @@ export default function AdminDashboard() {
   const recentInquiries = inquiries.filter(i => i.status === 'open').slice(0, 3);
 
   // --- Health Metrics ---
-  const activeProperties = properties.filter(p => p.available).length;
-  const occupancyRate = properties.length > 0 ? (activeProperties / properties.length) * 100 : 0;
+  const activeunits = units.filter(p => p.available).length;
+  const occupancyRate = units.length > 0 ? (activeunits / units.length) * 100 : 0;
   const totalRevenue = payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
 
   // --- KPI Cards Δ% vs Last Month ---
@@ -83,11 +83,11 @@ export default function AdminDashboard() {
     ? ((reservations.length - lastMonthReservations) / lastMonthReservations) * 100
     : 0;
 
-  // --- Top Properties ---
-  const topProperties = properties.map(property => ({
-    ...property,
+  // --- Top units ---
+  const topunits = units.map(unit => ({
+    ...unit,
     revenue: payments.filter(p => {
-      const res = reservations.find(r => r.id === p.reservationId && r.propertyId === property.id);
+      const res = reservations.find(r => r.id === p.reservationId && r.unitId === unit.id);
       return res && p.status === 'paid';
     }).reduce((sum, p) => sum + p.amount, 0)
   })).sort((a, b) => b.revenue - a.revenue).slice(0, 3);
@@ -170,7 +170,7 @@ export default function AdminDashboard() {
                   {overdueReservations.map(res => (
                     <div key={res.id} className="py-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                       <div>
-                        <p className="font-medium text-gray-900 truncate">{res.propertyName}</p>
+                        <p className="font-medium text-gray-900 truncate">{res.unitName}</p>
                         <p className="text-xs text-gray-500 font-mono">Overdue since {new Date(res.requestDate).toLocaleDateString()}</p>
                       </div>
                       <Link to="/admin/reservations" className="text-sm text-red-600 font-semibold hover:underline flex items-center gap-1">
@@ -202,7 +202,7 @@ export default function AdminDashboard() {
                 {pendingReservations.length > 0 ? (
                   pendingReservations.map(res => (
                     <div key={res.id} className="flex justify-between items-center bg-gray-50 p-2 rounded">
-                      <span className="text-xs font-medium text-gray-700 truncate w-32">{res.propertyName}</span>
+                      <span className="text-xs font-medium text-gray-700 truncate w-32">{res.unitName}</span>
                       <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded uppercase">Pending</span>
                     </div>
                   ))
@@ -327,14 +327,14 @@ export default function AdminDashboard() {
             </div>
           </section>
 
-          {/* Top Properties */}
+          {/* Top units */}
           <section className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
             <div className="flex items-center gap-2 mb-6 font-semibold text-gray-900">
               <Award className="size-5 text-yellow-500" />
               <h2 className="text-sm">Top Performing Units</h2>
             </div>
             <div className="space-y-4">
-              {topProperties.map((prop, i) => (
+              {topunits.map((prop, i) => (
                 <div key={prop.id} className="flex items-center gap-3 group">
                   <div className="relative">
                     <img 
@@ -362,8 +362,9 @@ export default function AdminDashboard() {
             <div className="space-y-4">
               <div>
                 <p className="text-xs text-gray-400">Latest Admin Action</p>
+                <p className="text-sm font-medium">{latestActivity.id}</p>
                 <p className="text-sm font-medium">{latestActivity.action}</p>
-                <p className="text-[10px] text-gray-500">{new Date(latestActivity.date).toLocaleString()}</p>
+                <p className="text-[10px] text-gray-500">{new Date(latestActivity.timestamp).toLocaleString()}</p>
               </div>
               <div className="pt-4 border-t border-gray-800">
                 <div className="flex justify-between items-center mb-1">

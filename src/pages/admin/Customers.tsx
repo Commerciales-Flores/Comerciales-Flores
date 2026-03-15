@@ -1,27 +1,16 @@
 import { useState, useMemo } from 'react';
 import { useData } from '../../contexts/DataContext';
-import { 
-  Search, Eye, Plus, X, Mail, Phone, MapPin, 
-  ShieldCheck, ShieldAlert, Hash, Trash2, RotateCcw, AlertTriangle, EyeOff
+import {
+  Search, Eye, Plus, X, Mail, Phone, MapPin,
+  ShieldCheck, ShieldAlert, Hash, RotateCcw, AlertTriangle, EyeOff, Inbox, Filter
 } from 'lucide-react';
-
-// Mock users data
-const MOCK_CUSTOMERS = [
-  {
-    id: 'USER2',
-    first_name: 'John',
-    last_name: 'Doe',
-    email: 'client@example.com',
-    contactNumber: '+63 918 765 4321',
-    address: '123 Business Avenue, Manila, Philippines 1000',
-    role: 'customer',
-    is_active: true,
-  },
-];
+import { motion } from 'framer-motion';
+import EmptyState from '../../components/common/EmptyState';
 
 export default function AdminCustomers() {
-  const { reservations } = useData();
-  const [customers, setCustomers] = useState(MOCK_CUSTOMERS);
+
+  const { users } = useData();
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -39,16 +28,24 @@ export default function AdminCustomers() {
     is_active: true,
   });
 
+  const customers = useMemo(() => {
+    return users.filter(u => u.role === 'customer' || u.role === 'client');
+  }, [users]);
+  
+
   const filteredCustomers = useMemo(() => {
-    return customers.filter(c =>
-      `${c.first_name} ${c.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.contactNumber.includes(searchTerm)
-    );
-  }, [customers, searchTerm]);
+  return customers.filter(c =>
+    `${c.first_name} ${c.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    c.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (c.publicId ?? c.id).toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (c.contactNumber ?? '').includes(searchTerm)
+  );
+}, [customers, searchTerm]);
 
   const customer = selectedCustomer ? customers.find(c => c.id === selectedCustomer) : null;
+
+  const hasNoCustomers = customers.length === 0;
+  const hasNoSearchResults = customers.length > 0 && filteredCustomers.length === 0;
 
   const passwordStrength = useMemo(() => {
         const { password } = newCustomer;
@@ -68,19 +65,29 @@ export default function AdminCustomers() {
         }
     }, [newCustomer.password]);
 
-  const handleAddCustomer = () => {
+  const handleAddCustomer = async () => {
     if (!newCustomer.first_name || !newCustomer.email) return;
-    const newId = `USER${(Math.random() * 1000).toFixed(0)}`;
-    setCustomers([...customers, { ...newCustomer, id: newId }]);
+
+    console.log('Register new customer:', newCustomer);
+
     setShowAddModal(false);
-    setNewCustomer({ first_name: '', last_name: '', email: '', contactNumber: '', address: '', password: '', role: 'customer', is_active: true });
+    setNewCustomer({
+      first_name: '',
+      last_name: '',
+      email: '',
+      contactNumber: '',
+      address: '',
+      password: '',
+      role: 'customer',
+      is_active: true,
+    });
   };
 
-  const toggleStatus = (id: string, status: boolean) => {
-    setCustomers(prev => prev.map(c => c.id === id ? { ...c, is_active: status } : c));
-    setConfirmDeactivateId(null);
-    if (!status) setSelectedCustomer(null); 
-  };
+  const toggleStatus = async (id: string, status: boolean) => {
+      console.log('Toggle user status:', id, status);
+      setConfirmDeactivateId(null);
+      if (!status) setSelectedCustomer(null);
+    };
 
   return (
     <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6 pb-24 lg:pb-8">
@@ -101,91 +108,178 @@ export default function AdminCustomers() {
       </div>
 
       {/* Search Bar */}
-      <div className="bg-white p-2 rounded-2xl border border-gray-200 shadow-sm sticky top-0 z-20">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search by name, email, ID..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-11 pr-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-blue-500 text-sm outline-none transition-all"
-          />
+      {!hasNoCustomers && (
+        <div className="bg-white p-2 rounded-2xl border border-gray-200 shadow-sm sticky top-0 z-20">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by name, email, ID..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-11 pr-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-blue-500 text-sm outline-none transition-all"
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Mobile Card View */}
-      <div className="grid grid-cols-1 gap-4 lg:hidden">
-        {filteredCustomers.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-200 text-gray-400 text-sm font-medium">No customers found</div>
-        ) : (
-          filteredCustomers.map(c => (
-            <div 
-              key={c.id} 
-              className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex justify-between items-center active:bg-gray-50 transition-colors cursor-pointer" 
-              onClick={() => setSelectedCustomer(c.id)}
-            >
-              <div className="flex items-center gap-4 min-w-0">
-                <div className="size-12 bg-blue-100 text-blue-700 rounded-2xl flex items-center justify-center font-bold text-lg shrink-0">
-                  {c.first_name[0]}{c.last_name[0]}
-                </div>
-                <div className="min-w-0">
-                  <p className="font-bold text-gray-900 leading-tight truncate">{c.first_name} {c.last_name}</p>
-                  <p className="text-[10px] text-gray-400 font-mono mt-0.5">{c.id}</p>
-                  <p className="text-xs text-gray-500 mt-1 truncate">{c.email}</p>
-                </div>
-              </div>
-              <div className="flex flex-col items-end gap-3 shrink-0 ml-2">
-                <span className={`px-2 py-0.5 text-[9px] font-bold uppercase rounded-md tracking-wider ${c.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                  {c.is_active ? 'Active' : 'Inactive'}
-                </span>
-                <Eye size={20} className="text-blue-500 bg-blue-50 p-1 rounded-lg" /> 
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+<div className="grid grid-cols-1 gap-4 lg:hidden">
+  {hasNoCustomers ? (
+  <EmptyState
+    icon={<Inbox className="size-10 text-blue-500" />}
+    title="No active customers yet"
+    description="Customer accounts will appear here once users register or are added by an administrator."
+  />
+)  : hasNoSearchResults ? (
 
-      {/* Desktop/Tablet Table View (Original View) */}
-      <div className="hidden lg:block bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                {['Name', 'User ID', 'Email', 'Contact', 'Address', 'Status', 'Actions'].map((h) => (
-                  <th key={h} className="px-6 py-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filteredCustomers.map((c) => (
-                <tr key={c.id} className="hover:bg-blue-50/30 transition-colors">
-                  <td className="px-6 py-4 font-bold text-gray-900">{c.first_name} {c.last_name}</td>
-                  <td className="px-6 py-4 text-xs font-mono text-gray-400">{c.id}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{c.email}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{c.contactNumber}</td>
-                  <td className="px-6 py-4 text-sm text-gray-500 max-w-[160px] truncate">{c.address}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full ${c.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                      {c.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => setSelectedCustomer(c.id)} className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg"><Eye size={18}/></button>
-                      {c.is_active ? (
-                        <button onClick={() => setConfirmDeactivateId(c.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><X size={18}/></button>
-                      ) : (
-                        <button onClick={() => toggleStatus(c.id, true)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg"><RotateCcw size={18}/></button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+      className="bg-white rounded-2xl border border-gray-200 shadow-sm py-16 px-6"
+    >
+      <div className="flex flex-col items-center justify-center text-center">
+        <div className="bg-gray-50 p-5 rounded-3xl shadow-sm mb-4">
+          <Filter className="size-10 text-gray-400" />
+        </div>
+        <h3 className="text-lg font-bold text-gray-900">No matching customers found</h3>
+        <p className="text-sm text-gray-500 mt-1 max-w-sm">
+          Try adjusting your search by name, email, or user ID.
+        </p>
+      </div>
+    </motion.div>
+  ) : (
+    filteredCustomers.map(c => (
+      <div
+        key={c.id}
+        className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex justify-between items-center active:bg-gray-50 transition-colors cursor-pointer"
+        onClick={() => setSelectedCustomer(c.id)}
+      >
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="size-12 bg-blue-100 text-blue-700 rounded-2xl flex items-center justify-center font-bold text-lg shrink-0">
+            {c.first_name?.[0] ?? ''}{c.last_name?.[0] ?? ''}
+          </div>
+          <div className="min-w-0">
+            <p className="font-bold text-gray-900 leading-tight truncate">{c.first_name} {c.last_name}</p>
+            <p className="text-[10px] text-gray-400 font-mono mt-0.5">{c.publicId ?? c.id}</p>
+            <p className="text-xs text-gray-500 mt-1 truncate">{c.email || '—'}</p>
+          </div>
+        </div>
+        <div className="flex flex-col items-end gap-3 shrink-0 ml-2">
+          <span className={`px-2 py-0.5 text-[9px] font-bold uppercase rounded-md tracking-wider ${(c.is_active ?? true) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+            {(c.is_active ?? true) ? 'Active' : 'Inactive'}
+          </span>
+          <Eye size={20} className="text-blue-500 bg-blue-50 p-1 rounded-lg" />
         </div>
       </div>
+    ))
+  )}
+</div>
+
+      {/* Desktop/Tablet Table View */}
+<div className="hidden lg:block bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+  {hasNoCustomers ? (
+  <EmptyState
+    icon={<Inbox className="size-10 text-blue-500" />}
+    title="No active customers yet"
+    description="Customer accounts will appear here once users register or are added by an administrator."
+  />
+) : (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left">
+        <thead className="bg-gray-50 border-b border-gray-200">
+          <tr>
+            {['Name', 'User ID', 'Email', 'Contact', 'Address', 'Status', 'Actions'].map((h) => (
+              <th key={h} className="px-6 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-widest">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {hasNoSearchResults ? (
+            <tr>
+              <td colSpan={7} className="px-6 py-20 text-center">
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25 }}
+                  className="flex flex-col items-center justify-center text-center"
+                >
+                  <div className="bg-gray-50 p-5 rounded-3xl shadow-sm mb-4">
+                    <Filter className="size-10 text-gray-400" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900">No matching customers found</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Try adjusting your search by name, email, or user ID.
+                  </p>
+                </motion.div>
+              </td>
+            </tr>
+          ) : (
+            filteredCustomers.map((c) => (
+              <tr key={c.id} className="hover:bg-blue-50/30 transition-colors">
+                <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[220px]">
+                  {c.first_name} {c.last_name}
+                </td>
+
+                <td className="px-6 py-4 text-xs font-mono text-gray-400 w-[140px]">
+                  {c.publicId ?? c.id}
+                </td>
+
+                <td className="px-6 py-4 text-sm text-gray-600 w-[220px]">
+                  {c.email || '—'}
+                </td>
+
+                <td className="px-6 py-4 text-sm text-gray-600 w-[160px]">
+                  {c.contactNumber || '—'}
+                </td>
+
+                <td className="px-6 py-4 text-sm text-gray-500 max-w-[160px] truncate">
+                  {c.address || '—'}
+                </td>
+
+                <td className="px-6 py-4 w-[120px]">
+                  <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full ${(c.is_active ?? true) ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                    {(c.is_active ?? true) ? 'Active' : 'Inactive'}
+                  </span>
+                </td>
+
+                <td className="px-6 py-4 w-[120px]">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setSelectedCustomer(c.id)}
+                      className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg"
+                    >
+                      <Eye size={18} />
+                    </button>
+
+                    {(c.is_active ?? true) ? (
+                      <button
+                        onClick={() => setConfirmDeactivateId(c.id)}
+                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
+                      >
+                        <X size={18} />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => toggleStatus(c.id, true)}
+                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                      >
+                        <RotateCcw size={18} />
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  )}
+</div>
 
       {/* MOBILE: FAB (Floating Action Button) */}
       <button
@@ -224,7 +318,7 @@ export default function AdminCustomers() {
                <button onClick={() => setSelectedCustomer(null)} className="absolute top-5 right-5 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all"><X size={20}/></button>
                <div className="absolute -bottom-12 left-8 size-28 bg-white p-2 rounded-[2rem] shadow-xl">
                  <div className="w-full h-full bg-blue-50 rounded-[1.5rem] flex items-center justify-center text-4xl font-bold text-blue-600">
-                   {customer.first_name[0]}{customer.last_name[0]}
+                   {customer.first_name?.[0] ?? ''}{customer.last_name?.[0] ?? ''}
                  </div>
                </div>
              </div>
@@ -233,12 +327,12 @@ export default function AdminCustomers() {
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900 tracking-tight">{customer.first_name} {customer.last_name}</h2>
                     <p className="text-sm font-mono text-gray-400 mt-1 flex items-center gap-1.5 uppercase">
-                      <Hash size={12}/> {customer.id}
+                      <Hash size={12}/> {customer.publicId ?? customer.id}
                     </p>
                   </div>
-                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider ${customer.is_active ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'}`}>
-                    {customer.is_active ? <ShieldCheck size={14}/> : <ShieldAlert size={14}/>}
-                    {customer.is_active ? 'Active' : 'Inactive'}
+                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-bold uppercase tracking-wider ${(customer.is_active ?? true) ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50'}`}>
+                    {(customer.is_active ?? true) ? <ShieldCheck size={14}/> : <ShieldAlert size={14}/>}
+                    {(customer.is_active ?? true) ? 'Active' : 'Inactive'}
                   </div>
                 </div>
                 <div className="mt-8 space-y-5">
@@ -253,14 +347,14 @@ export default function AdminCustomers() {
                      <div className="p-2 bg-white rounded-lg shadow-sm text-blue-600"><Phone size={18}/></div>
                      <div>
                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Contact Number</p>
-                       <p className="text-sm font-bold text-gray-800">{customer.contactNumber}</p>
+                        <p className="text-sm font-bold text-gray-800">{customer.contactNumber || '—'}</p>
                      </div>
                    </div>
                    <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-2xl">
                      <div className="p-2 bg-white rounded-lg shadow-sm text-blue-600"><MapPin size={18}/></div>
                      <div>
                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Physical Address</p>
-                       <p className="text-sm font-bold text-gray-800 leading-relaxed">{customer.address}</p>
+                       <p className="text-sm font-bold text-gray-800 leading-relaxed">{customer.address || '—'}</p>
                      </div>
                    </div>
                 </div>
@@ -301,7 +395,7 @@ export default function AdminCustomers() {
           
           {/* First Name */}
           <div className="space-y-1.5">
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">First Name</label>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">First Name</label>
             <input 
               type="text" 
               placeholder="John"
@@ -313,7 +407,7 @@ export default function AdminCustomers() {
 
           {/* Last Name */}
           <div className="space-y-1.5">
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Last Name</label>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Last Name</label>
             <input 
               type="text" 
               placeholder="Doe"
@@ -326,7 +420,7 @@ export default function AdminCustomers() {
           
           {/* Email */}
           <div className="col-span-2 space-y-1.5">
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
             <input 
               type="email" 
               autoComplete="none"
@@ -339,7 +433,7 @@ export default function AdminCustomers() {
 
           {/* Contact Number */}
           <div className="col-span-2 space-y-1.5">
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contact Number</label>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Contact Number</label>
             <input 
               type="tel" 
               placeholder="+63 9xx..."
@@ -351,7 +445,7 @@ export default function AdminCustomers() {
 
           {/* Address */}
           <div className="col-span-2 space-y-1.5">
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Complete Address</label>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Complete Address</label>
             <textarea 
               placeholder="House No., Street, City"
               value={newCustomer.address} 
@@ -362,7 +456,7 @@ export default function AdminCustomers() {
 
           {/* Password with Strength UI */}
           <div className="col-span-2 space-y-1.5">
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Set Password</label>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Set Password</label>
             <div className="relative">
               <input 
                 type={showPassword ? "text" : "password"} 
@@ -389,7 +483,7 @@ export default function AdminCustomers() {
                     const score = (newCustomer.password.length >= 8 ? 1 : 0) +
                                   (/[A-Z]/.test(newCustomer.password) ? 1 : 0) +
                                   (/[0-9]/.test(newCustomer.password) ? 1 : 0) +
-                                  (/[^{A-Za-z0-9}]/.test(newCustomer.password) ? 1 : 0);
+                                  (/[^A-Za-z0-9]/.test(newCustomer.password) ? 1 : 0);
                     return (
                       <div key={step} className={`h-full flex-1 rounded-full transition-all duration-500 ${score >= step ? (score <= 2 ? 'bg-rose-500' : score === 3 ? 'bg-amber-500' : 'bg-emerald-500') : 'bg-slate-200'}`} />
                     );

@@ -1,20 +1,20 @@
-import type { Property } from '../contexts/DataContext';
+import type { Unit } from '../contexts/DataContext';
 import { X, ChevronLeft, ChevronRight } from "lucide-react"; // Removed Link icon from here
 import { Link } from "react-router-dom"; // Added Link component from react-router-dom
 import { useState } from "react";
 import { formatCurrency } from "../utils/currency";
-import { getPriceLabel, getPropertyTypeLabel } from "../utils/propertyHelpers";
+import { getPriceLabel, getUnitTypeLabel } from "../utils/propertyHelpers";
 
 interface Props {
-  property: Property;
+  Unit: Unit;
   onClose: () => void;
 }
 
-export default function PropertyModal({ property, onClose }: Props) {
+export default function UnitModal({ Unit, onClose }: Props) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
-  const prevImage = () => setCurrentImageIndex((prev) => (prev === 0 ? property.images.length - 1 : prev - 1));
-  const nextImage = () => setCurrentImageIndex((prev) => (prev === property.images.length - 1 ? 0 : prev + 1));
+  const prevImage = () => setCurrentImageIndex((prev) => (prev === 0 ? Unit.images.length - 1 : prev - 1));
+  const nextImage = () => setCurrentImageIndex((prev) => (prev === Unit.images.length - 1 ? 0 : prev + 1));
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -30,8 +30,8 @@ export default function PropertyModal({ property, onClose }: Props) {
         {/* Header: Stays fixed at the top */}
         <div className="flex justify-between items-start p-6 border-b border-gray-200 flex-shrink-0">
           <div>
-            <div className="text-sm text-blue-600 mb-1">{getPropertyTypeLabel(property.type)}</div>
-            <h2 className="text-lg font-semibold">{property.name}</h2>
+            <div className="text-sm text-blue-600 mb-1">{getUnitTypeLabel(Unit.type)}</div>
+            <h2 className="text-lg font-semibold">{Unit.name}</h2>
           </div>
           <button
             onClick={onClose} // Calls the parent's close function
@@ -45,11 +45,11 @@ export default function PropertyModal({ property, onClose }: Props) {
         <div className="p-6 space-y-6 overflow-y-auto">
           <div className="relative">
             <img
-              src={property.images[currentImageIndex] ?? '/fallback-property.jpg'}
-              alt={property.name}
+              src={Unit.images[currentImageIndex] ?? '/fallback-Unit.jpg'}
+              alt={Unit.name}
               className="w-full h-56 sm:h-72 md:h-96 object-cover rounded-lg"
             />
-            {property.images.length > 1 && (
+            {Unit.images.length > 1 && (
               <>
                 <button
                   onClick={prevImage}
@@ -69,18 +69,18 @@ export default function PropertyModal({ property, onClose }: Props) {
 
           <div>
             <h3 className="mb-2 font-semibold text-slate-900">Description</h3>
-            <p className="text-gray-600 leading-relaxed">{property.description}</p>
+            <p className="text-gray-600 leading-relaxed">{Unit.description}</p>
           </div>
 
           <div>
             <h3 className="mb-2 font-semibold text-slate-900">Location</h3>
-            <p className="text-gray-600">{property.location}</p>
+            <p className="text-gray-600">{Unit.property?.address}</p>
           </div>
 
           <div>
             <h3 className="mb-2 font-semibold text-slate-900">Features</h3>
             <ul className="grid grid-cols-2 gap-2">
-              {property.features.map((feature, index) => (
+              {Unit.features.map((feature, index) => (
                 <li key={index} className="flex items-center gap-2 text-gray-600">
                   <div className="size-1.5 bg-blue-600 rounded-full" />{feature}
                 </li>
@@ -92,20 +92,20 @@ export default function PropertyModal({ property, onClose }: Props) {
             <div>
               <p className="text-sm text-gray-600 mb-1">Price</p>
               <div className="text-blue-600 font-bold">
-                {formatCurrency(property.price)} <span className="text-sm font-normal">{getPriceLabel(property.type)}</span>
+                {formatCurrency(Unit.price)} <span className="text-sm font-normal">{getPriceLabel(Unit.type)}</span>
               </div>
             </div>
-            {property.capacity && (
+            {Unit.capacity && (
               <div>
                 <p className="text-sm text-gray-600 mb-1">Capacity</p>
-                <p className="text-gray-900">{property.capacity} persons</p>
+                <p className="text-gray-900">{Unit.capacity} persons</p>
               </div>
             )}
           </div>
 
           <div>
             <h3 className="mb-2 font-semibold text-slate-900">Policies</h3>
-            <p className="text-sm text-gray-600">{property.policies}</p>
+            <p className="text-sm text-gray-600">{Unit.policies}</p>
           </div>
 
           {/* Footer button: Now uses React Router Link */}

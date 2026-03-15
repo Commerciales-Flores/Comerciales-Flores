@@ -1,19 +1,19 @@
-import { useData, type Property, type PropertyType } from "../../contexts/DataContext";
+import { useData, type Unit, type UnitType } from "../../contexts/DataContext";
 import { Link } from "react-router-dom";
 import { ArrowLeft, MapPin, Search, Filter, RotateCcw, X, SlidersHorizontal } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useMemo } from "react";
 import { formatCurrency } from "../../utils/currency";
-import { getPropertyTypeLabel } from "../../utils/propertyHelpers";
-import PropertyModal from "../../components/PropertyModal";
+import { getUnitTypeLabel } from "../../utils/propertyHelpers";
+import UnitModal from "../../components/PropertyModal";
 
-export default function AllProperties() {
-  const { properties, locations } = useData();
-  const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
+export default function AllUnits() {
+  const { units } = useData();
+  const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null);
 
   // --- Filter States ---
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterType, setFilterType] = useState<PropertyType | "all">("all");
+  const [filterType, setFilterType] = useState<UnitType | "all">("all");
   const [filterLocation, setFilterLocation] = useState<string>("all");
   const [priceRange, setPriceRange] = useState<"all" | "0-1000" | "1001-5000" | "5001-10000" | "10001+">("all");
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
@@ -25,6 +25,17 @@ export default function AllProperties() {
     setPriceRange("all");
   };
 
+  const locations: string[] = Array.from(
+    new Set(
+      units
+        .map((u) => u.location || '')
+        .filter((loc) => loc.trim() !== '')
+    )
+  );
+
+
+  const hasNoDataAtAll = units.length === 0;
+
   // --- NEW: Define FilterInputs sub-component inside the function ---
   const FilterInputs = () => (
     <>
@@ -33,7 +44,7 @@ export default function AllProperties() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
         <input 
           type="text"
-          placeholder="Search properties..."
+          placeholder="Search Units..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-full pl-10 pr-4 py-2.5 bg-slate-100 border-none rounded-xl text-sm focus:ring-2 focus:ring-blue-500 transition-all"
@@ -86,8 +97,8 @@ export default function AllProperties() {
   );
 
   // --- Filtering Logic ---
-  const filteredProperties = useMemo(() => {
-    return properties.filter((p) => {
+  const filteredUnits = useMemo(() => {
+    return units.filter((p) => {
       const q = searchTerm.trim().toLowerCase();
       const matchesSearch = p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q);
       const matchesType = filterType === "all" || p.type === filterType;
@@ -104,7 +115,7 @@ export default function AllProperties() {
 
       return matchesSearch && matchesType && matchesPrice && matchesLocation && p.available;
     });
-  }, [properties, searchTerm, filterType, filterLocation, priceRange]);
+  }, [units, searchTerm, filterType, filterLocation, priceRange]);
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] pb-20">
@@ -121,11 +132,12 @@ export default function AllProperties() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
             <div className="max-w-2xl">
                 <h1 className="text-2xl font-bold text-gray-900">All Available Spaces</h1>
-                <p className="text-gray-500">Browse properties, check prices, and view details</p>
+                <p className="text-gray-500">Browse Units, check prices, and view details</p>
             </div>
           </div>
 
           {/* Desktop Filter Row: Hidden on mobile (md:flex) */}
+          {!hasNoDataAtAll && (
           <div className="hidden md:flex flex-row gap-3 items-center">
             <div className="grid md:grid-cols-4 gap-3 w-full">
                 <FilterInputs />
@@ -138,12 +150,14 @@ export default function AllProperties() {
               Reset
             </button>
           </div>
+          )}
         </div>
+        
       </header>
 
       {/* Mobile Filter Panel */}
       <AnimatePresence>
-        {isFilterPanelOpen && (
+        {isFilterPanelOpen && isFilterPanelOpen &&(
             <>
             <motion.div 
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -175,78 +189,116 @@ export default function AllProperties() {
       </AnimatePresence>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-12">
-        <div className="flex justify-between items-center mb-6">
-          <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">
-            Showing {filteredProperties.length} Results
-          </p>
-          <button 
-            onClick={() => setIsFilterPanelOpen(true)}
-            className="md:hidden p-2 bg-white border border-slate-200 rounded-lg shadow-sm text-slate-600 active:bg-slate-50 transition-all"
-            aria-label="Open Filters"
+  {hasNoDataAtAll ? (
+    <div className="text-center py-24 bg-white rounded-3xl border border-dashed border-slate-200">
+      <MapPin className="mx-auto size-12 text-slate-200 mb-4" />
+      <h3 className="text-xl font-bold text-slate-900 mb-2">
+        No spaces available right now
+      </h3>
+      <p className="text-slate-500 max-w-md mx-auto mb-6">
+        There are currently no spaces listed. Please check back later.
+      </p>
+      <Link
+        to="/"
+        className="inline-flex items-center gap-2 px-5 py-3 bg-slate-900 text-white font-semibold rounded-xl hover:bg-blue-600 transition-colors"
+      >
+        <ArrowLeft className="size-4" />
+        Return to Home
+      </Link>
+    </div>
+  ) : (
+    <>
+      <div className="flex justify-between items-center mb-6">
+        <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">
+          Showing {filteredUnits.length} Results
+        </p>
+
+        <button
+          onClick={() => setIsFilterPanelOpen(true)}
+          className="md:hidden p-2 bg-white border border-slate-200 rounded-lg shadow-sm text-slate-600 active:bg-slate-50 transition-all"
+          aria-label="Open Filters"
+        >
+          <Filter className="size-5" />
+        </button>
+      </div>
+
+      {filteredUnits.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+          {filteredUnits.map((prop) => (
+            <motion.div
+              key={prop.id}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 hover:shadow-xl transition-all group"
             >
-            <Filter className="size-5" />
-            </button>
+              <div className="relative h-48 sm:h-56 md:h-64 overflow-hidden">
+                <img
+                  src={prop.images?.[0] || "/fallback-Unit.jpg"}
+                  alt={prop.name}
+                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                />
+                <div className="absolute top-4 left-4 px-3 py-1 bg-white/90 backdrop-blur-md rounded-full text-xs font-bold text-blue-600">
+                  {getUnitTypeLabel(prop.type)}
+                </div>
+              </div>
+
+              <div className="p-5">
+                <h3 className="text-lg font-bold text-slate-900 mb-2">{prop.name}</h3>
+                <p className="text-sm text-slate-500 line-clamp-2 mb-4">
+                  {prop.description}
+                </p>
+                <p className="text-xs text-slate-400 flex items-center gap-1 mb-4">
+                  <MapPin className="size-3" /> {prop.location}
+                </p>
+
+                <div className="flex items-center justify-between pt-4 border-t border-slate-50">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block uppercase font-bold tracking-wider">
+                      Price
+                    </span>
+                    <span className="text-lg font-bold text-blue-600">
+                      {formatCurrency(prop.price)}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => setSelectedUnit(prop)}
+                    className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-blue-600 transition-colors"
+                  >
+                    View Details
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          ))}
         </div>
-
-        {filteredProperties.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
-            {filteredProperties.map((prop) => (
-              <motion.div 
-                key={prop.id}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 hover:shadow-xl transition-all group"
-              >
-                <div className="relative h-48 sm:h-56 md:h-64 overflow-hidden">
-                  <img 
-                    src={prop.images[0] || '/fallback-property.jpg'} 
-                    alt={prop.name}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                  />
-                  <div className="absolute top-4 left-4 px-3 py-1 bg-white/90 backdrop-blur-md rounded-full text-xs font-bold text-blue-600">
-                    {getPropertyTypeLabel(prop.type)}
-                  </div>
-                </div>
-
-                <div className="p-5">
-                  <h3 className="text-lg font-bold text-slate-900 mb-2">{prop.name}</h3>
-                  <p className="text-sm text-slate-500 line-clamp-2 mb-4">
-                    {prop.description}
-                  </p>
-                  <p className="text-xs text-slate-400 flex items-center gap-1 mb-4">
-                    <MapPin className="size-3" /> {prop.location}
-                  </p>
-                  
-                  <div className="flex items-center justify-between pt-4 border-t border-slate-50">
-                    <div>
-                        <span className="text-[10px] text-slate-400 block uppercase font-bold tracking-wider">Price</span>
-                        <span className="text-lg font-bold text-blue-600">{formatCurrency(prop.price)}</span>
-                    </div>
-                    
-                    <button
-                        onClick={() => setSelectedProperty(prop)}
-                        className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl hover:bg-blue-600 transition-colors"
-                    >
-                        View Details
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-200">
-            <Search className="mx-auto size-12 text-slate-200 mb-4" />
-            <p className="text-slate-500 font-medium">No spaces match your filters.</p>
-          </div>
-        )}
-      </main>
+      ) : (
+        <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-slate-200">
+          <Search className="mx-auto size-12 text-slate-200 mb-4" />
+          <h3 className="text-lg font-bold text-slate-900 mb-2">
+            No spaces match your filters
+          </h3>
+          <p className="text-slate-500 font-medium mb-6">
+            Try adjusting your search, type, location, or price range.
+          </p>
+          <button
+            onClick={resetFilters}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-blue-600 transition-colors"
+          >
+            <RotateCcw className="size-4" />
+            Reset Filters
+          </button>
+        </div>
+      )}
+    </>
+  )}
+</main>
 
       <AnimatePresence>
-        {selectedProperty && (
-          <PropertyModal 
-            property={selectedProperty} 
-            onClose={() => setSelectedProperty(null)} 
+        {selectedUnit && (
+          <UnitModal 
+            Unit={selectedUnit} 
+            onClose={() => setSelectedUnit(null)} 
           />
         )}
       </AnimatePresence>

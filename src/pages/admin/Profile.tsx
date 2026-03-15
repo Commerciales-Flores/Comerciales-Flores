@@ -12,13 +12,16 @@ export default function AdminProfile() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const fullName = `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || 'User';
+
   const avatarUrl =
     (user as any)?.avatarUrl ||
     (user as any)?.photoURL ||
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'User')}&background=0ea5e9&color=fff&size=512`;
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=0ea5e9&color=fff&size=512`;
 
   const [profileForm, setProfileForm] = useState({
-    name: user?.name || '',
+    firstName: user?.firstName || '',
+    lastName: user?.lastName || '',
     email: user?.email || '',
     contactNumber: user?.contactNumber || '',
     address: user?.address || ''
@@ -34,6 +37,7 @@ export default function AdminProfile() {
     setMessage({ type, text });
     setTimeout(() => setMessage(null), 4000);
   };
+
 
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,7 +60,7 @@ export default function AdminProfile() {
       return;
     }
     setIsPending(true);
-    const success = await changePassword(passwordForm.oldPassword, passwordForm.newPassword);
+    const success = await changePassword(passwordForm.newPassword);
     if (success) {
       setChangingPassword(false);
       setPasswordForm({ oldPassword: '', newPassword: '', confirmPassword: '' });
@@ -74,7 +78,7 @@ export default function AdminProfile() {
     reader.onload = async () => {
       const dataUrl = reader.result as string;
       try {
-        await updateProfile({ avatarUrl: dataUrl });
+        await updateProfile({ profilePictureUrl: dataUrl });
         showMessage('success', 'Avatar updated!');
       } catch {
         showMessage('error', 'Failed to upload image.');
@@ -128,7 +132,18 @@ export default function AdminProfile() {
                 {editing ? (
                   <motion.form key="edit" initial={{ opacity: 0 }} animate={{ opacity: 1 }} onSubmit={handleProfileSubmit} className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormInput label="Full Name" icon={<User />} value={profileForm.name} onChange={v => setProfileForm({...profileForm, name: v})} />
+                      <FormInput
+                        label="First Name"
+                        icon={<User />}
+                        value={profileForm.firstName}
+                        onChange={(v) => setProfileForm({ ...profileForm, firstName: v })}
+                      />
+                      <FormInput
+                        label="Last Name"
+                        icon={<User />}
+                        value={profileForm.lastName}
+                        onChange={(v) => setProfileForm({ ...profileForm, lastName: v })}
+                      />
                       <FormInput label="Email" icon={<Mail />} type="email" value={profileForm.email} onChange={v => setProfileForm({...profileForm, email: v})} />
                       <FormInput label="Phone" icon={<Phone />} value={profileForm.contactNumber} onChange={v => setProfileForm({...profileForm, contactNumber: v})} />
                       <div className="md:col-span-2">
@@ -145,7 +160,7 @@ export default function AdminProfile() {
                   </motion.form>
                 ) : (
                   <motion.div key="view" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <InfoBlock label="Full Name" value={user?.name} icon={<User />} />
+                    <InfoBlock label="Full Name" value={fullName} icon={<User />} />
                     <InfoBlock label="Email" value={user?.email} icon={<Mail />} />
                     <InfoBlock label="Phone" value={user?.contactNumber} icon={<Phone />} />
                     <InfoBlock label="Address" value={user?.address} icon={<MapPin />} />
@@ -212,7 +227,7 @@ export default function AdminProfile() {
               </div>
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
             </div>
-            <h3 className="mt-4 font-bold text-xl text-slate-900">{user?.name}</h3>
+            <h3 className="mt-4 font-bold text-xl text-slate-900">{fullName}</h3>
             <span className="mt-1 px-3 py-1 bg-blue-50 text-blue-700 text-[10px] font-bold uppercase tracking-widest rounded-full border border-blue-100">
               {user?.role || 'Administrator'}
             </span>

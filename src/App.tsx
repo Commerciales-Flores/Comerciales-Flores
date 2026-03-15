@@ -9,6 +9,7 @@ import { IndicatorProvider } from './contexts/IndicatorContext';
 import LandingPage from './pages/public/LandingPage';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
+import ResetPassword from './pages/auth/ResetPassword';
 
 // Client Pages
 import ClientDashboard from './pages/client/Dashboard';
@@ -53,6 +54,7 @@ export default function App() {
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
                 <Route path="/register" element={<GuestRoute><Register /></GuestRoute>} />
+                <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/spaces" element={<AllProperties />} />
 
                 {/* --- Error Pages (always full screen) --- */}

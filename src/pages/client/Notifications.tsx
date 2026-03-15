@@ -117,6 +117,15 @@ export default function ClientNotifications() {
               >
                 <Filter className="size-5 text-gray-600" />
               </button>
+
+              {unreadCount > 0 && user?.id && (
+                <button
+                  onClick={() => markAllNotificationsRead(user.id)}
+                  className="px-4 py-2 text-sm font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
+                >
+                  Mark all as read
+                </button>
+              )}
               <button 
                 onClick={() => setSelectionMode(true)}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
@@ -156,9 +165,9 @@ export default function ClientNotifications() {
       {/* List Content & Empty States */}
       <div className="space-y-8">
         {notifications.length === 0 ? (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="bg-white p-6 rounded-3xl shadow-sm mb-4">
-              <Inbox className="size-12 text-gray-200" />
+          <motion.div initial={{ opacity: 0, y:10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="bg-blue-50 p-6 rounded-3xl shadow-sm mb-4">
+              <Inbox className="size-12 text-blue-500" />
             </div>
             <h3 className="text-lg font-bold text-gray-900">No notifications yet</h3>
             <p className="text-gray-500 max-w-xs text-sm mt-1">We'll let you know when something important happens.</p>

@@ -97,8 +97,10 @@ export default function Register() {
         else if (!/[0-9]/.test(formData.password)) errs.password = 'Include a number.';
         else if (!/[^A-Za-z0-9]/.test(formData.password)) errs.password = 'Include a special character.';
 
-        if (formData.password !== formData.confirmPassword) {
-            errs.confirmPassword = 'Passwords do not match.';
+        if(!formData.confirmPassword){
+            errs.confirmPassword = "Please confirm your password.";
+        }else if(formData.password !== formData.confirmPassword){
+            errs.confirmPassword = "Passwords do not match";
         }
 
         setErrors(errs);
@@ -106,37 +108,53 @@ export default function Register() {
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        
-        // Prevent execution if already loading (Double-tap protection)
-        if (loading) return; 
+  e.preventDefault();
+  if (loading) return;
+  if (!validate()) return;
 
-        if (!validate()) return;
+  setLoading(true);
+  setErrors({});
 
-        setLoading(true);
-        try {
-            const success = await register({
-                first_name: formData.firstName.trim(),
-                last_name: formData.lastName.trim(),
-                email: formData.email.trim(),
-                contactNumber: formData.contactNumber.trim(),
-                address: formData.address.trim(),
-                password: formData.password,
-            });
+  try {
+    const result = await register({
+      firstName: formData.firstName.trim(),
+      lastName: formData.lastName.trim(),
+      email: formData.email.trim().toLowerCase(),
+      contactNumber: formData.contactNumber.trim(),
+      address: formData.address.trim(),
+      password: formData.password,
+      profileFile,
+    });
 
-            if (!success) {
-                setErrors({ email: 'Email already exists.' });
-                setLoading(false); // Only re-enable if failed
-                return;
-            }
-            
-            // On success, we don't setLoading(false) because we are navigating away
-            navigate('/client/dashboard', { replace: true });
-        } catch (err) {
-            setErrors({ submit: 'An unexpected error occurred. Please try again.' });
-            setLoading(false);
-        }
-    };
+    if (!result.success) {
+      switch (result.error) {
+        case 'email_already_exists':
+          setErrors({ email: 'This email is already registered. Try signing in instead.' });
+          break;
+        case 'rate_limit_exceeded':
+          setErrors({ email: 'Too many signup attempts. Please wait a few minutes before trying again.' });
+          break;
+        default:
+          setErrors({ submit: 'Registration failed. Please try again.' });
+      }
+      setLoading(false);
+      return;
+    }
+
+    navigate('/login', {
+      replace: true,
+      state: {
+        message:
+          result.message ||
+          'Account created. Please check your email and verify your account before signing in.',
+          email: formData.email.trim().toLowerCase(),
+      },
+    });
+  } catch (err) {
+    setErrors({ submit: 'An unexpected error occurred. Please try again.' });
+    setLoading(false);
+  }
+};
 
     const handleBlur = (field: keyof typeof formData) => {
         setFormData(prev => ({ ...prev, [field]: prev[field].trim() }));
@@ -278,11 +296,14 @@ export default function Register() {
                                 <div className="space-y-1.5">
                                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email Address</label>
                                     <input
-                                        type="email" value={formData.email}
-                                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                        onBlur={() => handleBlur('email')}
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
-                                        placeholder="john@example.com"
+                                    name="email"
+                                    type="email"
+                                    autoComplete="email"
+                                    value={formData.email}
+                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                    onBlur={() => handleBlur('email')}
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
+                                    placeholder="john@example.com"
                                     />
                                 </div>
 
@@ -290,77 +311,136 @@ export default function Register() {
                                     <div className="space-y-1.5">
                                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contact Number</label>
                                         <input
-                                            type="tel" value={formData.contactNumber}
-                                            onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })}
-                                            onBlur={() => handleBlur('contactNumber')}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
-                                            placeholder="+63 9xx..."
+                                        name="tel"
+                                        type="tel"
+                                        autoComplete="tel"
+                                        value={formData.contactNumber}
+                                        onChange={(e) => setFormData({ ...formData, contactNumber: e.target.value })}
+                                        onBlur={() => handleBlur('contactNumber')}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
+                                        placeholder="+63 9xx..."
                                         />
                                     </div>
                                     <div className="space-y-1.5">
                                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Location / Address</label>
                                         <input
-                                            type="text" value={formData.address}
-                                            onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                                            onBlur={() => handleBlur('address')}
-                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
-                                            placeholder="Manila, PH"
+                                        name="street-address"
+                                        type="text"
+                                        autoComplete="street-address"
+                                        value={formData.address}
+                                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                                        onBlur={() => handleBlur('address')}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
+                                        placeholder="Manila, PH"
                                         />
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-1.5 relative">
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Password</label>
-                                        <div className="relative">
-                                            <input
-                                                type={showPassword ? "text" : "password"}
-                                                value={formData.password}
-                                                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
-                                                placeholder="••••••••"
-                                            />
-                                            <button 
-                                                type="button" 
-                                                onClick={() => setShowPassword(!showPassword)}
-                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                                            >
-                                                {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                                            </button>
-                                        </div>
-                                        {/* Password Strength Bar UI */}
-                                        {formData.password && (
-                                            <div className="mt-2 space-y-1.5">
-                                                <div className="flex gap-1 h-1">
-                                                    {[1, 2, 3, 4].map((step) => {
-                                                        const score = 
-                                                            (formData.password.length >= 8 ? 1 : 0) +
-                                                            (/[A-Z]/.test(formData.password) ? 1 : 0) +
-                                                            (/[0-9]/.test(formData.password) ? 1 : 0) +
-                                                            (/[^A-Za-z0-9]/.test(formData.password) ? 1 : 0);
-                                                        
-                                                        return (
-                                                            <div 
-                                                                key={step}
-                                                                className={`h-full flex-1 rounded-full transition-all duration-500 ${
-                                                                    score >= step 
-                                                                        ? (score <= 2 ? 'bg-rose-500' : score === 3 ? 'bg-amber-500' : 'bg-emerald-500')
-                                                                        : 'bg-slate-200'
-                                                                }`}
-                                                            />
-                                                        );
-                                                    })}
-                                                </div>
-                                                <p className={`text-[9px] font-bold uppercase tracking-tighter ${
-                                                    passwordStrength === 'Strong' ? 'text-emerald-500' : 
-                                                    passwordStrength === 'Medium' ? 'text-amber-500' : 'text-rose-500'
-                                                }`}>
-                                                    Security: {passwordStrength}
-                                                </p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    {/* Password */}
+    <div className="space-y-1.5 relative">
+        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+            Password
+        </label>
+        <div className="relative">
+            <input
+                name="new-password"
+                type={showPassword ? "text" : "password"}
+                autoComplete="new-password"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                className="w-full px-4 py-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
+                placeholder="••••••••"
+            />
+            <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+            >
+                {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+        </div>
+
+        {formData.password && (
+            <div className="mt-2 space-y-1.5">
+                <div className="flex gap-1 h-1">
+                    {[1, 2, 3, 4].map((step) => {
+                        const score =
+                            (formData.password.length >= 8 ? 1 : 0) +
+                            (/[A-Z]/.test(formData.password) ? 1 : 0) +
+                            (/[0-9]/.test(formData.password) ? 1 : 0) +
+                            (/[^A-Za-z0-9]/.test(formData.password) ? 1 : 0);
+
+                        return (
+                            <div
+                                key={step}
+                                className={`h-full flex-1 rounded-full transition-all duration-500 ${
+                                    score >= step
+                                        ? score <= 2
+                                            ? 'bg-rose-500'
+                                            : score === 3
+                                            ? 'bg-amber-500'
+                                            : 'bg-emerald-500'
+                                        : 'bg-slate-200'
+                                }`}
+                            />
+                        );
+                    })}
+                </div>
+                <p
+                    className={`text-[9px] font-bold uppercase tracking-tighter ${
+                        passwordStrength === 'Strong'
+                            ? 'text-emerald-500'
+                            : passwordStrength === 'Medium'
+                            ? 'text-amber-500'
+                            : 'text-rose-500'
+                    }`}
+                >
+                    Security: {passwordStrength}
+                </p>
+            </div>
+        )}
+    </div>
+
+    {/* Confirm Password */}
+    <div className="space-y-1.5 relative">
+        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+            Confirm Password
+        </label>
+        <div className="relative">
+            <input
+                name="confirm-password"
+                type={showConfirmPassword ? "text" : "password"}
+                autoComplete="new-password"
+                value={formData.confirmPassword}
+                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                className="w-full px-4 py-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
+                placeholder="••••••••"
+            />
+            <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+            >
+                {showConfirmPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+        </div>
+
+        {formData.confirmPassword && (
+            <p
+                className={`text-[9px] font-bold uppercase tracking-tighter ${
+                    formData.password === formData.confirmPassword
+                        ? 'text-emerald-500'
+                        : 'text-rose-500'
+                }`}
+            >
+                {formData.password === formData.confirmPassword
+                    ? 'Passwords match'
+                    : 'Passwords do not match'}
+            </p>
+        )}
+    </div>
+</div>
                             </div>
 
                             <button

@@ -2,8 +2,8 @@ import { useState } from "react";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import { useData } from "../../contexts/DataContext";
-import type { PropertyType } from "../../contexts/DataContext";
-
+import type { UnitType } from "../../contexts/DataContext";
+import { motion } from "framer-motion";
 import { useAuth } from "../../contexts/AuthContext";
 import { useNotifications } from "../../contexts/NotificationContext";
 import {
@@ -12,16 +12,17 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  House
 } from "lucide-react";
 import { formatCurrency } from "../../utils/currency";
 import {
-  getPropertyTypeLabel,
+  getUnitTypeLabel,
   getPriceLabel,
   calculateTotalAmount,
   getMinimumDuration,
 } from "../../utils/propertyHelpers";
 
-export default function ClientProperties() {
+export default function ClientUnits() {
   type DurationType = "hours" | "days" | "months";
 
   interface ReservationForm {
@@ -45,20 +46,31 @@ export default function ClientProperties() {
   }
 
   const { user } = useAuth();
-  const { properties, addReservation, parkingSlots, reservations, locations } = useData();
+  const { units, addReservation, parkingSlots, reservations } = useData();
   const [isSlotPanelOpen, setIsSlotPanelOpen] = useState(false);
   const { sendSystemNotification } = useNotifications();
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterType, setFilterType] = useState<PropertyType | "all">(
+  const [filterType, setFilterType] = useState<UnitType | "all">(
     "all"
   );
   const [filterLocation, setFilterLocation] = useState<string>("all");
-  const [selectedProperty, setSelectedProperty] = useState<string | null>(
+  const [selectedUnit, setSelectedUnit] = useState<string | null>(
     null
   );
   const [showReservationModal, setShowReservationModal] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [reservationSuccess, setReservationSuccess] = useState(false);
+
+  const locations: string[] = [
+    'All',
+    ...Array.from(
+      new Set(
+        units
+          .map((u) => u.location || '')
+          .filter((loc) => loc.trim() !== '')
+      )
+    )
+  ];
 
   const [reservationForm, setReservationForm] = useState<ReservationForm>({
     startDate: new Date(),
@@ -78,15 +90,15 @@ export default function ClientProperties() {
     businessType: "",
   });
 
-  const property = selectedProperty
-    ? properties.find((p) => p.id === selectedProperty) ?? null
+  const Unit = selectedUnit
+    ? units.find((p) => p.id === selectedUnit) ?? null
     : null;
 
   const [priceRange, setPriceRange] = useState<
     "all" | "0-1000" | "1001-5000" | "5001-10000" | "10001+"
   >("all");
 
-  const filteredProperties = properties.filter((p) => {
+  const filteredunits = units.filter((p) => {
     const q = searchTerm.trim().toLowerCase();
     const matchesSearch =
       p.name.toLowerCase().includes(q) ||
@@ -123,15 +135,17 @@ export default function ClientProperties() {
     return d;
   };
 
+  
+
   const [appointmentDate, setAppointmentDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
 
-  const handleReserveNow = (propertyId: string) => {
-    const prop = properties.find((p) => p.id === propertyId);
+  const handleReserveNow = (UnitId: string) => {
+    const prop = units.find((p) => p.id === UnitId);
     if (!prop) return;
 
-    setSelectedProperty(propertyId);
+    setSelectedUnit(UnitId);
     setCurrentImageIndex(0);
     setShowReservationModal(true);
 
@@ -210,7 +224,7 @@ export default function ClientProperties() {
     const formEnd = computeEndFromForm(formStart, reservationForm.duration, reservationForm.durationType);
 
     const reservedIds = reservations
-      .filter((b) => b.propertyType === "parking_slot" && b.slotId)
+      .filter((b) => b.unitType === "parking_slot" && b.slotId)
       .filter((b) => {
         const resStart = new Date(b.startDate);
         const resType: DurationType = (b.durationType as DurationType) ?? "days";
@@ -225,7 +239,7 @@ export default function ClientProperties() {
   };
 
   const reservedSlotIds = getReservedSlotIds();
-
+  const hasUnits = units.some((u) => u.available);
   const handleSlotSelectFromPanel = (slotId: string) => {
     setReservationForm((prev) => ({ ...prev, slotId }));
     setIsSlotPanelOpen(false);
@@ -243,26 +257,26 @@ export default function ClientProperties() {
 
   const handleReservationSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!property || !user) return;
+    if (!Unit || !user) return;
 
-    if (property.type === "parking_slot" && !reservationForm.slotId) {
+    if (Unit.type === "parking_slot" && !reservationForm.slotId) {
       alert("Please select a specific parking slot before proceeding.");
       setIsSlotPanelOpen(true);
       return;
     }
 
     const totalAmount = calculateTotalAmount(
-      property.type,
-      property.price,
+      Unit.type,
+      Unit.price,
       reservationForm.duration,
       reservationForm.paymentCycle
     );
 
     const reservationData: any = {
       userId: user.id,
-      propertyId: property.id,
-      propertyName: property.name,
-      propertyType: property.type,
+      UnitId: Unit.id,
+      UnitName: Unit.name,
+      UnitType: Unit.type,
       startDate: reservationForm.startDate.toISOString(),
       endDate: reservationForm.endDate.toISOString(),
       duration: reservationForm.duration,
@@ -276,13 +290,13 @@ export default function ClientProperties() {
       notes: reservationForm.notes,
     };
 
-    if (property.type === "rental_space") {
+    if (Unit.type === "rental_space") {
       reservationData.paymentCycle = reservationForm.paymentCycle;
       reservationData.businessType = reservationForm.businessType;
-    } else if (property.type === "function_hall") {
+    } else if (Unit.type === "function_hall") {
       reservationData.eventPurpose = reservationForm.eventPurpose;
       reservationData.attendees = parseInt(reservationForm.attendees || "0");
-    } else if (property.type === "parking_slot") {
+    } else if (Unit.type === "parking_slot") {
       const selectedSlot = parkingSlots.find((p) => p.id === reservationForm.slotId);
       if (!selectedSlot) {
         console.error("No slot selected!");
@@ -313,7 +327,7 @@ export default function ClientProperties() {
     sendSystemNotification(
       user.id,
       "Reservation Request Submitted",
-      `Your reservation request for ${property.name} has been submitted and is pending admin approval.`
+      `Your reservation request for ${Unit.name} has been submitted and is pending admin approval.`
     );
 
     setReservationSuccess(true);
@@ -324,15 +338,15 @@ export default function ClientProperties() {
   };
 
   const nextImage = () => {
-    if (property) {
-      setCurrentImageIndex((prev) => (prev + 1) % property.images.length);
+    if (Unit) {
+      setCurrentImageIndex((prev) => (prev + 1) % Unit.images.length);
     }
   };
 
   const prevImage = () => {
-    if (property) {
+    if (Unit) {
       setCurrentImageIndex(
-        (prev) => (prev - 1 + property.images.length) % property.images.length
+        (prev) => (prev - 1 + Unit.images.length) % Unit.images.length
       );
     }
   };
@@ -346,7 +360,7 @@ export default function ClientProperties() {
       <header>
 
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
-          Browse Properties
+          Browse units
         </h1>
         <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
           Secure a space or book an appointment for a tour
@@ -354,6 +368,7 @@ export default function ClientProperties() {
       </header>
 
       {/* Search and Filter */}
+      {hasUnits && (
 <div className="bg-white p-4 rounded-lg border border-gray-200">
 
   {/* Mobile Layout */}
@@ -362,7 +377,7 @@ export default function ClientProperties() {
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
       <input
         type="text"
-        placeholder="Search properties..."
+        placeholder="Search units..."
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
         className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -383,7 +398,7 @@ export default function ClientProperties() {
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
       <input
         type="text"
-        placeholder="Search properties..."
+        placeholder="Search units..."
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
         className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -394,7 +409,7 @@ export default function ClientProperties() {
     <select
       value={filterType}
       onChange={(e) =>
-        setFilterType(e.target.value as PropertyType | "all")
+        setFilterType(e.target.value as UnitType | "all")
       }
       className="px-3 py-2 border border-gray-300 rounded-lg"
     >
@@ -429,10 +444,11 @@ export default function ClientProperties() {
     </select>
   </div>
 </div>
+      )}
 
-      {/* Properties Grid */}
+      {/* units Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredProperties.map((prop) => (
+        {filteredunits.map((prop) => (
           <div
             key={prop.id}
             className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition-shadow"
@@ -444,7 +460,7 @@ export default function ClientProperties() {
             />
             <div className="p-4">
               <div className="text-xs text-blue-600 mb-1">
-                {getPropertyTypeLabel(prop.type)}
+                {getUnitTypeLabel(prop.type)}
               </div>
               <h3 className="mb-2">{prop.name}</h3>
               <p className="text-sm text-gray-600 mb-3 line-clamp-2">
@@ -472,13 +488,28 @@ export default function ClientProperties() {
         ))}
       </div>
 
-      {filteredProperties.length === 0 && (
-        <div className="text-center py-12 bg-white rounded-lg border border-gray-200">
-          <p className="text-gray-500">No properties found matching your criteria</p>
-        </div>
-      )}
+      {filteredunits.length === 0 && (
+  <motion.div
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.25 }}
+    className="flex flex-col items-center justify-center py-20 text-center"
+  >
+    <div className="bg-blue-50 p-6 rounded-3xl shadow-sm mb-4">
+      <House className="size-12 text-blue-500" />
+    </div>
 
-      {showFilterModal && (
+    <h3 className="text-lg font-bold text-gray-900">
+      No units found
+    </h3>
+
+    <p className="text-gray-500 max-w-xs text-sm mt-1">
+      Try adjusting your search or filters to see available units.
+    </p>
+  </motion.div>
+)}
+
+      {showFilterModal && hasUnits &&(
   <div className="fixed inset-0 z-50 flex items-end sm:hidden">
 
     {/* Background overlay */}
@@ -500,12 +531,12 @@ export default function ClientProperties() {
       {/* Type */}
       <div className="mb-4">
         <label className="text-sm text-gray-600 mb-1 block">
-          Property Type
+          Unit Type
         </label>
         <select
           value={filterType}
           onChange={(e) =>
-            setFilterType(e.target.value as PropertyType | "all")
+            setFilterType(e.target.value as UnitType | "all")
           }
           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
         >
@@ -564,17 +595,17 @@ export default function ClientProperties() {
 
       {/* Reservation Modal */}
 
-      {showReservationModal && property && (
+      {showReservationModal && Unit && (
   <div className="fixed inset-0 p-4 z-50 overflow-auto">
     <div className="bg-white rounded-lg max-w-4xl w-full mx-auto my-8 max-h-[90vh] overflow-y-auto shadow-xl">
       <div className="flex justify-between items-center p-6 border-b border-gray-200">
         <div>
           <div className="text-sm text-blue-600 mb-1">
-            {getPropertyTypeLabel(property.type)}
+            {getUnitTypeLabel(Unit.type)}
           </div>
-          <h2>{property.name}</h2>
+          <h2>{Unit.name}</h2>
           <div className="text-sm text-gray-500 mb-1">
-            📍 {property.location}
+            📍 {Unit.location}
           </div>
         </div>
         <button
@@ -597,15 +628,15 @@ export default function ClientProperties() {
       ) : (
         <div className="p-6">
           <div className="grid md:grid-cols-2 gap-6 mb-6">
-            {/* LEFT PANEL: Property Images & Info */}
+            {/* LEFT PANEL: Unit Images & Info */}
             <div>
               <div className="relative mb-4">
                 <img
-                  src={property.images[currentImageIndex]}
-                  alt={property.name}
+                  src={Unit.images[currentImageIndex]}
+                  alt={Unit.name}
                   className="w-full h-48 object-cover rounded-lg"
                 />
-                {property.images.length > 1 && (
+                {Unit.images.length > 1 && (
                   <>
                     <button
                       onClick={prevImage}
@@ -623,20 +654,20 @@ export default function ClientProperties() {
                 )}
               </div>
 
-              <p className="text-sm text-gray-600 mb-4">{property.description}</p>
+              <p className="text-sm text-gray-600 mb-4">{Unit.description}</p>
 
               <div className="bg-blue-50 p-4 rounded-lg mb-4">
                 <p className="text-sm text-gray-600 mb-1">Price</p>
                 <div className="text-blue-600">
-                  {formatCurrency(property.price)}{" "}
-                  <span className="text-sm">{getPriceLabel(property.type)}</span>
+                  {formatCurrency(Unit.price)}{" "}
+                  <span className="text-sm">{getPriceLabel(Unit.type)}</span>
                 </div>
               </div>
 
               <div className="text-sm text-gray-600">
                 <p className="mb-1">
-                  Minimum Duration: {getMinimumDuration(property.type).value}{" "}
-                  {getMinimumDuration(property.type).unit}
+                  Minimum Duration: {getMinimumDuration(Unit.type).value}{" "}
+                  {getMinimumDuration(Unit.type).unit}
                 </p>
               </div>
             </div>
@@ -739,7 +770,7 @@ export default function ClientProperties() {
                         <div>
                           <p className="font-medium text-sm">Just Viewing</p>
                           <p className="text-xs text-gray-500">
-                            I'd like a tour of the property first before deciding.
+                            I'd like a tour of the Unit first before deciding.
                           </p>
                         </div>
                       </label>
@@ -787,7 +818,7 @@ export default function ClientProperties() {
               {!(reservationForm.modeOfVisit === "onsite" && reservationForm.paymentIntent === "pay_later") && (
                 <>
                  {/* Parking slot: monthly minimum, date selection, slot selector, vehicle fields when onsite */}
-                    {property.type === "parking_slot" && (
+                    {Unit.type === "parking_slot" && (
                       <>
                         <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
                           Parking spaces require a <strong>minimum occupancy of 1 month</strong>.
@@ -913,7 +944,7 @@ export default function ClientProperties() {
 
 
                     {/* Function hall: date range (days) */}
-                    {property.type === "function_hall" && (
+                    {Unit.type === "function_hall" && (
                       <div>
                         <label className="block text-sm text-gray-700 mb-2">Reservation Dates</label>
                         <button
@@ -953,7 +984,7 @@ export default function ClientProperties() {
 
 
                     {/* Rental space: lease start + years */}
-                    {property.type === "rental_space" && (
+                    {Unit.type === "rental_space" && (
                       <>
                         <div>
                           <label className="block text-sm text-gray-700 mb-2">Lease Start Date</label>
@@ -987,7 +1018,7 @@ export default function ClientProperties() {
                           <input
                             type="number"
                             required
-                            min={getMinimumDuration(property.type).value}
+                            min={getMinimumDuration(Unit.type).value}
                             value={reservationForm.duration}
                             onChange={(e) => {
                               const newDuration = parseInt(e.target.value) || 1;
@@ -1009,7 +1040,7 @@ export default function ClientProperties() {
 
 
                     {/* Rental-specific fields */}
-                    {property.type === "rental_space" && (
+                    {Unit.type === "rental_space" && (
                       <>
                         <div>
                           <label className="block text-sm text-gray-700 mb-2">Payment Cycle</label>
@@ -1039,7 +1070,7 @@ export default function ClientProperties() {
 
 
                     {/* Function hall fields */}
-                    {property.type === "function_hall" && (
+                    {Unit.type === "function_hall" && (
                       <>
                         <div>
                           <label className="block text-sm text-gray-700 mb-2">Event Purpose</label>
@@ -1058,18 +1089,18 @@ export default function ClientProperties() {
                             type="number"
                             required
                             min={1}
-                            max={property.capacity}
+                            max={Unit.capacity}
                             value={reservationForm.attendees}
                             onChange={(e) => setReservationForm((prev) => ({ ...prev, attendees: e.target.value }))}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder={`Max: ${property.capacity}`}
+                            placeholder={`Max: ${Unit.capacity}`}
                           />
                         </div>
                       </>
                     )}
 
 
-                    {property.type === "parking_slot" && (
+                    {Unit.type === "parking_slot" && (
                       <>
                         <div>
                           <label className="block text-sm text-gray-700 mb-2">
@@ -1162,8 +1193,8 @@ export default function ClientProperties() {
                     <div className="text-gray-900 font-bold text-lg">
                       {formatCurrency(
                         calculateTotalAmount(
-                          property.type,
-                          property.price,
+                          Unit.type,
+                          Unit.price,
                           reservationForm.duration,
                           reservationForm.paymentCycle
                         )

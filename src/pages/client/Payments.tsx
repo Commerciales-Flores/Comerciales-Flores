@@ -3,9 +3,10 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { CreditCard, CheckCircle, Clock, Plus, Download, FileDown, X, XCircle, Paperclip, Trash2, Eye } from 'lucide-react'; // Added FileDown and Ximport { formatCurrency } from '../../utils/currency';
-import { getPropertyTypeLabel } from '../../utils/propertyHelpers';
+import { getUnitTypeLabel } from '../../utils/propertyHelpers';
 import Papa from 'papaparse'; // Import PapaParse for CSV export
 import { formatCurrency } from '../../utils/currency';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function ClientPayments() {
   const { user } = useAuth();
@@ -18,6 +19,8 @@ export default function ClientPayments() {
     const [proofFile, setProofFile] = useState<File | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
   const [proofPreviewUrl, setProofPreviewUrl] = useState<string | null>(null);
+
+  const fullName = `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim();
   
   const [paymentForm, setPaymentForm] = useState({
     amount: '',
@@ -29,6 +32,7 @@ export default function ClientPayments() {
 
   const userReservations = getReservationsByUserId(user?.id || '');
   const userPayments = getPaymentsByUserId(user?.id || '');
+  const hasPayments = userPayments.length > 0;
 
   const eligibleReservations = userReservations.filter(
     b => b.status === 'completed' && b.paidAmount < b.totalAmount
@@ -55,7 +59,7 @@ export default function ClientPayments() {
     payment.method.toLowerCase().includes(query) ||
     payment.notes?.toLowerCase().includes(query) ||
     payment.amount.toString().includes(query) || // ✅ include amount
-    (reservation?.propertyName.toLowerCase().includes(query)) ||
+    (reservation?.unitName.toLowerCase().includes(query)) ||
     (reservation?.id.toLowerCase().includes(query))
   );
 });
@@ -113,7 +117,7 @@ export default function ClientPayments() {
   sendSystemNotification(
     user.id,
     'Payment Submitted',
-    `Your payment of ${formatCurrency(amount)} for ${reservation.propertyName} is pending verification.`
+    `Your payment of ${formatCurrency(amount)} for ${reservation.unitName} is pending verification.`
   );
   setPaymentSuccess(true);
   setTimeout(() => {
@@ -157,21 +161,21 @@ export default function ClientPayments() {
       ----------------------------------------
       BILLED TO
       ----------------------------------------
-      Name:    ${user?.name}
+      Name:    ${fullName}
       Email:   ${user?.email}
 
       ----------------------------------------
       RESERVATION DETAILS
       ----------------------------------------
       Reservation ID:   ${reservation?.id}
-      Property:     ${reservation?.propertyName}
-      Property Type: ${getPropertyTypeLabel(reservation?.propertyType || 'rental_space')}
+      unit:     ${reservation?.unitName}
+      unit Type: ${getUnitTypeLabel(reservation?.unitType || 'rental_space')}
       Reservation Date: ${new Date(reservation?.startDate || '').toLocaleDateString()}
 
       ----------------------------------------
       PAYMENT DETAILS
       ----------------------------------------
-      Description:    Payment for ${reservation?.propertyName}
+      Description:    Payment for ${reservation?.unitName}
       Payment Method: ${payment.method.replace('_', ' ')}
       Amount Paid:    ${formatCurrency(payment.amount)}
 
@@ -198,8 +202,8 @@ export default function ClientPayments() {
         'Payment ID': payment.id,
         'Payment Date': new Date(payment.date).toLocaleDateString(),
         'Reservation ID': payment.reservationId,
-        'Property Name': reservation ?.propertyName,
-        'Property Type': reservation ? getPropertyTypeLabel(reservation.propertyType) : 'N/A',
+        'unit Name': reservation ?.unitName,
+        'unit Type': reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A',
         'Amount': payment.amount,
         'Payment Method': payment.method,
         'Payment Status': payment.status,
@@ -211,7 +215,7 @@ export default function ClientPayments() {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `payment_history_${user?.name?.replace(' ', '_') || 'export'}.csv`;
+    link.download = `payment_history_${fullName?.replace(' ', '_') || 'export'}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -243,7 +247,7 @@ export default function ClientPayments() {
               return (
                 <div key={reservation.id} className="flex justify-between items-center p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                   <div className="flex-1">
-                    <h3 className="text-gray-900">{reservation.propertyName}</h3>
+                    <h3 className="text-gray-900">{reservation.unitName}</h3>
                     <p className="text-sm text-gray-600">Reservation ID: {reservation.id}</p>
                     <div className="mt-2 text-sm">
                       <span className="text-gray-600">Total: {formatCurrency(reservation.totalAmount)}</span>
@@ -268,138 +272,147 @@ export default function ClientPayments() {
       )}
 
       {/* ✅ START: REFACTORED PAYMENT HISTORY SECTION */}
-      <div className="bg-white rounded-lg border border-gray-200">
-        {/* Header with Export Button */}
-          <div className="p-6 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-  {/* History Heading with Icon */}
-  <h2 className="text-lg font-semibold flex items-center gap-2">
-    <Clock className="size-5 text-gray-600" />
-    History
-  </h2>
+      
+      {hasPayments ? (
+  <div className="bg-white rounded-lg border border-gray-200">
+    {/* Header with Export Button */}
+    <div className="p-6 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+      <h2 className="text-lg font-semibold flex items-center gap-2">
+        <Clock className="size-5 text-gray-600" />
+        History
+      </h2>
 
-  {/* Container for search + export, responsive */}
-  <div className="flex w-full sm:w-auto gap-2 mt-3 sm:mt-0 sm:ml-auto">
-    {/* Search bar */}
-    <input
-      type="text"
-      placeholder="Search payments..."
-      value={searchQuery}
-      onChange={(e) => setSearchQuery(e.target.value)}
-      className="flex-1 sm:flex-[2] md:flex-[3] px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm outline-none"
-    />
+      <div className="flex w-full sm:w-auto gap-2 mt-3 sm:mt-0 sm:ml-auto">
+        <input
+          type="text"
+          placeholder="Search payments..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="flex-1 sm:flex-[2] md:flex-[3] px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm outline-none"
+        />
 
-    {/* Export CSV Button */}
-    {userPayments.length > 0 && (
-      <button
-        onClick={handleExportCSV}
-        className="flex items-center justify-center gap-2 px-3 py-2 bg-gray-700 text-white text-sm rounded-lg hover:bg-gray-800 transition-colors"
-      >
-        {/* Mobile: icon only */}
-        <FileDown className="size-4 sm:hidden" />
+        <button
+          onClick={handleExportCSV}
+          className="flex items-center justify-center gap-2 px-3 py-2 bg-gray-700 text-white text-sm rounded-lg hover:bg-gray-800 transition-colors"
+        >
+          <FileDown className="size-4 sm:hidden" />
+          <div className="hidden sm:flex items-center gap-2">
+            <FileDown className="size-4" />
+            Export as CSV
+          </div>
+        </button>
+      </div>
+    </div>
 
-        {/* Desktop: icon + text */}
-        <div className="hidden sm:flex items-center gap-2">
-          <FileDown className="size-4" />
-          Export as CSV
-        </div>
-      </button>
+    {filteredPayments.length > 0 ? (
+      <div className="divide-y divide-gray-200">
+        {[...filteredPayments]
+          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+          .map((payment) => {
+            const reservation = userReservations.find(r => r.id === payment.reservationId);
+            const StatusIcon = paymentStatusIcons[payment.status];
+
+            return (
+              <div key={payment.id} className="p-4 sm:p-6 hover:bg-gray-50/50">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-3">
+                  <div className="flex flex-col gap-1 w-full">
+                    <div className="flex items-center justify-between sm:justify-start gap-2">
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold rounded-md ${paymentStatusColors[payment.status]}`}>
+                        <StatusIcon className="size-3" />
+                        {payment.status.toUpperCase()}
+                      </span>
+
+                      <button 
+                        onClick={() => handleDownloadInvoice(payment)}
+                        className="sm:hidden flex items-center gap-1 text-blue-600 text-xs font-semibold"
+                      >
+                        <Download className="size-3" />
+                        Invoice
+                      </button>
+                    </div>
+
+                    <h3 className="text-lg font-bold text-gray-900 mt-1">{formatCurrency(payment.amount)}</h3>
+                    <p className="text-xs text-gray-500 font-medium">Paid on {new Date(payment.date).toLocaleDateString()}</p>
+                  </div>
+
+                  <button
+                    onClick={() => handleDownloadInvoice(payment)}
+                    className="hidden sm:flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100"
+                  >
+                    <Download className="size-4" />
+                    Invoice
+                  </button>
+                </div>
+
+                <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <h4 className="text-sm font-semibold mb-2">{reservation?.unitName}</h4>
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                    {[
+                      { label: 'Reservation ID', value: reservation?.id },
+                      { label: 'Method', value: payment.method.replace('_', ' '), className: 'capitalize' },
+                      { label: 'Cycle', value: reservation?.paymentCycle, hide: !reservation?.paymentCycle },
+                      { label: 'Total Bill', value: formatCurrency(reservation?.totalAmount || 0) },
+                      { label: 'Total Paid', value: formatCurrency(reservation?.paidAmount || 0), className: 'text-green-600 font-medium' },
+                      { label: 'Balance', value: formatCurrency((reservation?.totalAmount || 0) - (reservation?.paidAmount || 0)), className: 'text-red-600 font-medium' },
+                    ].map((item, idx) => !item.hide && (
+                      <div key={idx} className="flex flex-col border-l-2 border-gray-100 pl-3">
+                        <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">{item.label}</span>
+                        <span className={`text-gray-900 ${item.className || ''}`}>{item.value}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {payment.notes && (
+                    <div className="mt-2 pt-2 border-t border-gray-200">
+                      <p className="text-sm"><strong>Notes:</strong> {payment.notes}</p>
+                    </div>
+                  )}
+
+                  {payment.proofOfPayment && (
+                    <div className="mt-2 pt-2 border-t border-gray-200">
+                      <button
+                        onClick={() => setViewingImage(payment.proofOfPayment || null)}
+                        className="text-sm text-blue-600 hover:underline font-medium"
+                      >
+                        <Eye className="size-4 text-blue-600 sm:hidden" />
+                        <span className="hidden sm:inline">View Proof of Payment</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+      </div>
+    ) : (
+      <div className="p-12 text-center">
+        <CreditCard className="size-16 text-gray-400 mx-auto mb-4" />
+        <h3 className="text-gray-600 mb-2">No payments matched your search</h3>
+        <p className="text-sm text-gray-500">Try a different keyword or amount</p>
+      </div>
     )}
   </div>
-</div>
-
-        {userPayments.length > 0 ? (
-  filteredPayments.length > 0 ? (
-    <div className="divide-y divide-gray-200">
-      {[...filteredPayments]
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-        .map((payment) => {
-          const reservation = userReservations.find(r => r.id === payment.reservationId);
-          const StatusIcon = paymentStatusIcons[payment.status];
-
-          return (
-            <div key={payment.id} className="p-4 sm:p-6 hover:bg-gray-50/50">
-              {/* Header */}
-              <div className="flex flex-col sm:flex-row justify-between items-start gap-3">
-                <div className="flex flex-col gap-1 w-full">
-                  <div className="flex items-center justify-between sm:justify-start gap-2">
-                    <span className={`inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold rounded-md ${paymentStatusColors[payment.status]}`}>
-                      <StatusIcon className="size-3" />
-                      {payment.status.toUpperCase()}
-                    </span>
-
-                    {/* Mobile Invoice button */}
-                    <button 
-                      onClick={() => handleDownloadInvoice(payment)}
-                      className="sm:hidden flex items-center gap-1 text-blue-600 text-xs font-semibold"
-                    >
-                      <Download className="size-3" />
-                      Invoice
-                    </button>
-                  </div>
-
-                  <h3 className="text-lg font-bold text-gray-900 mt-1">{formatCurrency(payment.amount)}</h3>
-                  <p className="text-xs text-gray-500 font-medium">Paid on {new Date(payment.date).toLocaleDateString()}</p>
-                </div>
-
-                {/* Desktop Invoice button */}
-                <button
-                  onClick={() => handleDownloadInvoice(payment)}
-                  className="hidden sm:flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100"
-                >
-                  <Download className="size-4" />
-                  Invoice
-                </button>
-              </div>
-
-              {/* Card Body */}
-              <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                <h4 className="text-sm font-semibold mb-2">{reservation?.propertyName}</h4>
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-                  {[
-                    { label: 'Reservation ID', value: reservation?.id },
-                    { label: 'Method', value: payment.method.replace('_', ' '), className: 'capitalize' },
-                    { label: 'Cycle', value: reservation?.paymentCycle, hide: !reservation?.paymentCycle },
-                    { label: 'Total Bill', value: formatCurrency(reservation?.totalAmount || 0) },
-                    { label: 'Total Paid', value: formatCurrency(reservation?.paidAmount || 0), className: 'text-green-600 font-medium' },
-                    { label: 'Balance', value: formatCurrency((reservation?.totalAmount || 0) - (reservation?.paidAmount || 0)), className: 'text-red-600 font-medium' },
-                  ].map((item, idx) => !item.hide && (
-                    <div key={idx} className="flex flex-col border-l-2 border-gray-100 pl-3">
-                      <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">{item.label}</span>
-                      <span className={`text-gray-900 ${item.className || ''}`}>{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {payment.notes && (
-                  <div className="mt-2 pt-2 border-t border-gray-200">
-                    <p className="text-sm"><strong>Notes:</strong> {payment.notes}</p>
-                  </div>
-                )}
-
-                {payment.proofOfPayment && (
-                  <div className="mt-2 pt-2 border-t border-gray-200">
-                    <button
-                      onClick={() => setViewingImage(payment.proofOfPayment || null)}
-                      className="text-sm text-blue-600 hover:underline font-medium"
-                    >
-                      <Eye className="size-4 text-blue-600 sm:hidden" /> {/* Mobile: eye icon */}
-                      <span className="hidden sm:inline">View Proof of Payment</span> {/* Desktop: text */}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
+) : (
+  <motion.div
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.25 }}
+    className="flex flex-col items-center justify-center py-20 text-center"
+  >
+    <div className="bg-blue-50 p-6 rounded-3xl shadow-sm mb-4">
+      <CreditCard className="size-12 text-blue-500" />
     </div>
-  ) : (
-    <div className="p-12 text-center">
-      <CreditCard className="size-16 text-gray-400 mx-auto mb-4" />
-      <h3 className="text-gray-600 mb-2">No payments matched your search</h3>
-      <p className="text-sm text-gray-500">Try a different keyword or amount</p>
-    </div>
-  )
-) : null} {/* Render nothing if userPayments.length === 0 */}
+
+    <h3 className="text-lg font-bold text-gray-900">
+      No payments yet
+    </h3>
+
+    <p className="text-gray-500 max-w-xs text-sm mt-1">
+      Your payment history will appear here once you make a payment.
+    </p>
+  </motion.div>
+)}
         
       </div>
       {/* ✅ END: REFACTORED PAYMENT HISTORY SECTION */}
@@ -485,7 +498,7 @@ export default function ClientPayments() {
                   const balance = reservation.totalAmount - reservation.paidAmount;
                   return (
                     <div className="bg-gray-50 p-4 rounded-lg">
-                      <p className="text-sm text-gray-600 mb-2">{reservation.propertyName}</p>
+                      <p className="text-sm text-gray-600 mb-2">{reservation.unitName}</p>
                       <div className="space-y-1 text-sm">
                         <div className="flex justify-between"><span className="text-gray-600">Total Amount:</span><span className="text-gray-900">{formatCurrency(reservation.totalAmount)}</span></div>
                         <div className="flex justify-between"><span className="text-gray-600">Paid Amount:</span><span className="text-green-600">{formatCurrency(reservation.paidAmount)}</span></div>
@@ -588,6 +601,6 @@ export default function ClientPayments() {
       {/* ✅ END: NEW IMAGE VIEWER MODAL */}
       
     </div>
-    </div>
+    
   );
 }

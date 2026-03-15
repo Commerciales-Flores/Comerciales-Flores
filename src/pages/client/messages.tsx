@@ -38,7 +38,8 @@ export default function ClientMessages() {
     setLoading(true);
     await addInquiry({
       userId: user.id,
-      name: user.name,
+      first_name: user.firstName,
+      last_name: user.lastName,
       email: user.email,
       subject: newInquiryForm.subject,
       message: newInquiryForm.message,
@@ -72,8 +73,8 @@ export default function ClientMessages() {
 
   return (
     <div className="bg-gray-50 min-h-screen">
-  <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
-      {/* Header */}
+      <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
+        {/* Header */}  
         <header>
 
         <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
@@ -94,13 +95,23 @@ export default function ClientMessages() {
 
       {/* Main Content Area */}
       {sortedInquiries.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center bg-white rounded-[32px] border border-dashed border-gray-200 p-12 text-center">
-          <div className="bg-blue-50 p-6 rounded-full mb-4 text-blue-500">
-            <Mail className="size-12" />
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex-1 flex flex-col items-center justify-center py-20 text-center"
+        >
+          <div className="bg-blue-50 p-6 rounded-3xl shadow-sm mb-4">
+            <Mail className="size-12 text-blue-500" />
           </div>
-          <h3 className="text-lg font-bold text-gray-900">No messages yet</h3>
-          <p className="text-gray-500 max-w-xs mx-auto mt-2 text-sm">Need help? Start a conversation with our team.</p>
-        </div>
+
+          <h3 className="text-lg font-bold text-gray-900">
+            No messages yet
+          </h3>
+
+          <p className="text-gray-500 max-w-xs text-sm mt-1">
+            Need help? Start a conversation with our team.
+          </p>
+        </motion.div>
       ) : (
         <div className="flex-1 flex gap-6 overflow-hidden relative">
           
@@ -127,6 +138,7 @@ export default function ClientMessages() {
               </button>
             ))}
           </div>
+          
 
           {/* Right Side: Detail Panel */}
           <div className={`fixed inset-0 z-[60] lg:relative lg:inset-auto lg:z-auto lg:flex-1 bg-white lg:bg-transparent ${showDetail ? 'flex' : 'hidden lg:flex'}`}>
@@ -208,6 +220,7 @@ export default function ClientMessages() {
           </div>
         </div>
       )}
+      
 
       {/* New Inquiry Modal */}
       <AnimatePresence>
@@ -272,7 +285,7 @@ export default function ClientMessages() {
           </div>
         )}
       </AnimatePresence>
-    </div>
+      </div>
     </div>
   );
 }

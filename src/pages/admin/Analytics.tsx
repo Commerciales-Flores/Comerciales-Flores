@@ -1,9 +1,9 @@
-import { useData, type PropertyType } from '../../contexts/DataContext';
+import { useData, type UnitType } from '../../contexts/DataContext';
 import { BarChart3, TrendingUp, Users, Calendar, Download, Printer, ShieldCheck, FileSpreadsheet, ChevronDown, PieChartIcon } from 'lucide-react';
 import { BarChart, Line, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, LineChart, Brush } from 'recharts';
 import { PieChart, Pie, Cell } from 'recharts';
 import { formatCurrency } from '../../utils/currency';
-import { getPropertyTypeLabel } from '../../utils/propertyHelpers';
+import { getUnitTypeLabel } from '../../utils/propertyHelpers';
 import { useState } from 'react';
 import jsPDF from "jspdf";
 import { useRef } from 'react';
@@ -12,7 +12,7 @@ import html2canvas from "html2canvas";
 import { saveAs } from 'file-saver';
 
 export default function AdminAnalytics() {
-  const { reservations, payments, properties } = useData();
+  const { reservations, payments, units } = useData();
   const [granularity, setGranularity] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('monthly');
 
   // Monthly reservations (last 6 months)
@@ -106,16 +106,16 @@ export default function AdminAnalytics() {
 
     const xAxisKey = granularity === 'daily' ? 'day' : granularity === 'weekly' ? 'week' : granularity === 'monthly' ? 'month' : 'year';
 
-  // Property performance
-  const propertyStats = properties.map(property => {
-    const propReservations = reservations.filter(b => b.propertyId === property.id && b.status === 'confirmed');
+  // Unit performance
+  const UnitStats = units.map(Unit => {
+    const propReservations = reservations.filter(b => b.unitId === Unit.id && b.status === 'confirmed');
     const revenue = payments.filter(p => {
-      const reservation = reservations.find(b => b.id === p.reservationId && b.propertyId === property.id);
+      const reservation = reservations.find(b => b.id === p.reservationId && b.unitId === Unit.id);
       return reservation && p.status === 'paid';
     }).reduce((sum, p) => sum + p.amount, 0);
     
     return {
-      ...property,
+      ...Unit,
       reservationCount: propReservations.length,
       revenue,
       occupancyRate: propReservations.length > 0 ? 85 : 0 // Mock occupancy rate
@@ -125,8 +125,11 @@ export default function AdminAnalytics() {
   // Overall statistics
   const totalRevenue = payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
   const totalReservations = reservations.length;
-  const confirmedReservations = reservations.filter(b => b.status === 'confirmed').length;
-  const averageReservationValue = totalReservations > 0 ? totalRevenue / confirmedReservations : 0;
+  const confirmedReservations = reservations.filter(
+    b => b.status === 'confirmed' || b.status === 'approved'
+  ).length;
+  const averageReservationValue =
+  confirmedReservations > 0 ? totalRevenue / confirmedReservations : 0;
   
   
   // Average tenant stay
@@ -139,11 +142,11 @@ export default function AdminAnalytics() {
     count: reservations.filter(b => new Date(b.requestDate).getDay() === index).length
   })).sort((a, b) => b.count - a.count);
 
-  // Property type distribution
+  // Unit type distribution
   const typeDistributionData = [
-    { name: 'Rental Space', value: reservations.filter(b => b.propertyType === 'rental_space').length, color: '#6366f1' },
-    { name: 'Function Hall', value: reservations.filter(b => b.propertyType === 'function_hall').length, color: '#a78bfa' },
-    { name: 'Parking Slot', value: reservations.filter(b => b.propertyType === 'parking_slot').length, color: '#f97316' },
+    { name: 'Rental Space', value: reservations.filter(b => b.unitType === 'rental_space').length, color: '#6366f1' },
+    { name: 'Function Hall', value: reservations.filter(b => b.unitType === 'function_hall').length, color: '#a78bfa' },
+    { name: 'Parking Slot', value: reservations.filter(b => b.unitType === 'parking_slot').length, color: '#f97316' },
   ];
 
 
@@ -212,25 +215,25 @@ const handleExportReservationsCsv = () => {
 };
 
 // -----------------------
-// Property Performance CSV
+// Unit Performance CSV
 // -----------------------
-const handleExportPropertyPerformanceCsv = () => {
-  const data = propertyStats.map((p, index) => ({
+const handleExportUnitPerformanceCsv = () => {
+  const data = UnitStats.map((p, index) => ({
     Rank: index + 1,
-    Property: p.name,
-    Type: getPropertyTypeLabel(p.type),
+    Unit: p.name,
+    Type: getUnitTypeLabel(p.type),
     Reservations: p.reservationCount,
     Revenue: formatCurrency(p.revenue),
     Occupancy: `${p.occupancyRate}%`,
   }));
 
-  exportToCsv(`PropertyPerformance-${new Date().toISOString().split('T')[0]}.csv`, data);
+  exportToCsv(`UnitPerformance-${new Date().toISOString().split('T')[0]}.csv`, data);
 };
 
 // -----------------------
-// Property Type Distribution CSV
+// Unit Type Distribution CSV
 // -----------------------
-const handleExportPropertyTypeCsv = () => {
+const handleExportUnitTypeCsv = () => {
   const total = typeDistributionData.reduce((sum, e) => sum + e.value, 0);
   const data = typeDistributionData.map(entry => {
     const percent = ((entry.value / total) * 100).toFixed(0);
@@ -241,7 +244,7 @@ const handleExportPropertyTypeCsv = () => {
     };
   });
 
-  exportToCsv(`PropertyTypeDistribution-${new Date().toISOString().split('T')[0]}.csv`, data);
+  exportToCsv(`UnitTypeDistribution-${new Date().toISOString().split('T')[0]}.csv`, data);
 };
 
 
@@ -298,7 +301,7 @@ return (
               <Calendar className="size-4 sm:size-5 text-blue-600" />
             </div>
             <p className="text-base sm:text-xl font-bold text-gray-900">{totalReservations}</p>
-            <p className="text-[10px] sm:text-xs text-gray-400 mt-0.5">{confirmedReservations} ok</p>
+            <p className="text-[10px] sm:text-xs text-gray-400 mt-0.5">{confirmedReservations} confirmed</p>
           </div>
 
           <div className="bg-white p-3 sm:p-6 rounded-2xl border border-gray-200 shadow-sm">
@@ -307,7 +310,7 @@ return (
               <BarChart3 className="size-4 sm:size-5 text-purple-600" />
             </div>
             <p className="text-base sm:text-xl font-bold text-gray-900 truncate">{formatCurrency(averageReservationValue)}</p>
-            <p className="text-[10px] sm:text-xs text-gray-400 mt-0.5">Per booking</p>
+            <p className="text-[10px] sm:text-xs text-gray-400 mt-0.5">Per reservation</p>
           </div>
 
           <div className="bg-white p-3 sm:p-6 rounded-2xl border border-gray-200 shadow-sm">
@@ -331,7 +334,7 @@ return (
                   <select
                     className="appearance-none bg-gray-50 border border-gray-200 text-[10px] sm:text-sm rounded-lg pl-2 pr-7 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-700 font-medium cursor-pointer"
                     value={granularity}
-                    onChange={(e) => setGranularity(e.target.value)}
+                    onChange={(e) => setGranularity(e.target.value as typeof granularity)}
                   >
                     <option value="daily">Daily (Last 30 Days)</option>
                     <option value="weekly">Weekly (Last 12 Weeks)</option>
@@ -434,12 +437,12 @@ return (
           </div>
         </div>
 
-        {/* Property Performance Table */}
+        {/* Unit Performance Table */}
         <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm sm:text-lg font-bold text-gray-800">Property Ranking</h2>
+            <h2 className="text-sm sm:text-lg font-bold text-gray-800">Unit Ranking</h2>
             <button
-              onClick={handleExportPropertyPerformanceCsv}
+              onClick={handleExportUnitPerformanceCsv}
               className="bg-purple-600 text-white p-1.5 sm:px-3 sm:py-1.5 rounded-lg hover:bg-purple-700 transition-colors shadow-sm flex items-center gap-1.5"
             >
               <FileSpreadsheet className="size-4" />
@@ -452,27 +455,27 @@ return (
               <thead className="bg-gray-50 sm:bg-transparent">
                 <tr className="border-b border-gray-100">
                   <th className="px-4 sm:px-0 py-3 text-left text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest">Rank</th>
-                  <th className="py-3 text-left text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest">Property</th>
+                  <th className="py-3 text-left text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest">Unit</th>
                   <th className="hidden md:table-cell py-3 text-left text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest">Type</th>
                   <th className="py-3 text-right text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest">Revenue</th>
                   <th className="py-3 text-right text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-widest px-4 sm:px-0">Occ%</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {propertyStats.map((property, index) => (
-                  <tr key={property.id} className="hover:bg-gray-50/50 transition-colors">
+                {UnitStats.map((Unit, index) => (
+                  <tr key={Unit.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-4 sm:px-0 py-4 text-xs sm:text-sm text-gray-400 font-medium">#{index + 1}</td>
                     <td className="py-4">
-                      <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate max-w-[120px] sm:max-w-xs">{property.name}</p>
-                      <p className="md:hidden text-[10px] text-gray-400">{getPropertyTypeLabel(property.type)}</p>
+                      <p className="text-xs sm:text-sm font-semibold text-gray-900 truncate max-w-[120px] sm:max-w-xs">{Unit.name}</p>
+                      <p className="md:hidden text-[10px] text-gray-400">{getUnitTypeLabel(Unit.type)}</p>
                     </td>
-                    <td className="hidden md:table-cell py-4 text-xs text-gray-500">{getPropertyTypeLabel(property.type)}</td>
-                    <td className="py-4 text-right text-xs sm:text-sm font-bold text-green-600">{formatCurrency(property.revenue)}</td>
+                    <td className="hidden md:table-cell py-4 text-xs text-gray-500">{getUnitTypeLabel(Unit.type)}</td>
+                    <td className="py-4 text-right text-xs sm:text-sm font-bold text-green-600">{formatCurrency(Unit.revenue)}</td>
                     <td className="py-4 text-right px-4 sm:px-0">
                       <div className="inline-flex items-center justify-end gap-2 w-full">
-                        <span className="text-[10px] sm:text-xs font-medium text-gray-600">{property.occupancyRate}%</span>
+                        <span className="text-[10px] sm:text-xs font-medium text-gray-600">{Unit.occupancyRate}%</span>
                         <div className="hidden xs:block w-12 bg-gray-100 rounded-full h-1.5">
-                          <div className="bg-blue-600 h-1.5 rounded-full" style={{ width: `${property.occupancyRate}%` }} />
+                          <div className="bg-blue-600 h-1.5 rounded-full" style={{ width: `${Unit.occupancyRate}%` }} />
                         </div>
                       </div>
                     </td>
@@ -483,7 +486,7 @@ return (
           </div>
         </div>
 
-        {/* Property Type Distribution */}
+        {/* Unit Type Distribution */}
         <div className="bg-white rounded-2xl border border-gray-200 p-4 sm:p-6 shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-sm sm:text-lg font-bold text-gray-800 flex items-center gap-2">
@@ -491,7 +494,7 @@ return (
               Distribution
             </h2>
             <button
-              onClick={handleExportPropertyTypeCsv}
+              onClick={handleExportUnitTypeCsv}
               className="bg-blue-600 text-white p-2 sm:px-3 sm:py-1.5 rounded-lg hover:bg-blue-700 transition-all shadow-sm flex items-center gap-2 active:scale-95"
               title="Export CSV"
             >

@@ -11,7 +11,7 @@ import 'react-calendar/dist/Calendar.css';
 
 interface AdminReservationFormProps {
   userId: string;
-  propertyId: string;
+  unitId: string;
   onComplete: () => void;
 }
 
@@ -31,15 +31,15 @@ interface AdminReservationFormState {
   slotId: string;
 }
 
-export default function AdminReservationFormState({ userId, propertyId, onComplete }: AdminReservationFormProps) {
-  const { properties, reservations, users, parkingSlots, addReservation } = useData();
-  const property = properties.find(p => p.id === propertyId);
+export default function AdminReservationFormState({ userId, unitId, onComplete }: AdminReservationFormProps) {
+  const { units, reservations, users, parkingSlots, addReservation } = useData();
+  const unit = units.find(p => p.id === unitId);
   const user = users.find(u => u.id === userId); // The user VALUE is here
 
-  // --- State management adopted and enhanced from ClientProperties ---
+  // --- State management adopted and enhanced from ClientUnits ---
   const [formState, setFormState] = useState(() => {
     // ... (initial state setup is the same)
-    const prop = properties.find(p => p.id === propertyId);
+    const prop = units.find(p => p.id === unitId);
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     const nextYear = new Date(tomorrow);
@@ -67,17 +67,17 @@ export default function AdminReservationFormState({ userId, propertyId, onComple
 
   // ✅ CORRECTED LOGIC
 useEffect(() => {
-  if (!property) return;
+  if (!unit) return;
   const newEndDate = new Date(formState.startDate);
   const durationNum = Number(formState.duration) || 0;
 
-  if (property.type === 'rental_space') {
+  if (unit.type === 'rental_space') {
     // Logic is now based on years
     newEndDate.setFullYear(newEndDate.getFullYear() + durationNum);
-  } else if (property.type === 'function_hall') {
+  } else if (unit.type === 'function_hall') {
     const dayCount = durationNum > 0 ? durationNum - 1 : 0;
     newEndDate.setDate(newEndDate.getDate() + dayCount);
-  } else if (property.type === 'parking_slot') {
+  } else if (unit.type === 'parking_slot') {
      if (formState.durationType === 'days') {
       const dayCount = durationNum > 0 ? durationNum - 1 : 0;
       newEndDate.setDate(newEndDate.getDate() + dayCount);
@@ -86,12 +86,12 @@ useEffect(() => {
     }
   }
   setFormState(prev => ({ ...prev, endDate: newEndDate }));
-}, [formState.startDate, formState.duration, property?.type, formState.durationType]);
+}, [formState.startDate, formState.duration, unit?.type, formState.durationType]);
 
 
   // ✅ START: LOGIC FOR PARKING SLOT RESERVATIONS (ported from client)
   const reservedSlotIds = useMemo(() => {
-    if (property?.type !== 'parking_slot') return new Set<string>();
+    if (unit?.type !== 'parking_slot') return new Set<string>();
 
     const formStart = new Date(formState.startDate);
     const multiplier = formState.durationType === 'hours' ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
@@ -99,7 +99,7 @@ useEffect(() => {
 
     const reservedIds = reservations
       .filter((reservation) => {
-        if (reservation.propertyType !== 'parking_slot' || !reservation.slotId) return false;
+        if (reservation.unitType !== 'parking_slot' || !reservation.slotId) return false;
 
         const resStart = new Date(reservation.startDate);
         const resMultiplier = reservation.durationType === 'hours' ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
@@ -110,11 +110,11 @@ useEffect(() => {
       .map((reservation) => reservation.slotId!);
 
     return new Set<string>(reservedIds);
-  }, [reservations, property, formState.startDate, formState.duration, formState.durationType]);
+  }, [reservations, unit, formState.startDate, formState.duration, formState.durationType]);
   // ✅ END: LOGIC FOR PARKING SLOT RESERVATIONS
 
-  if (!property) {
-    return <div className="text-red-500 p-4">Error: Property information could not be found.</div>;
+  if (!unit) {
+    return <div className="text-red-500 p-4">Error: Unit information could not be found.</div>;
   }
 
   if(!user){
@@ -122,29 +122,29 @@ useEffect(() => {
   }
 
   const selectedSlotObject = formState.slotId ? parkingSlots.find((slot) => slot.id === formState.slotId) : null;
-  const totalContractValue = calculateTotalAmount(property.type, property.price, Number(formState.duration), formState.paymentCycle);
+  const totalContractValue = calculateTotalAmount(unit.type, unit.price, Number(formState.duration), formState.paymentCycle);
   
   // --- Handlers ---
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!property) return;
-    if (property.type === 'parking_slot' && !formState.slotId) {
+    if (!unit) return;
+    if (unit.type === 'parking_slot' && !formState.slotId) {
         alert("Please select a parking slot before creating the reservation.");
         return;
     }
 
     // ✅ CORRECTED CODE
-const durationInMonths = property.type === 'rental_space' ? Number(formState.duration) * 12 : Number(formState.duration);
-const totalAmount = calculateTotalAmount(property.type, property.price, durationInMonths, formState.paymentCycle);
+const durationInMonths = unit.type === 'rental_space' ? Number(formState.duration) * 12 : Number(formState.duration);
+const totalAmount = calculateTotalAmount(unit.type, unit.price, durationInMonths, formState.paymentCycle);
 
 const resolvedPaymentMethod: PaymentMethod | undefined = 
     formState.paymentMethod === "" ? undefined : formState.paymentMethod as PaymentMethod;
 
     const finalReservationData: Omit<Reservation, 'id' | 'requestDate' | 'paidAmount'> = {
       userId,
-      propertyId,
-      propertyName: property.name,
-      propertyType: property.type,
+      unitId,
+      unitName: unit.name,
+      unitType: unit.type,
       startDate: formState.startDate.toISOString(), // Convert Date to string
       endDate: formState.endDate.toISOString(),     // Convert Date to string
       duration: formState.duration,
@@ -154,9 +154,9 @@ const resolvedPaymentMethod: PaymentMethod | undefined =
       paymentMethod: resolvedPaymentMethod,
       status: 'confirmed',
       // Add type-specific fields, converting types as needed
-      ...(property.type === 'rental_space' && { paymentCycle: formState.paymentCycle as PaymentCycle, businessType: formState.businessType }),
-      ...(property.type === 'function_hall' && { eventPurpose: formState.eventPurpose, attendees: Number(formState.attendees) || 0 }), // Convert string to number
-      ...(property.type === 'parking_slot' && { vehicleType: formState.vehicleType, plateNumber: formState.plateNumber, durationType: formState.durationType as 'hours' | 'days', slotId: formState.slotId, slotName: selectedSlotObject?.name }),
+      ...(unit.type === 'rental_space' && { paymentCycle: formState.paymentCycle as PaymentCycle, businessType: formState.businessType }),
+      ...(unit.type === 'function_hall' && { eventPurpose: formState.eventPurpose, attendees: Number(formState.attendees) || 0 }), // Convert string to number
+      ...(unit.type === 'parking_slot' && { vehicleType: formState.vehicleType, plateNumber: formState.plateNumber, durationType: formState.durationType as 'hours' | 'days', slotId: formState.slotId, slotName: selectedSlotObject?.name }),
     };
 
     addReservation(finalReservationData);
@@ -170,8 +170,8 @@ const resolvedPaymentMethod: PaymentMethod | undefined =
     <>
       <form onSubmit={handleSubmit} className="space-y-4 text-sm">
         <div className="bg-gray-50 p-4 rounded-lg">
-          <p className="font-semibold text-gray-800">{property.name}</p>
-          <p className="text-gray-600 capitalize">Type: {property.type.replace('_', ' ')}</p>
+          <p className="font-semibold text-gray-800">{unit.name}</p>
+          <p className="text-gray-600 capitalize">Type: {unit.type.replace('_', ' ')}</p>
         </div>
 
         <div>
@@ -185,7 +185,7 @@ const resolvedPaymentMethod: PaymentMethod | undefined =
         {/* --- DYNAMIC DATE INPUTS --- */}
 
         {/* Case 1: Parking Slot */}
-        {property.type === 'parking_slot' && (
+        {unit.type === 'parking_slot' && (
              <div className="space-y-4">
                 <div className="p-3 border rounded-lg">
                     <label className="block text-sm font-medium text-gray-700 mb-2">Reservation Type</label>
@@ -212,7 +212,7 @@ const resolvedPaymentMethod: PaymentMethod | undefined =
         )}
 
         {/* Case 2: Function Hall (Calendar Range) */}
-        {property.type === 'function_hall' && (
+        {unit.type === 'function_hall' && (
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Reservation Dates</label>
             <button type="button" onClick={() => setShowCalendar(!showCalendar)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-left">
@@ -245,7 +245,7 @@ const resolvedPaymentMethod: PaymentMethod | undefined =
         )}
 
         {/* Case 3: Rental Space (Manual duration) */}
-        {property.type === 'rental_space' && (
+        {unit.type === 'rental_space' && (
           <div className="grid md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Lease Start Date</label>
@@ -323,15 +323,15 @@ const resolvedPaymentMethod: PaymentMethod | undefined =
 
         {/* --- CONDITIONAL FIELDS (SAME AS BEFORE) --- */}
         {/* Function Hall Details */}
-        {property.type === 'function_hall' && (
+        {unit.type === 'function_hall' && (
             <div className="space-y-4 pt-4 border-t">
                 <div><label className="block font-medium text-gray-700 mb-1">Event Purpose</label><input type="text" placeholder="e.g., Wedding, Conference" value={formState.eventPurpose} onChange={(e) => setFormState({ ...formState, eventPurpose: e.target.value })} className="w-full px-3 py-2 border rounded-lg" /></div>
-                <div><label className="block font-medium text-gray-700 mb-1">Number of Attendees</label><input type="number" min="1" max={property.capacity} placeholder={`Max: ${property.capacity}`} value={formState.attendees} onChange={(e) => setFormState({ ...formState, attendees: e.target.value })} className="w-full px-3 py-2 border rounded-lg" /></div>
+                <div><label className="block font-medium text-gray-700 mb-1">Number of Attendees</label><input type="number" min="1" max={unit.capacity} placeholder={`Max: ${unit.capacity}`} value={formState.attendees} onChange={(e) => setFormState({ ...formState, attendees: e.target.value })} className="w-full px-3 py-2 border rounded-lg" /></div>
             </div>
         )}
 
         {/* Parking Slot Details */}
-        {property.type === 'parking_slot' && (
+        {unit.type === 'parking_slot' && (
           <div className="space-y-4 pt-4 border-t">
             <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Parking Slot</label>
@@ -368,7 +368,7 @@ const resolvedPaymentMethod: PaymentMethod | undefined =
 
         <div className="space-y-4 pt-4 border-t">
           <div className="bg-gray-100 p-4 rounded-lg">
-            {property.type === 'rental_space' ? (
+            {unit.type === 'rental_space' ? (
               <>
                 <p className="text-sm text-gray-600 mb-1">
                   {formState.paymentCycle === 'monthly' && 'Monthly Installment'}
@@ -376,8 +376,8 @@ const resolvedPaymentMethod: PaymentMethod | undefined =
                   {formState.paymentCycle === 'full' && 'Total Contract Value'}
                 </p>
                 <div className="text-gray-900 font-bold text-lg">
-                  {formState.paymentCycle === 'monthly' && formatCurrency(property.price)}
-                  {formState.paymentCycle === 'quarterly' && formatCurrency(property.price * 3)}
+                  {formState.paymentCycle === 'monthly' && formatCurrency(unit.price)}
+                  {formState.paymentCycle === 'quarterly' && formatCurrency(unit.price * 3)}
                   {formState.paymentCycle === 'full' && formatCurrency(totalContractValue)}
                 </div>
                 {formState.paymentCycle !== 'full' && (

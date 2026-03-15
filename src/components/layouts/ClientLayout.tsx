@@ -126,11 +126,13 @@ useEffect(() => {
     { to: "/client/profile", icon: User, label: "Profile" },
   ];
 
+  const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() || "User";
+
   const avatarUrl =
     (user as any)?.avatarUrl ||
     (user as any)?.photoURL ||
     `https://ui-avatars.com/api/?name=${encodeURIComponent(
-      user?.name || "User"
+      fullName
     )}&background=0D8ABC&color=fff&size=128`;
 
     console.log("[ClientLayout] user:", user);
@@ -160,7 +162,7 @@ useEffect(() => {
     <div className="hidden md:flex items-center gap-4 lg:gap-6">
       <div className="flex items-center gap-4 pr-6 border-r border-gray-100">
         <span className="text-sm text-gray-600">
-          Welcome, <span className="text-gray-900 font-medium">{user?.name}</span>
+          Welcome, <span className="text-gray-900 font-medium">{fullName}</span>
         </span>
 
         <NavLink 
@@ -169,13 +171,13 @@ useEffect(() => {
         >
           <img
             src={avatarUrl}
-            alt={user?.name || "User avatar"}
+            alt={fullName || "User avatar"}
             className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-gray-200 shadow-sm" 
             onError={(e) => {
               const target = e.currentTarget as HTMLImageElement;
               target.onerror = null;
               target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                user?.name || "User"
+                fullName
               )}&background=eff6ff&color=2563eb&size=128`;
             }}
           />
@@ -268,7 +270,7 @@ useEffect(() => {
             >
               <img
                 src={avatarUrl}
-                alt={user?.name || "User avatar"}
+                alt={fullName || "User avatar"}
                 className="w-16 h-16 rounded-2xl object-cover border border-gray-100 shadow-sm transition-transform group-active:scale-95" 
               />
               <div className="absolute -bottom-1 -right-1 bg-green-500 border-2 border-white size-4 rounded-full" />
@@ -281,7 +283,7 @@ useEffect(() => {
             </button>
           </div>
           <div>
-            <h2 className="font-bold text-gray-900 text-lg leading-tight">{user?.name}</h2>
+            <h2 className="font-bold text-gray-900 text-lg leading-tight">{fullName}</h2>
             <p className="text-gray-500 text-xs truncate font-medium mt-0.5">{user?.email}</p>
           </div>
         </div>
