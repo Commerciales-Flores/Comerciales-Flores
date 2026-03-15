@@ -1,70 +1,220 @@
-import { createContext, useContext } from 'react';
-import type { ReactNode } from 'react';
-import { useData } from './DataContext';
-import { useAuth } from './AuthContext';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import supabase from '../supabaseClient';
+import type { Notification } from '../data/types';
 
-interface NotificationContextType {
-  sendReservationNotification: (userId: string, reservationId: string, status: 'approved' | 'rejected') => void;
-  sendPaymentNotification: (userId: string, paymentId: string, amount: number) => void;
-  sendInquiryResponseNotification: (userId: string, inquirySubject: string) => void;
-  sendSystemNotification: (userId: string, title: string, message: string) => void;
+interface NotificationsDataContextType {
+  notifications: Notification[];
+  addNotification: (
+    notification: Omit<Notification, 'id' | 'date' | 'read'>
+  ) => Promise<void>;
+  markNotificationRead: (id: string) => Promise<void>;
+  markAllNotificationsRead: (userId: string) => Promise<void>;
+  deleteNotification: (id: string) => Promise<void>;
+  getNotificationsByUserId: (userId: string) => Notification[];
+
+  sendReservationNotification: (
+    userId: string,
+    reservationId: string,
+    action: 'approved' | 'rejected'
+  ) => Promise<void>;
+
+  sendPaymentNotification: (
+    userId: string,
+    paymentId: string,
+    amount: number
+  ) => Promise<void>;
+
+  sendInquiryResponseNotification: (
+    userId: string,
+    subject: string
+  ) => Promise<void>;
+
+  sendSystemNotification: (
+    userId: string,
+    title: string,
+    message: string
+  ) => Promise<void>;
 }
 
-const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
+const NotificationContext = createContext<NotificationsDataContextType | undefined>(undefined);
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const { addNotification } = useData();
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  const sendReservationNotification = (userId: string, reservationId: string, status: 'approved' | 'rejected') => {
-    const title = status === 'approved' ? 'Reservation Approved' : 'Reservation Rejected';
-    const message = status === 'approved' 
-      ? `Your reservation #${reservationId} has been approved. You may now proceed with payment.`
-      : `Your reservation #${reservationId} has been rejected. Please contact support for more information.`;
-    
-    addNotification({
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('notification_id, user_id, title, message, type, is_read, date')
+        .order('date', { ascending: false });
+
+      if (!error && data) {
+        setNotifications(
+          data.map((row: any) => ({
+            id: row.notification_id,
+            userId: row.user_id,
+            title: row.title,
+            message: row.message,
+            type: row.type,
+            read: row.is_read,
+            date: row.date,
+          }))
+        );
+      }
+    };
+
+    fetchNotifications();
+  }, []);
+
+  const addNotification = async (
+    notification: Omit<Notification, 'id' | 'date' | 'read'>
+  ): Promise<void> => {
+    const { data, error } = await supabase
+      .from('notifications')
+      .insert([
+        {
+          user_id: notification.userId,
+          title: notification.title,
+          message: notification.message,
+          type: notification.type,
+          is_read: false,
+          date: new Date().toISOString(),
+        },
+      ])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error inserting notification:', error);
+      return;
+    }
+
+    const newNotification: Notification = {
+      id: data.notification_id,
+      userId: data.user_id,
+      title: data.title,
+      message: data.message,
+      type: data.type,
+      read: data.is_read,
+      date: data.date,
+    };
+
+    setNotifications((prev) => [newNotification, ...prev]);
+  };
+
+  const markNotificationRead = async (id: string): Promise<void> => {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('notification_id', id);
+
+    if (!error) {
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+      );
+    }
+  };
+
+  const markAllNotificationsRead = async (userId: string): Promise<void> => {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('user_id', userId)
+      .eq('is_read', false);
+
+    if (!error) {
+      setNotifications((prev) =>
+        prev.map((n) => (n.userId === userId ? { ...n, read: true } : n))
+      );
+    }
+  };
+
+  const deleteNotification = async (id: string): Promise<void> => {
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('notification_id', id);
+
+    if (!error) {
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+    }
+  };
+
+  const getNotificationsByUserId = (userId: string) =>
+    notifications.filter((n) => n.userId === userId);
+
+  const sendReservationNotification = async (
+    userId: string,
+    reservationId: string,
+    action: 'approved' | 'rejected'
+  ): Promise<void> => {
+    await addNotification({
       userId,
-      title,
-      message,
-      type: 'reservation'
+      title: action === 'approved' ? 'Reservation Approved' : 'Reservation Rejected',
+      message:
+        action === 'approved'
+          ? `Your reservation (${reservationId}) has been approved.`
+          : `Your reservation (${reservationId}) has been rejected.`,
+      type: 'reservation',
     });
   };
 
-  const sendPaymentNotification = (userId: string, paymentId: string, amount: number) => {
-    addNotification({
+  const sendPaymentNotification = async (
+    userId: string,
+    paymentId: string,
+    amount: number
+  ): Promise<void> => {
+    await addNotification({
       userId,
-      title: 'Payment Confirmed',
-      message: `Your payment of ₱${amount.toLocaleString()} has been confirmed. Payment ID: ${paymentId}`,
-      type: 'payment'
+      title: 'Payment Verified',
+      message: `Your payment (${paymentId}) amounting to ${amount} has been verified.`,
+      type: 'payment',
     });
   };
 
-  const sendInquiryResponseNotification = (userId: string, inquirySubject: string) => {
-    addNotification({
+  const sendInquiryResponseNotification = async (
+    userId: string,
+    subject: string
+  ): Promise<void> => {
+    await addNotification({
       userId,
       title: 'Inquiry Response',
-      message: `Admin has responded to your inquiry: "${inquirySubject}"`,
-      type: 'inquiry'
+      message: `Your inquiry "${subject}" has received a response.`,
+      type: 'inquiry',
     });
   };
 
-  const sendSystemNotification = (userId: string, title: string, message: string) => {
-    addNotification({
+  const sendSystemNotification = async (
+    userId: string,
+    title: string,
+    message: string
+  ): Promise<void> => {
+    await addNotification({
       userId,
       title,
       message,
-      type: 'system'
+      type: 'system',
     });
   };
 
+  const value = useMemo(
+    () => ({
+      notifications,
+      addNotification,
+      markNotificationRead,
+      markAllNotificationsRead,
+      deleteNotification,
+      getNotificationsByUserId,
+      sendReservationNotification,
+      sendPaymentNotification,
+      sendInquiryResponseNotification,
+      sendSystemNotification,
+    }),
+    [notifications]
+  );
+
   return (
-    <NotificationContext.Provider
-      value={{
-        sendReservationNotification,
-        sendPaymentNotification,
-        sendInquiryResponseNotification,
-        sendSystemNotification
-      }}
-    >
+    <NotificationContext.Provider value={value}>
       {children}
     </NotificationContext.Provider>
   );
@@ -72,7 +222,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
 export function useNotifications() {
   const context = useContext(NotificationContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useNotifications must be used within a NotificationProvider');
   }
   return context;

@@ -6,6 +6,7 @@ import supabase from '../supabaseClient';
 // --- TYPES ---
 interface User {
   id: string;
+  publicId?: string;
   email: string;
   firstName: string;
   lastName: string;
@@ -53,7 +54,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 const fetchAndSetUserProfile = useCallback(async (authUser: any) => {
   let { data, error } = await supabase
     .from('users')
-    .select('user_id, email, first_name, last_name, phone, role, address, is_active, profile_picture_url, last_login')
+    .select(
+      'user_id, public_id, email, first_name, last_name, phone, role, address, is_active, profile_picture_url, last_login'
+    )
     .eq('user_id', authUser.id)
     .maybeSingle();
 
@@ -79,11 +82,16 @@ const fetchAndSetUserProfile = useCallback(async (authUser: any) => {
         is_active: true,
         profile_picture_url: meta.avatar_url || meta.picture || null,
       })
-      .select()
+      .select(
+        'user_id, public_id, email, first_name, last_name, phone, role, address, is_active, profile_picture_url, last_login'
+      )
       .single();
 
-    data = insertedUser;
-    error = insertError;
+    if (insertError) {
+      error = insertError;
+    } else {
+      data = insertedUser;
+    }
   }
 
   if (error || !data) {
@@ -107,6 +115,7 @@ const fetchAndSetUserProfile = useCallback(async (authUser: any) => {
 
   const profile: User = {
     id: data.user_id,
+    publicId: data.public_id,
     email: data.email,
     firstName: data.first_name ?? '',
     lastName: data.last_name ?? '',
@@ -132,7 +141,7 @@ const fetchAndSetUserProfile = useCallback(async (authUser: any) => {
   );
 
   setLoading(false);
-}, []);
+}, [showIndicator]);
 
   
 
