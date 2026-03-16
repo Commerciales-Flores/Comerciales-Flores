@@ -1,9 +1,10 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DataProvider } from './contexts/DataContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { IndicatorProvider } from './contexts/IndicatorContext';
+import SessionWarningModal from './components/auth/SessionWarningModal';
 
 // Public Pages
 const LandingPage = lazy(() => import('./pages/public/LandingPage'));
@@ -66,6 +67,102 @@ function RouteLoader() {
   );
 }
 
+function AppRoutes() {
+  const { showSessionWarning, sessionCountdown, extendSession, logout, user } = useAuth();
+
+  return (
+    <>
+      <Suspense fallback={<RouteLoader />}>
+        <Routes>
+          {/* --- Public Routes --- */}
+          <Route path="/" element={<LandingPage />} />
+          <Route
+            path="/login"
+            element={
+              <GuestRoute>
+                <Login />
+              </GuestRoute>
+            }
+          />
+          <Route
+            path="/register"
+            element={
+              <GuestRoute>
+                <Register />
+              </GuestRoute>
+            }
+          />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/spaces" element={<AllProperties />} />
+
+          {/* --- Error Pages --- */}
+          <Route path="/401" element={<UnauthorizePage />} />
+          <Route path="/403" element={<ForbiddenPage />} />
+          <Route path="/500" element={<ServerErrorPage />} />
+
+          {/* --- Client Routes --- */}
+          <Route
+            path="/client/*"
+            element={
+              <ProtectedRoute allowedRoles={['client']}>
+                <ServerErrorBoundary>
+                  <ClientLayout />
+                </ServerErrorBoundary>
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<Navigate to="/client/dashboard" replace />} />
+            <Route path="dashboard" element={<ClientDashboard />} />
+            <Route path="properties" element={<ClientProperties />} />
+            <Route path="reservations" element={<ClientReservations />} />
+            <Route path="payments" element={<ClientPayments />} />
+            <Route path="notifications" element={<ClientNotifications />} />
+            <Route path="messages" element={<ClientMessages />} />
+            <Route path="profile" element={<ClientProfile />} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Route>
+
+          {/* --- Admin Routes --- */}
+          <Route
+            path="/admin/*"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <ServerErrorBoundary>
+                  <AdminLayout />
+                </ServerErrorBoundary>
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<Navigate to="/admin/dashboard" replace />} />
+            <Route path="dashboard" element={<AdminDashboard />} />
+            <Route path="customers" element={<AdminCustomers />} />
+            <Route path="audit" element={<AdminAudit />} />
+            <Route path="business-slots" element={<AdminBusinessSlots />} />
+            <Route path="reservations" element={<AdminReservations />} />
+            <Route path="payments" element={<AdminPayments />} />
+            <Route path="inquiries" element={<AdminInquiries />} />
+            <Route path="content" element={<AdminContent />} />
+            <Route path="analytics" element={<AdminAnalytics />} />
+            <Route path="profile" element={<AdminProfile />} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Route>
+
+          {/* --- Global Catch-all --- */}
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </Suspense>
+
+      <SessionWarningModal
+        open={!!user && showSessionWarning}
+        countdown={sessionCountdown}
+        title={user?.role === 'admin' ? 'Admin session expiring soon' : 'Session expiring soon'}
+        onStaySignedIn={extendSession}
+        onLogout={() => logout('Session ended by user')}
+      />
+    </>
+  );
+}
+
 export default function App() {
   return (
     <IndicatorProvider>
@@ -73,85 +170,7 @@ export default function App() {
         <AuthProvider>
           <DataProvider>
             <NotificationProvider>
-              <Suspense fallback={<RouteLoader />}>
-                <Routes>
-                  {/* --- Public Routes --- */}
-                  <Route path="/" element={<LandingPage />} />
-                  <Route
-                    path="/login"
-                    element={
-                      <GuestRoute>
-                        <Login />
-                      </GuestRoute>
-                    }
-                  />
-                  <Route
-                    path="/register"
-                    element={
-                      <GuestRoute>
-                        <Register />
-                      </GuestRoute>
-                    }
-                  />
-                  <Route path="/reset-password" element={<ResetPassword />} />
-                  <Route path="/spaces" element={<AllProperties />} />
-
-                  {/* --- Error Pages --- */}
-                  <Route path="/401" element={<UnauthorizePage />} />
-                  <Route path="/403" element={<ForbiddenPage />} />
-                  <Route path="/500" element={<ServerErrorPage />} />
-
-                  {/* --- Client Routes --- */}
-                  <Route
-                    path="/client/*"
-                    element={
-                      <ProtectedRoute allowedRoles={['client']}>
-                        <ServerErrorBoundary>
-                          <ClientLayout />
-                        </ServerErrorBoundary>
-                      </ProtectedRoute>
-                    }
-                  >
-                    <Route index element={<Navigate to="/client/dashboard" replace />} />
-                    <Route path="dashboard" element={<ClientDashboard />} />
-                    <Route path="properties" element={<ClientProperties />} />
-                    <Route path="reservations" element={<ClientReservations />} />
-                    <Route path="payments" element={<ClientPayments />} />
-                    <Route path="notifications" element={<ClientNotifications />} />
-                    <Route path="messages" element={<ClientMessages />} />
-                    <Route path="profile" element={<ClientProfile />} />
-                    <Route path="*" element={<NotFoundPage />} />
-                  </Route>
-
-                  {/* --- Admin Routes --- */}
-                  <Route
-                    path="/admin/*"
-                    element={
-                      <ProtectedRoute allowedRoles={['admin']}>
-                        <ServerErrorBoundary>
-                          <AdminLayout />
-                        </ServerErrorBoundary>
-                      </ProtectedRoute>
-                    }
-                  >
-                    <Route index element={<Navigate to="/admin/dashboard" replace />} />
-                    <Route path="dashboard" element={<AdminDashboard />} />
-                    <Route path="customers" element={<AdminCustomers />} />
-                    <Route path="audit" element={<AdminAudit />} />
-                    <Route path="business-slots" element={<AdminBusinessSlots />} />
-                    <Route path="reservations" element={<AdminReservations />} />
-                    <Route path="payments" element={<AdminPayments />} />
-                    <Route path="inquiries" element={<AdminInquiries />} />
-                    <Route path="content" element={<AdminContent />} />
-                    <Route path="analytics" element={<AdminAnalytics />} />
-                    <Route path="profile" element={<AdminProfile />} />
-                    <Route path="*" element={<NotFoundPage />} />
-                  </Route>
-
-                  {/* --- Global Catch-all --- */}
-                  <Route path="*" element={<NotFoundPage />} />
-                </Routes>
-              </Suspense>
+              <AppRoutes />
             </NotificationProvider>
           </DataProvider>
         </AuthProvider>

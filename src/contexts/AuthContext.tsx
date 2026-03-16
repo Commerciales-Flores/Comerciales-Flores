@@ -1,7 +1,15 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+} from 'react';
 import type { ReactNode } from 'react';
 import { useIndicator } from './IndicatorContext';
 import supabase from '../supabaseClient';
+import { Building2 } from 'lucide-react';
 
 // --- TYPES ---
 interface User {
@@ -18,464 +26,1075 @@ interface User {
   lastLogin?: string;
 }
 
+interface RegisterInput {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  contactNumber?: string;
+  address?: string;
+  profileFile?: File | null;
+}
+
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  authActionPending: boolean;
   formKey: number;
   setFormKey: React.Dispatch<React.SetStateAction<number>>;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  showSessionWarning: boolean;
+  sessionCountdown: number;
+  extendSession: () => void;
+  login: (
+    email: string,
+    password: string
+  ) => Promise<{ success: boolean; error?: string }>;
   loginWithGoogle: () => Promise<void>;
   loginWithFacebook: () => Promise<void>;
   register: (
-    userData: Omit<User, 'id' | 'is_active' | 'profilePictureUrl' | 'role'> & {
-      password: string;
-      profileFile?: File | null;
-    }
+    userData: RegisterInput
   ) => Promise<{ success: boolean; error?: string; message?: string }>;
-  logout: (message?: string) => Promise<void>;
-  updateProfile: (userData: Partial<User>) => Promise<void>;
+  logout: (
+    message?: string,
+    options?: { clearGreeting?: boolean; redirectToLogin?: boolean }
+  ) => Promise<void>;
+  updateProfile: (userData: Partial<User>) => Promise<boolean>;
   changePassword: (newPassword: string) => Promise<boolean>;
   recoverPassword: (email: string) => Promise<boolean>;
   uploadProfilePicture: (file: File) => Promise<string | null>;
   deleteAccount: (userId: string) => Promise<void>;
 }
 
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+if (import.meta.env.DEV) {
+  const globalKey = '__APP_AUTH_CONTEXT__';
+  const g = globalThis as Record<string, unknown>;
+
+  if (g[globalKey] && g[globalKey] !== AuthContext) {
+    console.warn('Different AuthContext instance detected');
+  }
+
+  g[globalKey] = AuthContext;
+}
+
 const STORAGE_KEY = 'currentUser';
+const WAS_LOGGED_IN_KEY = 'wasLoggedIn';
 const LAST_LOGIN_USER_KEY = 'lastLoginUser';
+
+const ALLOWED_AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_AVATAR_SIZE = 2 * 1024 * 1024; // 2 MB
+
+const CLIENT_INACTIVITY_LIMIT = 30 * 60 * 1000;
+const ADMIN_INACTIVITY_LIMIT = 15 * 60 * 1000;
+const SESSION_WARNING_TIME = 60 * 1000;
+
+// --- NORMALIZERS ---
+const normalizeName = (value: string) => value.trim().replace(/\s+/g, ' ');
+
+const normalizeEmail = (email: string) => email.trim().toLowerCase();
+
+const normalizeAddress = (value: string) => value.trim().replace(/\s+/g, ' ');
+
+const normalizePhone = (value: string) => {
+  const raw = value.trim();
+  const digits = raw.replace(/\D/g, '');
+
+  if (!digits) return '';
+
+  // PH local: 09171234567 -> +639171234567
+  if (digits.startsWith('09') && digits.length === 11) {
+    return `+63${digits.slice(1)}`;
+  }
+
+  // PH intl without plus: 639171234567 -> +639171234567
+  if (digits.startsWith('639') && digits.length === 12) {
+    return `+${digits}`;
+  }
+
+  // PH short local: 9171234567 -> +639171234567
+  if (digits.startsWith('9') && digits.length === 10) {
+    return `+63${digits}`;
+  }
+
+  // Generic international format if user already starts with +
+  if (raw.startsWith('+') && digits.length >= 10 && digits.length <= 15) {
+    return `+${digits}`;
+  }
+
+  return raw;
+};
+
+const getFormattedTime = () =>
+  new Date().toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+
+const mapProfileToUser = (data: any): User => ({
+  id: data.user_id,
+  publicId: data.public_id ?? undefined,
+  email: normalizeEmail(data.email ?? ''),
+  firstName: normalizeName(data.first_name ?? ''),
+  lastName: normalizeName(data.last_name ?? ''),
+  role: data.role,
+  contactNumber: normalizePhone(data.phone ?? ''),
+  address: normalizeAddress(data.address ?? ''),
+  is_active: Boolean(data.is_active),
+  profilePictureUrl: data.profile_picture_url ?? undefined,
+  lastLogin: data.last_login ?? undefined,
+});
+
 
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authActionPending, setAuthActionPending] = useState(false);
   const [formKey, setFormKey] = useState(0);
+
+  const [showSessionWarning, setShowSessionWarning] = useState(false);
+  const [sessionCountdown, setSessionCountdown] = useState(0);
+  const [sessionResetKey, setSessionResetKey] = useState(0);
+
   const { showIndicator } = useIndicator();
 
-const fetchAndSetUserProfile = useCallback(async (authUser: any) => {
-  let { data, error } = await supabase
-    .from('users')
-    .select(
-      'user_id, public_id, email, first_name, last_name, phone, role, address, is_active, profile_picture_url, last_login'
-    )
-    .eq('user_id', authUser.id)
-    .maybeSingle();
+  const logoutInProgressRef = useRef(false);
+  const warningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const logoutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  if (!data) {
-    const meta = authUser.user_metadata ?? {};
+  const isMountedRef = useRef(true);
+  const fetchingProfileRef = useRef(false);
+  const bootstrappedUserIdRef = useRef<string | null>(null);
 
-    const fullName = meta.full_name || meta.name || '';
-    const parts = fullName.trim().split(' ').filter(Boolean);
-
-    const firstName = meta.first_name || parts[0] || '';
-    const lastName = meta.last_name || parts.slice(1).join(' ') || '';
-
-    const { data: insertedUser, error: insertError } = await supabase
-      .from('users')
-      .insert({
-        user_id: authUser.id,
-        email: authUser.email,
-        first_name: firstName,
-        last_name: lastName,
-        role: 'client',
-        phone: meta.phone || '',
-        address: meta.address || '',
-        is_active: true,
-        profile_picture_url: meta.avatar_url || meta.picture || null,
-      })
-      .select(
-        'user_id, public_id, email, first_name, last_name, phone, role, address, is_active, profile_picture_url, last_login'
-      )
-      .single();
-
-    if (insertError) {
-      error = insertError;
-    } else {
-      data = insertedUser;
-    }
-  }
-
-  if (error || !data) {
-    console.error('User profile not found or could not be created:', error?.message);
-    await supabase.auth.signOut();
-    setUser(null);
-    sessionStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem('wasLoggedIn');
-    setLoading(false);
-    return;
-  }
-
-  if (data.is_active === false) {
-    await supabase.auth.signOut();
-    setUser(null);
-    sessionStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem('wasLoggedIn');
-    setLoading(false);
-    return;
-  }
-
-  const profile: User = {
-    id: data.user_id,
-    publicId: data.public_id,
-    email: data.email,
-    firstName: data.first_name ?? '',
-    lastName: data.last_name ?? '',
-    role: data.role,
-    contactNumber: data.phone ?? '',
-    address: data.address ?? '',
-    is_active: data.is_active,
-    profilePictureUrl: data.profile_picture_url ?? undefined,
-    lastLogin: data.last_login ?? undefined,
-  };
-
-  setUser(profile);
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
-  sessionStorage.setItem('wasLoggedIn', 'true');
-
-  localStorage.setItem(
-    LAST_LOGIN_USER_KEY,
-    JSON.stringify({
-      name: [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim(),
-      email: profile.email,
-      profilePictureUrl: profile.profilePictureUrl || '',
-    })
-  );
-
-  setLoading(false);
-}, [showIndicator]);
-
+  const oauthAuditPendingRef = useRef<string | null>(null);
+  const expiryLogoutRef = useRef(false)
   
 
-  // --- 2. AUTH STATE LISTENER & SESSION SYNC ---
-  useEffect(() => {
-    // Check initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        fetchAndSetUserProfile(session.user);
-      } else {
-        setLoading(false);
-      }
-    });
+  const persistUserSession = useCallback((profile: User) => {
+    setUser(profile);
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+    sessionStorage.setItem(WAS_LOGGED_IN_KEY, 'true');
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        fetchAndSetUserProfile(session.user);
-      } else {
-        // Handle unexpected session loss (e.g. manual cookie clear)
-        const wasLoggedIn = sessionStorage.getItem('wasLoggedIn') === 'true';
-        if (wasLoggedIn && event === 'SIGNED_OUT') {
-           const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-           showIndicator(`SYSTEM ALERT: Session ended at ${time}`, 'security');
-        }
-        setUser(null);
-        sessionStorage.removeItem(STORAGE_KEY);
-        sessionStorage.removeItem('wasLoggedIn');
-        setLoading(false);
-      }
-    });
+    const displayName =
+      [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || 'User';
 
-    // Cross-tab & BFCache Protection
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY && !e.newValue) setUser(null);
-    };
-    const handlePageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) window.location.reload();
-    };
+    localStorage.setItem(
+      LAST_LOGIN_USER_KEY,
+      JSON.stringify({
+        name: displayName,
+        profilePictureUrl: profile.profilePictureUrl || '',
+      })
+    );
+  }, []);
 
-    window.addEventListener('storage', handleStorage);
-    window.addEventListener('pageshow', handlePageShow);
-
-    return () => {
-      subscription.unsubscribe();
-      window.removeEventListener('storage', handleStorage);
-      window.removeEventListener('pageshow', handlePageShow);
-    };
-  }, [fetchAndSetUserProfile, showIndicator]);
-
-  // --- 3. LOGOUT ---
-  const logout = useCallback(async (message?: string) => {
-    const email = user?.email;
-    await supabase.auth.signOut();
-    
+  const clearUserSession = useCallback(() => {
     setUser(null);
     sessionStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem('wasLoggedIn');
-    setFormKey((k) => k + 1);
+    sessionStorage.removeItem(WAS_LOGGED_IN_KEY);
+  }, []);
 
-    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const isSecurity = message?.match(/expired|security|ended/i);
-    
-    showIndicator(
-      message ? `${message} at ${time}` : `Logout by ${email} at ${time}`,
-      isSecurity ? 'security' : 'logout'
-    );
-  }, [user, showIndicator]);
+  const clearSessionTimers = useCallback(() => {
+    if (warningTimeoutRef.current) {
+      clearTimeout(warningTimeoutRef.current);
+      warningTimeoutRef.current = null;
+    }
 
-  // --- 4. INACTIVITY TIMER ---
+    if (logoutTimeoutRef.current) {
+      clearTimeout(logoutTimeoutRef.current);
+      logoutTimeoutRef.current = null;
+    }
+
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+  }, []);
+
+  const clearLocalAuthState = useCallback(
+  (options?: { clearGreeting?: boolean }) => {
+    bootstrappedUserIdRef.current = null;
+    fetchingProfileRef.current = false;
+
+    clearSessionTimers();
+    setShowSessionWarning(false);
+    setSessionCountdown(0);
+
+    clearUserSession();
+
+    if (options?.clearGreeting) {
+      localStorage.removeItem(LAST_LOGIN_USER_KEY);
+    }
+
+    if (isMountedRef.current) {
+      setLoading(false);
+      setFormKey((k) => k + 1);
+    }
+  },
+  [clearSessionTimers, clearUserSession]
+);
+
+  const extendSession = useCallback(() => {
+    setShowSessionWarning(false);
+    setSessionCountdown(0);
+    setSessionResetKey((k) => k + 1);
+  }, []);
+
+  const getAuthProviderLabel = useCallback((authUser: any): string => {
+    const provider =
+      authUser?.app_metadata?.provider ||
+      authUser?.app_metadata?.providers?.[0] ||
+      'unknown';
+
+    if (provider === 'google') return 'Google OAuth';
+    if (provider === 'facebook') return 'Facebook OAuth';
+    if (provider === 'email') return 'email/password';
+    return provider;
+  }, []);
+
+  const fetchAndSetUserProfile = useCallback(
+    async (authUser: any) => {
+      if (!authUser?.id) {
+        if (isMountedRef.current) setLoading(false);
+        return;
+      }
+
+      if (fetchingProfileRef.current) return;
+
+      if (bootstrappedUserIdRef.current === authUser.id && user?.id === authUser.id) {
+        if (isMountedRef.current) setLoading(false);
+        return;
+      }
+
+      fetchingProfileRef.current = true;
+
+      try {
+        let { data, error } = await supabase
+          .from('users')
+          .select(
+            'user_id, public_id, email, first_name, last_name, phone, role, address, is_active, profile_picture_url, last_login'
+          )
+          .eq('user_id', authUser.id)
+          .maybeSingle();
+
+        if (!data) {
+          const meta = authUser.user_metadata ?? {};
+          const fullName = meta.full_name || meta.name || '';
+          const parts = fullName.trim().split(' ').filter(Boolean);
+
+          const firstName = normalizeName(meta.first_name || parts[0] || '');
+          const lastName = normalizeName(meta.last_name || parts.slice(1).join(' ') || '');
+          const email = normalizeEmail(authUser.email ?? '');
+          const phone = normalizePhone(meta.phone || '');
+          const address = normalizeAddress(meta.address || '');
+
+          const { data: insertedUser, error: insertError } = await supabase
+            .from('users')
+            .insert({
+              user_id: authUser.id,
+              email,
+              first_name: firstName,
+              last_name: lastName,
+              role: 'client',
+              phone,
+              address,
+              is_active: true,
+              profile_picture_url: meta.avatar_url || meta.picture || null,
+            })
+            .select(
+              'user_id, public_id, email, first_name, last_name, phone, role, address, is_active, profile_picture_url, last_login'
+            )
+            .single();
+
+          if (insertError) {
+            error = insertError;
+          } else {
+            data = insertedUser;
+          }
+        }
+
+        if (error || !data) {
+          console.error('Failed to fetch or create profile:', error?.message || error);
+          await supabase.auth.signOut();
+          bootstrappedUserIdRef.current = null;
+          clearUserSession();
+          return;
+        }
+
+        if (data.is_active === false) {
+          await supabase.auth.signOut();
+          bootstrappedUserIdRef.current = null;
+          clearUserSession();
+          return;
+        }
+
+        const profile = mapProfileToUser(data);
+        bootstrappedUserIdRef.current = authUser.id;
+
+        if (isMountedRef.current) {
+          persistUserSession(profile);
+        }
+
+        const providerLabel = getAuthProviderLabel(authUser);
+
+          if (
+            oauthAuditPendingRef.current &&
+            authUser?.id &&
+            (oauthAuditPendingRef.current === 'google' || oauthAuditPendingRef.current === 'facebook')
+          ) {
+            void addAuthAuditLog({
+              userId: authUser.id,
+              action: 'LOGIN',
+              changedFields: ['last_login'],
+              notes: `User login via ${providerLabel}`,
+            });
+
+            oauthAuditPendingRef.current = null;
+          }
+      } catch (err) {
+        console.error('Unexpected auth bootstrap error:', err);
+        try {
+          await supabase.auth.signOut();
+        } catch {}
+        bootstrappedUserIdRef.current = null;
+        if (isMountedRef.current) {
+          clearUserSession();
+        }
+      } finally {
+        fetchingProfileRef.current = false;
+        if (isMountedRef.current) {
+          setLoading(false);
+        }
+      }
+    },
+    [clearUserSession, persistUserSession, user?.id]
+  );
+
+  // --- AUTH STATE LISTENER & SESSION SYNC ---
   useEffect(() => {
-    if (!user) return;
-    const INACTIVITY_LIMIT = 30 * 60 * 1000;
-    let timeoutId: any;
+  isMountedRef.current = true;
+
+  const initializeSession = async () => {
+    try {
+      setLoading(true);
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!isMountedRef.current) return;
+
+      if (session?.user) {
+        await fetchAndSetUserProfile(session.user);
+      } else {
+        clearLocalAuthState();
+      }
+    } catch (err) {
+      console.error('Session init failed:', err);
+      if (isMountedRef.current) {
+        clearLocalAuthState();
+      }
+    }
+  };
+
+  void initializeSession();
+
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((event, session) => {
+    // Defer async work outside the callback
+    setTimeout(() => {
+      void (async () => {
+        try {
+          if (session?.user) {
+            await fetchAndSetUserProfile(session.user);
+            return;
+          }
+
+          const wasLoggedIn = sessionStorage.getItem(WAS_LOGGED_IN_KEY) === 'true';
+
+          if (event === 'SIGNED_OUT' && wasLoggedIn && !logoutInProgressRef.current) {
+            showIndicator(`SYSTEM ALERT: Session ended at ${getFormattedTime()}`, 'security');
+          }
+
+          clearLocalAuthState();
+        } catch (err) {
+          console.error('onAuthStateChange error:', err);
+          if (isMountedRef.current) {
+            clearLocalAuthState();
+          }
+        }
+      })();
+    }, 0);
+  });
+
+  return () => {
+    isMountedRef.current = false;
+    subscription.unsubscribe();
+  };
+}, [fetchAndSetUserProfile, clearLocalAuthState, showIndicator]);
+
+const addAuthAuditLog = useCallback(
+  async ({
+    userId,
+    action,
+    notes,
+    changedFields,
+  }: {
+    userId: string;
+    action: string;
+    notes: string;
+    changedFields?: string[];
+  }) => {
+    try {
+      const { error } = await supabase.from('audit_log').insert([
+        {
+          user_id: userId,
+          action,
+          target_table: 'users',
+          target_id: userId,
+          before_value: undefined,
+          after_value: undefined,
+          changed_fields: changedFields,
+          timestamp: new Date().toISOString(),
+          notes,
+        },
+      ]);
+
+      if (error) {
+        console.error('Failed to write auth audit log:', error);
+      }
+    } catch (error) {
+      console.error('Unexpected auth audit log error:', error);
+    }
+  },
+  []
+);
+
+
+  // --- LOGOUT ---
+  const logout = useCallback(
+  async (
+    message?: string,
+    options?: { clearGreeting?: boolean; redirectToLogin?: boolean }
+  ) => {
+    logoutInProgressRef.current = true;
+
+    const currentUserId = user?.id;
+    const currentUserEmail = user?.email;
+    const shouldClearGreeting = options?.clearGreeting ?? false;
+    const shouldRedirectToLogin = options?.redirectToLogin ?? false;
+
+    const isSessionExpiry = expiryLogoutRef.current || /expired/i.test(message ?? '');
+    const action = isSessionExpiry ? 'SESSION_EXPIRED' : 'LOGOUT';
+    const note = isSessionExpiry
+      ? 'Session expired due to inactivity'
+      : 'User logout';
+
+    try {
+      if (currentUserId) {
+        await addAuthAuditLog({
+          userId: currentUserId,
+          action,
+          notes: note,
+        });
+      }
+
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error('Logout failed:', err);
+    } finally {
+      clearLocalAuthState({ clearGreeting: shouldClearGreeting });
+
+      const isSecurity = /expired|security|ended/i.test(message ?? '');
+
+      showIndicator(
+        message
+          ? `${message} at ${getFormattedTime()}`
+          : `Logout${currentUserEmail ? ` by ${currentUserEmail}` : ''} at ${getFormattedTime()}`,
+        isSecurity ? 'security' : 'logout'
+      );
+
+      logoutInProgressRef.current = false;
+      expiryLogoutRef.current = false;
+
+      if (shouldRedirectToLogin && window.location.pathname !== '/login') {
+        window.location.replace('/login');
+      }
+    }
+  },
+  [addAuthAuditLog, clearLocalAuthState, showIndicator, user?.email, user?.id]
+);
+//   // --- LEAVE APP / RETURN VIA BACK LOGIC ---
+//   useEffect(() => {
+//   const getNavType = () => {
+//     const nav = performance.getEntriesByType('navigation')[0] as
+//       | PerformanceNavigationTiming
+//       | undefined;
+
+//     return nav?.type;
+//   };
+
+//   const handlePageHide = () => {
+//     if (sessionStorage.getItem(WAS_LOGGED_IN_KEY) === 'true') {
+//       sessionStorage.setItem(EXTERNAL_LEAVE_FLAG, 'true');
+//     }
+//   };
+
+//   const handlePageShow = (e: PageTransitionEvent) => {
+//     const navType = getNavType();
+//     const pendingLeave = sessionStorage.getItem(EXTERNAL_LEAVE_FLAG) === 'true';
+//     const wasLoggedIn = sessionStorage.getItem(WAS_LOGGED_IN_KEY) === 'true';
+
+//     // Refresh while logged in should do nothing
+//     if (navType === 'reload') {
+//       sessionStorage.removeItem(EXTERNAL_LEAVE_FLAG);
+//       return;
+//     }
+
+//     // If page came from BFCache / back-forward after leaving app,
+//     // kill restored state and boot fresh on login.
+//     if ((e.persisted || navType === 'back_forward') && pendingLeave && wasLoggedIn) {
+//       sessionStorage.removeItem(EXTERNAL_LEAVE_FLAG);
+//       sessionStorage.removeItem(STORAGE_KEY);
+//       sessionStorage.removeItem(WAS_LOGGED_IN_KEY);
+//       localStorage.removeItem(LAST_LOGIN_USER_KEY);
+
+//       window.location.replace('/login');
+//       return;
+//     }
+
+//     sessionStorage.removeItem(EXTERNAL_LEAVE_FLAG);
+//   };
+
+//   window.addEventListener('pagehide', handlePageHide);
+//   window.addEventListener('pageshow', handlePageShow);
+
+//   return () => {
+//     window.removeEventListener('pagehide', handlePageHide);
+//     window.removeEventListener('pageshow', handlePageShow);
+//   };
+// }, []);
+
+  // --- INACTIVITY TIMER WITH WARNING ---
+  useEffect(() => {
+    if (!user) {
+      clearSessionTimers();
+      setShowSessionWarning(false);
+      setSessionCountdown(0);
+      return;
+    }
+
+    const inactivityLimit =
+      user.role === 'admin' ? ADMIN_INACTIVITY_LIMIT : CLIENT_INACTIVITY_LIMIT;
+
+    const startTimers = () => {
+      clearSessionTimers();
+      setShowSessionWarning(false);
+      setSessionCountdown(0);
+
+      const warningDelay = Math.max(inactivityLimit - SESSION_WARNING_TIME, 0);
+
+      warningTimeoutRef.current = setTimeout(() => {
+        setShowSessionWarning(true);
+        setSessionCountdown(Math.floor(SESSION_WARNING_TIME / 1000));
+
+        countdownIntervalRef.current = setInterval(() => {
+          setSessionCountdown((prev) => {
+            if (prev <= 1) {
+              if (countdownIntervalRef.current) {
+                clearInterval(countdownIntervalRef.current);
+                countdownIntervalRef.current = null;
+              }
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      }, warningDelay);
+
+      logoutTimeoutRef.current = setTimeout(() => {
+        expiryLogoutRef.current = true;
+        void logout('Session expired due to inactivity', { clearGreeting: true });
+      }, inactivityLimit);
+    };
 
     const resetTimer = () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => logout("Session expired due to inactivity"), INACTIVITY_LIMIT);
+      startTimers();
     };
 
-    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
-    events.forEach(e => window.addEventListener(e, resetTimer));
-    resetTimer();
+    const throttledReset = (() => {
+      let ticking = false;
+
+      return () => {
+        if (ticking) return;
+        ticking = true;
+
+        window.setTimeout(() => {
+          resetTimer();
+          ticking = false;
+        }, 250);
+      };
+    })();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        resetTimer();
+      }
+    };
+
+    const events: Array<keyof WindowEventMap> = [
+      'mousedown',
+      'keypress',
+      'scroll',
+      'touchstart',
+      'click',
+    ];
+
+    events.forEach((event) =>
+      window.addEventListener(event, throttledReset, { passive: true })
+    );
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    startTimers();
 
     return () => {
-      clearTimeout(timeoutId);
-      events.forEach(e => window.removeEventListener(e, resetTimer));
+      clearSessionTimers();
+      events.forEach((event) => window.removeEventListener(event, throttledReset));
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [user, logout]);
+  }, [user, logout, clearSessionTimers, sessionResetKey]);
 
-  // --- 5. AUTH ACTIONS ---
-
-  const login = async (
+  // --- AUTH ACTIONS ---
+  const login = useCallback(
+  async (
     email: string,
     password: string
   ): Promise<{ success: boolean; error?: string }> => {
-
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
-
-  if (error) {
-    console.error('Login error:', error.message);
-
-    if (error.message.includes('Invalid login credentials')) {
-      return { success: false, error: 'invalid_credentials' };
+    if (authActionPending) {
+      return { success: false, error: 'busy' };
     }
 
-    if (error.message.includes('Email not confirmed')) {
-      return { success: false, error: 'email_not_verified' };
+    setAuthActionPending(true);
+
+    try {
+      const normalizedEmail = normalizeEmail(email);
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+      });
+
+      if (error || !data.user) {
+        console.error('Login failed:', error?.message);
+        return { success: false, error: 'invalid_login' };
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from('users')
+        .select('user_id, is_active')
+        .eq('user_id', data.user.id)
+        .single();
+
+      if (profileError || !profile || profile.is_active === false) {
+        console.error('Profile validation failed after login.');
+        await supabase.auth.signOut();
+        return { success: false, error: 'invalid_login' };
+      }
+
+      const loginTimestamp = new Date().toISOString();
+
+      await supabase
+        .from('users')
+        .update({ last_login: loginTimestamp })
+        .eq('user_id', data.user.id);
+
+      void addAuthAuditLog({
+        userId: data.user.id,
+        action: 'LOGIN',
+        changedFields: ['last_login'],
+        notes: 'User login via email/password',
+      });
+
+      return { success: true };
+    } catch (err) {
+      console.error('Unexpected login error:', err);
+      return { success: false, error: 'invalid_login' };
+    } finally {
+      setAuthActionPending(false);
     }
+  },
+  [authActionPending, addAuthAuditLog]
+);
 
-    return { success: false, error: 'auth_error' };
-  }
+  const loginWithGoogle = useCallback(async () => {
+  if (authActionPending) return;
 
-  if (!data.user) {
-    return { success: false, error: 'no_user' };
-  }
+  setAuthActionPending(true);
+  oauthAuditPendingRef.current = 'google';
 
-  const { data: profile, error: profileError } = await supabase
-    .from('users')
-    .select('user_id, is_active')
-    .eq('user_id', data.user.id)
-    .single();
-
-  if (profileError || !profile) {
-    await supabase.auth.signOut();
-    return { success: false, error: 'account_not_found' };
-  }
-
-  if (profile.is_active === false) {
-    await supabase.auth.signOut();
-    return { success: false, error: 'account_disabled' };
-  }
-
-  await supabase
-    .from('users')
-    .update({ last_login: new Date().toISOString() })
-    .eq('user_id', data.user.id);
-
-  return { success: true };
-};
-
-  const loginWithGoogle = async () => {
+  try {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/login`, queryParams: { access_type: 'offline', prompt: 'consent' } }
+      options: {
+        redirectTo: `${window.location.origin}/login`,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        },
+      },
     });
-  };
+  } catch (err) {
+    oauthAuditPendingRef.current = null;
+    console.error('Google login failed:', err);
+  } finally {
+    setAuthActionPending(false);
+  }
+}, [authActionPending]);
 
-  const loginWithFacebook = async () => {
+const loginWithFacebook = useCallback(async () => {
+  if (authActionPending) return;
+
+  setAuthActionPending(true);
+  oauthAuditPendingRef.current = 'facebook';
+
+  try {
     await supabase.auth.signInWithOAuth({
       provider: 'facebook',
-      options: { redirectTo: `${window.location.origin}/login` }
-    });
-  };
-
- const register = async (
-  userData: Omit<User, 'id' | 'is_active' | 'profilePictureUrl' | 'role'> & {
-    password: string;
-    profileFile?: File | null;
-  }
-): Promise<{ success: boolean; error?: string; message?: string }> => {
-  const normalizedEmail = userData.email.trim().toLowerCase();
-
-  let avatarUrl: string | null = null;
-
-  if (userData.profileFile) {
-    try {
-      const mimeToExt: Record<string, string> = {
-        'image/jpeg': 'jpg',
-        'image/png': 'png',
-        'image/webp': 'webp',
-      };
-
-      const fileExt =
-        mimeToExt[userData.profileFile.type] ||
-        userData.profileFile.name.split('.').pop()?.toLowerCase() ||
-        'bin';
-
-      const fileName = `new-${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(fileName, userData.profileFile);
-
-      if (uploadError) {
-        console.error('Avatar upload failed:', uploadError.message);
-      } else {
-        const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
-        avatarUrl = data.publicUrl;
-      }
-    } catch (err) {
-      console.error('Avatar upload failed:', err);
-    }
-  }
-
-  const { data: existingProfile } = await supabase
-    .from('users')
-    .select('user_id, email')
-    .ilike('email', normalizedEmail)
-    .maybeSingle();
-
-  const { data: authData, error: authError } = await supabase.auth.signUp({
-    email: normalizedEmail,
-    password: userData.password,
-    options: {
-      emailRedirectTo: `${window.location.origin}/login`,
-      data: {
-        first_name: userData.firstName,
-        last_name: userData.lastName,
-        phone: userData.contactNumber,
-        address: userData.address,
-        profile_picture_url: avatarUrl,
+      options: {
+        redirectTo: `${window.location.origin}/login`,
       },
+    });
+  } catch (err) {
+    oauthAuditPendingRef.current = null;
+    console.error('Facebook login failed:', err);
+  } finally {
+    setAuthActionPending(false);
+  }
+}, [authActionPending]);
+
+  const register = useCallback(
+    async (
+      userData: RegisterInput
+    ): Promise<{ success: boolean; error?: string; message?: string }> => {
+      if (authActionPending) {
+        return { success: false, error: 'busy' };
+      }
+
+      setAuthActionPending(true);
+
+      try {
+        const normalizedFirstName = normalizeName(userData.firstName);
+        const normalizedLastName = normalizeName(userData.lastName);
+        const normalizedEmail = normalizeEmail(userData.email);
+        const normalizedContactNumber = normalizePhone(userData.contactNumber ?? '');
+        const normalizedAddress = normalizeAddress(userData.address ?? '');
+
+        const { data, error } = await supabase.auth.signUp({
+          email: normalizedEmail,
+          password: userData.password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/login`,
+            data: {
+              first_name: normalizedFirstName,
+              last_name: normalizedLastName,
+              phone: normalizedContactNumber,
+              address: normalizedAddress,
+            },
+          },
+        });
+
+        if (error) {
+          console.error('Registration failed:', error.message);
+          return { success: false, error: 'registration_failed' };
+        }
+
+        if (!data.user) {
+          return { success: false, error: 'registration_failed' };
+        }
+
+        return {
+          success: true,
+          message:
+            'Account created. Please check your email and verify your account before signing in.',
+        };
+      } catch (err) {
+        console.error('Unexpected registration error:', err);
+        return { success: false, error: 'registration_failed' };
+      } finally {
+        setAuthActionPending(false);
+      }
     },
-  });
+    [authActionPending]
+  );
 
+  const updateProfile = useCallback(
+    async (userData: Partial<User>): Promise<boolean> => {
+      if (!user) return false;
+      if (authActionPending) return false;
 
-  if (authError) {
-    console.error('Auth registration failed:', authError.message);
+      setAuthActionPending(true);
 
-    if (authError.message.includes('User already registered')) {
-      return { success: false, error: 'email_already_exists' };
-    }
+      try {
+        const dbPayload: Record<string, unknown> = {};
 
-    return { success: false, error: 'auth_error' };
-  }
+        if (userData.firstName !== undefined) {
+          dbPayload.first_name = normalizeName(userData.firstName);
+        }
 
-  if (!authData.user) {
-    return { success: false, error: 'auth_error' };
-  }
+        if (userData.lastName !== undefined) {
+          dbPayload.last_name = normalizeName(userData.lastName);
+        }
 
-  if (existingProfile) {
-    return {
-      success: true,
-      message:
-        'This email already has an account. If you have not verified it yet, check your inbox for the confirmation email. Otherwise, sign in instead.',
-    };
-  }
+        if (userData.contactNumber !== undefined) {
+          dbPayload.phone = normalizePhone(userData.contactNumber);
+        }
 
-  return {
-    success: true,
-    message:
-      'Account created. Please check your email and verify your account before signing in.',
-  };
-};
+        if (userData.address !== undefined) {
+          dbPayload.address = normalizeAddress(userData.address);
+        }
 
-  const updateProfile = async (userData: Partial<User>) => {
-    if (!user) return;
-    const dbPayload: any = {};
-    if (userData.firstName !== undefined) dbPayload.first_name = userData.firstName;
-    if (userData.lastName !== undefined) dbPayload.last_name = userData.lastName;
-    if (userData.contactNumber !== undefined) dbPayload.phone = userData.contactNumber;
-    if (userData.address !== undefined) dbPayload.address = userData.address;
-    if (userData.profilePictureUrl !== undefined) dbPayload.profile_picture_url = userData.profilePictureUrl;
+        if (userData.profilePictureUrl !== undefined) {
+          dbPayload.profile_picture_url = userData.profilePictureUrl;
+        }
 
-    const { error } = await supabase.from('users').update(dbPayload).eq('user_id', user.id);
-    if (!error) setUser({ ...user, ...userData });
-  };
+        const { error } = await supabase
+          .from('users')
+          .update(dbPayload)
+          .eq('user_id', user.id);
 
-  const changePassword = async (newPassword: string) => {
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    return !error;
-  };
+        if (error) {
+          console.error('Profile update failed:', error.message);
+          return false;
+        }
 
-  const recoverPassword = async (email: string): Promise<boolean> => {
-  const normalizedEmail = email.trim().toLowerCase();
+        const updatedUser: User = {
+          ...user,
+          ...userData,
+          ...(userData.firstName !== undefined
+            ? { firstName: normalizeName(userData.firstName) }
+            : {}),
+          ...(userData.lastName !== undefined
+            ? { lastName: normalizeName(userData.lastName) }
+            : {}),
+          ...(userData.contactNumber !== undefined
+            ? { contactNumber: normalizePhone(userData.contactNumber) }
+            : {}),
+          ...(userData.address !== undefined
+            ? { address: normalizeAddress(userData.address) }
+            : {}),
+        };
 
-  const { data: existingUser, error: lookupError } = await supabase
-    .from('users')
-    .select('user_id, email, is_active')
-    .ilike('email', normalizedEmail)
-    .single();
+        setUser(updatedUser);
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(updatedUser));
 
-  if (lookupError || !existingUser) {
-    console.error('No user found for recovery:', lookupError?.message);
-    return false;
-  }
+        const displayName =
+          [updatedUser.firstName, updatedUser.lastName].filter(Boolean).join(' ').trim() ||
+          'User';
 
-  if (existingUser.is_active === false) {
-    console.error('Inactive user cannot recover password.');
-    return false;
-  }
+        localStorage.setItem(
+          LAST_LOGIN_USER_KEY,
+          JSON.stringify({
+            name: displayName,
+            profilePictureUrl: updatedUser.profilePictureUrl || '',
+          })
+        );
 
-  const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-    redirectTo: `${window.location.origin}/reset-password`,
-  });
+        return true;
+      } catch (err) {
+        console.error('Unexpected profile update error:', err);
+        return false;
+      } finally {
+        setAuthActionPending(false);
+      }
+    },
+    [authActionPending, user]
+  );
 
-  if (error) {
-    console.error('Password recovery failed:', error.message);
-    return false;
-  }
+  const changePassword = useCallback(
+    async (newPassword: string): Promise<boolean> => {
+      if (authActionPending) return false;
 
-  return true;
-};
+      setAuthActionPending(true);
 
-  const uploadProfilePicture = async (file: File) => {
-    if (!user) return null;
-    const mimeToExt: Record<string, string> = {
-      'image/jpeg': 'jpg',
-      'image/png': 'png',
-      'image/webp': 'webp',
-    };
+      try {
+        const { error } = await supabase.auth.updateUser({ password: newPassword });
 
-    const fileExt =
-      mimeToExt[file.type] ||
-      file.name.split('.').pop()?.toLowerCase() ||
-      'bin';
+        if (error) {
+          console.error('Password change failed:', error.message);
+          return false;
+        }
 
-    const fileName = `${user.id}-${Date.now()}.${fileExt}`;
-    const { error } = await supabase.storage.from('avatars').upload(fileName, file, { upsert: true });
-    return error ? null : supabase.storage.from('avatars').getPublicUrl(fileName).data.publicUrl;
-  };
+        return true;
+      } catch (err) {
+        console.error('Unexpected password change error:', err);
+        return false;
+      } finally {
+        setAuthActionPending(false);
+      }
+    },
+    [authActionPending]
+  );
 
-  const deleteAccount = async (userId: string) => {
-    // In Supabase, deleting a user usually requires a Service Role via Edge Function 
-    // This logic assumes you handle the DB-side cleanup.
-    if (user?.id === userId) await logout("Account being deleted");
-  };
+  const recoverPassword = useCallback(
+    async (email: string): Promise<boolean> => {
+      if (authActionPending) return true;
+
+      setAuthActionPending(true);
+
+      try {
+        const normalizedEmail = normalizeEmail(email);
+
+        const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+
+        if (error) {
+          console.error('Password recovery failed:', error.message);
+        }
+
+        return true;
+      } catch (err) {
+        console.error('Unexpected password recovery error:', err);
+        return true;
+      } finally {
+        setAuthActionPending(false);
+      }
+    },
+    [authActionPending]
+  );
+
+  const uploadProfilePicture = useCallback(
+    async (file: File): Promise<string | null> => {
+      if (!user) return null;
+      if (authActionPending) return null;
+
+      setAuthActionPending(true);
+
+      try {
+        if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
+          console.error('Invalid avatar type.');
+          return null;
+        }
+
+        if (file.size > MAX_AVATAR_SIZE) {
+          console.error('Avatar exceeds maximum allowed size.');
+          return null;
+        }
+
+        const mimeToExt: Record<string, string> = {
+          'image/jpeg': 'jpg',
+          'image/png': 'png',
+          'image/webp': 'webp',
+        };
+
+        const fileExt = mimeToExt[file.type] ?? 'bin';
+        const fileName = `${user.id}/${crypto.randomUUID()}.${fileExt}`;
+
+        const { error } = await supabase.storage
+          .from('avatars')
+          .upload(fileName, file, { upsert: false });
+
+        if (error) {
+          console.error('Avatar upload failed:', error.message);
+          return null;
+        }
+
+        const publicUrl = supabase.storage.from('avatars').getPublicUrl(fileName).data.publicUrl;
+        return publicUrl;
+      } catch (err) {
+        console.error('Unexpected avatar upload error:', err);
+        return null;
+      } finally {
+        setAuthActionPending(false);
+      }
+    },
+    [authActionPending, user]
+  );
+
+  const deleteAccount = useCallback(
+    async (userId: string) => {
+      if (user?.id === userId) {
+        await logout('Account being deleted');
+      }
+    },
+    [logout, user]
+  );
 
   return (
-    <AuthContext.Provider value={{ 
-      user, loading, login, loginWithGoogle, loginWithFacebook, register, 
-      logout, updateProfile, changePassword, recoverPassword, 
-      uploadProfilePicture, deleteAccount, formKey, setFormKey 
-    }}>
-      {!loading && children}
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        authActionPending,
+        formKey,
+        setFormKey,
+        showSessionWarning,
+        sessionCountdown,
+        extendSession,
+        login,
+        loginWithGoogle,
+        loginWithFacebook,
+        register,
+        logout,
+        updateProfile,
+        changePassword,
+        recoverPassword,
+        uploadProfilePicture,
+        deleteAccount,
+      }}
+    >
+      {loading ? (
+        <div className="relative min-h-screen w-full flex flex-col items-center justify-center p-6 bg-white rounded-3xl overflow-hidden">
+          <div className="absolute top-8 left-8 flex items-center gap-3 select-none">
+            <div className="bg-blue-600 p-1.5 sm:p-2 rounded-xl shadow-lg shadow-blue-100">
+              <Building2 className="size-5 sm:size-6 text-white" />
+            </div>
+            <span className="text-lg font-bold text-gray-900 tracking-tight">
+              Comerciales Flores
+            </span>
+          </div>
+
+          <div className="max-w-md w-full text-center">
+            <h1 className="text-7xl sm:text-8xl font-black text-gray-100 leading-none select-none italic">
+              ...
+            </h1>
+
+            <div className="relative -mt-8 mb-8 inline-flex items-center justify-center w-20 h-20 bg-blue-600 rounded-2xl rotate-12 shadow-xl shadow-blue-100">
+              <Building2 className="size-10 text-white -rotate-12 animate-pulse" />
+            </div>
+
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              Restoring your session
+            </h2>
+            <p className="text-gray-500 mb-8 leading-relaxed">
+              Please wait while we securely prepare your workspace.
+            </p>
+
+            <div className="flex items-center justify-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-blue-600 animate-bounce [animation-delay:-0.3s]" />
+              <span className="h-2.5 w-2.5 rounded-full bg-blue-600 animate-bounce [animation-delay:-0.15s]" />
+              <span className="h-2.5 w-2.5 rounded-full bg-blue-600 animate-bounce" />
+            </div>
+          </div>
+        </div>
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
   );
 }
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within an AuthProvider');
+  if (import.meta.env.DEV) {
+    console.log('useAuth context:', context);
+  }
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
   return context;
 };

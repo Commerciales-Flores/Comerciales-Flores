@@ -251,8 +251,8 @@ function DataComposer({ children }: { children: ReactNode }) {
 export function DataProvider({ children }: { children: ReactNode }) {
   return (
     <UsersProvider>
-      <UnitsProvider>
-        <RecordsProvider>
+      <RecordsProvider>
+        <UnitsProvider>
           <ReservationsProvider>
             <PaymentsProvider>
               <InquiriesProvider>
@@ -264,8 +264,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
               </InquiriesProvider>
             </PaymentsProvider>
           </ReservationsProvider>
-        </RecordsProvider>
-      </UnitsProvider>
+        </UnitsProvider>
+      </RecordsProvider>
     </UsersProvider>
   );
 }

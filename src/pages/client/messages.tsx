@@ -1,9 +1,366 @@
-import { useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Send, X, PlusCircle, CheckCircle, Clock, ArrowLeft, Bell, Info, MessageSquare } from 'lucide-react';
+import {
+  Mail,
+  Send,
+  X,
+  PlusCircle,
+  CheckCircle,
+  Clock,
+  ArrowLeft,
+  MessageSquare,
+} from 'lucide-react';
+
+const dateFormatter = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+});
+
+const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+});
+
+const statusStyles = {
+  open: {
+    bg: 'bg-amber-50',
+    text: 'text-amber-700',
+    border: 'border-amber-200',
+    label: 'Pending',
+  },
+  responded: {
+    bg: 'bg-blue-50',
+    text: 'text-blue-700',
+    border: 'border-blue-200',
+    label: 'Replied',
+  },
+  resolved: {
+    bg: 'bg-green-50',
+    text: 'text-green-700',
+    border: 'border-green-200',
+    label: 'Resolved',
+  },
+} as const;
+
+const defaultStatusStyle = {
+  bg: 'bg-gray-50',
+  text: 'text-gray-700',
+  border: 'border-gray-200',
+  label: 'Unknown',
+};
+
+const initialFormState = {
+  subject: '',
+  message: '',
+};
+
+function getTimestamp(value?: string | null) {
+  if (!value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return dateFormatter.format(date);
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return dateTimeFormatter.format(date);
+}
+
+function getInquiryStatusStyle(status?: string) {
+  return statusStyles[status as keyof typeof statusStyles] ?? defaultStatusStyle;
+}
+
+type InquiryListItemProps = {
+  inquiry: any;
+  isSelected: boolean;
+  onSelect: (id: string) => void;
+};
+
+const InquiryListItem = React.memo(function InquiryListItem({
+  inquiry,
+  isSelected,
+  onSelect,
+}: InquiryListItemProps) {
+  const style = getInquiryStatusStyle(inquiry.status);
+
+  return (
+    <button
+      onClick={() => onSelect(inquiry.id)}
+      className={`w-full rounded-2xl border p-5 text-left transition-all ${
+        isSelected
+          ? 'border-blue-500 bg-white ring-4 ring-blue-50 shadow-sm'
+          : 'border-gray-100 bg-white hover:border-gray-300'
+      }`}
+    >
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <span
+          className={`rounded-lg border px-2 py-0.5 text-[10px] font-black uppercase ${style.bg} ${style.text} ${style.border}`}
+        >
+          {style.label}
+        </span>
+
+        <span className="shrink-0 text-[11px] text-gray-400">
+          {formatDate(inquiry.date)}
+        </span>
+      </div>
+
+      <h3 className="mb-1 truncate text-sm font-bold text-gray-900">
+        {inquiry.subject}
+      </h3>
+
+      <p className="line-clamp-2 text-xs text-gray-500">{inquiry.message}</p>
+    </button>
+  );
+});
+
+type EmptyMessagesProps = {
+  onOpen: () => void;
+};
+
+const EmptyMessages = React.memo(function EmptyMessages({
+  onOpen,
+}: EmptyMessagesProps) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex flex-1 flex-col items-center justify-center py-20 text-center"
+    >
+      <div className="mb-4 rounded-3xl bg-blue-50 p-6 shadow-sm">
+        <Mail className="size-10 text-blue-500" />
+      </div>
+
+      <h3 className="text-lg font-bold text-gray-900">No messages yet</h3>
+
+      <p className="mt-1 max-w-xs text-sm text-gray-500">
+        Need help? Start a conversation with our team.
+      </p>
+
+      <button
+        onClick={onOpen}
+        className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-100 hover:bg-blue-700"
+      >
+        <PlusCircle className="size-4" />
+        New Message
+      </button>
+    </motion.div>
+  );
+});
+
+type InquiryDetailProps = {
+  inquiry: any;
+  onBack: () => void;
+  onClose: () => void;
+};
+
+const InquiryDetail = React.memo(function InquiryDetail({
+  inquiry,
+  onBack,
+  onClose,
+}: InquiryDetailProps) {
+  const style = getInquiryStatusStyle(inquiry.status);
+
+  return (
+    <motion.div
+      key={inquiry.id}
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      className="flex h-full flex-1 flex-col overflow-hidden border-none bg-white lg:rounded-[32px] lg:border lg:border-gray-100"
+    >
+      <div className="flex shrink-0 items-center justify-between border-b border-gray-100 p-4 lg:p-6">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={onBack}
+            className="rounded-full p-2 -ml-2 transition-colors hover:bg-gray-100 lg:hidden"
+          >
+            <ArrowLeft className="size-6 text-gray-900" />
+          </button>
+
+          <div>
+            <h2 className="text-base font-bold leading-tight text-gray-900 lg:text-lg">
+              {inquiry.subject}
+            </h2>
+
+            <div className="mt-0.5 flex items-center gap-2">
+              <span className={`text-[10px] font-bold uppercase ${style.text}`}>
+                {style.label}
+              </span>
+
+              <span className="hidden font-mono text-[10px] text-gray-400 sm:inline">
+                • ID: #{String(inquiry.id).slice(-6).toUpperCase()}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="hidden rounded-full bg-gray-50 p-2 text-gray-500 transition-colors hover:bg-gray-100 lg:flex"
+        >
+          <X className="size-5" />
+        </button>
+      </div>
+
+      <div className="custom-scrollbar flex-1 space-y-6 overflow-y-auto bg-white p-6">
+        <div className="flex flex-col items-end">
+          <div className="max-w-[90%] rounded-2xl rounded-tr-none bg-blue-600 p-4 text-white shadow-sm">
+            <p className="whitespace-pre-wrap text-sm">{inquiry.message}</p>
+          </div>
+
+          <span className="mt-2 text-[10px] text-gray-400">
+            You • {formatDateTime(inquiry.date)}
+          </span>
+        </div>
+
+        {inquiry.response ? (
+          <div className="flex flex-col items-start">
+            <div className="max-w-[90%] rounded-2xl rounded-tl-none border border-gray-200 bg-gray-100 p-4 text-gray-800">
+              <p className="whitespace-pre-wrap text-sm">{inquiry.response}</p>
+            </div>
+
+            <span className="mt-2 text-[10px] text-gray-400">
+              Support Team • {formatDateTime(inquiry.responseDate)}
+            </span>
+          </div>
+        ) : (
+          <div className="mx-auto flex max-w-sm items-center gap-3 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-amber-800">
+            <Clock className="size-5 shrink-0 animate-pulse" />
+            <p className="text-xs font-medium">
+              Sit tight. We&apos;re reviewing your inquiry.
+            </p>
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+});
+
+type InquiryComposerModalProps = {
+  isOpen: boolean;
+  onClose: () => void;
+  form: { subject: string; message: string };
+  loading: boolean;
+  formSuccess: boolean;
+  onSubjectChange: (value: string) => void;
+  onMessageChange: (value: string) => void;
+  onSubmit: (e: React.FormEvent) => void;
+};
+
+const InquiryComposerModal = React.memo(function InquiryComposerModal({
+  isOpen,
+  onClose,
+  form,
+  loading,
+  formSuccess,
+  onSubjectChange,
+  onMessageChange,
+  onSubmit,
+}: InquiryComposerModalProps) {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center p-0 sm:items-center sm:p-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm"
+          />
+
+          <motion.div
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            className="relative w-full max-w-lg overflow-hidden rounded-t-[32px] bg-white shadow-2xl sm:rounded-[32px]"
+          >
+            <div className="flex items-center justify-between border-b border-gray-50 p-6">
+              <h2 className="text-xl font-bold text-gray-900">
+                New Support Ticket
+              </h2>
+
+              <button
+                onClick={onClose}
+                className="rounded-full p-2 text-blue-600 hover:bg-gray-100"
+              >
+                <X className="size-6" />
+              </button>
+            </div>
+
+            {formSuccess ? (
+              <div className="p-12 text-center">
+                <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-green-50 text-green-500">
+                  <CheckCircle className="size-10" />
+                </div>
+
+                <h3 className="text-lg font-bold">Message Sent</h3>
+                <p className="text-sm text-gray-500">
+                  We&apos;ll notify you as soon as we reply.
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={onSubmit} className="space-y-4 p-6">
+                <div>
+                  <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-gray-400">
+                    Subject
+                  </label>
+
+                  <input
+                    type="text"
+                    required
+                    value={form.subject}
+                    onChange={(e) => onSubjectChange(e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="What is this regarding?"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-gray-400">
+                    Message
+                  </label>
+
+                  <textarea
+                    rows={4}
+                    required
+                    value={form.message}
+                    onChange={(e) => onMessageChange(e.target.value)}
+                    className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Tell us more about your inquiry..."
+                  />
+                </div>
+
+                <button
+                  disabled={loading}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 py-4 font-bold text-white shadow-lg shadow-blue-100 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <Send className="size-4" />
+                  {loading ? 'Sending...' : 'Send Message'}
+                </button>
+              </form>
+            )}
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+});
 
 export default function ClientMessages() {
   const { user } = useAuth();
@@ -13,278 +370,179 @@ export default function ClientMessages() {
   const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
-
-  const userInquiries = user ? getInquiriesByUserId(user.id) : [];
-  const sortedInquiries = [...userInquiries].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
-
-  const selectedInquiry = sortedInquiries.find(i => i.id === selectedInquiryId);
-
-  const statusStyles = {
-    open: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', label: 'Pending' },
-    responded: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', label: 'Replied' },
-    resolved: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200', label: 'Resolved' }
-  };
-
-  const [newInquiryForm, setNewInquiryForm] = useState({ subject: '', message: '' });
+  const [newInquiryForm, setNewInquiryForm] = useState(initialFormState);
   const [loading, setLoading] = useState(false);
   const [formSuccess, setFormSuccess] = useState(false);
 
-  const handleNewInquirySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !newInquiryForm.subject.trim() || !newInquiryForm.message.trim()) return;
+  const userId = user?.id ?? '';
 
-    setLoading(true);
-    await addInquiry({
-      userId: user.id,
-      first_name: user.firstName,
-      last_name: user.lastName,
-      email: user.email,
-      subject: newInquiryForm.subject,
-      message: newInquiryForm.message,
-    });
+  const sortedInquiries = useMemo(() => {
+    if (!userId) return [];
+    const userInquiries = getInquiriesByUserId(userId) ?? [];
 
-    sendSystemNotification(
-      user.id,
-      "Inquiry Submitted",
-      `We've received your inquiry: "${newInquiryForm.subject}".`
+    return [...userInquiries].sort(
+      (a, b) => getTimestamp(b.date) - getTimestamp(a.date)
     );
+  }, [getInquiriesByUserId, userId]);
 
-    setLoading(false);
-    setFormSuccess(true);
+  const selectedInquiry = useMemo(
+    () => sortedInquiries.find((i) => i.id === selectedInquiryId) ?? null,
+    [sortedInquiries, selectedInquiryId]
+  );
 
-    setTimeout(() => {
-      setIsModalOpen(false);
-      setFormSuccess(false);
-      setNewInquiryForm({ subject: '', message: '' });
-    }, 2000);
-  };
+  const openModal = useCallback(() => {
+    setIsModalOpen(true);
+  }, []);
 
-  const selectInquiry = (id: string) => {
+  const closeModal = useCallback(() => {
+    if (loading) return;
+    setIsModalOpen(false);
+    if (!formSuccess) {
+      setNewInquiryForm(initialFormState);
+    }
+  }, [loading, formSuccess]);
+
+  const selectInquiry = useCallback((id: string) => {
     setSelectedInquiryId(id);
     setShowDetail(true);
-  };
+  }, []);
 
-  const deselectInquiry = () => {
+  const deselectInquiry = useCallback(() => {
     setSelectedInquiryId(null);
     setShowDetail(false);
-  };
+  }, []);
+
+  const handleSubjectChange = useCallback((value: string) => {
+    setNewInquiryForm((prev) => ({ ...prev, subject: value }));
+  }, []);
+
+  const handleMessageChange = useCallback((value: string) => {
+    setNewInquiryForm((prev) => ({ ...prev, message: value }));
+  }, []);
+
+  const handleNewInquirySubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+
+      const subject = newInquiryForm.subject.trim();
+      const message = newInquiryForm.message.trim();
+
+      if (!user || !subject || !message || loading) return;
+
+      setLoading(true);
+
+      try {
+        await addInquiry({
+          userId: user.id,
+          first_name: user.firstName,
+          last_name: user.lastName,
+          email: user.email,
+          subject,
+          message,
+        });
+
+        sendSystemNotification(
+          user.id,
+          'Inquiry Submitted',
+          `We've received your inquiry: "${subject}".`
+        );
+
+        setFormSuccess(true);
+
+        window.setTimeout(() => {
+          setIsModalOpen(false);
+          setFormSuccess(false);
+          setNewInquiryForm(initialFormState);
+        }, 2000);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [addInquiry, loading, newInquiryForm.message, newInquiryForm.subject, sendSystemNotification, user]
+  );
 
   return (
-    <div className="bg-gray-50 min-h-screen">
-      <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
-        {/* Header */}  
+    <div className="min-h-screen bg-gray-50">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <header>
-
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
-          Messages
-        </h1>
-        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-          Track your support tickets and inquiries.
-        </p>
-      </header>
-
-      {/* Floating Action Button restored to bottom right */}
-      <button
-        onClick={() => setIsModalOpen(true)}
-        className="fixed bottom-8 md:hidden right-8 z-[55] size-14 bg-blue-600 text-white rounded-full shadow-2xl shadow-blue-400 flex items-center justify-center hover:bg-blue-700 hover:scale-110 active:scale-95 transition-all"
-      >
-        <PlusCircle className="size-8" />
-      </button>
-
-      {/* Main Content Area */}
-      {sortedInquiries.length === 0 ? (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex-1 flex flex-col items-center justify-center py-20 text-center"
-        >
-          <div className="bg-blue-50 p-6 rounded-3xl shadow-sm mb-4">
-            <Mail className="size-12 text-blue-500" />
-          </div>
-
-          <h3 className="text-lg font-bold text-gray-900">
-            No messages yet
-          </h3>
-
-          <p className="text-gray-500 max-w-xs text-sm mt-1">
-            Need help? Start a conversation with our team.
+          <h1 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">
+            Messages
+          </h1>
+          <p className="mt-0.5 text-xs text-gray-500 sm:text-sm">
+            Track your support tickets and inquiries.
           </p>
-        </motion.div>
-      ) : (
-        <div className="flex-1 flex gap-6 overflow-hidden relative">
-          
-          {/* Left Side: List */}
-          <div className={`w-full lg:w-1/3 flex flex-col gap-3 overflow-y-auto custom-scrollbar pb-24 lg:pb-0 ${showDetail ? 'hidden lg:flex' : 'flex'}`}>
-            {sortedInquiries.map((inq) => (
-              <button
-                key={inq.id}
-                onClick={() => selectInquiry(inq.id)}
-                className={`w-full text-left p-5 rounded-2xl border transition-all ${
-                  selectedInquiryId === inq.id
-                    ? 'bg-white border-blue-500 ring-4 ring-blue-50 shadow-sm'
-                    : 'bg-white border-gray-100 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex justify-between items-start mb-2">
-                  <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase border ${statusStyles[inq.status].bg} ${statusStyles[inq.status].text} ${statusStyles[inq.status].border}`}>
-                    {statusStyles[inq.status].label}
-                  </span>
-                  <span className="text-[11px] text-gray-400">{new Date(inq.date).toLocaleDateString()}</span>
-                </div>
-                <h3 className="font-bold text-gray-900 text-sm mb-1 truncate">{inq.subject}</h3>
-                <p className="text-xs text-gray-500 line-clamp-2">{inq.message}</p>
-              </button>
-            ))}
-          </div>
-          
+        </header>
 
-          {/* Right Side: Detail Panel */}
-          <div className={`fixed inset-0 z-[60] lg:relative lg:inset-auto lg:z-auto lg:flex-1 bg-white lg:bg-transparent ${showDetail ? 'flex' : 'hidden lg:flex'}`}>
-            <AnimatePresence mode="wait">
-              {selectedInquiry ? (
-                <motion.div
-                  key={selectedInquiry.id}
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  className="flex-1 bg-white lg:rounded-[32px] border-none lg:border lg:border-gray-100 flex flex-col overflow-hidden h-full"
-                >
-                  {/* DETAIL HEADER - Fixed to show back/close buttons */}
-                  <div className="p-4 lg:p-6 border-b border-gray-100 flex items-center justify-between shrink-0">
-                    <div className="flex items-center gap-4">
-                      {/* Back Arrow - Always visible on mobile, used to deselect */}
-                      <button 
-                        onClick={deselectInquiry} 
-                        className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors lg:hidden"
-                      >
-                        <ArrowLeft className="size-6 text-gray-900" />
-                      </button>
-                      <div>
-                        <h2 className="text-base lg:text-lg font-bold text-gray-900 leading-tight">
-                          {selectedInquiry.subject}
-                        </h2>
-                        <div className="flex items-center gap-2 mt-0.5">
-                           <span className={`text-[10px] font-bold uppercase ${statusStyles[selectedInquiry.status].text}`}>
-                            {statusStyles[selectedInquiry.status].label}
-                           </span>
-                           <span className="text-[10px] text-gray-400 font-mono hidden sm:inline">• ID: #{selectedInquiry.id.slice(-6).toUpperCase()}</span>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Desktop Close Button */}
-                    <button 
-                      onClick={deselectInquiry} 
-                      className="hidden lg:flex p-2 bg-gray-50 hover:bg-gray-100 rounded-full text-gray-500 transition-colors"
-                    >
-                      <X className="size-5" />
-                    </button>
-                  </div>
+        <button
+          onClick={openModal}
+          className="fixed bottom-8 right-8 z-[55] flex size-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-2xl shadow-blue-400 transition-all hover:scale-110 hover:bg-blue-700 active:scale-95 md:hidden"
+        >
+          <PlusCircle className="size-8" />
+        </button>
 
-                  {/* Message Body */}
-                  <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-white">
-                    <div className="flex flex-col items-end">
-                      <div className="max-w-[90%] bg-blue-600 text-white p-4 rounded-2xl rounded-tr-none shadow-sm">
-                        <p className="text-sm whitespace-pre-wrap">{selectedInquiry.message}</p>
-                      </div>
-                      <span className="text-[10px] text-gray-400 mt-2">You • {new Date(selectedInquiry.date).toLocaleString()}</span>
-                    </div>
-
-                    {selectedInquiry.response ? (
-                      <div className="flex flex-col items-start">
-                        <div className="max-w-[90%] bg-gray-100 text-gray-800 p-4 rounded-2xl rounded-tl-none border border-gray-200">
-                          <p className="text-sm whitespace-pre-wrap">{selectedInquiry.response}</p>
-                        </div>
-                        <span className="text-[10px] text-gray-400 mt-2">Support Team • {new Date(selectedInquiry.responseDate!).toLocaleString()}</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-3 p-4 bg-amber-50 rounded-2xl border border-amber-100 text-amber-800 max-w-sm mx-auto">
-                        <Clock className="size-5 shrink-0 animate-pulse" />
-                        <p className="text-xs font-medium">Wait tight! We're reviewing your inquiry.</p>
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-              ) : (
-                <div className="hidden lg:flex flex-1 flex-col items-center justify-center bg-white rounded-[32px] border border-gray-100 text-center p-12">
-                   <div className="bg-gray-50 p-6 rounded-full mb-4">
-                     <MessageSquare className="size-10 text-gray-300" />
-                   </div>
-                  <h3 className="text-gray-900 font-bold">Your conversation</h3>
-                  <p className="text-gray-500 text-sm mt-1">Select a ticket from the list to view the full chat history.</p>
-                </div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-      )}
-      
-
-      {/* New Inquiry Modal */}
-      <AnimatePresence>
-        {isModalOpen && (
-          <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
-            <motion.div 
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setIsModalOpen(false)}
-              className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
-              className="relative bg-white w-full max-w-lg rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden"
+        {sortedInquiries.length === 0 ? (
+          <EmptyMessages onOpen={openModal} />
+        ) : (
+          <div className="relative flex flex-1 gap-6 overflow-hidden">
+            <div
+              className={`custom-scrollbar w-full flex-col gap-3 overflow-y-auto pb-24 lg:w-1/3 lg:pb-0 ${
+                showDetail ? 'hidden lg:flex' : 'flex'
+              }`}
             >
-              <div className="p-6 border-b border-gray-50 flex justify-between items-center">
-                <h2 className="text-xl font-bold text-gray-900">New Support Ticket</h2>
-                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full text-blue-600">
-                  <X className="size-6" />
-                </button>
-              </div>
+              {sortedInquiries.map((inquiry) => (
+                <InquiryListItem
+                  key={inquiry.id}
+                  inquiry={inquiry}
+                  isSelected={selectedInquiryId === inquiry.id}
+                  onSelect={selectInquiry}
+                />
+              ))}
+            </div>
 
-              {formSuccess ? (
-                <div className="p-12 text-center">
-                  <div className="size-16 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <CheckCircle className="size-10" />
+            <div
+              className={`fixed inset-0 z-[60] bg-white lg:relative lg:inset-auto lg:z-auto lg:flex-1 lg:bg-transparent ${
+                showDetail ? 'flex' : 'hidden lg:flex'
+              }`}
+            >
+              <AnimatePresence mode="wait">
+                {selectedInquiry ? (
+                  <InquiryDetail
+                    key={selectedInquiry.id}
+                    inquiry={selectedInquiry}
+                    onBack={deselectInquiry}
+                    onClose={deselectInquiry}
+                  />
+                ) : (
+                  <div className="hidden flex-1 flex-col items-center justify-center rounded-[32px] border border-gray-100 bg-white p-12 text-center lg:flex">
+                    <div className="mb-4 rounded-full bg-gray-50 p-6">
+                      <MessageSquare className="size-10 text-gray-300" />
+                    </div>
+
+                    <h3 className="font-bold text-gray-900">
+                      Your conversation
+                    </h3>
+
+                    <p className="mt-1 text-sm text-gray-500">
+                      Select a ticket from the list to view the full chat
+                      history.
+                    </p>
                   </div>
-                  <h3 className="text-lg font-bold">Message Sent</h3>
-                  <p className="text-sm text-gray-500">We'll notify you as soon as we reply.</p>
-                </div>
-              ) : (
-                <form onSubmit={handleNewInquirySubmit} className="p-6 space-y-4">
-                  <div>
-                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Subject</label>
-                    <input
-                      type="text" required
-                      value={newInquiryForm.subject}
-                      onChange={(e) => setNewInquiryForm({ ...newInquiryForm, subject: e.target.value })}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
-                      placeholder="What is this regarding?"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Message</label>
-                    <textarea
-                      rows={4} required
-                      value={newInquiryForm.message}
-                      onChange={(e) => setNewInquiryForm({ ...newInquiryForm, message: e.target.value })}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none"
-                      placeholder="Tell us more about your inquiry..."
-                    />
-                  </div>
-                  <button
-                    disabled={loading}
-                    className="w-full py-4 bg-blue-600 text-white font-bold rounded-2xl shadow-lg shadow-blue-100 flex items-center justify-center gap-2"
-                  >
-                    <Send className="size-4" />
-                    {loading ? 'Sending...' : 'Send Message'}
-                  </button>
-                </form>
-              )}
-            </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         )}
-      </AnimatePresence>
+
+        <InquiryComposerModal
+          isOpen={isModalOpen}
+          onClose={closeModal}
+          form={newInquiryForm}
+          loading={loading}
+          formSuccess={formSuccess}
+          onSubjectChange={handleSubjectChange}
+          onMessageChange={handleMessageChange}
+          onSubmit={handleNewInquirySubmit}
+        />
       </div>
     </div>
   );

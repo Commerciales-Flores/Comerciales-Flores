@@ -1,5 +1,6 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useData } from '../../contexts/DataContext';
+import { useReservations } from '../../contexts/ReservationsContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import {
   Search,
@@ -26,21 +27,7 @@ import EmptyState from '../../components/common/EmptyState';
 
 type ReservationFilterStatus = 'all' | 'pending' | 'confirmed' | 'cancelled';
 
-type EnrichedReservation = ReturnType<typeof enrichReservation>;
-
-const statusColors: Record<string, string> = {
-  pending: 'bg-amber-100 text-amber-700 border-amber-200',
-  approved: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  confirmed: 'bg-green-100 text-green-700 border-green-200',
-  completed: 'bg-blue-100 text-blue-700 border-blue-200',
-  cancelled: 'bg-rose-100 text-rose-700 border-rose-200',
-  rejected: 'bg-red-100 text-red-700 border-red-200',
-};
-
-function enrichReservation(
-  reservation: any,
-  user: any
-) {
+function enrichReservation(reservation: any, user: any) {
   const reservationPublicId = reservation.publicId ?? reservation.id;
   const userPublicId = user?.publicId ?? user?.id ?? '';
   const fullName = `${user?.first_name ?? ''} ${user?.last_name ?? ''}`.trim();
@@ -59,28 +46,89 @@ function enrichReservation(
       reservation.totalAmount > 0
         ? `${((reservation.paidAmount / reservation.totalAmount) * 100).toFixed(0)}% paid`
         : '0% paid',
-    searchableText: [
-      reservationPublicId,
-      userPublicId,
-      reservation.unitName,
-      fullName,
-    ]
-      .join(' ')
-      .toLowerCase(),
   };
 }
 
+type EnrichedReservation = ReturnType<typeof enrichReservation>;
+
+const statusColors: Record<string, string> = {
+  pending: 'bg-amber-100 text-amber-700 border-amber-200',
+  approved: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  confirmed: 'bg-green-100 text-green-700 border-green-200',
+  completed: 'bg-blue-100 text-blue-700 border-blue-200',
+  cancelled: 'bg-rose-100 text-rose-700 border-rose-200',
+  rejected: 'bg-red-100 text-red-700 border-red-200',
+};
+
+function useDebouncedValue<T>(value: T, delay = 250) {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [value, delay]);
+
+  return debounced;
+}
+
 export default function AdminReservations() {
-  const { reservations, updateReservation, getUserById } = useData();
+  const { getUserById, updateReservation } = useData();
+  const { fetchReservationsPage } = useReservations();
   const { sendReservationNotification } = useNotifications();
 
+  const [reservations, setReservations] = useState<any[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(false);
   const [filterStatus, setFilterStatus] = useState<ReservationFilterStatus>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedReservation, setSelectedReservation] = useState<string | null>(null);
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
 
-  const normalizedSearch = useMemo(() => searchTerm.trim().toLowerCase(), [searchTerm]);
+  const debouncedSearch = useDebouncedValue(searchTerm, 250);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(25);
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+  useEffect(() => {
+    setPage(1);
+  }, [filterStatus, debouncedSearch]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadReservations = async () => {
+      setLoading(true);
+      try {
+        const result = await fetchReservationsPage({
+          page,
+          pageSize,
+          status: filterStatus,
+          searchTerm: debouncedSearch,
+        });
+
+        if (cancelled) return;
+        setReservations(result.data);
+        setTotalCount(result.count);
+      } catch (error) {
+        console.error('Failed to load reservations page:', error);
+        if (!cancelled) {
+          setReservations([]);
+          setTotalCount(0);
+        }
+      } finally {
+        if (!cancelled){ 
+        setLoading(false);
+        }
+      }
+    };
+
+    void loadReservations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchReservationsPage, page, pageSize, filterStatus, debouncedSearch]);
 
   const enrichedReservations = useMemo<EnrichedReservation[]>(() => {
     return reservations.map((reservation) => {
@@ -107,46 +155,44 @@ export default function AdminReservations() {
     );
   }, [enrichedReservations]);
 
-  const sortedReservations = useMemo(() => {
-    return enrichedReservations
-      .filter((reservation) => {
-        const matchesStatus =
-          filterStatus === 'all' || reservation.status === filterStatus;
-
-        const matchesSearch =
-          !normalizedSearch ||
-          reservation.searchableText.includes(normalizedSearch);
-
-        return matchesStatus && matchesSearch;
-      })
-      .sort((a, b) => b.requestDateMs - a.requestDateMs);
-  }, [enrichedReservations, filterStatus, normalizedSearch]);
-
   const selectedReservationData = useMemo(() => {
     return selectedReservation
       ? enrichedReservations.find((reservation) => reservation.id === selectedReservation) ?? null
       : null;
   }, [selectedReservation, enrichedReservations]);
 
-  const hasNoReservations = reservations.length === 0;
-  const hasNoSearchResults = reservations.length > 0 && sortedReservations.length === 0;
+  const hasNoReservations = !loading && totalCount === 0;
+  const hasNoSearchResults = !loading && totalCount > 0 && enrichedReservations.length === 0;
+
+  const reloadPage = useCallback(async () => {
+    const result = await fetchReservationsPage({
+      page,
+      pageSize,
+      status: filterStatus,
+      searchTerm: debouncedSearch,
+    });
+    setReservations(result.data);
+    setTotalCount(result.count);
+  }, [fetchReservationsPage, page, pageSize, filterStatus, debouncedSearch]);
 
   const handleApprove = useCallback(
-    (reservationId: string, userId: string) => {
-      updateReservation(reservationId, { status: 'confirmed' });
-      sendReservationNotification(userId, reservationId, 'approved');
+    async (reservationId: string, userId: string) => {
+      await updateReservation(reservationId, { status: 'confirmed' });
+      await sendReservationNotification(userId, reservationId, 'approved');
       setSelectedReservation(null);
+      await reloadPage();
     },
-    [updateReservation, sendReservationNotification]
+    [updateReservation, sendReservationNotification, reloadPage]
   );
 
   const handleReject = useCallback(
-    (reservationId: string, userId: string) => {
-      updateReservation(reservationId, { status: 'cancelled' });
-      sendReservationNotification(userId, reservationId, 'rejected');
+    async (reservationId: string, userId: string) => {
+      await updateReservation(reservationId, { status: 'cancelled' });
+      await sendReservationNotification(userId, reservationId, 'rejected');
       setSelectedReservation(null);
+      await reloadPage();
     },
-    [updateReservation, sendReservationNotification]
+    [updateReservation, sendReservationNotification, reloadPage]
   );
 
   const closeDetails = useCallback(() => setSelectedReservation(null), []);
@@ -171,7 +217,7 @@ export default function AdminReservations() {
         </button>
       </div>
 
-      {!hasNoReservations && (
+      {!loading && !hasNoReservations && (
         <div className="space-y-4">
           <div className="flex lg:hidden items-center gap-2">
             <div className="relative flex-1">
@@ -220,9 +266,9 @@ export default function AdminReservations() {
                   }`}
                 >
                   {status.charAt(0).toUpperCase() + status.slice(1)}
-                  <span className="ml-2 text-xs opacity-60">
-                    ({reservationCounts[status]})
-                  </span>
+                  {status !== 'all' && (
+                    <span className="ml-2 text-xs opacity-60">({reservationCounts[status]})</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -231,7 +277,17 @@ export default function AdminReservations() {
       )}
 
       <div className="flex-1">
-        {hasNoReservations ? (
+        {loading ? (
+          <EmptyState
+            icon={
+              <div className="flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+              </div>
+            }
+            title="Loading reservations..."
+            description="Please wait while reservation records are being retrieved."
+          />
+        ) : hasNoReservations ? (
           <EmptyState
             icon={<Calendar className="size-10 text-blue-500" />}
             title="No reservations yet"
@@ -259,7 +315,7 @@ export default function AdminReservations() {
         ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:hidden gap-4">
-              {sortedReservations.map((reservation) => (
+              {enrichedReservations.map((reservation) => (
                 <div
                   key={reservation.id}
                   className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm space-y-4"
@@ -371,7 +427,7 @@ export default function AdminReservations() {
                   </thead>
 
                   <tbody className="divide-y divide-gray-100">
-                    {sortedReservations.map((reservation) => (
+                    {enrichedReservations.map((reservation) => (
                       <tr key={reservation.id} className="hover:bg-blue-50/30 transition-colors">
                         <td className="px-6 py-4 text-xs font-mono text-gray-400 w-[140px]">
                           {reservation.reservationPublicId}
@@ -473,6 +529,32 @@ export default function AdminReservations() {
         )}
       </div>
 
+      {!loading && !hasNoReservations && totalPages > 1 && (
+        <div className="flex items-center justify-between px-4 py-4 bg-white border border-gray-200 rounded-2xl shadow-sm">
+          <p className="text-sm text-gray-500">
+            Page {page} of {totalPages} • {totalCount} total reservations
+          </p>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
+            >
+              Previous
+            </button>
+
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+
       {isFilterPanelOpen && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center lg:hidden">
           <div
@@ -518,7 +600,7 @@ export default function AdminReservations() {
                   Reservation Dossier
                 </h2>
                 <p className="text-slate-400 text-xs font-medium mt-1 font-mono">
-                  {selectedReservationData.id}
+                  {selectedReservationData.publicId ?? selectedReservationData.id}
                 </p>
               </div>
 
@@ -552,7 +634,7 @@ export default function AdminReservations() {
                         ? `${selectedReservationData.linkedUser.first_name} ${selectedReservationData.linkedUser.last_name}`
                         : 'Unknown'
                     }
-                    subValue={`ID: ${selectedReservationData.userId}`}
+                    subValue={`ID: ${selectedReservationData.userPublicId || selectedReservationData.userId}`}
                   />
 
                   <DetailItem

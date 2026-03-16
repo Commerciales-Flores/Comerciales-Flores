@@ -1,6 +1,17 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useCallback,
+  type ReactNode,
+} from 'react';
 import supabase from '../supabaseClient';
 import type { Unit, UnitType } from '../data/types';
+import { useRecords } from './RecordsContext';
+import { useAuth } from './AuthContext';
+import { getChangedFields, buildAuditSnapshot } from '../utils/auditHelpers';
 
 interface UnitsContextType {
   units: Unit[];
@@ -16,15 +27,20 @@ const UnitsContext = createContext<UnitsContextType | undefined>(undefined);
 
 export function UnitsProvider({ children }: { children: ReactNode }) {
   const [units, setUnits] = useState<Unit[]>([]);
+  const { addAuditLog } = useRecords();
+  const { user } = useAuth();
 
-  const refreshUnits = async () => {
+  const refreshUnits = useCallback(async () => {
     try {
       const { data: baseUnits, error: baseError } = await supabase
         .from('units')
         .select('unit_id, property_id, unit_type, title, description, is_available, location');
 
       if (baseError) throw baseError;
-      if (!baseUnits) return;
+      if (!baseUnits) {
+        setUnits([]);
+        return;
+      }
 
       const propertyIds = [...new Set(baseUnits.map((u) => u.property_id).filter(Boolean))];
 
@@ -41,30 +57,43 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
 
       const propertiesMap = Object.fromEntries(propertiesData.map((p) => [p.id, p]));
 
-      const [
-        { data: rentalUnits },
-        { data: functionUnits },
-        { data: parkingUnits },
-        { data: media },
-      ] = await Promise.all([
-        supabase.from('rental_units').select('unit_id, rental_price, features, policies, description'),
-        supabase.from('function_units').select('unit_id, price_per_day, capacity, features, policies, description'),
-        supabase.from('parking_units').select('unit_id, price_per_day, price_per_hour, features, policies, description'),
-        supabase.from('media').select('unit_id, url, media_type'),
+      const [rentalRes, functionRes, parkingRes, mediaRes] = await Promise.all([
+        supabase
+          .from('rental_units')
+          .select('unit_id, rental_price, features, policies, description'),
+        supabase
+          .from('function_units')
+          .select('unit_id, price_per_day, capacity, features, policies, description'),
+        supabase
+          .from('parking_units')
+          .select('unit_id, price_per_day, price_per_hour, features, policies, description'),
+        supabase
+          .from('media')
+          .select('unit_id, url, media_type'),
       ]);
+
+      if (rentalRes.error) throw rentalRes.error;
+      if (functionRes.error) throw functionRes.error;
+      if (parkingRes.error) throw parkingRes.error;
+      if (mediaRes.error) throw mediaRes.error;
+
+      const rentalUnits = rentalRes.data ?? [];
+      const functionUnits = functionRes.data ?? [];
+      const parkingUnits = parkingRes.data ?? [];
+      const media = mediaRes.data ?? [];
 
       const combinedUnits: Unit[] = baseUnits.map((base) => {
         let specific: any = null;
 
         if (base.unit_type === 'rental_space') {
-          specific = rentalUnits?.find((r) => r.unit_id === base.unit_id);
+          specific = rentalUnits.find((r) => r.unit_id === base.unit_id);
         } else if (base.unit_type === 'function_hall') {
-          specific = functionUnits?.find((f) => f.unit_id === base.unit_id);
+          specific = functionUnits.find((f) => f.unit_id === base.unit_id);
         } else if (base.unit_type === 'parking_slot') {
-          specific = parkingUnits?.find((p) => p.unit_id === base.unit_id);
+          specific = parkingUnits.find((p) => p.unit_id === base.unit_id);
         }
 
-        const unitMediaRecords = media?.filter((m) => m.unit_id === base.unit_id) || [];
+        const unitMediaRecords = media.filter((m) => m.unit_id === base.unit_id);
         const imagesArray: string[] = [];
 
         unitMediaRecords.forEach((record) => {
@@ -82,7 +111,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
                   ...(Object.values(parsed).filter((v) => typeof v === 'string') as string[])
                 );
               } catch {
-                //
+                // ignore malformed legacy JSON strings
               }
             }
           } else if (typeof rawUrl === 'object' && rawUrl !== null) {
@@ -96,7 +125,10 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         if (Array.isArray(specific?.features)) {
           parsedFeatures = specific.features;
         } else if (typeof specific?.features === 'string') {
-          parsedFeatures = specific.features.split(',').map((s: string) => s.trim()).filter(Boolean);
+          parsedFeatures = specific.features
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean);
         }
 
         const property = propertiesMap[base.property_id];
@@ -111,8 +143,8 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
             base.unit_type === 'rental_space'
               ? Number(specific?.rental_price || 0)
               : base.unit_type === 'function_hall'
-              ? Number(specific?.price_per_day || 0)
-              : Number(specific?.price_per_day || specific?.price_per_hour || 0),
+                ? Number(specific?.price_per_day || 0)
+                : Number(specific?.price_per_day || specific?.price_per_hour || 0),
           images:
             imagesArray.length > 0
               ? imagesArray
@@ -136,13 +168,13 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       console.error('Error loading units from Supabase:', error);
     }
-  };
-
-  useEffect(() => {
-    refreshUnits();
   }, []);
 
-  const uploadUnitImage = async (file: File): Promise<string | null> => {
+  useEffect(() => {
+    void refreshUnits();
+  }, [refreshUnits]);
+
+  const uploadUnitImage = useCallback(async (file: File): Promise<string | null> => {
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
@@ -160,9 +192,9 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
       console.error('Error uploading unit image:', error);
       return null;
     }
-  };
+  }, []);
 
-  const addUnit = async (unitData: Omit<Unit, 'id'>): Promise<void> => {
+  const addUnit = useCallback(async (unitData: Omit<Unit, 'id'>): Promise<void> => {
     try {
       const { data: baseUnit, error: baseError } = await supabase
         .from('units')
@@ -214,23 +246,47 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
           return acc;
         }, {} as Record<string, string>);
 
-        await supabase.from('media').insert([
+        const { error: mediaError } = await supabase.from('media').insert([
           {
             unit_id: newUnitId,
             url: jsonbUrls,
             media_type: 'image',
           },
         ]);
+
+        if (mediaError) throw mediaError;
       }
 
       await refreshUnits();
+
+      const createdUnit: Unit = {
+        ...unitData,
+        id: newUnitId,
+      };
+
+      try {
+        if (user?.id) {
+        await addAuditLog({
+          userId: user?.id,
+          action: 'CREATE',
+          targetTable: 'units',
+          targetId: newUnitId,
+          beforeValue: undefined, 
+          afterValue: createdUnit,
+          changedFields: Object.keys(createdUnit),
+          notes: `Created unit ${createdUnit.name}`,
+        });
+      }
+      } catch (auditError) {
+        console.error('Failed to audit unit creation:', auditError);
+      }
     } catch (error) {
       console.error('Error adding unit:', error);
       throw error;
     }
-  };
+  }, [addAuditLog, refreshUnits, user?.id]);
 
-  const updateUnit = async (id: string, unitUpdate: Partial<Unit>): Promise<void> => {
+  const updateUnit = useCallback(async (id: string, unitUpdate: Partial<Unit>): Promise<void> => {
     try {
       const existingUnit = units.find((u) => u.id === id);
       if (!existingUnit) return;
@@ -271,7 +327,8 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
       }
 
       if (unitUpdate.images !== undefined) {
-        await supabase.from('media').delete().eq('unit_id', id);
+        const { error: deleteMediaError } = await supabase.from('media').delete().eq('unit_id', id);
+        if (deleteMediaError) throw deleteMediaError;
 
         if (unitUpdate.images.length > 0) {
           const jsonbUrls = unitUpdate.images.reduce((acc, url, index) => {
@@ -279,29 +336,54 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
             return acc;
           }, {} as Record<string, string>);
 
-          await supabase.from('media').insert([
+          const { error: insertMediaError } = await supabase.from('media').insert([
             {
               unit_id: id,
               url: jsonbUrls,
               media_type: 'image',
             },
           ]);
+
+          if (insertMediaError) throw insertMediaError;
         }
       }
 
+      const updatedUnit = buildAuditSnapshot(existingUnit, unitUpdate);
+      const changedFields = getChangedFields(existingUnit, unitUpdate);
+
       await refreshUnits();
+
+      if (changedFields.length === 0) return;
+
+      try {
+        if (user?.id) {
+        await addAuditLog({
+          userId: user?.id,
+          action: 'UPDATE',
+          targetTable: 'units',
+          targetId: id,
+          beforeValue: existingUnit,
+          afterValue: updatedUnit,
+          changedFields,
+          notes: `Updated unit ${existingUnit.name}`,
+        });
+      }
+      } catch (auditError) {
+        console.error('Failed to audit unit update:', auditError);
+      }
     } catch (error) {
       console.error('Error updating unit:', error);
       throw error;
     }
-  };
+  }, [addAuditLog, refreshUnits, units, user?.id]);
 
-  const deleteUnit = async (id: string): Promise<void> => {
+  const deleteUnit = useCallback(async (id: string): Promise<void> => {
     try {
       const existingUnit = units.find((u) => u.id === id);
       if (!existingUnit) return;
 
-      await supabase.from('media').delete().eq('unit_id', id);
+      const { error: mediaError } = await supabase.from('media').delete().eq('unit_id', id);
+      if (mediaError) throw mediaError;
 
       let tableName = '';
       if (existingUnit.type === 'rental_space') tableName = 'rental_units';
@@ -309,18 +391,41 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
       else if (existingUnit.type === 'parking_slot') tableName = 'parking_units';
 
       if (tableName) {
-        await supabase.from(tableName).delete().eq('unit_id', id);
+        const { error: specificError } = await supabase.from(tableName).delete().eq('unit_id', id);
+        if (specificError) throw specificError;
       }
 
       const { error } = await supabase.from('units').delete().eq('unit_id', id);
       if (error) throw error;
 
       setUnits((prev) => prev.filter((u) => u.id !== id));
+
+      try {
+        if (user?.id) {
+        await addAuditLog({
+          userId: user?.id,
+          action: 'DELETE',
+          targetTable: 'units',
+          targetId: id,
+          beforeValue: existingUnit,
+          afterValue: undefined,
+          changedFields: Object.keys(existingUnit),
+          notes: `Deleted unit ${existingUnit.name}`,
+        });
+      }
+      } catch (auditError) {
+        console.error('Failed to audit unit deletion:', auditError);
+      }
     } catch (error) {
       console.error('Error deleting unit:', error);
       throw error;
     }
-  };
+  }, [addAuditLog, units, user?.id]);
+
+  const getUnitById = useCallback(
+    (id: string) => units.find((u) => u.id === id),
+    [units]
+  );
 
   const value = useMemo(
     () => ({
@@ -329,10 +434,10 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
       updateUnit,
       deleteUnit,
       uploadUnitImage,
-      getUnitById: (id: string) => units.find((u) => u.id === id),
+      getUnitById,
       refreshUnits,
     }),
-    [units]
+    [units, addUnit, updateUnit, deleteUnit, uploadUnitImage, getUnitById, refreshUnits]
   );
 
   return <UnitsContext.Provider value={value}>{children}</UnitsContext.Provider>;

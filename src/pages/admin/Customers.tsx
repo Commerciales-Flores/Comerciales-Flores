@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useData } from '../../contexts/DataContext';
+import { useUsers } from '../../contexts/UsersContext';
 import {
   Search,
   Eye,
@@ -23,8 +24,8 @@ import EmptyState from '../../components/common/EmptyState';
 type CustomerRow = {
   id: string;
   publicId?: string;
-  first_name: string;
-  last_name: string;
+  firstName: string;
+  lastName: string;
   email: string;
   contactNumber?: string;
   address?: string;
@@ -132,6 +133,13 @@ function CustomerDetailItem({
 
 export default function AdminCustomers() {
   const { users } = useData();
+  const { fetchUsersPage } = useUsers();
+
+  const [rows, setRows] = useState<CustomerRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(25);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
@@ -141,50 +149,78 @@ export default function AdminCustomers() {
   const [newCustomer, setNewCustomer] = useState<NewCustomerForm>(INITIAL_CUSTOMER_FORM);
 
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 250);
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
-  const customers = useMemo<CustomerRow[]>(() => {
-    return users
-      .filter((u) => u.role === 'customer' || u.role === 'client')
-      .map((u) => {
-        const first = u.first_name ?? '';
-        const last = u.last_name ?? '';
-        const publicId = u.publicId ?? u.id;
-        const contact = u.contactNumber ?? '';
-        const address = u.address ?? '';
-        const email = u.email ?? '';
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchTerm]);
 
-        return {
-          id: u.id,
-          publicId: u.publicId,
-          first_name: first,
-          last_name: last,
-          email,
-          contactNumber: contact,
-          address,
-          is_active: u.is_active,
-          initials: `${first[0] ?? ''}${last[0] ?? ''}`,
-          searchableText: [first, last, email, publicId, contact, address]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase(),
-        };
-      });
-  }, [users]);
+  useEffect(() => {
+    let cancelled = false;
 
-  const filteredCustomers = useMemo(() => {
-    const lower = debouncedSearchTerm.trim().toLowerCase();
-    if (!lower) return customers;
+    const loadUsers = async () => {
+      setLoading(true);
+      try {
+        const result = await fetchUsersPage({
+          page,
+          pageSize,
+          searchTerm: debouncedSearchTerm,
+        });
 
-    return customers.filter((c) => c.searchableText.includes(lower));
-  }, [customers, debouncedSearchTerm]);
+        if (cancelled) return;
+
+        const mapped: CustomerRow[] = result.data.map((u) => {
+          const first = u.first_name ?? '';
+          const last = u.last_name ?? '';
+          const publicId = u.publicId ?? u.id;
+          const contact = u.contactNumber ?? '';
+          const address = u.address ?? '';
+          const email = u.email ?? '';
+
+          return {
+            id: u.id,
+            publicId: u.publicId,
+            firstName: first,
+            lastName: last,
+            email,
+            contactNumber: contact,
+            address,
+            is_active: u.is_active,
+            initials: `${first[0] ?? ''}${last[0] ?? ''}`,
+            searchableText: [first, last, email, publicId, contact, address]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase(),
+          };
+        });
+
+        setRows(mapped);
+        setTotalCount(result.count);
+      } catch (error) {
+        console.error('Failed to load users page:', error);
+        if (!cancelled) {
+          setRows([]);
+          setTotalCount(0);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void loadUsers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchUsersPage, page, pageSize, debouncedSearchTerm]);
 
   const customer = useMemo(
-    () => (selectedCustomer ? customers.find((c) => c.id === selectedCustomer) ?? null : null),
-    [customers, selectedCustomer]
+    () => (selectedCustomer ? rows.find((c) => c.id === selectedCustomer) ?? null : null),
+    [rows, selectedCustomer]
   );
 
-  const hasNoCustomers = customers.length === 0;
-  const hasNoSearchResults = customers.length > 0 && filteredCustomers.length === 0;
+  const hasNoCustomers = !loading && totalCount === 0;
+  const hasNoSearchResults = !loading && totalCount > 0 && rows.length === 0;
 
   const passwordScore = useMemo(
     () => getPasswordScore(newCustomer.password),
@@ -268,7 +304,11 @@ export default function AdminCustomers() {
       )}
 
       <div className="grid grid-cols-1 gap-4 lg:hidden">
-        {hasNoCustomers ? (
+        {loading ? (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm py-16 px-6 text-center text-gray-500">
+            Loading customers...
+          </div>
+        ) : hasNoCustomers ? (
           <EmptyState
             icon={<Inbox className="size-10 text-blue-500" />}
             title="No active customers yet"
@@ -279,7 +319,7 @@ export default function AdminCustomers() {
             <NoCustomerResults />
           </div>
         ) : (
-          filteredCustomers.map((c) => (
+          rows.map((c) => (
             <div
               key={c.id}
               className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex justify-between items-center active:bg-gray-50 transition-colors cursor-pointer"
@@ -292,7 +332,7 @@ export default function AdminCustomers() {
 
                 <div className="min-w-0">
                   <p className="font-bold text-gray-900 leading-tight truncate">
-                    {c.first_name} {c.last_name}
+                    {c.firstName} {c.lastName}
                   </p>
                   <p className="text-[10px] text-gray-400 font-mono mt-0.5">
                     {c.publicId ?? c.id}
@@ -319,7 +359,9 @@ export default function AdminCustomers() {
       </div>
 
       <div className="hidden lg:block bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-        {hasNoCustomers ? (
+        {loading ? (
+          <div className="py-16 px-6 text-center text-gray-500">Loading customers...</div>
+        ) : hasNoCustomers ? (
           <EmptyState
             icon={<Inbox className="size-10 text-blue-500" />}
             title="No active customers yet"
@@ -351,10 +393,10 @@ export default function AdminCustomers() {
                     </td>
                   </tr>
                 ) : (
-                  filteredCustomers.map((c) => (
+                  rows.map((c) => (
                     <tr key={c.id} className="hover:bg-blue-50/30 transition-colors">
                       <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[220px]">
-                        {c.first_name} {c.last_name}
+                        {c.firstName} {c.lastName}
                       </td>
 
                       <td className="px-6 py-4 text-xs font-mono text-gray-400 w-[140px]">
@@ -420,6 +462,32 @@ export default function AdminCustomers() {
         )}
       </div>
 
+      {!loading && !hasNoCustomers && totalPages > 1 && (
+        <div className="flex items-center justify-between px-4 py-4 bg-white border border-gray-200 rounded-2xl shadow-sm">
+          <p className="text-sm text-gray-500">
+            Page {page} of {totalPages} • {totalCount} total customers
+          </p>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
+            >
+              Previous
+            </button>
+
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+
       <button
         onClick={() => setShowAddModal(true)}
         className="lg:hidden fixed bottom-6 right-6 size-16 bg-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-50 border-4 border-white"
@@ -484,7 +552,7 @@ export default function AdminCustomers() {
               <div className="flex justify-between items-start">
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
-                    {customer.first_name} {customer.last_name}
+                    {customer.firstName} {customer.lastName}
                   </h2>
                   <p className="text-sm font-mono text-gray-400 mt-1 flex items-center gap-1.5 uppercase">
                     <Hash size={12} /> {customer.publicId ?? customer.id}
@@ -670,8 +738,8 @@ export default function AdminCustomers() {
                                 ? passwordScore <= 2
                                   ? 'bg-rose-500'
                                   : passwordScore === 3
-                                  ? 'bg-amber-500'
-                                  : 'bg-emerald-500'
+                                    ? 'bg-amber-500'
+                                    : 'bg-emerald-500'
                                 : 'bg-slate-200'
                             }`}
                           />

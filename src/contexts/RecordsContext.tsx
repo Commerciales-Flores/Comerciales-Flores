@@ -23,7 +23,22 @@ interface RecordsContextType {
 
   refreshLedgers: () => Promise<void>;
   refreshAuditLogs: () => Promise<void>;
-}
+
+  fetchAuditLogsPage: (filters: AuditLogFilters) => Promise<{
+    data: AuditLog[];
+    count: number;
+  }>;
+  }
+
+type AuditLogFilters = {
+  searchTerm?: string;
+  action?: string;
+  module?: string;
+  startDate?: string;
+  endDate?: string;
+  page?: number;
+  pageSize?: number;
+};
 
 const RecordsContext = createContext<RecordsContextType | undefined>(undefined);
 
@@ -49,6 +64,81 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
       );
     }
   };
+
+  const fetchAuditLogsPage = async ({
+  searchTerm = '',
+  action = 'All',
+  module = 'All',
+  startDate = '',
+  endDate = '',
+  page = 1,
+  pageSize = 25,
+}: AuditLogFilters): Promise<{
+  data: AuditLog[];
+  count: number;
+}> => {
+  let query = supabase
+    .from('audit_log')
+    .select(
+      'audit_id, public_id, user_id, action, target_table, target_id, before_value, after_value, changed_fields, timestamp, notes',
+      { count: 'exact' }
+    )
+    .order('timestamp', { ascending: false });
+
+  if (action !== 'All') {
+    query = query.eq('action', action);
+  }
+
+  if (module !== 'All') {
+    query = query.eq('target_table', module);
+  }
+
+  if (startDate) {
+    query = query.gte('timestamp', `${startDate}T00:00:00`);
+  }
+
+  if (endDate) {
+    query = query.lte('timestamp', `${endDate}T23:59:59`);
+  }
+
+  const trimmedSearch = searchTerm.trim();
+  if (trimmedSearch) {
+    query = query.or(
+      [
+        `action.ilike.%${trimmedSearch}%`,
+        `target_table.ilike.%${trimmedSearch}%`,
+        `target_id.ilike.%${trimmedSearch}%`,
+        `user_id.ilike.%${trimmedSearch}%`,
+        `notes.ilike.%${trimmedSearch}%`,
+        `public_id.ilike.%${trimmedSearch}%`,
+      ].join(',')
+    );
+  }
+
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data, error, count } = await query.range(from, to);
+
+  if (error) throw error;
+
+  return {
+    data: (data ?? []).map((row: any) => ({
+      id: row.audit_id,
+      publicId: row.public_id,
+      userId: row.user_id,
+      action: row.action,
+      targetTable: row.target_table,
+      targetId: row.target_id,
+      beforeValue: row.before_value,
+      afterValue: row.after_value,
+      changedFields: row.changed_fields,
+      timestamp: row.timestamp,
+      notes: row.notes,
+    })),
+    count: count ?? 0,
+  };
+};
 
   const refreshAuditLogs = async () => {
     const { data, error } = await supabase
@@ -180,6 +270,7 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
       deleteBusinessSlot,
       refreshLedgers,
       refreshAuditLogs,
+      fetchAuditLogsPage,
     }),
     [ledgers, auditLogs, businessSlots]
   );

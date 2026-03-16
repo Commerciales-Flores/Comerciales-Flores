@@ -1,6 +1,7 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { useNotifications } from '../../contexts/NotificationContext';
+import { usePayments } from '../../contexts/PaymentsContext';
 import {
   CreditCard,
   CheckCircle,
@@ -49,9 +50,25 @@ const statusColors: Record<string, string> = {
   partial: 'bg-blue-100 text-blue-700 border-blue-200',
 };
 
+function useDebouncedValue<T>(value: T, delay = 250) {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [value, delay]);
+
+  return debounced;
+}
+
 export default function AdminPayments() {
-  const { payments, reservations, updatePayment, getUserById } = useData();
+  const { reservations, updatePayment, getUserById } = useData();
   const { sendPaymentNotification } = useNotifications();
+  const { fetchPaymentsPage } = usePayments();
+
+  const [payments, setPayments] = useState<any[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(false);
 
   const [filterStatus, setFilterStatus] = useState<PaymentFilterStatus>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -60,19 +77,62 @@ export default function AdminPayments() {
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
-  const normalizedSearch = useMemo(() => searchTerm.trim().toLowerCase(), [searchTerm]);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(25);
+
+  const debouncedSearch = useDebouncedValue(searchTerm, 250);
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+  useEffect(() => {
+    setPage(1);
+  }, [filterStatus, debouncedSearch]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPayments = async () => {
+      setLoading(true);
+      try {
+        const result = await fetchPaymentsPage({
+          page,
+          pageSize,
+          status: filterStatus,
+          searchTerm: debouncedSearch,
+        });
+
+        if (cancelled) return;
+
+        setPayments(result.data);
+        setTotalCount(result.count);
+      } catch (error) {
+        console.error('Failed to load payments page:', error);
+        if (!cancelled) {
+          setPayments([]);
+          setTotalCount(0);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void loadPayments();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchPaymentsPage, page, pageSize, filterStatus, debouncedSearch]);
 
   const paymentViews = useMemo<PaymentView[]>(() => {
     const reservationMap = new Map(reservations.map((r) => [r.id, r]));
 
     return payments.map((payment) => {
       const reservation = reservationMap.get(payment.reservationId);
-      const user = reservation ? getUserById(reservation.userId) : null;
+      const user = reservation ? getUserById(reservation.userId) : getUserById(payment.userId);
 
       const reservationPublicId = reservation?.publicId ?? payment.reservationId;
       const userPublicId = user?.publicId ?? user?.id ?? payment.userId;
       const userFullName = user
-        ? `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim()
+        ? `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim() || user.email
         : 'Unknown User';
 
       const reservationPaidAmount = reservation?.paidAmount ?? 0;
@@ -130,51 +190,57 @@ export default function AdminPayments() {
     );
   }, [paymentViews]);
 
-  const sortedPayments = useMemo(() => {
-    return paymentViews
-      .filter((payment) => {
-        const matchesStatus = filterStatus === 'all' || payment.status === filterStatus;
-        const matchesSearch =
-          !normalizedSearch || payment.searchableText.includes(normalizedSearch);
-
-        return matchesStatus && matchesSearch;
-      })
-      .sort((a, b) => b.dateMs - a.dateMs);
-  }, [paymentViews, filterStatus, normalizedSearch]);
-
   const selectedPaymentData = useMemo(() => {
     return selectedPayment
       ? paymentViews.find((payment) => payment.id === selectedPayment) ?? null
       : null;
   }, [selectedPayment, paymentViews]);
 
-  const hasNoPayments = payments.length === 0;
-  const hasNoSearchResults = payments.length > 0 && sortedPayments.length === 0;
+  const hasNoPayments = !loading && totalCount === 0;
+  const hasNoSearchResults = !loading && totalCount > 0 && paymentViews.length === 0;
 
   const handleVerify = useCallback(
-    (paymentId: string, userId: string, amount: number) => {
-      updatePayment(paymentId, { status: 'paid' });
-      sendPaymentNotification(userId, paymentId, amount);
+    async (paymentId: string, userId: string, amount: number) => {
+      await updatePayment(paymentId, { status: 'paid' });
+      await sendPaymentNotification(userId, paymentId, amount);
       setSelectedPayment(null);
+
+      const result = await fetchPaymentsPage({
+        page,
+        pageSize,
+        status: filterStatus,
+        searchTerm: debouncedSearch,
+      });
+      setPayments(result.data);
+      setTotalCount(result.count);
     },
-    [updatePayment, sendPaymentNotification]
+    [updatePayment, sendPaymentNotification, fetchPaymentsPage, page, pageSize, filterStatus, debouncedSearch]
   );
 
   const handleReject = useCallback(
-    (paymentId: string) => {
-      updatePayment(paymentId, { status: 'unpaid' });
+    async (paymentId: string) => {
+      await updatePayment(paymentId, { status: 'unpaid' });
       setSelectedPayment(null);
+
+      const result = await fetchPaymentsPage({
+        page,
+        pageSize,
+        status: filterStatus,
+        searchTerm: debouncedSearch,
+      });
+      setPayments(result.data);
+      setTotalCount(result.count);
     },
-    [updatePayment]
+    [updatePayment, fetchPaymentsPage, page, pageSize, filterStatus, debouncedSearch]
   );
 
   const handleExportCSV = useCallback(() => {
-    if (sortedPayments.length === 0) {
+    if (paymentViews.length === 0) {
       alert('No data to export.');
       return;
     }
 
-    const csvData = sortedPayments.map((payment) => ({
+    const csvData = paymentViews.map((payment) => ({
       'Payment ID': payment.publicId ?? payment.id,
       'Reservation ID': payment.reservationPublicId,
       Amount: payment.amount,
@@ -191,11 +257,11 @@ export default function AdminPayments() {
 
     const link = document.createElement('a');
     link.href = objectUrl;
-    link.download = `payments_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `payments_page_${page}_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
 
     URL.revokeObjectURL(objectUrl);
-  }, [sortedPayments]);
+  }, [paymentViews, page]);
 
   return (
     <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6 relative pb-24 lg:pb-8">
@@ -221,7 +287,7 @@ export default function AdminPayments() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search by Payment ID, Reservation ID, or Customer Name..."
+                placeholder="Search by Payment ID, Reservation ID, User ID, or Notes..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -320,7 +386,11 @@ export default function AdminPayments() {
       </button>
 
       <div className="grid grid-cols-1 gap-4 lg:hidden">
-        {hasNoPayments ? (
+        {loading ? (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm py-16 px-6 text-center text-gray-500">
+            Loading payments...
+          </div>
+        ) : hasNoPayments ? (
           <EmptyState
             icon={<CreditCard className="size-10 text-blue-500" />}
             title="No payments yet"
@@ -344,7 +414,7 @@ export default function AdminPayments() {
             </div>
           </motion.div>
         ) : (
-          sortedPayments.map((payment) => (
+          paymentViews.map((payment) => (
             <div
               key={payment.id}
               className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col gap-2"
@@ -410,7 +480,9 @@ export default function AdminPayments() {
       </div>
 
       <div className="hidden lg:block bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-        {hasNoPayments ? (
+        {loading ? (
+          <div className="py-16 px-6 text-center text-gray-500">Loading payments...</div>
+        ) : hasNoPayments ? (
           <EmptyState
             icon={<CreditCard className="size-10 text-blue-500" />}
             title="No payments yet"
@@ -464,7 +536,7 @@ export default function AdminPayments() {
                     </td>
                   </tr>
                 ) : (
-                  sortedPayments.map((payment) => (
+                  paymentViews.map((payment) => (
                     <tr key={payment.id} className="hover:bg-blue-50/30 transition-colors">
                       <td className="px-6 py-4 text-xs font-mono text-gray-400 w-[140px]">
                         {payment.userPublicId}
@@ -578,6 +650,32 @@ export default function AdminPayments() {
           </div>
         )}
       </div>
+
+      {!loading && !hasNoPayments && totalPages > 1 && (
+        <div className="flex items-center justify-between px-4 py-4 bg-white border border-gray-200 rounded-2xl shadow-sm">
+          <p className="text-sm text-gray-500">
+            Page {page} of {totalPages} • {totalCount} total payments
+          </p>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
+            >
+              Previous
+            </button>
+
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {isActionModalOpen && (
         <AdminActionModal actionType="payment" onClose={() => setIsActionModalOpen(false)} />

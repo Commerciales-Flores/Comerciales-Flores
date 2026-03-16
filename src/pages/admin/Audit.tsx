@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useData } from '../../contexts/DataContext';
+import { useRecords } from '../../contexts/RecordsContext';
 import {
   Search,
   Tag,
@@ -23,11 +24,26 @@ type AuditRow = {
   date: string;
   details: string;
   timestampMs: number;
-  searchableText: string;
   formattedDate: string;
 };
 
-const ACTION_OPTIONS = ['All', 'CREATE', 'UPDATE', 'DEACTIVATE', 'DELETE', 'LOGIN', 'LOGOUT'];
+const ACTION_OPTIONS = [
+  'All',
+  'CREATE',
+  'UPDATE',
+  'DELETE',
+  'DEACTIVATE',
+  'LOGIN',
+  'LOGOUT',
+  'SESSION_EXPIRED',
+  'PAYMENT_CREATED',
+  'PAYMENT_UPDATED',
+  'PAYMENT_APPROVED',
+  'PAYMENT_REJECTED',
+  'PAYMENT_PROOF_UPLOADED',
+];
+
+const MODULE_OPTIONS = ['All', 'users', 'units', 'reservations', 'payments'];
 
 const ACTION_STYLES: Record<string, string> = {
   CREATE: 'bg-green-100 text-green-800',
@@ -36,6 +52,12 @@ const ACTION_STYLES: Record<string, string> = {
   DEACTIVATE: 'bg-gray-200 text-gray-800',
   LOGIN: 'bg-blue-100 text-blue-800',
   LOGOUT: 'bg-purple-100 text-purple-800',
+  SESSION_EXPIRED: 'bg-orange-100 text-orange-800',
+  PAYMENT_CREATED: 'bg-sky-100 text-sky-800',
+  PAYMENT_UPDATED: 'bg-amber-100 text-amber-800',
+  PAYMENT_APPROVED: 'bg-emerald-100 text-emerald-800',
+  PAYMENT_REJECTED: 'bg-rose-100 text-rose-800',
+  PAYMENT_PROOF_UPLOADED: 'bg-indigo-100 text-indigo-800',
   DEFAULT: 'bg-blue-100 text-blue-800',
 };
 
@@ -119,7 +141,7 @@ function DesktopFilterBar({
         >
           {ACTION_OPTIONS.map((action) => (
             <option key={action} value={action}>
-              {action === 'All' ? 'All Actions' : action.charAt(0) + action.slice(1).toLowerCase()}
+              {action === 'All' ? 'All Actions' : action}
             </option>
           ))}
         </select>
@@ -131,7 +153,7 @@ function DesktopFilterBar({
         >
           {modules.map((m) => (
             <option key={m} value={m}>
-              {m === 'All' ? 'All Modules' : m}
+              {m === 'All' ? 'All Modules' : m.charAt(0).toUpperCase() + m.slice(1)}
             </option>
           ))}
         </select>
@@ -214,7 +236,7 @@ function MobileFilterMenu({
           >
             {ACTION_OPTIONS.map((action) => (
               <option key={action} value={action}>
-                {action === 'All' ? 'All Actions' : action.charAt(0) + action.slice(1).toLowerCase()}
+                {action === 'All' ? 'All Actions' : action}
               </option>
             ))}
           </select>
@@ -229,7 +251,7 @@ function MobileFilterMenu({
           >
             {modules.map((m) => (
               <option key={m} value={m}>
-                {m === 'All' ? 'All Modules' : m}
+                {m === 'All' ? 'All Modules' : m.charAt(0).toUpperCase() + m.slice(1)}
               </option>
             ))}
           </select>
@@ -268,7 +290,14 @@ function MobileFilterMenu({
 }
 
 export default function AdminAudit() {
-  const { auditLogs } = useData();
+  const { getUserById } = useData();
+  const { fetchAuditLogsPage } = useRecords();
+
+  const [rows, setRows] = useState<AuditRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(25);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAction, setSelectedAction] = useState('All');
@@ -279,63 +308,113 @@ export default function AdminAudit() {
 
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 250);
 
-  const logs = useMemo<AuditRow[]>(() => {
-    return auditLogs.map((log) => {
-      const timestampMs = new Date(log.timestamp).getTime();
-      return {
-        id: log.id,
-        publicId: log.publicId,
-        action: log.action,
-        module: log.targetTable || '',
-        target: log.targetId || '',
-        performedBy: log.userId || '',
-        date: log.timestamp,
-        details: log.notes ?? 'No additional details',
-        timestampMs,
-        formattedDate: Number.isNaN(timestampMs)
-          ? 'Invalid date'
-          : new Date(timestampMs).toLocaleString(),
-        searchableText: [
-          log.id,
-          log.publicId,
-          log.action,
-          log.targetTable,
-          log.targetId,
-          log.userId,
-          log.notes,
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase(),
-      };
-    });
-  }, [auditLogs]);
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
-  const modules = useMemo<string[]>(() => {
-    const unique = Array.from(new Set(logs.map((log) => log.module).filter(Boolean))).sort();
-    return ['All', ...unique];
-  }, [logs]);
+  const formatUserLabel = useCallback(
+    (userId?: string) => {
+      if (!userId) return '—';
 
-  const filteredLogs = useMemo(() => {
-    const lower = debouncedSearchTerm.trim().toLowerCase();
-    const startMs = startDate ? new Date(startDate).getTime() : null;
-    const endMs = endDate ? new Date(`${endDate}T23:59:59`).getTime() : null;
+      const user = getUserById(userId);
+      if (!user) return userId;
 
-    return logs
-      .filter((log) => {
-        const matchesSearch = !lower || log.searchableText.includes(lower);
-        const matchesAction = selectedAction === 'All' || log.action === selectedAction;
-        const matchesModule = selectedModule === 'All' || log.module === selectedModule;
-        const matchesStart = startMs === null || log.timestampMs >= startMs;
-        const matchesEnd = endMs === null || log.timestampMs <= endMs;
+      const fullName =
+        [user.first_name, user.last_name].filter(Boolean).join(' ').trim() || user.email;
 
-        return matchesSearch && matchesAction && matchesModule && matchesStart && matchesEnd;
-      })
-      .sort((a, b) => b.timestampMs - a.timestampMs);
-  }, [logs, debouncedSearchTerm, selectedAction, selectedModule, startDate, endDate]);
+      return user.publicId ? `${user.publicId}` : fullName;
+    },
+    [getUserById]
+  );
 
-  const hasNoLogs = logs.length === 0;
-  const hasNoSearchResults = logs.length > 0 && filteredLogs.length === 0;
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchTerm, selectedAction, selectedModule, startDate, endDate]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAuditLogs = async () => {
+      setLoading(true);
+
+      try {
+        const result = await fetchAuditLogsPage({
+          searchTerm: debouncedSearchTerm,
+          action: selectedAction,
+          module: selectedModule,
+          startDate,
+          endDate,
+          page,
+          pageSize,
+        });
+
+        if (cancelled) return;
+
+        const mapped: AuditRow[] = result.data.map((log) => {
+          const timestampMs = new Date(log.timestamp).getTime();
+
+          const actorLabel = formatUserLabel(log.userId);
+
+          const isUserTarget = log.targetTable === 'users';
+          const isSelfAuthEvent =
+            isUserTarget &&
+            ['LOGIN', 'LOGOUT', 'SESSION_EXPIRED'].includes(log.action) &&
+            log.userId === log.targetId;
+
+          const targetLabel = isSelfAuthEvent
+            ? 'Own account'
+            : isUserTarget
+              ? formatUserLabel(log.targetId)
+              : log.targetId || '—';
+
+          return {
+            id: log.id,
+            publicId: log.publicId,
+            action: log.action,
+            module: log.targetTable || '',
+            target: targetLabel,
+            performedBy: actorLabel,
+            date: log.timestamp,
+            details: log.notes ?? 'No additional details',
+            timestampMs,
+            formattedDate: Number.isNaN(timestampMs)
+              ? 'Invalid date'
+              : new Date(timestampMs).toLocaleString(),
+          };
+        });
+
+        setRows(mapped);
+        setTotalCount(result.count);
+      } catch (error) {
+        console.error('Failed to load audit logs:', error);
+        if (!cancelled) {
+          setRows([]);
+          setTotalCount(0);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadAuditLogs();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    fetchAuditLogsPage,
+    formatUserLabel,
+    debouncedSearchTerm,
+    selectedAction,
+    selectedModule,
+    startDate,
+    endDate,
+    page,
+    pageSize,
+  ]);
+
+  const hasNoLogs = !loading && totalCount === 0;
+  const hasNoSearchResults = !loading && totalCount > 0 && rows.length === 0;
 
   const hasActiveFilters =
     selectedAction !== 'All' || selectedModule !== 'All' || Boolean(startDate) || Boolean(endDate);
@@ -381,14 +460,16 @@ export default function AdminAudit() {
           setStartDate={setStartDate}
           endDate={endDate}
           setEndDate={setEndDate}
-          modules={modules}
+          modules={MODULE_OPTIONS}
           resetFilters={resetFilters}
         />
       )}
 
       <div className="flex-1 pb-24 relative z-10">
         <div className="hidden md:block bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-          {hasNoLogs ? (
+          {loading ? (
+            <div className="py-16 px-6 text-center text-gray-500">Loading audit logs...</div>
+          ) : hasNoLogs ? (
             <EmptyState
               icon={<Inbox className="size-10 text-blue-500" />}
               title="No audit logs yet"
@@ -420,13 +501,13 @@ export default function AdminAudit() {
                       </td>
                     </tr>
                   ) : (
-                    filteredLogs.map((log) => (
+                    rows.map((log) => (
                       <tr key={log.id} className="hover:bg-blue-50/30 transition-colors">
                         <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[220px]">
                           {log.publicId ?? log.id}
                         </td>
 
-                        <td className="px-6 py-4 w-[120px]">
+                        <td className="px-6 py-4 w-[140px]">
                           <span
                             className={`px-2.5 py-1 text-[10px] font-bold rounded-full ${getActionStyle(log.action)}`}
                           >
@@ -438,11 +519,11 @@ export default function AdminAudit() {
                           {log.module || '—'}
                         </td>
 
-                        <td className="px-6 py-4 text-xs font-mono text-gray-400 w-[140px]">
+                        <td className="px-6 py-4 text-sm text-gray-700 w-[220px]">
                           {log.target || '—'}
                         </td>
 
-                        <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[180px]">
+                        <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[220px]">
                           {log.performedBy || '—'}
                         </td>
 
@@ -463,7 +544,11 @@ export default function AdminAudit() {
         </div>
 
         <div className="md:hidden space-y-4">
-          {hasNoLogs ? (
+          {loading ? (
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm py-16 px-6 text-center text-gray-500">
+              Loading audit logs...
+            </div>
+          ) : hasNoLogs ? (
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm py-16 px-6">
               <EmptyState
                 icon={<Inbox className="size-10 text-blue-500" />}
@@ -476,7 +561,7 @@ export default function AdminAudit() {
               <NoResultsState />
             </div>
           ) : (
-            filteredLogs.map((log) => (
+            rows.map((log) => (
               <div
                 key={log.id}
                 className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-3"
@@ -508,7 +593,7 @@ export default function AdminAudit() {
                     <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
                       <Tag className="size-3" /> Target
                     </span>
-                    <span className="text-xs font-mono text-gray-400">{log.target || '—'}</span>
+                    <span className="text-sm text-gray-700">{log.target || '—'}</span>
                   </div>
 
                   <div className="flex flex-col gap-1 col-span-2">
@@ -533,6 +618,32 @@ export default function AdminAudit() {
             ))
           )}
         </div>
+
+        {!loading && !hasNoLogs && totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-4 bg-white border border-gray-200 rounded-2xl shadow-sm mt-4">
+            <p className="text-sm text-gray-500">
+              Page {page} of {totalPages} • {totalCount} total logs
+            </p>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
+              >
+                Previous
+              </button>
+
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="md:hidden fixed bottom-6 right-6 z-50">
@@ -547,7 +658,7 @@ export default function AdminAudit() {
           setStartDate={setStartDate}
           endDate={endDate}
           setEndDate={setEndDate}
-          modules={modules}
+          modules={MODULE_OPTIONS}
           resetFilters={resetFilters}
         />
 

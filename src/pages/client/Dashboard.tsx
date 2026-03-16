@@ -1,306 +1,528 @@
+import React, { memo, useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  Calendar,
+  CreditCard,
+  AlertCircle,
+  MessageSquare,
+  Bell,
+} from 'lucide-react';
+
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
-import { Calendar, CreditCard, AlertCircle, MessageSquare, Bell } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
-import { Link, useNavigate } from 'react-router-dom';
-import { useEffect } from 'react';
+
+/**
+ * Reused formatters outside component so they are not recreated on every render
+ */
+const dateFormatter = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+});
+
+const SECTION_TITLE_CLASS =
+  'text-xs sm:text-sm font-bold text-gray-900 uppercase tracking-wide';
+
+const CARD_CLASS =
+  'bg-white rounded-xl border border-gray-200 shadow-sm';
+
+const EMPTY_STATE_CLASS =
+  'text-center py-6 text-xs sm:text-sm text-gray-500';
+
+function formatDate(value?: string | Date | null) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return dateFormatter.format(date);
+}
+
+function getTimestamp(value?: string | Date | null) {
+  if (!value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function getReservationStatusClass(status?: string) {
+  switch (status) {
+    case 'confirmed':
+      return 'bg-green-100 text-green-700';
+    case 'pending':
+      return 'bg-orange-100 text-orange-700';
+    case 'cancelled':
+      return 'bg-red-100 text-red-700';
+    default:
+      return 'bg-gray-100 text-gray-600';
+  }
+}
+
+type DashboardStatCardProps = {
+  label: string;
+  value: number | string;
+  icon: React.ReactNode;
+};
+
+const DashboardStatCard = memo(function DashboardStatCard({
+  label,
+  value,
+  icon,
+}: DashboardStatCardProps) {
+  return (
+    <div className={`${CARD_CLASS} p-4 sm:p-6`}>
+      <div className="mb-1 flex items-center justify-between">
+        <p className="text-[10px] sm:text-xs font-medium text-gray-500">{label}</p>
+        {icon}
+      </div>
+      <p className="text-xl sm:text-2xl font-bold text-gray-900">{value}</p>
+    </div>
+  );
+});
+
+type SectionHeaderProps = {
+  title: string;
+  actionLabel?: string;
+  actionTo?: string;
+};
+
+const SectionHeader = memo(function SectionHeader({
+  title,
+  actionLabel,
+  actionTo,
+}: SectionHeaderProps) {
+  return (
+    <div className="mb-4 flex items-center justify-between gap-3">
+      <h2 className={SECTION_TITLE_CLASS}>{title}</h2>
+
+      {actionLabel && actionTo ? (
+        <Link
+          to={actionTo}
+          className="text-[10px] sm:text-xs font-semibold text-blue-600 hover:underline"
+        >
+          {actionLabel}
+        </Link>
+      ) : null}
+    </div>
+  );
+});
+
+type EmptyStateProps = {
+  message: string;
+  actionLabel?: string;
+  actionTo?: string;
+};
+
+const EmptyState = memo(function EmptyState({
+  message,
+  actionLabel,
+  actionTo,
+}: EmptyStateProps) {
+  return (
+    <div className="py-10 text-center">
+      <p className="text-sm text-gray-400">{message}</p>
+      {actionLabel && actionTo ? (
+        <Link
+          to={actionTo}
+          className="mt-4 inline-block text-sm font-medium text-blue-600 hover:underline"
+        >
+          {actionLabel}
+        </Link>
+      ) : null}
+    </div>
+  );
+});
 
 export default function ClientDashboard() {
   const { user } = useAuth();
-  const { getReservationsByUserId, getPaymentsByUserId, units, inquiries, notifications } = useData();
+  const { getReservationsByUserId, getPaymentsByUserId, inquiries, notifications } =
+    useData();
 
-  const userReservations = getReservationsByUserId(user?.id || '');
-  const userPayments = getPaymentsByUserId(user?.id || '');
+  const userId = user?.id ?? '';
+  const firstName = user?.firstName ?? 'Client';
 
-  const totalReservations = userReservations.length;
-  const upcomingReservations = userReservations.filter(b => new Date(b.startDate) > new Date() && b.status === 'confirmed');
-  const pendingReservations = userReservations.filter(b => b.status === 'pending');
-  const paymentReminders = userReservations.filter(b => b.status === 'confirmed' && b.paidAmount < b.totalAmount);
-  
+  /**
+   * These selectors are memoized.
+   * This helps only if the context functions themselves are reasonably stable.
+   */
+  const userReservations = useMemo(
+    () => (userId ? getReservationsByUserId(userId) : []),
+    [getReservationsByUserId, userId]
+  );
 
-  const recentReservations = [...userReservations]
-    .sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime())
-    .slice(0, 2);
+  const userPayments = useMemo(
+    () => (userId ? getPaymentsByUserId(userId) : []),
+    [getPaymentsByUserId, userId]
+  );
 
-  const recentMessages = inquiries
-    ?.filter(i => i.userId === user?.id && i.response)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 1);
+  /**
+   * Single memoized derived state block.
+   * We do:
+   * - one main loop for reservation aggregations
+   * - lightweight sorted subsets only where needed
+   * - user-filtered inquiries / notifications
+   */
+  const dashboard = useMemo(() => {
+    const now = Date.now();
+
+    let totalReservations = 0;
+    let upcomingCount = 0;
+    let pendingCount = 0;
+    let paymentReminderCount = 0;
+    let outstandingBalance = 0;
+
+    const paymentReminderItems: typeof userReservations = [];
+    const recentReservationCandidates: typeof userReservations = [];
+
+    for (const reservation of userReservations) {
+      totalReservations += 1;
+
+      const startDateMs = getTimestamp(reservation.startDate);
+      const paidAmount = Number(reservation.paidAmount ?? 0);
+      const totalAmount = Number(reservation.totalAmount ?? 0);
+      const balance = Math.max(totalAmount - paidAmount, 0);
+
+      if (reservation.status === 'confirmed' && startDateMs > now) {
+        upcomingCount += 1;
+      }
+
+      if (reservation.status === 'pending') {
+        pendingCount += 1;
+      }
+
+      if (reservation.status === 'confirmed' && balance > 0) {
+        paymentReminderCount += 1;
+        outstandingBalance += balance;
+        paymentReminderItems.push(reservation);
+      }
+
+      recentReservationCandidates.push(reservation);
+    }
+
+    const recentReservations = recentReservationCandidates
+      .slice()
+      .sort(
+        (a, b) => getTimestamp(b.requestDate) - getTimestamp(a.requestDate)
+      )
+      .slice(0, 3);
+
+    const topPaymentReminders = paymentReminderItems
+      .slice()
+      .sort((a, b) => {
+        const aBalance =
+          Number(a.totalAmount ?? 0) - Number(a.paidAmount ?? 0);
+        const bBalance =
+          Number(b.totalAmount ?? 0) - Number(b.paidAmount ?? 0);
+        return bBalance - aBalance;
+      })
+      .slice(0, 2);
+
+    const userMessages = (inquiries ?? [])
+      .filter((inquiry) => inquiry.userId === userId && inquiry.response)
+      .sort((a, b) => getTimestamp(b.date) - getTimestamp(a.date))
+      .slice(0, 2);
+
+    const userNotifications = (notifications ?? [])
+      .filter((notification) => {
+        if (!notification) return false;
+        if (!notification.userId) return true;
+        return notification.userId === userId;
+      })
+      .sort((a, b) => getTimestamp(b.date) - getTimestamp(a.date))
+      .slice(0, 3);
+
+    const totalPaid = userPayments.reduce(
+      (sum, payment) => sum + Number(payment.amount ?? 0),
+      0
+    );
+
+    return {
+      totalReservations,
+      upcomingCount,
+      pendingCount,
+      paymentReminderCount,
+      outstandingBalance,
+      totalPaid,
+      recentReservations,
+      topPaymentReminders,
+      userMessages,
+      userNotifications,
+    };
+  }, [userReservations, userPayments, inquiries, notifications, userId]);
 
   return (
-    <div className="bg-gray-50 min-h-screen">
-      <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
-
-      {/* HEADER */}
-      <header>
-
-        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
-          Welcome back, {user?.firstName}!
-        </h1>
-        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-          Overview of your reservations, payments, and messages
-        </p>
-      </header>
-
-
-      {/* KPI CARDS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-
-        <div className="bg-white p-4 sm:p-6 rounded-xl border border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] sm:text-xs font-medium text-gray-500">Reservations</p>
-            <Calendar className="size-4 sm:size-5 text-blue-600" />
+    <div className="min-h-screen bg-gray-50">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
+        {/* HEADER */}
+        <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900">
+              Welcome back, {firstName}!
+            </h1>
+            <p className="mt-0.5 text-xs sm:text-sm text-gray-500">
+              Overview of your reservations, payments, and messages
+            </p>
           </div>
-          <p className="text-xl sm:text-2xl font-bold text-gray-900">{totalReservations}</p>
+
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to="/client/properties"
+              className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+            >
+              Browse Properties
+            </Link>
+            <Link
+              to="/client/reservations"
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+            >
+              My Reservations
+            </Link>
+          </div>
+        </header>
+
+        {/* KPI CARDS */}
+        <div className="grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-5">
+          <DashboardStatCard
+            label="Reservations"
+            value={dashboard.totalReservations}
+            icon={<Calendar className="size-4 sm:size-5 text-blue-600" />}
+          />
+
+          <DashboardStatCard
+            label="Upcoming"
+            value={dashboard.upcomingCount}
+            icon={<Calendar className="size-4 sm:size-5 text-green-600" />}
+          />
+
+          <DashboardStatCard
+            label="Pending"
+            value={dashboard.pendingCount}
+            icon={<AlertCircle className="size-4 sm:size-5 text-yellow-600" />}
+          />
+
+          <DashboardStatCard
+            label="Reminders"
+            value={dashboard.paymentReminderCount}
+            icon={<CreditCard className="size-4 sm:size-5 text-red-600" />}
+          />
+
+          <DashboardStatCard
+            label="Paid"
+            value={formatCurrency(dashboard.totalPaid)}
+            icon={<CreditCard className="size-4 sm:size-5 text-indigo-600" />}
+          />
         </div>
 
-        <div className="bg-white p-4 sm:p-6 rounded-xl border border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] sm:text-xs font-medium text-gray-500">Upcoming</p>
-            <Calendar className="size-4 sm:size-5 text-green-600" />
-          </div>
-          <p className="text-xl sm:text-2xl font-bold text-gray-900">{upcomingReservations.length}</p>
-        </div>
+        {/* MAIN GRID */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
+          {/* LEFT */}
+          <div className="space-y-6 lg:col-span-7">
+            {/* PAYMENT REMINDERS */}
+            <section className="rounded-xl border border-yellow-200 bg-yellow-50 p-4 sm:p-6 shadow-sm">
+              <SectionHeader
+                title="Payment Reminders"
+                actionLabel="Manage Payments"
+                actionTo="/client/payments"
+              />
 
-        <div className="bg-white p-4 sm:p-6 rounded-xl border border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] sm:text-xs font-medium text-gray-500">Pending</p>
-            <AlertCircle className="size-4 sm:size-5 text-yellow-600" />
-          </div>
-          <p className="text-xl sm:text-2xl font-bold text-gray-900">{pendingReservations.length}</p>
-        </div>
+              {dashboard.topPaymentReminders.length > 0 ? (
+                <div className="space-y-3">
+                  <div className="rounded-lg border border-yellow-300 bg-white/80 px-4 py-3">
+                    <p className="text-[11px] uppercase tracking-wide text-yellow-800 font-semibold">
+                      Total Outstanding
+                    </p>
+                    <p className="mt-1 text-xl font-bold text-red-600">
+                      {formatCurrency(dashboard.outstandingBalance)}
+                    </p>
+                  </div>
 
-        <div className="bg-white p-4 sm:p-6 rounded-xl border border-gray-200 shadow-sm">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] sm:text-xs font-medium text-gray-500">Reminders</p>
-            <CreditCard className="size-4 sm:size-5 text-red-600" />
-          </div>
-          <p className="text-xl sm:text-2xl font-bold text-gray-900">{paymentReminders.length}</p>
-        </div>
+                  {dashboard.topPaymentReminders.map((reservation) => {
+                    const balance =
+                      Number(reservation.totalAmount ?? 0) -
+                      Number(reservation.paidAmount ?? 0);
 
-      </div>
-
-
-      {/* MAIN GRID */}
-      <div className="grid grid-cols-1 lg:grid-cols-10 gap-6">
-
-        {/* LEFT SIDE */}
-        <div className="lg:col-span-7 space-y-6">
-
-          {/* PAYMENT REMINDERS */}
-          <section className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 sm:p-6 shadow-sm">
-
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xs sm:text-sm font-bold text-yellow-900 uppercase tracking-wide">
-                Payment Reminders
-              </h2>
-
-              <Link
-                to="/client/payments"
-                className="text-[10px] sm:text-xs text-blue-600 font-semibold hover:underline"
-              >
-                Manage Payments
-              </Link>
-            </div>
-
-            {paymentReminders.length > 0 ? (
-              paymentReminders.slice(0,1).map(reservation => {
-
-                const balance = reservation.totalAmount - reservation.paidAmount;
-
-                return (
-                  <div
-                    key={reservation.id}
-                    className="bg-white p-4 rounded-lg border border-yellow-300 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
-                  >
-
-                    <div>
-                      <p className="font-semibold text-gray-900 text-sm">
-                        {reservation.unitName}
-                      </p>
-                      <p className="text-[10px] text-gray-500">
-                        ID: {reservation.id}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between sm:block sm:text-right">
-
-                      <p className="text-lg font-bold text-red-600">
-                        {formatCurrency(balance)}
-                      </p>
-
-                      <Link
-                        to="/client/payments"
-                        className="mt-1 inline-block px-3 py-1 bg-blue-600 text-white text-[10px] rounded hover:bg-blue-700"
+                    return (
+                      <div
+                        key={reservation.id}
+                        className="flex flex-col gap-3 rounded-lg border border-yellow-300 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
                       >
-                        Pay Now
-                      </Link>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-gray-900">
+                            {reservation.unitName}
+                          </p>
+                          <p className="text-[10px] text-gray-500">
+                            Reservation ID: {reservation.id}
+                          </p>
+                          <p className="mt-1 text-[11px] text-gray-500">
+                            Requested {formatDate(reservation.requestDate)}
+                          </p>
+                        </div>
 
-                    </div>
+                        <div className="flex items-center justify-between gap-3 sm:block sm:text-right">
+                          <p className="text-lg font-bold text-red-600">
+                            {formatCurrency(balance)}
+                          </p>
 
-                  </div>
-                )
-
-              })
-            ) : (
-
-              <div className="text-center py-6 bg-white/50 rounded-lg border border-dashed border-yellow-300 text-xs text-gray-500">
-                You are all caught up! 🎉
-              </div>
-
-            )}
-          </section>
-
-
-          {/* 2. Recent Activity (Expanded) */}
-          <section className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-            <h2 className="text-sm font-bold text-gray-900 mb-4 uppercase tracking-wide">Recent Reservation Activity</h2>
-            {recentReservations.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-sm text-gray-400">No reservations yet.</p>
-                <Link to="/client/properties" className="mt-4 inline-block text-blue-600 text-sm font-medium">Browse Properties →</Link>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {recentReservations.map(reservation => (
-                  <div key={reservation.id} className="flex justify-between items-center py-4 first:pt-0 last:pb-0">
-                    <div className="flex items-center gap-4">
-                      <div className="size-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                        <Calendar className="size-5 text-gray-400" />
+                          <Link
+                            to="/client/payments"
+                            className="mt-1 inline-block rounded bg-blue-600 px-3 py-1.5 text-[10px] text-white hover:bg-blue-700"
+                          >
+                            Pay Now
+                          </Link>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-semibold text-gray-900">{reservation.unitName}</p>
-                        <p className="text-xs text-gray-500 italic">Requested {new Date(reservation.requestDate).toLocaleDateString()}</p>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-yellow-300 bg-white/50 py-6 text-center text-xs text-gray-500">
+                  You are all caught up! 🎉
+                </div>
+              )}
+            </section>
+
+            {/* RECENT RESERVATION ACTIVITY */}
+            <section className={`${CARD_CLASS} p-4 sm:p-6`}>
+              <SectionHeader
+                title="Recent Reservation Activity"
+                actionLabel="View All"
+                actionTo="/client/reservations"
+              />
+
+              {dashboard.recentReservations.length === 0 ? (
+                <EmptyState
+                  message="No reservations yet."
+                  actionLabel="Browse Properties →"
+                  actionTo="/client/properties"
+                />
+              ) : (
+                <div className="divide-y divide-gray-100">
+                  {dashboard.recentReservations.map((reservation) => (
+                    <div
+                      key={reservation.id}
+                      className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0"
+                    >
+                      <div className="flex min-w-0 items-center gap-4">
+                        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-gray-100">
+                          <Calendar className="size-5 text-gray-400" />
+                        </div>
+
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-gray-900">
+                            {reservation.unitName}
+                          </p>
+                          <p className="text-xs italic text-gray-500">
+                            Requested {formatDate(reservation.requestDate)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex shrink-0 flex-col items-end gap-2 text-right">
+                        <span
+                          className={`rounded-full px-4 py-1 text-[10px] font-bold uppercase tracking-tighter ${getReservationStatusClass(
+                            reservation.status
+                          )}`}
+                        >
+                          {reservation.status ?? 'unknown'}
+                        </span>
+
+                        <Link
+                          to="/client/reservations"
+                          className="text-[10px] font-medium text-blue-600 hover:underline"
+                        >
+                          View Details
+                        </Link>
                       </div>
                     </div>
-                    <div className="text-right flex flex-col items-end gap-2">
-                      <span className={`px-4 py-1 text-[10px] font-bold rounded-full uppercase tracking-tighter
-                        ${reservation.status === 'confirmed' ? 'bg-green-100 text-green-700' : 
-                          reservation.status === 'pending' ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'}`}>
-                        {reservation.status}
-                      </span>
-                      <Link to="/client/reservations" className="text-[10px] text-blue-600 hover:underline font-medium">View Details</Link>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+
+          {/* RIGHT */}
+          <div className="space-y-6 lg:col-span-3">
+            {/* ADMIN REPLIES */}
+            <section className={`${CARD_CLASS} overflow-hidden`}>
+              <div className="flex items-center gap-2 bg-indigo-600 p-3 text-white">
+                <MessageSquare className="size-4" />
+                <h2 className="text-[11px] font-bold uppercase tracking-wider">
+                  Admin Replies
+                </h2>
               </div>
-            )}
-          </section>
 
-        </div>
+              <div className="p-4">
+                {dashboard.userMessages.length > 0 ? (
+                  <div className="space-y-4">
+                    {dashboard.userMessages.map((msg) => (
+                      <div key={msg.id}>
+                        <p className="mb-1 text-[10px] text-gray-400">
+                          {formatDate(msg.date)}
+                        </p>
 
+                        <p className="text-xs font-semibold text-gray-900">
+                          {msg.subject}
+                        </p>
 
-        {/* RIGHT SIDE */}
-        <div className="lg:col-span-3 space-y-6">
+                        <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50 p-3">
+                          <p className="mb-1 text-[10px] font-semibold text-blue-700">
+                            Admin Reply
+                          </p>
 
-          {/* ADMIN MESSAGES */}
-          <section className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-
-            <div className="p-3 bg-indigo-600 text-white flex items-center gap-2">
-              <MessageSquare className="size-4" />
-              <h2 className="text-[11px] font-bold uppercase tracking-wider">
-                Admin Replies
-              </h2>
-            </div>
-
-            <div className="p-4">
-
-              {recentMessages && recentMessages.length > 0 ? (
-
-                recentMessages.map(msg => (
-
-                  <div key={msg.id}>
-
-                    <p className="text-[10px] text-gray-400 mb-1">
-                      {new Date(msg.date).toLocaleDateString()}
-                    </p>
-
-                    <p className="text-xs font-semibold text-gray-900">
-                      {msg.subject}
-                    </p>
-
-                    <div className="mt-2 bg-blue-50 border border-blue-100 rounded-lg p-3">
-
-                      <p className="text-[10px] font-semibold text-blue-700 mb-1">
-                        Admin Reply
-                      </p>
-
-                      <p className="text-[11px] text-gray-700">
-                        {msg.response}
-                      </p>
-
-                    </div>
-
+                          <p className="text-[11px] leading-relaxed text-gray-700">
+                            {msg.response}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
+                ) : (
+                  <p className="py-4 text-center text-[11px] italic text-gray-400">
+                    No new messages
+                  </p>
+                )}
 
-                ))
+                <Link
+                  to="/client/messages"
+                  className="block pt-4 text-center text-[10px] font-bold text-indigo-600 hover:underline"
+                >
+                  GO TO INBOX
+                </Link>
+              </div>
+            </section>
 
-              ) : (
+            {/* ALERTS */}
+            <section className={CARD_CLASS}>
+              <div className="flex items-center gap-2 border-b border-gray-100 p-3 font-bold text-gray-700">
+                <Bell className="size-4 text-purple-500" />
+                <h2 className="text-[11px] uppercase tracking-wider">Alerts</h2>
+              </div>
 
-                <p className="text-[11px] text-gray-400 text-center py-4 italic">
-                  No new messages
-                </p>
-
-              )}
-
-              <Link
-                to="/client/messages"
-                className="block text-center text-[10px] font-bold text-indigo-600 pt-3"
-              >
-                GO TO INBOX
-              </Link>
-
-            </div>
-          </section>
-
-
-          {/* NOTIFICATIONS */}
-          <section className="bg-white rounded-xl border border-gray-200 shadow-sm">
-
-            <div className="p-3 border-b border-gray-100 flex items-center gap-2 font-bold text-gray-700">
-              <Bell className="size-4 text-purple-500" />
-              <h2 className="text-[11px] uppercase tracking-wider">Alerts</h2>
-            </div>
-
-            <div className="p-4">
-
-              {notifications && notifications.length > 0 ? (
-
-                notifications.slice(0,1).map(n => (
-
-                  <div
-                    key={n.id}
-                    className="p-3 bg-purple-50 rounded-lg border border-purple-100"
-                  >
-
-                    <p className="text-[11px] text-purple-900 mb-1">
-                      {n.message}
-                    </p>
-
-                    <span className="text-[9px] text-purple-400">
-                      {new Date(n.date).toLocaleDateString()}
-                    </span>
-
+              <div className="p-4">
+                {dashboard.userNotifications.length > 0 ? (
+                  <div className="space-y-3">
+                    {dashboard.userNotifications.map((notification) => (
+                      <div
+                        key={notification.id}
+                        className="rounded-lg border border-purple-100 bg-purple-50 p-3"
+                      >
+                        <p className="mb-1 text-[11px] leading-relaxed text-purple-900">
+                          {notification.message}
+                        </p>
+                        <span className="text-[9px] text-purple-400">
+                          {formatDate(notification.date)}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-
-                ))
-
-              ) : (
-
-                <p className="text-[11px] text-gray-400 text-center py-4">
-                  All clear!
-                </p>
-
-              )}
-
-            </div>
-
-          </section>
-
+                ) : (
+                  <p className="py-4 text-center text-[11px] text-gray-400">
+                    All clear!
+                  </p>
+                )}
+              </div>
+            </section>
+          </div>
         </div>
-
       </div>
-    </div>
     </div>
   );
-}  
+}

@@ -43,13 +43,23 @@ const FacebookLogo = () => (
 );
 
 export default function Login() {
-  const { login, recoverPassword, user, loginWithFacebook, loginWithGoogle, formKey } = useAuth();
+  const {
+    login,
+    recoverPassword,
+    user,
+    loginWithFacebook,
+    loginWithGoogle,
+    formKey,
+    authActionPending,
+  } = useAuth();
+
   const { showIndicator } = useIndicator();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
 
   const emailRef = useRef<HTMLInputElement>(null);
   const passRef = useRef<HTMLInputElement>(null);
@@ -59,19 +69,14 @@ export default function Login() {
   const [recoveryStatus, setRecoveryStatus] = useState({ type: '', msg: '' });
   const [recoveryLoading, setRecoveryLoading] = useState(false);
 
-  const navigate = useNavigate();
+  const registerMessage =
+    typeof location.state?.message === 'string' ? location.state.message : '';
 
-  const location = useLocation();
-
-    const registerMessage =
-    typeof location.state?.message === "string" ? location.state.message : "";
-
-    const registerEmail =
-    typeof location.state?.email === "string" ? location.state.email : "";
+  const registerEmail =
+    typeof location.state?.email === 'string' ? location.state.email : '';
 
   const [previousUser, setPreviousUser] = useState<{
     name: string;
-    email?: string;
     profilePictureUrl?: string;
   } | null>(null);
 
@@ -88,37 +93,12 @@ export default function Login() {
 
       setPreviousUser({
         name: parsed?.name || parsed?.email?.split('@')[0] || 'User',
-        email: parsed?.email,
         profilePictureUrl: parsed?.profilePictureUrl || '',
       });
     } catch {
       setPreviousUser(null);
     }
   }, [formKey]);
-
-//   useEffect(() => {
-//   const raw = sessionStorage.getItem('currentUser');
-
-//   if (!raw) {
-//     setPreviousUser(null);
-//     return;
-//   }
-
-//   try {
-//     const parsed = JSON.parse(raw);
-//     const fullName = [parsed.firstName, parsed.lastName].filter(Boolean).join(' ').trim();
-
-//     setPreviousUser(
-//       fullName
-//         ? { name: fullName }
-//         : parsed.email
-//         ? { name: parsed.email.split('@')[0] }
-//         : null
-//     );
-//   } catch {
-//     setPreviousUser(null);
-//   }
-// }, [formKey]);
 
   if (user) {
     const path = user.role === 'admin' ? '/admin/dashboard' : '/client/dashboard';
@@ -128,6 +108,7 @@ export default function Login() {
   useEffect(() => {
     if (!user) {
       setFormData({ email: '', password: '' });
+      setError('');
     }
   }, [user, formKey]);
 
@@ -140,6 +121,7 @@ export default function Login() {
         if (prev.email === emailValue && prev.password === passwordValue) {
           return prev;
         }
+
         return {
           email: emailValue,
           password: passwordValue,
@@ -157,64 +139,55 @@ export default function Login() {
   }, [formKey]);
 
   const handleLogin = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setError('');
-  setLoading(true);
+    e.preventDefault();
+    if (authActionPending) return;
 
-  const result = await login(formData.email.trim(), formData.password);
+    setError('');
+    const normalizedEmail = formData.email.trim().toLowerCase();
 
-  if (!result.success) {
-    switch (result.error) {
-      case 'invalid_credentials':
-        setError('Incorrect email or password.');
-        break;
+    const result = await login(formData.email.trim(), formData.password);
 
-      case 'email_not_verified':
-        setError('Please verify your email before signing in.');
-        break;
-
-      case 'account_not_found':
-        setError('Account not found. Please register first.');
-        break;
-
-      case 'account_disabled':
-        setError('Your account has been disabled. Contact support.');
-        break;
-
-      default:
-        setError('Login failed. Please try again.');
+    if (!result.success) {
+      switch (result.error) {
+        case 'busy':
+          setError('Please wait a moment and try again.');
+          break;
+        case 'invalid_login':
+        default:
+          setError('Invalid email or password.');
+      }
+      return;
     }
 
-    setLoading(false);
-    return;
-  }
-
-  showIndicator(
-    `Login by ${formData.email} at ${new Date().toLocaleTimeString()}`,
-    'login'
-  );
-};
+      showIndicator(
+      `Login successful by ${normalizedEmail} at ${new Date().toLocaleTimeString()}`,
+      'login'
+    );
+  };
 
   const handleRecoverPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (recoveryLoading) return;
+
     setRecoveryStatus({ type: '', msg: '' });
     setRecoveryLoading(true);
 
-    const result = await recoverPassword(recoveryEmail);
+    try {
+      await recoverPassword(recoveryEmail.trim());
 
-    if (result) {
       setRecoveryStatus({
         type: 'success',
-        msg: `A recovery link has been sent to ${recoveryEmail}.`,
+        msg: 'If an account exists for that email, a recovery link has been sent.',
       });
-    } else {
+    } catch (err) {
+      console.error('Recovery flow failed:', err);
       setRecoveryStatus({
-        type: 'error',
-        msg: 'No account found with that email address.',
+        type: 'success',
+        msg: 'If an account exists for that email, a recovery link has been sent.',
       });
+    } finally {
+      setRecoveryLoading(false);
     }
-
-    setRecoveryLoading(false);
   };
 
   const openRecoveryModal = () => {
@@ -224,59 +197,65 @@ export default function Login() {
   };
 
   const getInboxUrl = (email: string) => {
-  const domain = email.split('@')[1]?.toLowerCase();
+    const domain = email.split('@')[1]?.toLowerCase();
 
-  switch (domain) {
-    case 'gmail.com':
-      return 'https://mail.google.com';
-    case 'outlook.com':
-    case 'hotmail.com':
-    case 'live.com':
-      return 'https://outlook.live.com/mail/0/';
-    case 'yahoo.com':
-      return 'https://mail.yahoo.com';
-    case 'icloud.com':
-      return 'https://www.icloud.com/mail';
-    default:
-      return `https://${domain}`;
-  }
-};
+    switch (domain) {
+      case 'gmail.com':
+        return 'https://mail.google.com';
+      case 'outlook.com':
+      case 'hotmail.com':
+      case 'live.com':
+        return 'https://outlook.live.com/mail/0/';
+      case 'yahoo.com':
+        return 'https://mail.yahoo.com';
+      case 'icloud.com':
+        return 'https://www.icloud.com/mail';
+      default:
+        return domain ? `https://${domain}` : '#';
+    }
+  };
 
-  const SuccessState = ({ message, email }: { message: string, email: string }) => (
-  <div className="text-center py-8 animate-in fade-in zoom-in duration-500">
-    <div className="relative mx-auto size-24 mb-8">
-      <div className="absolute inset-0 bg-emerald-100 rounded-full animate-ping opacity-20" />
-      <div className="relative size-24 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-inner">
-        <Mail className="size-12" />
+  const SuccessState = ({
+    message,
+    email,
+  }: {
+    message: string;
+    email: string;
+  }) => (
+    <div className="text-center py-8 animate-in fade-in zoom-in duration-500">
+      <div className="relative mx-auto size-24 mb-8">
+        <div className="absolute inset-0 bg-emerald-100 rounded-full animate-ping opacity-20" />
+        <div className="relative size-24 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-inner">
+          <Mail className="size-12" />
+        </div>
       </div>
-    </div>
-    
-    <h2 className="text-2xl font-bold text-slate-900 mb-3">Check your email</h2>
-    <p className="text-slate-500 mb-8 leading-relaxed max-w-xs mx-auto">
-      {message}
-    </p>
 
-    <div className="space-y-4">
-      {email && (
-        <a
+      <h2 className="text-2xl font-bold text-slate-900 mb-3">Check your email</h2>
+      <p className="text-slate-500 mb-8 leading-relaxed max-w-xs mx-auto">
+        {message}
+      </p>
+
+      <div className="space-y-4">
+        {email && (
+          <a
             href={getInboxUrl(email)}
             target="_blank"
             rel="noopener noreferrer"
             className="block w-full bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-black transition-all shadow-lg"
-            >
+          >
             Open Email Inbox
-            </a>
+          </a>
         )}
-      
-      <button
-        onClick={() => navigate('/login', { replace: true })}
-        className="text-sm font-bold text-blue-600 hover:text-blue-700 transition-colors"
+
+        <button
+          onClick={() => navigate('/login', { replace: true })}
+          className="text-sm font-bold text-blue-600 hover:text-blue-700 transition-colors"
         >
-        Back to Login
+          Back to Login
         </button>
+      </div>
     </div>
-  </div>
-);
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 antialiased">
@@ -298,14 +277,14 @@ export default function Login() {
                 </div>
               ) : (
                 <Lock className="size-24 text-blue-400" strokeWidth={1.5} />
-                )}
+              )}
 
               <div className="mt-8 text-center space-y-2">
                 <h2 className="text-3xl font-bold tracking-tight text-white animate-in slide-in-from-bottom-2 duration-700 delay-150">
-                    {previousUser ? `Welcome Back, ${previousUser.name}` : 'Welcome'}
+                  {previousUser ? `Welcome Back, ${previousUser.name}` : 'Welcome'}
                 </h2>
                 <p className="text-blue-200/60 font-medium tracking-wide uppercase text-xs animate-in slide-in-from-bottom-2 duration-700 delay-300">
-                    {previousUser ? 'Login to your account' : 'Secure Access Portal'}
+                  {previousUser ? 'Login to your account' : 'Secure Access Portal'}
                 </p>
               </div>
             </div>
@@ -315,8 +294,6 @@ export default function Login() {
           </div>
 
           <main className="p-8 sm:p-10 lg:p-16 flex flex-col justify-center bg-white">
-
-            
             <div className="text-center mb-10">
               <div className="inline-flex items-center justify-center size-16 rounded-2xl bg-blue-50 text-blue-600 mb-4 shadow-sm">
                 <Building2 className="size-10" />
@@ -328,154 +305,171 @@ export default function Login() {
             </div>
 
             {registerMessage ? (
-                <SuccessState message={registerMessage} email={registerEmail} />
-                ) : (
-                <>
-                    {error && (
-                    <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-3 text-rose-700 text-xs font-bold animate-in fade-in slide-in-from-top-1">
-                        <AlertCircle className="size-4 shrink-0" />
-                        {error}
+              <SuccessState message={registerMessage} email={registerEmail} />
+            ) : (
+              <>
+                {error && (
+                  <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-3 text-rose-700 text-xs font-bold animate-in fade-in slide-in-from-top-1">
+                    <AlertCircle className="size-4 shrink-0" />
+                    {error}
+                  </div>
+                )}
+
+                <form
+                  key={formKey}
+                  onSubmit={handleLogin}
+                  className="space-y-5 max-w-md mx-auto w-full"
+                  autoComplete="on"
+                >
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: 'absolute',
+                      left: '-9999px',
+                      width: '1px',
+                      height: '1px',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <input
+                      type="text"
+                      name="username"
+                      autoComplete="username"
+                      tabIndex={-1}
+                    />
+                    <input
+                      type="password"
+                      name="password"
+                      autoComplete="current-password"
+                      tabIndex={-1}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5 group">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                      Email Address
+                    </label>
+                    <div className="relative">
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-300 group-focus-within:text-blue-500 transition-colors" />
+                      <input
+                        name="email"
+                        type="email"
+                        required
+                        ref={emailRef}
+                        autoComplete="email"
+                        value={formData.email}
+                        onChange={(e) => {
+                          setFormData({ ...formData, email: e.target.value });
+                          if (error) setError('');
+                        }}
+                        className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
+                        placeholder="you@example.com"
+                      />
                     </div>
-                    )}
+                  </div>
 
-                    <form
-                    key={formKey}
-                    onSubmit={handleLogin}
-                    className="space-y-5 max-w-md mx-auto w-full"
-                    autoComplete="on"
-                    >
-              <div
-                aria-hidden="true"
-                style={{
-                  position: 'absolute',
-                  left: '-9999px',
-                  width: '1px',
-                  height: '1px',
-                  overflow: 'hidden',
-                }}
-              >
-                <input type="text" name="username" autoComplete="username" tabIndex={-1} />
-                <input type="password" name="password" autoComplete="current-password" tabIndex={-1} />
-              </div>
+                  <div className="space-y-1.5 group">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                      Password
+                    </label>
+                    <div className="relative">
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-300 group-focus-within:text-blue-500 transition-colors" />
+                      <input
+                        name="password"
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        ref={passRef}
+                        autoComplete="current-password"
+                        value={formData.password}
+                        onChange={(e) => {
+                          setFormData({ ...formData, password: e.target.value });
+                          if (error) setError('');
+                        }}
+                        className="w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
+                        placeholder="••••••••"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                      >
+                        {showPassword ? (
+                          <EyeOff className="size-4" />
+                        ) : (
+                          <Eye className="size-4" />
+                        )}
+                      </button>
+                    </div>
 
-              <div className="space-y-1.5 group">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                  Email Address
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-300 group-focus-within:text-blue-500 transition-colors" />
-                  <input
-                    name="email"
-                    type="email"
-                    required
-                    ref={emailRef}
-                    autoComplete="email"
-                    value={formData.email}
-                    onChange={(e) => {
-                      setFormData({ ...formData, email: e.target.value });
-                      if (error) setError('');
-                    }}
-                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
-                    placeholder="you@example.com"
-                  />
-                </div>
-              </div>
+                    <div className="text-right">
+                      <button
+                        type="button"
+                        onClick={openRecoveryModal}
+                        className="text-[11px] font-bold text-blue-600 hover:underline"
+                      >
+                        Forgot Password?
+                      </button>
+                    </div>
+                  </div>
 
-              <div className="space-y-1.5 group">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                  Password
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 size-4 text-slate-300 group-focus-within:text-blue-500 transition-colors" />
-                  <input
-                    name="password"
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    ref={passRef}
-                    autoComplete="current-password"
-                    value={formData.password}
-                    onChange={(e) => {
-                      setFormData({ ...formData, password: e.target.value });
-                      if (error) setError('');
-                    }}
-                    className="w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
-                    placeholder="••••••••"
-                  />
                   <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    type="submit"
+                    disabled={authActionPending}
+                    className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/10 disabled:opacity-50 mt-2 active:scale-[0.98]"
                   >
-                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    {authActionPending ? 'Signing in...' : 'Sign In'}
                   </button>
-                </div>
-
-                <div className="text-right">
-                  <button
-                    type="button"
-                    onClick={openRecoveryModal}
-                    className="text-[11px] font-bold text-blue-600 hover:underline"
-                  >
-                    Forgot Password?
-                  </button>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/10 disabled:opacity-50 mt-2 active:scale-[0.98]"
-              >
-                {loading ? 'Signing in...' : 'Sign In'}
-              </button>
                 </form>
-            </>
+              </>
             )}
 
-        {!registerMessage && (
-            <div className="mt-8 max-w-md mx-auto w-full">
-              <div className="relative flex items-center justify-center mb-6">
-                <div className="w-full border-t border-slate-100" />
-                <span className="absolute bg-white px-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-                  Or login with
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  type="button"
-                  className="flex items-center justify-center gap-3 py-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-all font-bold text-xs text-slate-700 shadow-sm active:scale-95"
-                  onClick={loginWithGoogle}
-                >
-                  <GoogleLogo /> Google
-                </button>
-
-                <button
-                  type="button"
-                  className="flex items-center justify-center gap-3 py-3 bg-[#1877F2] text-white rounded-xl hover:bg-[#166fe5] transition-all font-bold text-xs shadow-sm active:scale-95"
-                  onClick={loginWithFacebook}
-                >
-                  <FacebookLogo /> Facebook
-                </button>
-              </div>
-            </div>
-            )}
             {!registerMessage && (
-            <div className="mt-12 text-center space-y-3">
-              <p className="text-slate-500 text-sm font-medium">
-                Don't have an account?{' '}
-                <Link to="/register" className="text-blue-600 font-bold hover:underline">
-                  Sign up
+              <div className="mt-8 max-w-md mx-auto w-full">
+                <div className="relative flex items-center justify-center mb-6">
+                  <div className="w-full border-t border-slate-100" />
+                  <span className="absolute bg-white px-4 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                    Or login with
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    type="button"
+                    disabled={authActionPending}
+                    className="flex items-center justify-center gap-3 py-3 border border-slate-200 rounded-xl hover:bg-slate-50 transition-all font-bold text-xs text-slate-700 shadow-sm active:scale-95 disabled:opacity-50"
+                    onClick={loginWithGoogle}
+                  >
+                    <GoogleLogo /> Google
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={authActionPending}
+                    className="flex items-center justify-center gap-3 py-3 bg-[#1877F2] text-white rounded-xl hover:bg-[#166fe5] transition-all font-bold text-xs shadow-sm active:scale-95 disabled:opacity-50"
+                    onClick={loginWithFacebook}
+                  >
+                    <FacebookLogo /> Facebook
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!registerMessage && (
+              <div className="mt-12 text-center space-y-3">
+                <p className="text-slate-500 text-sm font-medium">
+                  Don&apos;t have an account?{' '}
+                  <Link to="/register" className="text-blue-600 font-bold hover:underline">
+                    Sign up
+                  </Link>
+                </p>
+                <Link
+                  to="/"
+                  className="inline-flex items-center gap-2 text-slate-500 hover:text-slate-800 text-xs font-bold transition-all group"
+                >
+                  <ArrowLeft className="size-4 transition-transform group-hover:-translate-x-1" />
+                  Back to Home
                 </Link>
-              </p>
-              <Link
-                to="/"
-                className="inline-flex items-center gap-2 text-slate-500 hover:text-slate-800 text-xs font-bold transition-all group"
-              >
-                <ArrowLeft className="size-4 transition-transform group-hover:-translate-x-1" />
-                Back to Home
-              </Link>
-            </div>
+              </div>
             )}
           </main>
         </div>
@@ -485,7 +479,9 @@ export default function Login() {
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-[2rem] shadow-2xl max-w-md w-full p-10 animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-8">
-              <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Recovery</h2>
+              <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+                Recovery
+              </h2>
               <button
                 onClick={() => setIsModalOpen(false)}
                 className="size-10 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors"
@@ -493,12 +489,6 @@ export default function Login() {
                 <X className="size-6 text-slate-400" />
               </button>
             </div>
-
-            {recoveryStatus.type === 'error' && (
-              <div className="mb-6 p-4 bg-rose-50 text-rose-700 text-xs font-bold rounded-xl flex items-center gap-3">
-                <AlertCircle className="size-4" /> {recoveryStatus.msg}
-              </div>
-            )}
 
             {recoveryStatus.type === 'success' ? (
               <div className="text-center py-6">
@@ -518,7 +508,7 @@ export default function Login() {
             ) : (
               <form onSubmit={handleRecoverPassword} className="space-y-6">
                 <p className="text-sm text-slate-500 font-medium leading-relaxed">
-                  Enter your email and we'll send instructions to reset your password.
+                  Enter your email and we&apos;ll send instructions to reset your password.
                 </p>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
