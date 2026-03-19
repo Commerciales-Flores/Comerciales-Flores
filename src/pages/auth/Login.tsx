@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useIndicator } from '../../contexts/IndicatorContext';
 import {
   Building2,
   AlertCircle,
@@ -13,7 +14,6 @@ import {
   EyeOff,
   User,
 } from 'lucide-react';
-import { useIndicator } from '../../contexts/IndicatorContext';
 
 const GoogleLogo = () => (
   <svg className="size-5" viewBox="0 0 24 24">
@@ -51,11 +51,12 @@ export default function Login() {
     loginWithGoogle,
     formKey,
     authActionPending,
+    loading,
   } = useAuth();
 
-  const { showIndicator } = useIndicator();
   const navigate = useNavigate();
   const location = useLocation();
+  const { showIndicator } = useIndicator();
 
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
@@ -74,6 +75,8 @@ export default function Login() {
 
   const registerEmail =
     typeof location.state?.email === 'string' ? location.state.email : '';
+
+  const normalizedEmail = formData.email.trim().toLowerCase();
 
   const [previousUser, setPreviousUser] = useState<{
     name: string;
@@ -100,14 +103,19 @@ export default function Login() {
     }
   }, [formKey]);
 
-  if (user) {
-    const path = user.role === 'admin' ? '/admin/dashboard' : '/client/dashboard';
-    return <Navigate to={path} replace />;
-  }
+  useEffect(() => {
+    if (loading) return;
+    if (!user) return;
+
+    navigate(user.role === 'admin' ? '/admin/dashboard' : '/client/dashboard', {
+      replace: true,
+    });
+  }, [user, loading, navigate]);
 
   useEffect(() => {
     if (!user) {
       setFormData({ email: '', password: '' });
+      setShowPassword(false);
       setError('');
     }
   }, [user, formKey]);
@@ -129,11 +137,13 @@ export default function Login() {
       });
     };
 
-    const timer = setTimeout(syncAutofill, 150);
+    const timer = window.setTimeout(syncAutofill, 150);
+    window.addEventListener('pageshow', syncAutofill);
     window.addEventListener('focus', syncAutofill);
 
     return () => {
-      clearTimeout(timer);
+      window.clearTimeout(timer);
+      window.removeEventListener('pageshow', syncAutofill);
       window.removeEventListener('focus', syncAutofill);
     };
   }, [formKey]);
@@ -143,7 +153,6 @@ export default function Login() {
     if (authActionPending) return;
 
     setError('');
-    const normalizedEmail = formData.email.trim().toLowerCase();
 
     const result = await login(formData.email.trim(), formData.password);
 
@@ -156,10 +165,8 @@ export default function Login() {
         default:
           setError('Invalid email or password.');
       }
-      return;
     }
-
-      showIndicator(
+    showIndicator(
       `Login successful by ${normalizedEmail} at ${new Date().toLocaleTimeString()}`,
       'login'
     );
@@ -316,7 +323,6 @@ export default function Login() {
                 )}
 
                 <form
-                  key={formKey}
                   onSubmit={handleLogin}
                   className="space-y-5 max-w-md mx-auto w-full"
                   autoComplete="on"
@@ -359,7 +365,7 @@ export default function Login() {
                         autoComplete="email"
                         value={formData.email}
                         onChange={(e) => {
-                          setFormData({ ...formData, email: e.target.value });
+                          setFormData((prev) => ({ ...prev, email: e.target.value }));
                           if (error) setError('');
                         }}
                         className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
@@ -382,7 +388,7 @@ export default function Login() {
                         autoComplete="current-password"
                         value={formData.password}
                         onChange={(e) => {
-                          setFormData({ ...formData, password: e.target.value });
+                          setFormData((prev) => ({ ...prev, password: e.target.value }));
                           if (error) setError('');
                         }}
                         className="w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
@@ -390,7 +396,7 @@ export default function Login() {
                       />
                       <button
                         type="button"
-                        onClick={() => setShowPassword(!showPassword)}
+                        onClick={() => setShowPassword((prev) => !prev)}
                         className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                       >
                         {showPassword ? (

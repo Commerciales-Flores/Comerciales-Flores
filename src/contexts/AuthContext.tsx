@@ -65,7 +65,6 @@ interface AuthContextType {
   deleteAccount: (userId: string) => Promise<void>;
 }
 
-
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 if (import.meta.env.DEV) {
@@ -92,9 +91,7 @@ const SESSION_WARNING_TIME = 60 * 1000;
 
 // --- NORMALIZERS ---
 const normalizeName = (value: string) => value.trim().replace(/\s+/g, ' ');
-
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
-
 const normalizeAddress = (value: string) => value.trim().replace(/\s+/g, ' ');
 
 const normalizePhone = (value: string) => {
@@ -103,22 +100,18 @@ const normalizePhone = (value: string) => {
 
   if (!digits) return '';
 
-  // PH local: 09171234567 -> +639171234567
   if (digits.startsWith('09') && digits.length === 11) {
     return `+63${digits.slice(1)}`;
   }
 
-  // PH intl without plus: 639171234567 -> +639171234567
   if (digits.startsWith('639') && digits.length === 12) {
     return `+${digits}`;
   }
 
-  // PH short local: 9171234567 -> +639171234567
   if (digits.startsWith('9') && digits.length === 10) {
     return `+63${digits}`;
   }
 
-  // Generic international format if user already starts with +
   if (raw.startsWith('+') && digits.length >= 10 && digits.length <= 15) {
     return `+${digits}`;
   }
@@ -147,11 +140,13 @@ const mapProfileToUser = (data: any): User => ({
   lastLogin: data.last_login ?? undefined,
 });
 
-
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+
+  // Only for initial app bootstrap
   const [loading, setLoading] = useState(true);
+
+  // For login/register/logout/update actions
   const [authActionPending, setAuthActionPending] = useState(false);
   const [formKey, setFormKey] = useState(0);
 
@@ -161,21 +156,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const { showIndicator } = useIndicator();
 
+  const isMountedRef = useRef(true);
+  const bootstrappedRef = useRef(false);
   const logoutInProgressRef = useRef(false);
+  const expiryLogoutRef = useRef(false);
+  const oauthAuditPendingRef = useRef<string | null>(null);
+  const activeUserIdRef = useRef<string | null>(null);
+
   const warningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const logoutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const isMountedRef = useRef(true);
-  const fetchingProfileRef = useRef(false);
-  const bootstrappedUserIdRef = useRef<string | null>(null);
-
-  const oauthAuditPendingRef = useRef<string | null>(null);
-  const expiryLogoutRef = useRef(false)
-  
-
   const persistUserSession = useCallback((profile: User) => {
     setUser(profile);
+    activeUserIdRef.current = profile.id;
+
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
     sessionStorage.setItem(WAS_LOGGED_IN_KEY, 'true');
 
@@ -189,12 +184,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profilePictureUrl: profile.profilePictureUrl || '',
       })
     );
-  }, []);
-
-  const clearUserSession = useCallback(() => {
-    setUser(null);
-    sessionStorage.removeItem(STORAGE_KEY);
-    sessionStorage.removeItem(WAS_LOGGED_IN_KEY);
   }, []);
 
   const clearSessionTimers = useCallback(() => {
@@ -214,28 +203,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const clearLocalAuthState = useCallback(
-  (options?: { clearGreeting?: boolean }) => {
-    bootstrappedUserIdRef.current = null;
-    fetchingProfileRef.current = false;
+  const clearUserSession = useCallback(
+    (options?: { clearGreeting?: boolean }) => {
+      activeUserIdRef.current = null;
+      setUser(null);
 
-    clearSessionTimers();
-    setShowSessionWarning(false);
-    setSessionCountdown(0);
+      sessionStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(WAS_LOGGED_IN_KEY);
 
-    clearUserSession();
+      clearSessionTimers();
+      setShowSessionWarning(false);
+      setSessionCountdown(0);
 
-    if (options?.clearGreeting) {
-      localStorage.removeItem(LAST_LOGIN_USER_KEY);
-    }
-
-    if (isMountedRef.current) {
-      setLoading(false);
-      setFormKey((k) => k + 1);
-    }
-  },
-  [clearSessionTimers, clearUserSession]
-);
+      if (options?.clearGreeting) {
+        localStorage.removeItem(LAST_LOGIN_USER_KEY);
+      }
+    },
+    [clearSessionTimers]
+  );
 
   const extendSession = useCallback(() => {
     setShowSessionWarning(false);
@@ -255,21 +240,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return provider;
   }, []);
 
-  const fetchAndSetUserProfile = useCallback(
-    async (authUser: any) => {
-      if (!authUser?.id) {
-        if (isMountedRef.current) setLoading(false);
-        return;
+  const addAuthAuditLog = useCallback(
+    async ({
+      userId,
+      action,
+      notes,
+      changedFields,
+    }: {
+      userId: string;
+      action: string;
+      notes: string;
+      changedFields?: string[];
+    }) => {
+      try {
+        const { error } = await supabase.from('audit_log').insert([
+          {
+            user_id: userId,
+            action,
+            target_table: 'users',
+            target_id: userId,
+            changed_fields: changedFields,
+            timestamp: new Date().toISOString(),
+            notes,
+          },
+        ]);
+
+        if (error) {
+          console.error('Failed to write auth audit log:', error);
+        }
+      } catch (error) {
+        console.error('Unexpected auth audit log error:', error);
       }
+    },
+    []
+  );
 
-      if (fetchingProfileRef.current) return;
+  const touchLastLogin = useCallback(async (userId: string) => {
+    try {
+      await supabase
+        .from('users')
+        .update({ last_login: new Date().toISOString() })
+        .eq('user_id', userId);
+    } catch (error) {
+      console.error('Failed to update last_login:', error);
+    }
+  }, []);
 
-      if (bootstrappedUserIdRef.current === authUser.id && user?.id === authUser.id) {
-        if (isMountedRef.current) setLoading(false);
-        return;
-      }
-
-      fetchingProfileRef.current = true;
+  const fetchOrCreateUserProfile = useCallback(
+    async (authUser: any): Promise<User | null> => {
+      if (!authUser?.id) return null;
 
       try {
         let { data, error } = await supabase
@@ -291,7 +310,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const phone = normalizePhone(meta.phone || '');
           const address = normalizeAddress(meta.address || '');
 
-          const { data: insertedUser, error: insertError } = await supabase
+          const insertResult = await supabase
             .from('users')
             .insert({
               user_id: authUser.id,
@@ -309,277 +328,152 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             )
             .single();
 
-          if (insertError) {
-            error = insertError;
-          } else {
-            data = insertedUser;
-          }
+          data = insertResult.data;
+          error = insertResult.error;
         }
 
         if (error || !data) {
-          console.error('Failed to fetch or create profile:', error?.message || error);
-          await supabase.auth.signOut();
-          bootstrappedUserIdRef.current = null;
-          clearUserSession();
-          return;
+          console.error('Failed to fetch/create user profile:', error);
+          return null;
         }
 
         if (data.is_active === false) {
-          await supabase.auth.signOut();
-          bootstrappedUserIdRef.current = null;
+          return null;
+        }
+
+        return mapProfileToUser(data);
+      } catch (error) {
+        console.error('Unexpected profile bootstrap error:', error);
+        return null;
+      }
+    },
+    []
+  );
+
+  // --- INITIAL APP BOOTSTRAP ---
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    const initializeSession = async () => {
+      try {
+        setLoading(true);
+
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!isMountedRef.current) return;
+
+        if (!session?.user) {
           clearUserSession();
           return;
         }
 
-        const profile = mapProfileToUser(data);
-        bootstrappedUserIdRef.current = authUser.id;
+        const profile = await fetchOrCreateUserProfile(session.user);
 
-        if (isMountedRef.current) {
-          persistUserSession(profile);
+        if (!isMountedRef.current) return;
+
+        if (!profile) {
+          await supabase.auth.signOut();
+          clearUserSession({ clearGreeting: true });
+          return;
         }
 
-        const providerLabel = getAuthProviderLabel(authUser);
+        persistUserSession(profile);
+      } catch (error) {
+        console.error('Session init failed:', error);
+        if (isMountedRef.current) {
+          clearUserSession();
+        }
+      } finally {
+        if (isMountedRef.current) {
+          bootstrappedRef.current = true;
+          setLoading(false);
+        }
+      }
+    };
 
+    void initializeSession();
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [clearUserSession, fetchOrCreateUserProfile, persistUserSession]);
+
+  // --- AUTH STATE LISTENER ---
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      // Ignore listener noise before initial bootstrap finishes
+      if (!bootstrappedRef.current) return;
+
+      void (async () => {
+        try {
+          if (event === 'SIGNED_OUT') {
+            const wasLoggedIn = sessionStorage.getItem(WAS_LOGGED_IN_KEY) === 'true';
+
+            if (wasLoggedIn && !logoutInProgressRef.current) {
+              showIndicator(`SYSTEM ALERT: Session ended at ${getFormattedTime()}`, 'security');
+              clearUserSession({ clearGreeting: true });
+              setFormKey((k) => k + 1);
+            }
+
+            return;
+          }
+
+          if (!session?.user) return;
+
+          // If same user already in memory, skip expensive resync
+          if (activeUserIdRef.current === session.user.id) return;
+
+          const profile = await fetchOrCreateUserProfile(session.user);
+
+          if (!profile) {
+            await supabase.auth.signOut();
+            clearUserSession({ clearGreeting: true });
+            setFormKey((k) => k + 1);
+            return;
+          }
+
+          persistUserSession(profile);
+
+          const providerLabel = getAuthProviderLabel(session.user);
           if (
             oauthAuditPendingRef.current &&
-            authUser?.id &&
-            (oauthAuditPendingRef.current === 'google' || oauthAuditPendingRef.current === 'facebook')
+            (oauthAuditPendingRef.current === 'google' ||
+              oauthAuditPendingRef.current === 'facebook')
           ) {
             void addAuthAuditLog({
-              userId: authUser.id,
+              userId: session.user.id,
               action: 'LOGIN',
               changedFields: ['last_login'],
               notes: `User login via ${providerLabel}`,
             });
 
+            void touchLastLogin(session.user.id);
             oauthAuditPendingRef.current = null;
           }
-      } catch (err) {
-        console.error('Unexpected auth bootstrap error:', err);
-        try {
-          await supabase.auth.signOut();
-        } catch {}
-        bootstrappedUserIdRef.current = null;
-        if (isMountedRef.current) {
-          clearUserSession();
-        }
-      } finally {
-        fetchingProfileRef.current = false;
-        if (isMountedRef.current) {
-          setLoading(false);
-        }
-      }
-    },
-    [clearUserSession, persistUserSession, user?.id]
-  );
-
-  // --- AUTH STATE LISTENER & SESSION SYNC ---
-  useEffect(() => {
-  isMountedRef.current = true;
-
-  const initializeSession = async () => {
-    try {
-      setLoading(true);
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!isMountedRef.current) return;
-
-      if (session?.user) {
-        await fetchAndSetUserProfile(session.user);
-      } else {
-        clearLocalAuthState();
-      }
-    } catch (err) {
-      console.error('Session init failed:', err);
-      if (isMountedRef.current) {
-        clearLocalAuthState();
-      }
-    }
-  };
-
-  void initializeSession();
-
-  const {
-    data: { subscription },
-  } = supabase.auth.onAuthStateChange((event, session) => {
-    // Defer async work outside the callback
-    setTimeout(() => {
-      void (async () => {
-        try {
-          if (session?.user) {
-            await fetchAndSetUserProfile(session.user);
-            return;
-          }
-
-          const wasLoggedIn = sessionStorage.getItem(WAS_LOGGED_IN_KEY) === 'true';
-
-          if (event === 'SIGNED_OUT' && wasLoggedIn && !logoutInProgressRef.current) {
-            showIndicator(`SYSTEM ALERT: Session ended at ${getFormattedTime()}`, 'security');
-          }
-
-          clearLocalAuthState();
-        } catch (err) {
-          console.error('onAuthStateChange error:', err);
-          if (isMountedRef.current) {
-            clearLocalAuthState();
-          }
+        } catch (error) {
+          console.error('onAuthStateChange error:', error);
         }
       })();
-    }, 0);
-  });
+    });
 
-  return () => {
-    isMountedRef.current = false;
-    subscription.unsubscribe();
-  };
-}, [fetchAndSetUserProfile, clearLocalAuthState, showIndicator]);
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [
+    addAuthAuditLog,
+    clearUserSession,
+    fetchOrCreateUserProfile,
+    getAuthProviderLabel,
+    persistUserSession,
+    showIndicator,
+    touchLastLogin,
+  ]);
 
-const addAuthAuditLog = useCallback(
-  async ({
-    userId,
-    action,
-    notes,
-    changedFields,
-  }: {
-    userId: string;
-    action: string;
-    notes: string;
-    changedFields?: string[];
-  }) => {
-    try {
-      const { error } = await supabase.from('audit_log').insert([
-        {
-          user_id: userId,
-          action,
-          target_table: 'users',
-          target_id: userId,
-          before_value: undefined,
-          after_value: undefined,
-          changed_fields: changedFields,
-          timestamp: new Date().toISOString(),
-          notes,
-        },
-      ]);
-
-      if (error) {
-        console.error('Failed to write auth audit log:', error);
-      }
-    } catch (error) {
-      console.error('Unexpected auth audit log error:', error);
-    }
-  },
-  []
-);
-
-
-  // --- LOGOUT ---
-  const logout = useCallback(
-  async (
-    message?: string,
-    options?: { clearGreeting?: boolean; redirectToLogin?: boolean }
-  ) => {
-    logoutInProgressRef.current = true;
-
-    const currentUserId = user?.id;
-    const currentUserEmail = user?.email;
-    const shouldClearGreeting = options?.clearGreeting ?? false;
-    const shouldRedirectToLogin = options?.redirectToLogin ?? false;
-
-    const isSessionExpiry = expiryLogoutRef.current || /expired/i.test(message ?? '');
-    const action = isSessionExpiry ? 'SESSION_EXPIRED' : 'LOGOUT';
-    const note = isSessionExpiry
-      ? 'Session expired due to inactivity'
-      : 'User logout';
-
-    try {
-      if (currentUserId) {
-        await addAuthAuditLog({
-          userId: currentUserId,
-          action,
-          notes: note,
-        });
-      }
-
-      await supabase.auth.signOut();
-    } catch (err) {
-      console.error('Logout failed:', err);
-    } finally {
-      clearLocalAuthState({ clearGreeting: shouldClearGreeting });
-
-      const isSecurity = /expired|security|ended/i.test(message ?? '');
-
-      showIndicator(
-        message
-          ? `${message} at ${getFormattedTime()}`
-          : `Logout${currentUserEmail ? ` by ${currentUserEmail}` : ''} at ${getFormattedTime()}`,
-        isSecurity ? 'security' : 'logout'
-      );
-
-      logoutInProgressRef.current = false;
-      expiryLogoutRef.current = false;
-
-      if (shouldRedirectToLogin && window.location.pathname !== '/login') {
-        window.location.replace('/login');
-      }
-    }
-  },
-  [addAuthAuditLog, clearLocalAuthState, showIndicator, user?.email, user?.id]
-);
-//   // --- LEAVE APP / RETURN VIA BACK LOGIC ---
-//   useEffect(() => {
-//   const getNavType = () => {
-//     const nav = performance.getEntriesByType('navigation')[0] as
-//       | PerformanceNavigationTiming
-//       | undefined;
-
-//     return nav?.type;
-//   };
-
-//   const handlePageHide = () => {
-//     if (sessionStorage.getItem(WAS_LOGGED_IN_KEY) === 'true') {
-//       sessionStorage.setItem(EXTERNAL_LEAVE_FLAG, 'true');
-//     }
-//   };
-
-//   const handlePageShow = (e: PageTransitionEvent) => {
-//     const navType = getNavType();
-//     const pendingLeave = sessionStorage.getItem(EXTERNAL_LEAVE_FLAG) === 'true';
-//     const wasLoggedIn = sessionStorage.getItem(WAS_LOGGED_IN_KEY) === 'true';
-
-//     // Refresh while logged in should do nothing
-//     if (navType === 'reload') {
-//       sessionStorage.removeItem(EXTERNAL_LEAVE_FLAG);
-//       return;
-//     }
-
-//     // If page came from BFCache / back-forward after leaving app,
-//     // kill restored state and boot fresh on login.
-//     if ((e.persisted || navType === 'back_forward') && pendingLeave && wasLoggedIn) {
-//       sessionStorage.removeItem(EXTERNAL_LEAVE_FLAG);
-//       sessionStorage.removeItem(STORAGE_KEY);
-//       sessionStorage.removeItem(WAS_LOGGED_IN_KEY);
-//       localStorage.removeItem(LAST_LOGIN_USER_KEY);
-
-//       window.location.replace('/login');
-//       return;
-//     }
-
-//     sessionStorage.removeItem(EXTERNAL_LEAVE_FLAG);
-//   };
-
-//   window.addEventListener('pagehide', handlePageHide);
-//   window.addEventListener('pageshow', handlePageShow);
-
-//   return () => {
-//     window.removeEventListener('pagehide', handlePageHide);
-//     window.removeEventListener('pageshow', handlePageShow);
-//   };
-// }, []);
-
-  // --- INACTIVITY TIMER WITH WARNING ---
+  // --- INACTIVITY TIMER ---
   useEffect(() => {
     if (!user) {
       clearSessionTimers();
@@ -618,7 +512,10 @@ const addAuthAuditLog = useCallback(
 
       logoutTimeoutRef.current = setTimeout(() => {
         expiryLogoutRef.current = true;
-        void logout('Session expired due to inactivity', { clearGreeting: true });
+        void logout('Session expired due to inactivity', {
+          clearGreeting: true,
+          redirectToLogin: true,
+        });
       }, inactivityLimit);
     };
 
@@ -666,115 +563,108 @@ const addAuthAuditLog = useCallback(
       events.forEach((event) => window.removeEventListener(event, throttledReset));
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [user, logout, clearSessionTimers, sessionResetKey]);
+  }, [user, clearSessionTimers, sessionResetKey]);
 
   // --- AUTH ACTIONS ---
   const login = useCallback(
-  async (
-    email: string,
-    password: string
-  ): Promise<{ success: boolean; error?: string }> => {
-    if (authActionPending) {
-      return { success: false, error: 'busy' };
-    }
+    async (
+      email: string,
+      password: string
+    ): Promise<{ success: boolean; error?: string }> => {
+      if (authActionPending) {
+        return { success: false, error: 'busy' };
+      }
+
+      setAuthActionPending(true);
+
+      try {
+        const normalizedEmail = normalizeEmail(email);
+
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: normalizedEmail,
+          password,
+        });
+
+        if (error || !data.user) {
+          console.error('Login failed:', error?.message);
+          return { success: false, error: 'invalid_login' };
+        }
+
+        const profile = await fetchOrCreateUserProfile(data.user);
+
+        if (!profile) {
+          await supabase.auth.signOut();
+          return { success: false, error: 'invalid_login' };
+        }
+
+        // Instant UI update
+        persistUserSession(profile);
+
+        // Non-blocking writes
+        void touchLastLogin(data.user.id);
+        void addAuthAuditLog({
+          userId: data.user.id,
+          action: 'LOGIN',
+          changedFields: ['last_login'],
+          notes: 'User login via email/password',
+        });
+
+        return { success: true };
+      } catch (err) {
+        console.error('Unexpected login error:', err);
+        return { success: false, error: 'invalid_login' };
+      } finally {
+        setAuthActionPending(false);
+      }
+    },
+    [authActionPending, addAuthAuditLog, fetchOrCreateUserProfile, persistUserSession, touchLastLogin]
+  );
+
+  const loginWithGoogle = useCallback(async () => {
+    if (authActionPending) return;
 
     setAuthActionPending(true);
+    oauthAuditPendingRef.current = 'google';
 
     try {
-      const normalizedEmail = normalizeEmail(email);
-
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: normalizedEmail,
-        password,
+      await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/login`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        },
       });
-
-      if (error || !data.user) {
-        console.error('Login failed:', error?.message);
-        return { success: false, error: 'invalid_login' };
-      }
-
-      const { data: profile, error: profileError } = await supabase
-        .from('users')
-        .select('user_id, is_active')
-        .eq('user_id', data.user.id)
-        .single();
-
-      if (profileError || !profile || profile.is_active === false) {
-        console.error('Profile validation failed after login.');
-        await supabase.auth.signOut();
-        return { success: false, error: 'invalid_login' };
-      }
-
-      const loginTimestamp = new Date().toISOString();
-
-      await supabase
-        .from('users')
-        .update({ last_login: loginTimestamp })
-        .eq('user_id', data.user.id);
-
-      void addAuthAuditLog({
-        userId: data.user.id,
-        action: 'LOGIN',
-        changedFields: ['last_login'],
-        notes: 'User login via email/password',
-      });
-
-      return { success: true };
     } catch (err) {
-      console.error('Unexpected login error:', err);
-      return { success: false, error: 'invalid_login' };
+      oauthAuditPendingRef.current = null;
+      console.error('Google login failed:', err);
     } finally {
       setAuthActionPending(false);
     }
-  },
-  [authActionPending, addAuthAuditLog]
-);
+  }, [authActionPending]);
 
-  const loginWithGoogle = useCallback(async () => {
-  if (authActionPending) return;
+  const loginWithFacebook = useCallback(async () => {
+    if (authActionPending) return;
 
-  setAuthActionPending(true);
-  oauthAuditPendingRef.current = 'google';
+    setAuthActionPending(true);
+    oauthAuditPendingRef.current = 'facebook';
 
-  try {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/login`,
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
+    try {
+      await supabase.auth.signInWithOAuth({
+        provider: 'facebook',
+        options: {
+          redirectTo: `${window.location.origin}/login`,
         },
-      },
-    });
-  } catch (err) {
-    oauthAuditPendingRef.current = null;
-    console.error('Google login failed:', err);
-  } finally {
-    setAuthActionPending(false);
-  }
-}, [authActionPending]);
-
-const loginWithFacebook = useCallback(async () => {
-  if (authActionPending) return;
-
-  setAuthActionPending(true);
-  oauthAuditPendingRef.current = 'facebook';
-
-  try {
-    await supabase.auth.signInWithOAuth({
-      provider: 'facebook',
-      options: {
-        redirectTo: `${window.location.origin}/login`,
-      },
-    });
-  } catch (err) {
-    oauthAuditPendingRef.current = null;
-    console.error('Facebook login failed:', err);
-  } finally {
-    setAuthActionPending(false);
-  }
-}, [authActionPending]);
+      });
+    } catch (err) {
+      oauthAuditPendingRef.current = null;
+      console.error('Facebook login failed:', err);
+    } finally {
+      setAuthActionPending(false);
+    }
+  }, [authActionPending]);
 
   const register = useCallback(
     async (
@@ -807,12 +697,8 @@ const loginWithFacebook = useCallback(async () => {
           },
         });
 
-        if (error) {
-          console.error('Registration failed:', error.message);
-          return { success: false, error: 'registration_failed' };
-        }
-
-        if (!data.user) {
+        if (error || !data.user) {
+          console.error('Registration failed:', error?.message);
           return { success: false, error: 'registration_failed' };
         }
 
@@ -831,10 +717,66 @@ const loginWithFacebook = useCallback(async () => {
     [authActionPending]
   );
 
+  const logout = useCallback(
+    async (
+      message?: string,
+      options?: { clearGreeting?: boolean; redirectToLogin?: boolean }
+    ) => {
+      logoutInProgressRef.current = true;
+
+      const currentUserId = activeUserIdRef.current;
+      const currentUserEmail = user?.email;
+      const shouldClearGreeting = options?.clearGreeting ?? false;
+      const shouldRedirectToLogin = options?.redirectToLogin ?? false;
+
+      const isSessionExpiry = expiryLogoutRef.current || /expired/i.test(message ?? '');
+      const action = isSessionExpiry ? 'SESSION_EXPIRED' : 'LOGOUT';
+      const note = isSessionExpiry
+        ? 'Session expired due to inactivity'
+        : 'User logout';
+
+      // Instant local clear first = smoother UX
+      clearUserSession({ clearGreeting: shouldClearGreeting });
+      setFormKey((k) => k + 1);
+
+      const isSecurity = /expired|security|ended/i.test(message ?? '');
+
+      showIndicator(
+        message
+          ? `${message} at ${getFormattedTime()}`
+          : `Logout${currentUserEmail ? ` by ${currentUserEmail}` : ''} at ${getFormattedTime()}`,
+        isSecurity ? 'security' : 'logout'
+      );
+
+      try {
+        if (currentUserId) {
+          void addAuthAuditLog({
+            userId: currentUserId,
+            action,
+            notes: note,
+          });
+        }
+
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.error('Logout failed:', err);
+      } finally {
+        logoutInProgressRef.current = false;
+        expiryLogoutRef.current = false;
+
+        if (shouldRedirectToLogin && window.location.pathname !== '/login') {
+          // still works even without react-router navigate here
+          window.history.replaceState(null, '', '/login');
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        }
+      }
+    },
+    [addAuthAuditLog, clearUserSession, showIndicator, user?.email]
+  );
+
   const updateProfile = useCallback(
     async (userData: Partial<User>): Promise<boolean> => {
-      if (!user) return false;
-      if (authActionPending) return false;
+      if (!user || authActionPending) return false;
 
       setAuthActionPending(true);
 
@@ -888,21 +830,7 @@ const loginWithFacebook = useCallback(async () => {
             : {}),
         };
 
-        setUser(updatedUser);
-        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(updatedUser));
-
-        const displayName =
-          [updatedUser.firstName, updatedUser.lastName].filter(Boolean).join(' ').trim() ||
-          'User';
-
-        localStorage.setItem(
-          LAST_LOGIN_USER_KEY,
-          JSON.stringify({
-            name: displayName,
-            profilePictureUrl: updatedUser.profilePictureUrl || '',
-          })
-        );
-
+        persistUserSession(updatedUser);
         return true;
       } catch (err) {
         console.error('Unexpected profile update error:', err);
@@ -911,7 +839,7 @@ const loginWithFacebook = useCallback(async () => {
         setAuthActionPending(false);
       }
     },
-    [authActionPending, user]
+    [authActionPending, persistUserSession, user]
   );
 
   const changePassword = useCallback(
@@ -969,8 +897,7 @@ const loginWithFacebook = useCallback(async () => {
 
   const uploadProfilePicture = useCallback(
     async (file: File): Promise<string | null> => {
-      if (!user) return null;
-      if (authActionPending) return null;
+      if (!user || authActionPending) return null;
 
       setAuthActionPending(true);
 
@@ -1018,7 +945,10 @@ const loginWithFacebook = useCallback(async () => {
   const deleteAccount = useCallback(
     async (userId: string) => {
       if (user?.id === userId) {
-        await logout('Account being deleted');
+        await logout('Account being deleted', {
+          clearGreeting: true,
+          redirectToLogin: true,
+        });
       }
     },
     [logout, user]
@@ -1090,11 +1020,14 @@ const loginWithFacebook = useCallback(async () => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
+
   if (import.meta.env.DEV) {
     console.log('useAuth context:', context);
   }
+
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
+
   return context;
 };

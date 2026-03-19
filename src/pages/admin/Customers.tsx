@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useData } from '../../contexts/DataContext';
 import { useUsers } from '../../contexts/UsersContext';
 import {
   Search,
@@ -132,7 +131,6 @@ function CustomerDetailItem({
 }
 
 export default function AdminCustomers() {
-  const { users } = useData();
   const { fetchUsersPage } = useUsers();
 
   const [rows, setRows] = useState<CustomerRow[]>([]);
@@ -282,13 +280,13 @@ export default function AdminCustomers() {
 
         <button
           onClick={() => setShowAddModal(true)}
-          className="hidden lg:flex items-center justify-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md shadow-blue-100 transition-all text-sm font-bold active:scale-95"
+          className="bg-blue-600 text-white p-2.5 sm:px-4 sm:py-2 rounded-xl cursor-pointer hover:bg-blue-700 transition-all shadow-sm flex items-center gap-2 active:scale-95 font-semibold text-sm"
         >
           <Plus size={18} /> Add Customer
         </button>
       </div>
 
-      {!hasNoCustomers && (
+      {!loading && !hasNoCustomers && (
         <div className="bg-white p-2 rounded-2xl border border-gray-200 shadow-sm sticky top-0 z-20">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
@@ -305,10 +303,16 @@ export default function AdminCustomers() {
 
       <div className="grid grid-cols-1 gap-4 lg:hidden">
         {loading ? (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm py-16 px-6 text-center text-gray-500">
-            Loading customers...
-          </div>
-        ) : hasNoCustomers ? (
+                  <EmptyState
+                    icon={
+                      <div className="flex items-center justify-center">
+                        <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                      </div>
+                    }
+                    title="Loading customers..."
+                    description="Please wait while customers records are being retrieved."
+                  />
+                ) : hasNoCustomers ? (
           <EmptyState
             icon={<Inbox className="size-10 text-blue-500" />}
             title="No active customers yet"
@@ -360,8 +364,16 @@ export default function AdminCustomers() {
 
       <div className="hidden lg:block bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
         {loading ? (
-          <div className="py-16 px-6 text-center text-gray-500">Loading customers...</div>
-        ) : hasNoCustomers ? (
+                  <EmptyState
+                    icon={
+                      <div className="flex items-center justify-center">
+                        <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                      </div>
+                    }
+                    title="Loading customers..."
+                    description="Please wait while customers records are being retrieved."
+                  />
+                ) : hasNoCustomers ? (
           <EmptyState
             icon={<Inbox className="size-10 text-blue-500" />}
             title="No active customers yet"

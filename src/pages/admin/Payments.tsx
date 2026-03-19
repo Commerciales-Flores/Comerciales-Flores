@@ -273,14 +273,14 @@ export default function AdminPayments() {
 
         <button
           onClick={() => setIsActionModalOpen(true)}
-          className="hidden lg:flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+          className="bg-blue-600 text-white p-2.5 sm:px-4 sm:py-2 rounded-xl cursor-pointer hover:bg-blue-700 transition-all shadow-sm flex items-center gap-2 active:scale-95 font-semibold text-sm"
         >
           <Plus className="size-5" />
           Create Payment
         </button>
       </div>
 
-      {!hasNoPayments && (
+      {!loading && !hasNoPayments && (
         <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-4 shadow-sm">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
@@ -387,10 +387,16 @@ export default function AdminPayments() {
 
       <div className="grid grid-cols-1 gap-4 lg:hidden">
         {loading ? (
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm py-16 px-6 text-center text-gray-500">
-            Loading payments...
-          </div>
-        ) : hasNoPayments ? (
+                          <EmptyState
+                            icon={
+                              <div className="flex items-center justify-center">
+                                <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                              </div>
+                            }
+                            title="Loading payments..."
+                            description="Please wait while payment records are being retrieved."
+                          />
+                        ) : hasNoPayments ? (
           <EmptyState
             icon={<CreditCard className="size-10 text-blue-500" />}
             title="No payments yet"
@@ -481,8 +487,16 @@ export default function AdminPayments() {
 
       <div className="hidden lg:block bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
         {loading ? (
-          <div className="py-16 px-6 text-center text-gray-500">Loading payments...</div>
-        ) : hasNoPayments ? (
+                          <EmptyState
+                            icon={
+                              <div className="flex items-center justify-center">
+                                <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                              </div>
+                            }
+                            title="Loading payments..."
+                            description="Please wait while customers payment are being retrieved."
+                          />
+                        ) : hasNoPayments ? (
           <EmptyState
             icon={<CreditCard className="size-10 text-blue-500" />}
             title="No payments yet"

@@ -52,6 +52,7 @@ import {
 interface DataContextType {
   users: User[];
   units: Unit[];
+  loadingUnits: boolean;
   reservations: Reservation[];
   payments: Payment[];
   ledgers: LedgerEntry[];
@@ -110,6 +111,7 @@ function DataComposer({ children }: { children: ReactNode }) {
   const {
     units,
     addUnit,
+    loadingUnits,
     updateUnit,
     deleteUnit,
     uploadUnitImage,
@@ -168,6 +170,7 @@ function DataComposer({ children }: { children: ReactNode }) {
       addUnit,
       updateUnit,
       deleteUnit,
+      loadingUnits,
 
       addReservation,
       updateReservation,
@@ -206,6 +209,7 @@ function DataComposer({ children }: { children: ReactNode }) {
     [
       users,
       units,
+      loadingUnits,
       reservations,
       payments,
       ledgers,

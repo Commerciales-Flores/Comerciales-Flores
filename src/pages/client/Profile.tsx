@@ -11,8 +11,15 @@ import {
   Camera,
   ShieldAlert,
   ShieldCheck,
+  Edit3,
+  X,
+  Save,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 type MessageState = { type: 'success' | 'error'; text: string } | null;
 
@@ -34,11 +41,21 @@ export default function ClientProfile() {
   const [savingPassword, setSavingPassword] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageTimeoutRef = useRef<number | null>(null);
 
   const fullName = useMemo(() => {
     return `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || 'User';
+  }, [user?.firstName, user?.lastName]);
+
+  const initials = useMemo(() => {
+    const first = user?.firstName?.[0] ?? '';
+    const last = user?.lastName?.[0] ?? '';
+    return `${first}${last}`.toUpperCase() || 'U';
   }, [user?.firstName, user?.lastName]);
 
   const avatarUrl = useMemo(() => {
@@ -93,6 +110,9 @@ export default function ClientProfile() {
 
   const resetPasswordForm = useCallback(() => {
     setPasswordForm(INITIAL_PASSWORD_FORM);
+    setShowOldPassword(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
   }, []);
 
   const handleEditStart = useCallback(() => {
@@ -123,6 +143,22 @@ export default function ClientProfile() {
     },
     []
   );
+
+  const passwordStrength = useMemo(() => {
+    const password = passwordForm.newPassword;
+    let score = 0;
+
+    if (password.length >= 8) score += 1;
+    if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score += 1;
+    if (/\d/.test(password)) score += 1;
+    if (/[^A-Za-z0-9]/.test(password)) score += 1;
+
+    let label = 'Weak';
+    if (score >= 4) label = 'Strong';
+    else if (score >= 2) label = 'Medium';
+
+    return { score, label };
+  }, [passwordForm.newPassword]);
 
   const handleProfileSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -155,6 +191,11 @@ export default function ClientProfile() {
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (savingPassword) return;
+
+      if (!passwordForm.oldPassword.trim()) {
+        showMessage('error', 'Current password is required');
+        return;
+      }
 
       if (passwordForm.newPassword !== passwordForm.confirmPassword) {
         showMessage('error', 'New passwords do not match');
@@ -191,6 +232,11 @@ export default function ClientProfile() {
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file || uploadingAvatar) return;
+
+      if (!file.type.startsWith('image/')) {
+        showMessage('error', 'Please select a valid image file.');
+        return;
+      }
 
       try {
         setUploadingAvatar(true);
@@ -232,411 +278,674 @@ export default function ClientProfile() {
   }, [deleteAccount, deleting, logout, showMessage, user]);
 
   return (
-    <div className="bg-gray-50 min-h-screen">
-      <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
-        <header>
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
-            Account Settings
-          </h1>
-          <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-            Manage your identity and security preferences
-          </p>
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
+      <div className="flex flex-col gap-6">
+        <header className="flex flex-col justify-between gap-4 border-b border-slate-100 pb-6 md:flex-row md:items-end">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900">Account Settings</h1>
+            <p className="mt-0.5 text-sm text-gray-500">
+              Manage your identity and security preferences.
+            </p>
+          </div>
+
+          <AnimatePresence mode="wait">
+            {message && (
+              <motion.div
+                key={message.text}
+                initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6 }}
+                className={`flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-medium shadow-sm ${
+                  message.type === 'success'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-rose-200 bg-rose-50 text-rose-700'
+                }`}
+              >
+                {message.type === 'success' ? (
+                  <CheckCircle className="size-4 shrink-0" />
+                ) : (
+                  <AlertCircle className="size-4 shrink-0" />
+                )}
+                <span>{message.text}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </header>
 
-        {message && (
-          <div
-            className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-lg border flex items-center gap-3 animate-in slide-in-from-top-4 duration-300 ${
-              message.type === 'success'
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                : 'bg-red-50 border-red-200 text-red-800'
-            }`}
-          >
-            {message.type === 'success' ? (
-              <CheckCircle className="size-5" />
-            ) : (
-              <AlertCircle className="size-5" />
-            )}
-            <p className="font-medium text-sm">{message.text}</p>
-          </div>
-        )}
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+          <div className="space-y-6 xl:col-span-4">
+            <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+              <div className="h-24 bg-gradient-to-r from-slate-900 via-slate-800 to-blue-900" />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-8">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-6 py-4 bg-gray-50/50 border-b border-gray-200 flex justify-between items-center">
-                <h2 className="font-bold text-gray-800">Personal Information</h2>
+              <div className="-mt-12 flex flex-col items-center px-6 pb-6 text-center">
+                <div
+                  className={`relative group ${uploadingAvatar ? 'pointer-events-none opacity-70' : ''}`}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <div className="rounded-[1.75rem] bg-white p-1.5 shadow-xl">
+                    {avatarUrl ? (
+                      <img
+                        src={avatarUrl}
+                        alt="Profile"
+                        className="size-28 rounded-[1.35rem] bg-slate-100 object-cover sm:size-32"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    ) : (
+                      <div className="flex size-28 items-center justify-center rounded-[1.35rem] bg-slate-900 text-3xl font-bold text-white sm:size-32">
+                        {initials}
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={uploadingAvatar}
+                    className="absolute -bottom-2 -right-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg transition-all hover:bg-blue-700 disabled:opacity-60"
+                    aria-label="Change profile photo"
+                  >
+                    {uploadingAvatar ? (
+                      <div className="size-5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                    ) : (
+                      <Camera className="size-5" />
+                    )}
+                  </button>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleImageChange}
+                  />
+                </div>
+
+                <h2 className="mt-4 text-xl font-bold text-slate-900">{fullName}</h2>
+                <p className="text-sm text-slate-500">{user?.email || 'No email available'}</p>
+
+                <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-blue-700">
+                  <ShieldCheck className="size-3.5" />
+                  Client
+                </div>
+
+                {uploadingAvatar && (
+                  <p className="mt-3 text-xs font-medium text-slate-500">Uploading photo...</p>
+                )}
+
+                <div className="mt-6 grid w-full grid-cols-2 gap-3">
+                <MiniStat
+                  label="Account Type"
+                  value="Client"
+                  variant="blue"
+                />
+                <MiniStat
+                  label="Status"
+                  value={user?.is_active === false ? 'Inactive' : 'Active'}
+                  variant={user?.is_active === false ? 'rose' : 'emerald'}
+                />
+              </div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl bg-slate-900 p-6 text-white shadow-lg">
+              <h4 className="flex items-center gap-2 font-semibold">
+                <ShieldAlert className="size-4 text-blue-400" />
+                Compliance Note
+              </h4>
+              <p className="mt-2 text-xs leading-relaxed text-slate-400">
+                Your account information is encrypted and managed in strict compliance with the
+                Philippine Data Privacy Act of 2012.
+              </p>
+            </section>
+
+            <section className="rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100 p-6 shadow-sm">
+              <h3 className="mb-2 font-bold text-blue-900">Client Account</h3>
+              <p className="mb-4 text-sm leading-relaxed text-blue-700">
+                You can manage your profile, update contact information, maintain account security,
+                and track your personal account details.
+              </p>
+
+              <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">
+                    Account Type
+                  </p>
+                  <p className="font-semibold italic text-blue-900">Client</p>
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">
+                    User ID
+                  </p>
+                  <p className="mt-1 truncate font-mono text-xs text-blue-900">
+                    {(user as any)?.publicId || user?.id || 'No user ID'}
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-[2rem] border border-rose-200 bg-white p-6 shadow-sm">
+              <h3 className="text-sm font-bold text-rose-700">Danger Zone</h3>
+              <p className="mt-1 text-[11px] font-bold uppercase tracking-widest text-rose-400">
+                Permanent Action
+              </p>
+              <p className="mt-3 text-sm leading-relaxed text-slate-500">
+                Deleting your account permanently removes your personal account access and related
+                records.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="mt-5 w-full rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 transition-all hover:bg-rose-100"
+              >
+                Delete My Account
+              </button>
+            </section>
+          </div>
+
+          <div className="space-y-6 xl:col-span-8">
+            <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+              <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-6 py-5">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Profile Information</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Keep your personal and contact information up to date.
+                  </p>
+                </div>
+
                 {!editing && (
                   <button
+                    type="button"
                     onClick={handleEditStart}
-                    className="text-sm font-semibold text-blue-600 hover:text-blue-700 transition"
+                    className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 active:scale-95"
                   >
+                    <Edit3 className="size-4" />
                     Edit Details
                   </button>
                 )}
               </div>
 
               <div className="p-6">
-                {editing ? (
-                  <form onSubmit={handleProfileSubmit} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <InputField
-                        label="First Name"
-                        icon={UserIcon}
-                        type="text"
-                        value={profileForm.firstName}
-                        onChange={(value) => handleProfileFieldChange('firstName', value)}
-                        required
+                <AnimatePresence mode="wait">
+                  {editing ? (
+                    <motion.form
+                      key="edit-profile"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      onSubmit={handleProfileSubmit}
+                      className="space-y-5"
+                    >
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <FormInput
+                          label="First Name"
+                          icon={<UserIcon className="size-4" />}
+                          value={profileForm.firstName}
+                          onChange={(v) => handleProfileFieldChange('firstName', v)}
+                        />
+
+                        <FormInput
+                          label="Last Name"
+                          icon={<UserIcon className="size-4" />}
+                          value={profileForm.lastName}
+                          onChange={(v) => handleProfileFieldChange('lastName', v)}
+                        />
+
+                        <FormInput
+                          label="Email"
+                          icon={<Mail className="size-4" />}
+                          type="email"
+                          value={profileForm.email}
+                          onChange={(v) => handleProfileFieldChange('email', v)}
+                        />
+
+                        <FormInput
+                          label="Phone"
+                          icon={<Phone className="size-4" />}
+                          value={profileForm.contactNumber}
+                          onChange={(v) => handleProfileFieldChange('contactNumber', v)}
+                        />
+
+                        <div className="md:col-span-2">
+                          <FormTextarea
+                            label="Address"
+                            icon={<MapPin className="size-4" />}
+                            value={profileForm.address}
+                            onChange={(v) => handleProfileFieldChange('address', v)}
+                            rows={3}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
+                        <button
+                          type="button"
+                          onClick={handleEditCancel}
+                          disabled={savingProfile}
+                          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          <X className="size-4" />
+                          Cancel
+                        </button>
+
+                        <button
+                          type="submit"
+                          disabled={savingProfile}
+                          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 disabled:opacity-50"
+                        >
+                          {savingProfile ? (
+                            <div className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                          ) : (
+                            <Save className="size-4" />
+                          )}
+                          {savingProfile ? 'Saving...' : 'Save Changes'}
+                        </button>
+                      </div>
+                    </motion.form>
+                  ) : (
+                    <motion.div
+                      key="view-profile"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      className="grid grid-cols-1 gap-4 md:grid-cols-2"
+                    >
+                      <InfoBlock label="Full Name" value={fullName} icon={<UserIcon className="size-4" />} />
+                      <InfoBlock label="Email" value={user?.email} icon={<Mail className="size-4" />} />
+                      <InfoBlock
+                        label="Phone"
+                        value={user?.contactNumber}
+                        icon={<Phone className="size-4" />}
                       />
-
-                      <InputField
-                        label="Last Name"
-                        icon={UserIcon}
-                        type="text"
-                        value={profileForm.lastName}
-                        onChange={(value) => handleProfileFieldChange('lastName', value)}
-                        required
+                      <InfoBlock
+                        label="Address"
+                        value={user?.address}
+                        icon={<MapPin className="size-4" />}
                       />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </section>
 
-                      <InputField
-                        label="Email Address"
-                        icon={Mail}
-                        type="email"
-                        value={profileForm.email}
-                        onChange={(value) => handleProfileFieldChange('email', value)}
-                        required
-                      />
-
-                      <InputField
-                        label="Contact Number"
-                        icon={Phone}
-                        type="tel"
-                        value={profileForm.contactNumber}
-                        onChange={(value) => handleProfileFieldChange('contactNumber', value)}
-                        required
-                      />
-                    </div>
-
-                    <TextAreaField
-                      label="Residential Address"
-                      icon={MapPin}
-                      value={profileForm.address}
-                      onChange={(value) => handleProfileFieldChange('address', value)}
-                      required
-                      rows={3}
-                    />
-
-                    <div className="flex gap-3 pt-2">
-                      <button
-                        type="button"
-                        onClick={handleEditCancel}
-                        disabled={savingProfile}
-                        className="flex-1 px-4 py-2.5 text-sm font-semibold text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition disabled:opacity-60"
-                      >
-                        Discard
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={savingProfile}
-                        className="flex-1 px-4 py-2.5 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 shadow-sm transition disabled:opacity-60"
-                      >
-                        {savingProfile ? 'Saving...' : 'Save Updates'}
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-12">
-                    <ProfileDetail icon={UserIcon} label="Full Name" value={fullName} />
-                    <ProfileDetail icon={Mail} label="Email Address" value={user?.email} />
-                    <ProfileDetail icon={Phone} label="Contact" value={user?.contactNumber} />
-                    <ProfileDetail icon={MapPin} label="Address" value={user?.address} />
+            <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+              <div className="flex flex-col gap-4 border-b border-slate-100 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                    <Lock className="size-5" />
                   </div>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-6 py-4 bg-gray-50/50 border-b border-gray-200 flex justify-between items-center">
-                <div>
-                  <h2 className="font-bold text-gray-800">Account Security</h2>
-                  <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mt-0.5">
-                    Password & Protection
-                  </p>
-                </div>
-                {!changingPassword && (
-                  <button
-                    onClick={() => setChangingPassword(true)}
-                    className="px-4 py-1.5 text-xs font-bold bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition shadow-sm"
-                  >
-                    Update Password
-                  </button>
-                )}
-              </div>
-
-              <div className="p-6">
-                {changingPassword ? (
-                  <form onSubmit={handlePasswordSubmit} className="space-y-4 max-w-md">
-                    <PasswordField
-                      label="Current Password"
-                      value={passwordForm.oldPassword}
-                      onChange={(v) => handlePasswordFieldChange('oldPassword', v)}
-                    />
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <PasswordField
-                        label="New Password"
-                        value={passwordForm.newPassword}
-                        onChange={(v) => handlePasswordFieldChange('newPassword', v)}
-                      />
-                      <PasswordField
-                        label="Confirm New"
-                        value={passwordForm.confirmPassword}
-                        onChange={(v) => handlePasswordFieldChange('confirmPassword', v)}
-                      />
-                    </div>
-
-                    <div className="flex gap-2 pt-2">
-                      <button
-                        type="button"
-                        onClick={handlePasswordCancel}
-                        disabled={savingPassword}
-                        className="px-4 py-2 text-xs font-semibold text-gray-500 hover:text-gray-700 transition disabled:opacity-60"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={savingPassword}
-                        className="px-6 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition shadow-md shadow-blue-200 disabled:opacity-60"
-                      >
-                        {savingPassword ? 'Updating...' : 'Confirm Change'}
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <div className="flex items-center gap-3 text-emerald-600">
-                    <ShieldCheck className="size-5" />
-                    <p className="text-sm font-medium">
-                      Your account is secured with a unique password.
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">Security</h3>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Update your password and protect your account access.
                     </p>
                   </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => (changingPassword ? handlePasswordCancel() : setChangingPassword(true))}
+                  className={`inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold shadow-sm transition-all ${
+                    changingPassword
+                      ? 'border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 active:scale-95'
+                      : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'
+                  }`}
+                >
+                  {changingPassword ? (
+                    <>
+                      <X className="size-4" />
+                      Cancel
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="size-4" />
+                      Change Password
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <AnimatePresence initial={false}>
+                {changingPassword ? (
+                  <motion.form
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    onSubmit={handlePasswordSubmit}
+                    className="overflow-hidden"
+                  >
+                    <div className="space-y-5 p-6">
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                        <PasswordInput
+                          label="Current Password"
+                          value={passwordForm.oldPassword}
+                          onChange={(v) => handlePasswordFieldChange('oldPassword', v)}
+                          visible={showOldPassword}
+                          onToggleVisibility={() => setShowOldPassword((prev) => !prev)}
+                        />
+
+                        <PasswordInput
+                          label="New Password"
+                          value={passwordForm.newPassword}
+                          onChange={(v) => handlePasswordFieldChange('newPassword', v)}
+                          visible={showNewPassword}
+                          onToggleVisibility={() => setShowNewPassword((prev) => !prev)}
+                        />
+
+                        <PasswordInput
+                          label="Confirm New Password"
+                          value={passwordForm.confirmPassword}
+                          onChange={(v) => handlePasswordFieldChange('confirmPassword', v)}
+                          visible={showConfirmPassword}
+                          onToggleVisibility={() => setShowConfirmPassword((prev) => !prev)}
+                        />
+                      </div>
+
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <p className="text-sm font-semibold text-slate-700">Password Strength</p>
+                          <span
+                            className={`text-xs font-bold uppercase tracking-wider ${
+                              passwordStrength.score >= 4
+                                ? 'text-emerald-600'
+                                : passwordStrength.score >= 2
+                                  ? 'text-amber-600'
+                                  : 'text-rose-600'
+                            }`}
+                          >
+                            {passwordStrength.label}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-4 gap-2">
+                          {[1, 2, 3, 4].map((step) => (
+                            <div
+                              key={step}
+                              className={`h-2 rounded-full ${
+                                passwordStrength.score >= step
+                                  ? passwordStrength.score >= 4
+                                    ? 'bg-emerald-500'
+                                    : passwordStrength.score >= 2
+                                      ? 'bg-amber-500'
+                                      : 'bg-rose-500'
+                                  : 'bg-slate-200'
+                              }`}
+                            />
+                          ))}
+                        </div>
+
+                        <p className="mt-3 text-xs text-slate-500">
+                          Use at least 8 characters and mix uppercase letters, numbers, and symbols
+                          for a stronger password.
+                        </p>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <button
+                          type="submit"
+                          disabled={savingPassword}
+                          className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {savingPassword ? (
+                            <div className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                          ) : (
+                            <ShieldCheck className="size-4" />
+                          )}
+                          {savingPassword ? 'Updating...' : 'Update Password'}
+                        </button>
+                      </div>
+                    </div>
+                  </motion.form>
+                ) : (
+                  <div className="p-6">
+                    <div className="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-4 text-emerald-700">
+                      <ShieldCheck className="size-5 shrink-0" />
+                      <p className="text-sm font-medium">
+                        Your account is secured with a unique password.
+                      </p>
+                    </div>
+                  </div>
                 )}
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8 text-center flex flex-col items-center">
-              <div
-                className={`relative group cursor-pointer ${uploadingAvatar ? 'pointer-events-none opacity-70' : ''}`}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <img
-                  src={avatarUrl}
-                  alt="Profile"
-                  className="size-32 rounded-3xl object-cover ring-4 ring-slate-50 shadow-xl transition-transform group-hover:scale-[1.02]"
-                />
-                <div className="absolute inset-0 bg-black/40 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <Camera className="text-white size-8" />
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleImageChange}
-                />
-              </div>
-
-              <h3 className="mt-4 font-bold text-gray-900 text-lg">{fullName}</h3>
-              <p className="text-blue-600 text-xs font-bold uppercase tracking-widest mt-1">
-                Client Account
-              </p>
-              {uploadingAvatar && (
-                <p className="mt-2 text-xs text-gray-500 font-medium">Uploading photo...</p>
-              )}
-
-              <div className="mt-6 w-full pt-6 border-t border-gray-100">
-                <div className="flex items-center justify-between text-xs font-medium text-gray-500 mb-2">
-                  <span>Verification Status</span>
-                  <span className="text-emerald-600">Verified</span>
-                </div>
-                <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-emerald-500 w-full" />
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gray-900 text-white rounded-2xl p-6 shadow-xl shadow-gray-200">
-              <ShieldAlert className="size-6 text-blue-400 mb-4" />
-              <h4 className="font-bold text-sm">Data Protection</h4>
-              <p className="text-xs text-gray-400 mt-2 leading-relaxed">
-                Your account information is encrypted and managed in strict compliance with the
-                Philippine Data Privacy Act of 2012.
-              </p>
-            </div>
-
-            <div className="bg-red-50 border border-red-100 rounded-2xl p-6">
-              <h4 className="text-red-700 font-bold text-sm">Danger Zone</h4>
-              <p className="text-[10px] text-red-600/70 mt-1 uppercase font-bold tracking-tight">
-                Permanent Action
-              </p>
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="mt-4 w-full py-2.5 border border-red-200 bg-white text-red-600 text-xs font-bold rounded-xl hover:bg-red-600 hover:text-white transition shadow-sm"
-              >
-                Delete My Account
-              </button>
-            </div>
+              </AnimatePresence>
+            </section>
           </div>
         </div>
 
-        {showDeleteConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-gray-200 p-6">
-              <h3 className="text-lg font-bold text-gray-900">Delete Account</h3>
+        <AnimatePresence>
+          {showDeleteConfirm && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+            >
+              <motion.div
+                initial={{ opacity: 0, y: 16, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.98 }}
+                className="w-full max-w-md rounded-[2rem] border border-slate-200 bg-white p-6 shadow-2xl"
+              >
+                <h3 className="text-lg font-bold text-gray-900">Delete Account</h3>
+                <p className="mt-2 text-sm leading-relaxed text-gray-500">
+                  This action is <span className="font-semibold text-red-600">permanent</span>. All
+                  reservations, payments, and account history will be permanently removed.
+                </p>
 
-              <p className="text-sm text-gray-500 mt-2 leading-relaxed">
-                This action is <span className="font-semibold text-red-600">permanent</span>.
-                All reservations, payments, and account history will be permanently removed.
-              </p>
+                <div className="mt-6 flex gap-3">
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
 
-              <div className="mt-6 flex gap-3">
-                <button
-                  disabled={deleting}
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="flex-1 py-2.5 text-sm font-semibold border border-gray-200 rounded-xl hover:bg-gray-50 transition disabled:opacity-60"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  disabled={deleting}
-                  onClick={handleDeleteAccount}
-                  className="flex-1 py-2.5 text-sm font-bold bg-red-600 text-white rounded-xl hover:bg-red-700 transition disabled:opacity-60"
-                >
-                  {deleting ? 'Deleting...' : 'Yes, Delete'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={handleDeleteAccount}
+                    className="flex-1 rounded-2xl bg-red-600 py-3 text-sm font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
+                  >
+                    {deleting ? 'Deleting...' : 'Yes, Delete'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
 }
 
-function ProfileDetail({
-  icon: Icon,
+function MiniStat({
   label,
   value,
+  variant = 'slate',
 }: {
-  icon: LucideIcon;
   label: string;
-  value: string | undefined;
+  value: string;
+  variant?: 'slate' | 'blue' | 'emerald' | 'rose' | 'amber';
+}) {
+  const styles = {
+    slate: {
+      wrapper: 'border-slate-200 bg-slate-50',
+      label: 'text-slate-400',
+      value: 'text-slate-900',
+    },
+    blue: {
+      wrapper: 'border-blue-200 bg-blue-50',
+      label: 'text-blue-600',
+      value: 'text-blue-900',
+    },
+    emerald: {
+      wrapper: 'border-emerald-200 bg-emerald-50',
+      label: 'text-emerald-600',
+      value: 'text-emerald-900',
+    },
+    rose: {
+      wrapper: 'border-rose-200 bg-rose-50',
+      label: 'text-rose-600',
+      value: 'text-rose-900',
+    },
+    amber: {
+      wrapper: 'border-amber-200 bg-amber-50',
+      label: 'text-amber-600',
+      value: 'text-amber-900',
+    },
+  }[variant];
+
+  return (
+    <div className={`rounded-2xl border px-4 py-3 text-left ${styles.wrapper}`}>
+      <p className={`text-[10px] font-bold uppercase tracking-widest ${styles.label}`}>
+        {label}
+      </p>
+      <p className={`mt-1 text-sm font-semibold ${styles.value}`}>{value}</p>
+    </div>
+  );
+}
+
+function InfoBlock({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value?: string;
+  icon: ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-4">
-      <div className="p-2.5 bg-gray-100 rounded-xl">
-        <Icon className="size-4 text-gray-500" />
-      </div>
-      <div>
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{label}</p>
-        <p className="text-gray-900 font-medium text-sm mt-0.5">{value || 'Not provided'}</p>
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm">
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            {label}
+          </p>
+          <p className="mt-1 break-words text-sm font-semibold text-slate-900">
+            {value || '—'}
+          </p>
+        </div>
       </div>
     </div>
   );
 }
 
-function InputField({
+function FormInput({
   label,
-  icon: Icon,
-  type,
+  icon,
   value,
   onChange,
-  required = false,
+  type = 'text',
 }: {
   label: string;
-  icon: LucideIcon;
-  type: string;
+  icon?: ReactNode;
   value: string;
-  onChange: (value: string) => void;
-  required?: boolean;
+  onChange: (v: string) => void;
+  type?: string;
 }) {
   return (
-    <div className="space-y-1">
-      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+    <div className="space-y-1.5">
+      <label className="ml-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
         {label}
       </label>
-      <div className="relative group">
-        <Icon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400 group-focus-within:text-blue-500 transition" />
+
+      <div className="relative">
+        {icon && (
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{icon}</div>
+        )}
+
         <input
           type={type}
-          required={required}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none text-sm"
+          className={`w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 text-sm text-slate-800 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 ${
+            icon ? 'pl-10 pr-4' : 'px-4'
+          }`}
         />
       </div>
     </div>
   );
 }
 
-function TextAreaField({
+function FormTextarea({
   label,
-  icon: Icon,
+  icon,
   value,
   onChange,
-  required = false,
   rows = 3,
 }: {
   label: string;
-  icon: LucideIcon;
+  icon?: ReactNode;
   value: string;
-  onChange: (value: string) => void;
-  required?: boolean;
+  onChange: (v: string) => void;
   rows?: number;
 }) {
   return (
-    <div className="space-y-1">
-      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+    <div className="space-y-1.5">
+      <label className="ml-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
         {label}
       </label>
-      <div className="relative group">
-        <Icon className="absolute left-3 top-3 size-4 text-gray-400 group-focus-within:text-blue-500 transition" />
+
+      <div className="relative">
+        {icon && <div className="absolute left-3 top-3.5 text-slate-400">{icon}</div>}
+
         <textarea
-          required={required}
+          rows={rows}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          rows={rows}
-          className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none text-sm"
+          className={`w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 py-3 text-sm text-slate-800 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 ${
+            icon ? 'pl-10 pr-4' : 'px-4'
+          }`}
         />
       </div>
     </div>
   );
 }
 
-function PasswordField({
+function PasswordInput({
   label,
   value,
   onChange,
+  visible,
+  onToggleVisibility,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  visible: boolean;
+  onToggleVisibility: () => void;
 }) {
   return (
-    <div className="space-y-1">
-      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">{label}</label>
-      <div className="relative group">
-        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400 group-focus-within:text-blue-500 transition" />
+    <div className="space-y-1.5">
+      <label className="ml-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+        {label}
+      </label>
+
+      <div className="relative">
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+          <Lock className="size-4" />
+        </div>
+
         <input
-          type="password"
-          required
+          type={visible ? 'text' : 'password'}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none text-sm"
-          placeholder="••••••••"
+          className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-12 text-sm text-slate-800 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
         />
+
+        <button
+          type="button"
+          onClick={onToggleVisibility}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+          aria-label={visible ? 'Hide password' : 'Show password'}
+        >
+          {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+        </button>
       </div>
     </div>
   );

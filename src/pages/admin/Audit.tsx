@@ -448,7 +448,7 @@ export default function AdminAudit() {
         <p className="text-gray-500 text-sm">Monitor all administrative and system activities.</p>
       </div>
 
-      {!hasNoLogs && (
+      {!loading && !hasNoLogs && (
         <DesktopFilterBar
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
@@ -468,8 +468,16 @@ export default function AdminAudit() {
       <div className="flex-1 pb-24 relative z-10">
         <div className="hidden md:block bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
           {loading ? (
-            <div className="py-16 px-6 text-center text-gray-500">Loading audit logs...</div>
-          ) : hasNoLogs ? (
+                            <EmptyState
+                              icon={
+                                <div className="flex items-center justify-center">
+                                  <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                                </div>
+                              }
+                              title="Loading audit..."
+                              description="Please wait while audit records are being retrieved."
+                            />
+                          ) : hasNoLogs ? (
             <EmptyState
               icon={<Inbox className="size-10 text-blue-500" />}
               title="No audit logs yet"
@@ -545,10 +553,16 @@ export default function AdminAudit() {
 
         <div className="md:hidden space-y-4">
           {loading ? (
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm py-16 px-6 text-center text-gray-500">
-              Loading audit logs...
-            </div>
-          ) : hasNoLogs ? (
+                            <EmptyState
+                              icon={
+                                <div className="flex items-center justify-center">
+                                  <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+                                </div>
+                              }
+                              title="Loading audit..."
+                              description="Please wait while audit records are being retrieved."
+                            />
+                          ) : hasNoLogs ? (
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm py-16 px-6">
               <EmptyState
                 icon={<Inbox className="size-10 text-blue-500" />}

@@ -487,33 +487,42 @@ export default function AdminDashboard() {
             </div>
           </section>
 
-          <section className="bg-gray-900 text-white p-8 rounded-xl shadow-lg">
-            <h2 className="text-sm tracking-widest text-gray-400 mb-4 font-semibold">
-              SYSTEM STATUS
-            </h2>
+          <section className="rounded-xl bg-gray-900 p-8 text-white shadow-lg">
+  <h2 className="mb-4 text-sm font-semibold tracking-widest text-gray-400">
+    SYSTEM STATUS
+  </h2>
 
-            <div className="space-y-4">
-              <div>
-                <p className="text-xs text-gray-400">Latest Admin Action</p>
-                <p className="text-sm font-medium">{dashboardData.latestActivity.id}</p>
-                <p className="text-sm font-medium">{dashboardData.latestActivity.action}</p>
-                <p className="text-[10px] text-gray-500">
-                  {new Date(dashboardData.latestActivity.timestamp).toLocaleString()}
-                </p>
-              </div>
+  <div className="space-y-4">
+    <div>
+      <p className="text-xs text-gray-400">Latest Admin Action</p>
 
-              <div className="pt-4 border-t border-gray-800">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-xs">Database Connection</span>
-                  <span className="size-2 bg-green-500 rounded-full animate-pulse" />
-                </div>
+      {dashboardData.latestActivity ? (
+        <>
+          <p className="text-sm font-medium">
+            {dashboardData.latestActivity.publicId || 'No public ID'}
+          </p>
+          <p className="text-sm font-medium">{dashboardData.latestActivity.action}</p>
+          <p className="text-[11px] text-gray-500">
+            {new Date(dashboardData.latestActivity.timestamp).toLocaleString()}
+          </p>
+        </>
+      ) : (
+        <p className="text-sm text-gray-500">No recent admin activity found.</p>
+      )}
+    </div>
 
-                <Link to="/admin/audit" className="text-[10px] text-blue-400 hover:underline">
-                  Open Audit Logs
-                </Link>
-              </div>
-            </div>
-          </section>
+    <div className="border-t border-gray-800 pt-4">
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-xs">Database Connection</span>
+        <span className="size-2 rounded-full bg-green-500 animate-pulse" />
+      </div>
+
+      <Link to="/admin/audit" className="text-[11px] text-blue-400 hover:underline">
+        Open Audit Logs
+      </Link>
+    </div>
+  </div>
+</section>
         </div>
       </div>
     </div>

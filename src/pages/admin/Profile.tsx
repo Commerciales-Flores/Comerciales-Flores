@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, type ReactNode } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   User,
@@ -11,22 +11,59 @@ import {
   Camera,
   ShieldCheck,
   Edit3,
+  X,
+  Save,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+
+type MessageState = {
+  type: 'success' | 'error';
+  text: string;
+} | null;
+
+type ProfileForm = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  contactNumber: string;
+  address: string;
+};
+
+type PasswordForm = {
+  oldPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+};
 
 export default function AdminProfile() {
   const { user, updateProfile, changePassword, uploadProfilePicture } = useAuth();
 
   const [editing, setEditing] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
-  const [isPending, setIsPending] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+
+  const [message, setMessage] = useState<MessageState>(null);
+
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageTimeoutRef = useRef<number | null>(null);
 
   const fullName = useMemo(() => {
     return `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || 'User';
+  }, [user?.firstName, user?.lastName]);
+
+  const initials = useMemo(() => {
+    const first = user?.firstName?.[0] ?? '';
+    const last = user?.lastName?.[0] ?? '';
+    return `${first}${last}`.toUpperCase() || 'U';
   }, [user?.firstName, user?.lastName]);
 
   const avatarUrl = useMemo(() => {
@@ -36,9 +73,9 @@ export default function AdminProfile() {
       user?.profilePictureUrl ||
       `https://ui-avatars.com/api/?name=${encodeURIComponent(fullName)}&background=0ea5e9&color=fff&size=512`
     );
-  }, [user?.profilePictureUrl, fullName, user]);
+  }, [user, user?.profilePictureUrl, fullName]);
 
-  const [profileForm, setProfileForm] = useState({
+  const [profileForm, setProfileForm] = useState<ProfileForm>({
     firstName: '',
     lastName: '',
     email: '',
@@ -46,7 +83,7 @@ export default function AdminProfile() {
     address: '',
   });
 
-  const [passwordForm, setPasswordForm] = useState({
+  const [passwordForm, setPasswordForm] = useState<PasswordForm>({
     oldPassword: '',
     newPassword: '',
     confirmPassword: '',
@@ -82,10 +119,40 @@ export default function AdminProfile() {
     }, 4000);
   }, []);
 
+  const updateProfileField = useCallback((field: keyof ProfileForm, value: string) => {
+    setProfileForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  }, []);
+
+  const updatePasswordField = useCallback((field: keyof PasswordForm, value: string) => {
+    setPasswordForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  }, []);
+
+  const passwordStrength = useMemo(() => {
+    const password = passwordForm.newPassword;
+    let score = 0;
+
+    if (password.length >= 8) score += 1;
+    if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score += 1;
+    if (/\d/.test(password)) score += 1;
+    if (/[^A-Za-z0-9]/.test(password)) score += 1;
+
+    let label = 'Weak';
+    if (score >= 4) label = 'Strong';
+    else if (score >= 2) label = 'Medium';
+
+    return { score, label };
+  }, [passwordForm.newPassword]);
+
   const handleProfileSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      setIsPending(true);
+      setIsSavingProfile(true);
 
       try {
         await updateProfile(profileForm);
@@ -94,7 +161,7 @@ export default function AdminProfile() {
       } catch {
         showMessage('error', 'Failed to update profile.');
       } finally {
-        setIsPending(false);
+        setIsSavingProfile(false);
       }
     },
     [profileForm, updateProfile, showMessage]
@@ -124,9 +191,11 @@ export default function AdminProfile() {
         return;
       }
 
-      setIsPending(true);
+      setIsChangingPassword(true);
 
       try {
+        // Your current AuthContext likely only accepts one argument.
+        // This means oldPassword is validated in the UI only, not actually verified here.
         const success = await changePassword(passwordForm.newPassword);
 
         if (success) {
@@ -136,6 +205,9 @@ export default function AdminProfile() {
             newPassword: '',
             confirmPassword: '',
           });
+          setShowOldPassword(false);
+          setShowNewPassword(false);
+          setShowConfirmPassword(false);
           showMessage('success', 'Password changed successfully!');
         } else {
           showMessage('error', 'Failed to change password');
@@ -143,7 +215,7 @@ export default function AdminProfile() {
       } catch {
         showMessage('error', 'Failed to change password');
       } finally {
-        setIsPending(false);
+        setIsChangingPassword(false);
       }
     },
     [passwordForm, changePassword, showMessage]
@@ -159,7 +231,7 @@ export default function AdminProfile() {
         return;
       }
 
-      setIsPending(true);
+      setIsUploadingAvatar(true);
 
       try {
         const uploadedUrl = await uploadProfilePicture(file);
@@ -174,7 +246,7 @@ export default function AdminProfile() {
       } catch {
         showMessage('error', 'Failed to upload image.');
       } finally {
-        setIsPending(false);
+        setIsUploadingAvatar(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
       }
     },
@@ -194,264 +266,469 @@ export default function AdminProfile() {
 
   const togglePasswordPanel = useCallback(() => {
     setChangingPassword((prev) => !prev);
-  }, []);
+
+    if (changingPassword) {
+      setPasswordForm({
+        oldPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+      setShowOldPassword(false);
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
+    }
+  }, [changingPassword]);
 
   return (
-    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-slate-100 pb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Account Settings</h1>
-          <p className="text-gray-500">Manage your administrative identity and security preferences.</p>
-        </div>
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
+      <div className="flex flex-col gap-6">
+        <header className="flex flex-col justify-between gap-4 border-b border-slate-100 pb-6 md:flex-row md:items-end">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Account Settings</h1>
+            <p className="text-gray-500">
+              Manage your administrative identity and security preferences.
+            </p>
+          </div>
 
-        <AnimatePresence>
-          {message && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0 }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium shadow-sm border ${
-                message.type === 'success'
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                  : 'bg-rose-50 border-rose-200 text-rose-700'
-              }`}
-            >
-              {message.type === 'success' ? (
-                <CheckCircle className="size-4" />
-              ) : (
-                <AlertCircle className="size-4" />
-              )}
-              {message.text}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </header>
+          <AnimatePresence mode="wait">
+            {message && (
+              <motion.div
+                key={message.text}
+                initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -6 }}
+                className={`flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-medium shadow-sm ${
+                  message.type === 'success'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-rose-200 bg-rose-50 text-rose-700'
+                }`}
+              >
+                {message.type === 'success' ? (
+                  <CheckCircle className="size-4 shrink-0" />
+                ) : (
+                  <AlertCircle className="size-4 shrink-0" />
+                )}
+                <span>{message.text}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-8 space-y-6">
-          <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <h2 className="font-semibold text-slate-800">Profile Information</h2>
-              {!editing && (
-                <button
-                  onClick={() => setEditing(true)}
-                  className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-2 transition-colors"
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+          <div className="space-y-6 xl:col-span-4">
+            <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+              <div className="h-24 bg-gradient-to-r from-slate-900 via-slate-800 to-blue-900" />
+
+              <div className="-mt-12 flex flex-col items-center px-6 pb-6 text-center">
+                <div
+                  className="relative group"
+                  onClick={() => !isUploadingAvatar && fileInputRef.current?.click()}
                 >
-                  <Edit3 className="size-4" /> Edit Details
-                </button>
-              )}
-            </div>
+                  <div className="rounded-[1.75rem] bg-white p-1.5 shadow-xl">
+                    {avatarUrl ? (
+                      <img
+                        src={avatarUrl}
+                        alt="Profile"
+                        className="size-28 rounded-[1.35rem] bg-slate-100 object-cover sm:size-32"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    ) : (
+                      <div className="flex size-28 items-center justify-center rounded-[1.35rem] bg-slate-900 text-3xl font-bold text-white sm:size-32">
+                        {initials}
+                      </div>
+                    )}
+                  </div>
 
-            <div className="p-6">
-              <AnimatePresence mode="wait">
-                {editing ? (
-                  <motion.form
-                    key="edit"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    onSubmit={handleProfileSubmit}
-                    className="space-y-4"
+                  <button
+                    type="button"
+                    disabled={isUploadingAvatar}
+                    className="absolute -bottom-2 -right-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg transition-all hover:bg-blue-700 disabled:opacity-60"
+                    aria-label="Change profile photo"
                   >
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormInput
-                        label="First Name"
-                        icon={<User />}
-                        value={profileForm.firstName}
-                        onChange={(v) => setProfileForm((prev) => ({ ...prev, firstName: v }))}
-                      />
-                      <FormInput
-                        label="Last Name"
-                        icon={<User />}
-                        value={profileForm.lastName}
-                        onChange={(v) => setProfileForm((prev) => ({ ...prev, lastName: v }))}
-                      />
-                      <FormInput
-                        label="Email"
-                        icon={<Mail />}
-                        type="email"
-                        value={profileForm.email}
-                        onChange={(v) => setProfileForm((prev) => ({ ...prev, email: v }))}
-                      />
-                      <FormInput
-                        label="Phone"
-                        icon={<Phone />}
-                        value={profileForm.contactNumber}
-                        onChange={(v) => setProfileForm((prev) => ({ ...prev, contactNumber: v }))}
-                      />
+                    {isUploadingAvatar ? (
+                      <div className="size-5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                    ) : (
+                      <Camera className="size-5" />
+                    )}
+                  </button>
 
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1 ml-1">
-                          Address
-                        </label>
-                        <textarea
-                          className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                          rows={2}
-                          value={profileForm.address}
-                          onChange={(e) =>
-                            setProfileForm((prev) => ({ ...prev, address: e.target.value }))
-                          }
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleImageChange}
+                  />
+                </div>
+
+                <h2 className="mt-4 text-xl font-bold text-slate-900">{fullName}</h2>
+                <p className="text-sm text-slate-500">{user?.email || 'No email available'}</p>
+
+                <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-blue-700">
+                  <ShieldCheck className="size-3.5" />
+                  {user?.role || 'Administrator'}
+                </div>
+
+                <div className="mt-6 grid w-full grid-cols-2 gap-3">
+                    <MiniStat
+                      label="Account Type"
+                      value="Client"
+                      variant="blue"
+                    />
+                    <MiniStat
+                      label="Status"
+                      value={user?.is_active === false ? 'Inactive' : 'Active'}
+                      variant={user?.is_active === false ? 'rose' : 'emerald'}
+                    />
+                  </div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl bg-slate-900 p-6 text-white shadow-lg">
+              <h4 className="flex items-center gap-2 font-semibold">
+                <ShieldCheck className="size-4 text-blue-400" />
+                Compliance Note
+              </h4>
+              <p className="mt-2 text-xs leading-relaxed text-slate-400">
+                This account is regulated under the Philippine Data Privacy Act of 2012. All
+                administrative actions are logged for security auditing.
+              </p>
+            </section>
+          </div>
+
+          <div className="space-y-6 xl:col-span-8">
+            <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+              <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-6 py-5">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Profile Information</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Keep your personal and contact information up to date.
+                  </p>
+                </div>
+
+                {!editing && (
+                  <button
+                    type="button"
+                    onClick={() => setEditing(true)}
+                    className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 active:scale-95"
+                  >
+                    <Edit3 className="size-4" />
+                    Edit Details
+                  </button>
+                )}
+              </div>
+
+              <div className="p-6">
+                <AnimatePresence mode="wait">
+                  {editing ? (
+                    <motion.form
+                      key="edit-profile"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      onSubmit={handleProfileSubmit}
+                      className="space-y-5"
+                    >
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <FormInput
+                          label="First Name"
+                          icon={<User className="size-4" />}
+                          value={profileForm.firstName}
+                          onChange={(v) => updateProfileField('firstName', v)}
+                        />
+
+                        <FormInput
+                          label="Last Name"
+                          icon={<User className="size-4" />}
+                          value={profileForm.lastName}
+                          onChange={(v) => updateProfileField('lastName', v)}
+                        />
+
+                        <FormInput
+                          label="Email"
+                          icon={<Mail className="size-4" />}
+                          type="email"
+                          value={profileForm.email}
+                          onChange={(v) => updateProfileField('email', v)}
+                        />
+
+                        <FormInput
+                          label="Phone"
+                          icon={<Phone className="size-4" />}
+                          value={profileForm.contactNumber}
+                          onChange={(v) => updateProfileField('contactNumber', v)}
+                        />
+
+                        <div className="md:col-span-2">
+                          <FormTextarea
+                            label="Address"
+                            icon={<MapPin className="size-4" />}
+                            value={profileForm.address}
+                            onChange={(v) => updateProfileField('address', v)}
+                            rows={3}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
+                        <button
+                          type="button"
+                          onClick={cancelEditing}
+                          disabled={isSavingProfile}
+                          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          <X className="size-4" />
+                          Cancel
+                        </button>
+
+                        <button
+                          type="submit"
+                          disabled={isSavingProfile}
+                          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 disabled:opacity-50"
+                        >
+                          {isSavingProfile ? (
+                            <div className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                          ) : (
+                            <Save className="size-4" />
+                          )}
+                          {isSavingProfile ? 'Saving...' : 'Save Changes'}
+                        </button>
+                      </div>
+                    </motion.form>
+                  ) : (
+                    <motion.div
+                      key="view-profile"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      className="grid grid-cols-1 gap-4 md:grid-cols-2"
+                    >
+                      <InfoBlock label="Full Name" value={fullName} icon={<User className="size-4" />} />
+                      <InfoBlock label="Email" value={user?.email} icon={<Mail className="size-4" />} />
+                      <InfoBlock
+                        label="Phone"
+                        value={user?.contactNumber}
+                        icon={<Phone className="size-4" />}
+                      />
+                      <InfoBlock
+                        label="Address"
+                        value={user?.address}
+                        icon={<MapPin className="size-4" />}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </section>
+
+            <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+              <div className="flex flex-col gap-4 border-b border-slate-100 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                    <Lock className="size-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900">Security</h3>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Update your password and protect administrative access.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={togglePasswordPanel}
+                  className={`inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold shadow-sm transition-all ${
+                    changingPassword
+                      ? 'border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 active:scale-95'
+                      : 'bg-slate-900 text-white hover:bg-slate-800 active:scale-95'
+                  }`}
+                >
+                  {changingPassword ? (
+                    <>
+                      <X className="size-4" />
+                      Cancel
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="size-4" />
+                      Change Password
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <AnimatePresence initial={false}>
+                {changingPassword && (
+                  <motion.form
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    onSubmit={handlePasswordSubmit}
+                    className="overflow-hidden"
+                  >
+                    <div className="space-y-5 p-6">
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                        <PasswordInput
+                          label="Current Password"
+                          value={passwordForm.oldPassword}
+                          onChange={(v) => updatePasswordField('oldPassword', v)}
+                          visible={showOldPassword}
+                          onToggleVisibility={() => setShowOldPassword((prev) => !prev)}
+                        />
+
+                        <PasswordInput
+                          label="New Password"
+                          value={passwordForm.newPassword}
+                          onChange={(v) => updatePasswordField('newPassword', v)}
+                          visible={showNewPassword}
+                          onToggleVisibility={() => setShowNewPassword((prev) => !prev)}
+                        />
+
+                        <PasswordInput
+                          label="Confirm New Password"
+                          value={passwordForm.confirmPassword}
+                          onChange={(v) => updatePasswordField('confirmPassword', v)}
+                          visible={showConfirmPassword}
+                          onToggleVisibility={() => setShowConfirmPassword((prev) => !prev)}
                         />
                       </div>
-                    </div>
 
-                    <div className="flex justify-end gap-3 pt-4 border-t border-slate-50">
-                      <button
-                        type="button"
-                        onClick={cancelEditing}
-                        className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={isPending}
-                        className="px-6 py-2 bg-slate-900 text-white rounded-xl hover:bg-slate-800 disabled:opacity-50 shadow-md transition-all"
-                      >
-                        {isPending ? 'Saving...' : 'Save Changes'}
-                      </button>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <p className="text-sm font-semibold text-slate-700">Password Strength</p>
+                          <span
+                            className={`text-xs font-bold uppercase tracking-wider ${
+                              passwordStrength.score >= 4
+                                ? 'text-emerald-600'
+                                : passwordStrength.score >= 2
+                                  ? 'text-amber-600'
+                                  : 'text-rose-600'
+                            }`}
+                          >
+                            {passwordStrength.label}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-4 gap-2">
+                          {[1, 2, 3, 4].map((step) => (
+                            <div
+                              key={step}
+                              className={`h-2 rounded-full ${
+                                passwordStrength.score >= step
+                                  ? passwordStrength.score >= 4
+                                    ? 'bg-emerald-500'
+                                    : passwordStrength.score >= 2
+                                      ? 'bg-amber-500'
+                                      : 'bg-rose-500'
+                                  : 'bg-slate-200'
+                              }`}
+                            />
+                          ))}
+                        </div>
+
+                        <p className="mt-3 text-xs text-slate-500">
+                          Use at least 8 characters and mix uppercase letters, numbers, and symbols
+                          for a stronger password.
+                        </p>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <button
+                          type="submit"
+                          disabled={isChangingPassword}
+                          className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {isChangingPassword ? (
+                            <div className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                          ) : (
+                            <ShieldCheck className="size-4" />
+                          )}
+                          {isChangingPassword ? 'Updating...' : 'Update Password'}
+                        </button>
+                      </div>
                     </div>
                   </motion.form>
-                ) : (
-                  <motion.div
-                    key="view"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="grid grid-cols-1 md:grid-cols-2 gap-8"
-                  >
-                    <InfoBlock label="Full Name" value={fullName} icon={<User />} />
-                    <InfoBlock label="Email" value={user?.email} icon={<Mail />} />
-                    <InfoBlock label="Phone" value={user?.contactNumber} icon={<Phone />} />
-                    <InfoBlock label="Address" value={user?.address} icon={<MapPin />} />
-                  </motion.div>
                 )}
               </AnimatePresence>
-            </div>
-          </section>
+            </section>
 
-          <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-6 flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
-                  <Lock className="size-5" />
-                </div>
+            <section className="rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50 to-blue-100 p-6 shadow-sm">
+              <h3 className="mb-2 font-bold text-blue-900">Administrator Account</h3>
+              <p className="mb-4 text-sm leading-relaxed text-blue-700">
+                You have full access to all system features including customer management, booking
+                approvals, payment verification, and analytics.
+              </p>
+
+              <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
                 <div>
-                  <h2 className="font-semibold text-slate-800">Security</h2>
-                  <p className="text-sm text-slate-500">Update your access credentials</p>
-                </div>
-              </div>
-
-              <button
-                onClick={togglePasswordPanel}
-                className="px-4 py-2 border border-slate-200 rounded-xl text-sm font-medium hover:bg-slate-50 transition-all"
-              >
-                {changingPassword ? 'Cancel' : 'Change Password'}
-              </button>
-            </div>
-
-            {changingPassword && (
-              <motion.form
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                onSubmit={handlePasswordSubmit}
-                className="px-6 pb-6 border-t border-slate-50 pt-6 space-y-4"
-              >
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <FormInput
-                    label="Current Password"
-                    type="password"
-                    value={passwordForm.oldPassword}
-                    onChange={(v) => setPasswordForm((prev) => ({ ...prev, oldPassword: v }))}
-                  />
-                  <FormInput
-                    label="New Password"
-                    type="password"
-                    value={passwordForm.newPassword}
-                    onChange={(v) => setPasswordForm((prev) => ({ ...prev, newPassword: v }))}
-                  />
-                  <FormInput
-                    label="Confirm New"
-                    type="password"
-                    value={passwordForm.confirmPassword}
-                    onChange={(v) => setPasswordForm((prev) => ({ ...prev, confirmPassword: v }))}
-                  />
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">
+                    Account Type
+                  </p>
+                  <p className="font-semibold italic text-blue-900">Administrator</p>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={isPending}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all text-sm font-medium shadow-sm disabled:opacity-50"
-                >
-                  {isPending ? 'Updating...' : 'Update Password'}
-                </button>
-              </motion.form>
-            )}
-          </section>
-
-          <div className="bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-2xl p-6 shadow-sm">
-            <h3 className="text-blue-900 font-bold mb-2">Administrator Account</h3>
-            <p className="text-sm text-blue-700 mb-4 leading-relaxed">
-              You have full access to all system features including customer management, booking
-              approvals, payment verification, and analytics.
-            </p>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-blue-600 font-bold text-[10px] uppercase tracking-wider">
-                  Account Type
-                </p>
-                <p className="text-blue-900 font-semibold italic">Administrator</p>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">
+                    User ID
+                  </p>
+                  <p className="mt-1 truncate font-mono text-xs text-blue-900">
+                    {user?.publicId || user?.id || 'No user ID'}
+                  </p>
+                </div>
               </div>
-              <div>
-                <p className="text-blue-600 font-bold text-[10px] uppercase tracking-wider">
-                  User ID
-                </p>
-                <p className="text-blue-900 font-mono text-xs mt-1 truncate">{user?.id}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="lg:col-span-4 space-y-6">
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center text-center">
-            <div
-              className="relative group cursor-pointer"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <img
-                src={avatarUrl}
-                alt="Profile"
-                className="size-32 rounded-3xl object-cover ring-4 ring-slate-50 shadow-xl transition-transform group-hover:scale-[1.02]"
-                loading="lazy"
-                decoding="async"
-              />
-              <div className="absolute inset-0 bg-black/40 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <Camera className="text-white size-8" />
-              </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleImageChange}
-              />
-            </div>
-
-            <h3 className="mt-4 font-bold text-xl text-slate-900">{fullName}</h3>
-            <span className="mt-1 px-3 py-1 bg-blue-50 text-blue-700 text-[10px] font-bold uppercase tracking-widest rounded-full border border-blue-100">
-              {user?.role || 'Administrator'}
-            </span>
-          </div>
-
-          <div className="bg-slate-900 rounded-2xl p-6 text-white shadow-lg">
-            <h4 className="font-semibold flex items-center gap-2">
-              <ShieldCheck className="size-4 text-blue-400" /> Compliance Note
-            </h4>
-            <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-              This account is regulated under the Philippine Data Privacy Act of 2012. All
-              administrative actions are logged for security auditing.
-            </p>
+            </section>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+  variant = 'slate',
+}: {
+  label: string;
+  value: string;
+  variant?: 'slate' | 'blue' | 'emerald' | 'rose' | 'amber';
+}) {
+  const styles = {
+    slate: {
+      wrapper: 'border-slate-200 bg-slate-50',
+      label: 'text-slate-400',
+      value: 'text-slate-900',
+    },
+    blue: {
+      wrapper: 'border-blue-200 bg-blue-50',
+      label: 'text-blue-600',
+      value: 'text-blue-900',
+    },
+    emerald: {
+      wrapper: 'border-emerald-200 bg-emerald-50',
+      label: 'text-emerald-600',
+      value: 'text-emerald-900',
+    },
+    rose: {
+      wrapper: 'border-rose-200 bg-rose-50',
+      label: 'text-rose-600',
+      value: 'text-rose-900',
+    },
+    amber: {
+      wrapper: 'border-amber-200 bg-amber-50',
+      label: 'text-amber-600',
+      value: 'text-amber-900',
+    },
+  }[variant];
+
+  return (
+    <div className={`rounded-2xl border px-4 py-3 text-left ${styles.wrapper}`}>
+      <p className={`text-[10px] font-bold uppercase tracking-widest ${styles.label}`}>
+        {label}
+      </p>
+      <p className={`mt-1 text-sm font-semibold ${styles.value}`}>{value}</p>
     </div>
   );
 }
@@ -463,16 +740,22 @@ function InfoBlock({
 }: {
   label: string;
   value?: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-4 p-3 rounded-xl hover:bg-slate-50 transition-colors">
-      <div className="p-2 bg-white text-slate-400 rounded-lg border border-slate-200 shadow-sm">
-        {icon}
-      </div>
-      <div>
-        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{label}</p>
-        <p className="text-slate-900 font-semibold mt-0.5">{value || '---'}</p>
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm">
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            {label}
+          </p>
+          <p className="mt-1 break-words text-sm font-semibold text-slate-900">
+            {value || '—'}
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -486,28 +769,109 @@ function FormInput({
   type = 'text',
 }: {
   label: string;
-  icon?: React.ReactNode;
+  icon?: ReactNode;
   value: string;
   onChange: (v: string) => void;
   type?: string;
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">
+      <label className="ml-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
         {label}
       </label>
+
       <div className="relative">
         {icon && (
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 size-4">
-            {icon}
-          </div>
+          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{icon}</div>
         )}
+
         <input
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className={`w-full ${icon ? 'pl-10' : 'pl-4'} pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all text-slate-800 text-sm`}
+          className={`w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 text-sm text-slate-800 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 ${
+            icon ? 'pl-10 pr-4' : 'px-4'
+          }`}
         />
+      </div>
+    </div>
+  );
+}
+
+function FormTextarea({
+  label,
+  icon,
+  value,
+  onChange,
+  rows = 3,
+}: {
+  label: string;
+  icon?: ReactNode;
+  value: string;
+  onChange: (v: string) => void;
+  rows?: number;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="ml-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+        {label}
+      </label>
+
+      <div className="relative">
+        {icon && <div className="absolute left-3 top-3.5 text-slate-400">{icon}</div>}
+
+        <textarea
+          rows={rows}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={`w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 py-3 text-sm text-slate-800 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 ${
+            icon ? 'pl-10 pr-4' : 'px-4'
+          }`}
+        />
+      </div>
+    </div>
+  );
+}
+
+function PasswordInput({
+  label,
+  value,
+  onChange,
+  visible,
+  onToggleVisibility,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  visible: boolean;
+  onToggleVisibility: () => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="ml-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+        {label}
+      </label>
+
+      <div className="relative">
+        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+          <Lock className="size-4" />
+        </div>
+
+        <input
+          type={visible ? 'text' : 'password'}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-12 text-sm text-slate-800 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+        />
+
+        <button
+          type="button"
+          onClick={onToggleVisibility}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+          aria-label={visible ? 'Hide password' : 'Show password'}
+        >
+          {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+        </button>
       </div>
     </div>
   );

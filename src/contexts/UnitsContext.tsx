@@ -15,6 +15,7 @@ import { getChangedFields, buildAuditSnapshot } from '../utils/auditHelpers';
 
 interface UnitsContextType {
   units: Unit[];
+  loadingUnits: boolean;
   addUnit: (unit: Omit<Unit, 'id'>) => Promise<void>;
   updateUnit: (id: string, unit: Partial<Unit>) => Promise<void>;
   deleteUnit: (id: string) => Promise<void>;
@@ -27,148 +28,154 @@ const UnitsContext = createContext<UnitsContextType | undefined>(undefined);
 
 export function UnitsProvider({ children }: { children: ReactNode }) {
   const [units, setUnits] = useState<Unit[]>([]);
+  const [loadingUnits, setLoadingUnits] = useState(false);
   const { addAuditLog } = useRecords();
   const { user } = useAuth();
 
   const refreshUnits = useCallback(async () => {
-    try {
-      const { data: baseUnits, error: baseError } = await supabase
-        .from('units')
-        .select('unit_id, property_id, unit_type, title, description, is_available, location');
+  setLoadingUnits(true);
 
-      if (baseError) throw baseError;
-      if (!baseUnits) {
-        setUnits([]);
-        return;
+  try {
+    const { data: baseUnits, error: baseError } = await supabase
+      .from('units')
+      .select('unit_id, property_id, unit_type, title, description, is_available, location');
+
+    if (baseError) throw baseError;
+    if (!baseUnits) {
+      setUnits([]);
+      return;
+    }
+
+    const propertyIds = [...new Set(baseUnits.map((u) => u.property_id).filter(Boolean))];
+
+    let propertiesData: any[] = [];
+    if (propertyIds.length > 0) {
+      const { data, error } = await supabase
+        .from('properties')
+        .select('id, title, address')
+        .in('id', propertyIds);
+
+      if (error) throw error;
+      propertiesData = data ?? [];
+    }
+
+    const propertiesMap = Object.fromEntries(propertiesData.map((p) => [p.id, p]));
+
+    const [rentalRes, functionRes, parkingRes, mediaRes] = await Promise.all([
+      supabase
+        .from('rental_units')
+        .select('unit_id, rental_price, features, policies, description'),
+      supabase
+        .from('function_units')
+        .select('unit_id, price_per_day, capacity, features, policies, description'),
+      supabase
+        .from('parking_units')
+        .select('unit_id, price_per_day, price_per_hour, features, policies, description'),
+      supabase
+        .from('media')
+        .select('unit_id, url, media_type'),
+    ]);
+
+    if (rentalRes.error) throw rentalRes.error;
+    if (functionRes.error) throw functionRes.error;
+    if (parkingRes.error) throw parkingRes.error;
+    if (mediaRes.error) throw mediaRes.error;
+
+    const rentalUnits = rentalRes.data ?? [];
+    const functionUnits = functionRes.data ?? [];
+    const parkingUnits = parkingRes.data ?? [];
+    const media = mediaRes.data ?? [];
+
+    const combinedUnits: Unit[] = baseUnits.map((base) => {
+      let specific: any = null;
+
+      if (base.unit_type === 'rental_space') {
+        specific = rentalUnits.find((r) => r.unit_id === base.unit_id);
+      } else if (base.unit_type === 'function_hall') {
+        specific = functionUnits.find((f) => f.unit_id === base.unit_id);
+      } else if (base.unit_type === 'parking_slot') {
+        specific = parkingUnits.find((p) => p.unit_id === base.unit_id);
       }
 
-      const propertyIds = [...new Set(baseUnits.map((u) => u.property_id).filter(Boolean))];
+      const unitMediaRecords = media.filter((m) => m.unit_id === base.unit_id);
+      const imagesArray: string[] = [];
 
-      let propertiesData: any[] = [];
-      if (propertyIds.length > 0) {
-        const { data, error } = await supabase
-          .from('properties')
-          .select('id, title, address')
-          .in('id', propertyIds);
+      unitMediaRecords.forEach((record) => {
+        if (!record.url) return;
 
-        if (error) throw error;
-        propertiesData = data ?? [];
-      }
+        const rawUrl = record.url;
 
-      const propertiesMap = Object.fromEntries(propertiesData.map((p) => [p.id, p]));
-
-      const [rentalRes, functionRes, parkingRes, mediaRes] = await Promise.all([
-        supabase
-          .from('rental_units')
-          .select('unit_id, rental_price, features, policies, description'),
-        supabase
-          .from('function_units')
-          .select('unit_id, price_per_day, capacity, features, policies, description'),
-        supabase
-          .from('parking_units')
-          .select('unit_id, price_per_day, price_per_hour, features, policies, description'),
-        supabase
-          .from('media')
-          .select('unit_id, url, media_type'),
-      ]);
-
-      if (rentalRes.error) throw rentalRes.error;
-      if (functionRes.error) throw functionRes.error;
-      if (parkingRes.error) throw parkingRes.error;
-      if (mediaRes.error) throw mediaRes.error;
-
-      const rentalUnits = rentalRes.data ?? [];
-      const functionUnits = functionRes.data ?? [];
-      const parkingUnits = parkingRes.data ?? [];
-      const media = mediaRes.data ?? [];
-
-      const combinedUnits: Unit[] = baseUnits.map((base) => {
-        let specific: any = null;
-
-        if (base.unit_type === 'rental_space') {
-          specific = rentalUnits.find((r) => r.unit_id === base.unit_id);
-        } else if (base.unit_type === 'function_hall') {
-          specific = functionUnits.find((f) => f.unit_id === base.unit_id);
-        } else if (base.unit_type === 'parking_slot') {
-          specific = parkingUnits.find((p) => p.unit_id === base.unit_id);
-        }
-
-        const unitMediaRecords = media.filter((m) => m.unit_id === base.unit_id);
-        const imagesArray: string[] = [];
-
-        unitMediaRecords.forEach((record) => {
-          if (!record.url) return;
-
-          const rawUrl = record.url;
-
-          if (typeof rawUrl === 'string') {
-            if (rawUrl.startsWith('http')) {
-              imagesArray.push(rawUrl);
-            } else {
-              try {
-                const parsed = JSON.parse(rawUrl);
-                imagesArray.push(
-                  ...(Object.values(parsed).filter((v) => typeof v === 'string') as string[])
-                );
-              } catch {
-                // ignore malformed legacy JSON strings
-              }
+        if (typeof rawUrl === 'string') {
+          if (rawUrl.startsWith('http')) {
+            imagesArray.push(rawUrl);
+          } else {
+            try {
+              const parsed = JSON.parse(rawUrl);
+              imagesArray.push(
+                ...(Object.values(parsed).filter((v) => typeof v === 'string') as string[])
+              );
+            } catch {
+              // ignore malformed legacy JSON strings
             }
-          } else if (typeof rawUrl === 'object' && rawUrl !== null) {
-            imagesArray.push(
-              ...(Object.values(rawUrl).filter((v) => typeof v === 'string') as string[])
-            );
           }
-        });
-
-        let parsedFeatures: string[] = [];
-        if (Array.isArray(specific?.features)) {
-          parsedFeatures = specific.features;
-        } else if (typeof specific?.features === 'string') {
-          parsedFeatures = specific.features
-            .split(',')
-            .map((s: string) => s.trim())
-            .filter(Boolean);
+        } else if (typeof rawUrl === 'object' && rawUrl !== null) {
+          imagesArray.push(
+            ...(Object.values(rawUrl).filter((v) => typeof v === 'string') as string[])
+          );
         }
-
-        const property = propertiesMap[base.property_id];
-
-        return {
-          id: base.unit_id,
-          propertyId: base.property_id,
-          name: base.title || '',
-          type: base.unit_type as UnitType,
-          description: base.description || specific?.description || '',
-          price:
-            base.unit_type === 'rental_space'
-              ? Number(specific?.rental_price || 0)
-              : base.unit_type === 'function_hall'
-                ? Number(specific?.price_per_day || 0)
-                : Number(specific?.price_per_day || specific?.price_per_hour || 0),
-          images:
-            imagesArray.length > 0
-              ? imagesArray
-              : ['https://images.unsplash.com/photo-1497366216548-37526070297c?w=800'],
-          policies: specific?.policies || '',
-          available: base.is_available,
-          features: parsedFeatures,
-          location: base.location || '',
-          property: property
-            ? {
-                id: property.id,
-                title: property.title || '',
-                address: property.address || '',
-              }
-            : null,
-          ...(typeof specific?.capacity === 'number' ? { capacity: specific.capacity } : {}),
-        };
       });
 
-      setUnits(combinedUnits);
-    } catch (error) {
-      console.error('Error loading units from Supabase:', error);
-    }
-  }, []);
+      let parsedFeatures: string[] = [];
+      if (Array.isArray(specific?.features)) {
+        parsedFeatures = specific.features;
+      } else if (typeof specific?.features === 'string') {
+        parsedFeatures = specific.features
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter(Boolean);
+      }
+
+      const property = propertiesMap[base.property_id];
+
+      return {
+        id: base.unit_id,
+        propertyId: base.property_id,
+        name: base.title || '',
+        type: base.unit_type as UnitType,
+        description: base.description || specific?.description || '',
+        price:
+          base.unit_type === 'rental_space'
+            ? Number(specific?.rental_price || 0)
+            : base.unit_type === 'function_hall'
+              ? Number(specific?.price_per_day || 0)
+              : Number(specific?.price_per_day || specific?.price_per_hour || 0),
+        images:
+          imagesArray.length > 0
+            ? imagesArray
+            : ['https://images.unsplash.com/photo-1497366216548-37526070297c?w=800'],
+        policies: specific?.policies || '',
+        available: base.is_available,
+        features: parsedFeatures,
+        location: base.location || '',
+        property: property
+          ? {
+              id: property.id,
+              title: property.title || '',
+              address: property.address || '',
+            }
+          : null,
+        ...(typeof specific?.capacity === 'number' ? { capacity: specific.capacity } : {}),
+      };
+    });
+
+    setUnits(combinedUnits);
+  } catch (error) {
+    console.error('Error loading units from Supabase:', error);
+    setUnits([]);
+  } finally {
+    setLoadingUnits(false);
+  }
+}, []);
 
   useEffect(() => {
     void refreshUnits();
@@ -430,6 +437,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       units,
+      loadingUnits,
       addUnit,
       updateUnit,
       deleteUnit,
@@ -437,7 +445,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
       getUnitById,
       refreshUnits,
     }),
-    [units, addUnit, updateUnit, deleteUnit, uploadUnitImage, getUnitById, refreshUnits]
+    [units, loadingUnits, addUnit, updateUnit, deleteUnit, uploadUnitImage, getUnitById, refreshUnits]
   );
 
   return <UnitsContext.Provider value={value}>{children}</UnitsContext.Provider>;

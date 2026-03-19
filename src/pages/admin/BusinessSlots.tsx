@@ -1,7 +1,7 @@
-import { useState, useRef, useMemo, useCallback } from 'react';
+import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import type { JSX } from 'react';
-import { useData } from "../../contexts/DataContext";
-import type { UnitType, Unit } from "../../contexts/DataContext";
+import { useUnits } from '../../contexts/UnitsContext';
+import type { UnitType } from "../../contexts/DataContext";
 import { Plus, Edit, Trash2, X, Home, Building2, Car } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import EmptyState from '../../components/common/EmptyState';
@@ -92,14 +92,36 @@ function parseCommaSeparated(value: string) {
 }
 
 export default function AdminUnitManagement() {
-  const { units, addUnit, updateUnit, deleteUnit } = useData();
-
+  const { units, refreshUnits, addUnit, updateUnit, deleteUnit } = useUnits();
   const [showModal, setShowModal] = useState(false);
   const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
   const [hoveredButtonIndex, setHoveredButtonIndex] = useState<number | null>(null);
   const [unitForm, setUnitForm] = useState(INITIAL_FORM_STATE);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+    let cancelled = false;
+
+    const loadUnits = async () => {
+      setLoading(true);
+      try {
+        await refreshUnits();
+      } catch (error) {
+        console.error('Failed to load units:', error);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void loadUnits();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshUnits]);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -113,11 +135,6 @@ export default function AdminUnitManagement() {
         )
       ).sort(),
     [units]
-  );
-
-  const selectedUnit = useMemo<Unit | null>(
-    () => (editingUnitId ? units.find((u) => u.id === editingUnitId) ?? null : null),
-    [editingUnitId, units]
   );
 
   const parsedImages = useMemo(() => parseCommaSeparated(unitForm.images), [unitForm.images]);
@@ -258,25 +275,39 @@ export default function AdminUnitManagement() {
           <p className="text-sm text-gray-500">Manage all your rentable units and slots.</p>
         </div>
 
-        <button
-          onClick={() => setShowModal(true)}
-          className="hidden md:flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="size-4" />
-          Add Unit
-        </button>
+        {!loading && (
+          <button
+            onClick={() => setShowModal(true)}
+          className="bg-blue-600 text-white p-2.5 sm:px-4 sm:py-2 rounded-xl cursor-pointer hover:bg-blue-700 transition-all shadow-sm flex items-center gap-2 active:scale-95 font-semibold text-sm"
+          >
+            <Plus className="size-4" />
+            Add Unit
+          </button>
+        )}
       </div>
 
-      <button
-        onClick={() => setShowModal(true)}
-        className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center z-40 active:scale-90 transition-transform"
-        aria-label="Add Unit"
-      >
-        <Plus className="size-8" />
-      </button>
+      {!loading && (
+        <button
+          onClick={() => setShowModal(true)}
+          className="md:hidden fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center z-40 active:scale-90 transition-transform"
+          aria-label="Add Unit"
+        >
+          <Plus className="size-8" />
+        </button> 
+      )}
 
       <div className="flex-1">
-        {units.length === 0 ? (
+        {loading ? (
+          <EmptyState
+            icon={
+              <div className="flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+              </div>
+            }
+            title="Loading units..."
+            description="Please wait while business slot records are being retrieved."
+          />
+        ) : units.length === 0 ? (
           <EmptyState
             icon={<Building2 className="size-10 text-blue-500" />}
             title="No units yet"
@@ -682,8 +713,8 @@ export default function AdminUnitManagement() {
                         ? 'Updating...'
                         : 'Adding...'
                       : editingUnitId
-                      ? 'Update Unit'
-                      : 'Add Unit'}
+                        ? 'Update Unit'
+                        : 'Add Unit'}
                   </button>
                 </div>
               </div>
