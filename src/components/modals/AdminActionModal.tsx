@@ -12,8 +12,8 @@ import {
   Mail,
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
-import AdminPaymentForm from './forms/AdminPaymentForm';
-import AdminReservationForm from './forms/AdminReservationForm';
+import AdminPaymentForm from '../forms/AdminPaymentForm';
+import AdminReservationForm from '../forms/AdminReservationForm';
 
 type ActionType = 'payment' | 'reservation';
 type Stage = 'select_user' | 'select_target' | 'fill_form' | 'success';

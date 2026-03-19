@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useData } from '../../../contexts/DataContext';
-import { formatCurrency } from '../../../utils/currency';
+import { useData } from '../../contexts/DataContext';
+import { formatCurrency } from '../../utils/currency';
 import {
   Paperclip,
   Trash2,

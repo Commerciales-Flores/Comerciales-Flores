@@ -3,7 +3,7 @@ import React from 'react';
 import type { ReactNode } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLocation, Navigate, Outlet } from 'react-router-dom';
-import UnauthorizedPage from '../../pages/errors/UnauthorizePage';
+import UnauthorizedPage from '../../pages/errors/UnauthorizedPage';
 import ForbiddenPage from '../../pages/errors/ForbiddenPage';
 import NotFoundPage from '../../pages/errors/NotFoundPage';
 import ServerErrorPage from '../../pages/errors/ServerErrorPage';

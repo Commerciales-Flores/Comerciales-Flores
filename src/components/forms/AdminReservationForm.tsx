@@ -1,10 +1,10 @@
 // src/components/admin/AdminReservationForm.tsx
 
 import { useState, useEffect, useMemo } from 'react'; // Import useMemo
-import { useData } from '../../../contexts/DataContext';
-import type { PaymentCycle, PaymentMethod, Reservation, User } from '../../../contexts/DataContext';
-import { calculateTotalAmount } from '../../../utils/propertyHelpers';
-import { formatCurrency } from '../../../utils/currency';
+import { useData } from '../../contexts/DataContext';
+import type { PaymentCycle, PaymentMethod, Reservation, User } from '../../contexts/DataContext';
+import { calculateTotalAmount } from '../../utils/propertyHelpers';
+import { formatCurrency } from '../../utils/currency';
 import { CheckCircle, X, User as UserIcon } from 'lucide-react';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';

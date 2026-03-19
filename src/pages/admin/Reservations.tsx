@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { getUnitTypeLabel } from '../../utils/propertyHelpers';
-import AdminActionModal from './AdminActionModal';
+import AdminActionModal from '../../components/modals/AdminActionModal';
 import { motion } from 'framer-motion';
 import EmptyState from '../../components/common/EmptyState';
 
