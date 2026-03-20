@@ -148,6 +148,33 @@ export default function AdminCustomers() {
 
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 250);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const [pageInput, setPageInput] = useState('1');
+
+useEffect(() => {
+  setPageInput(String(page));
+}, [page]);
+
+const handlePageJump = useCallback(() => {
+  const parsed = parseInt(pageInput, 10);
+
+  if (Number.isNaN(parsed)) {
+    setPageInput(String(page));
+    return;
+  }
+
+  const nextPage = Math.min(Math.max(parsed, 1), totalPages);
+  setPage(nextPage);
+  setPageInput(String(nextPage));
+}, [pageInput, page, totalPages]);
+
+const handlePageInputKeyDown = useCallback(
+  (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handlePageJump();
+    }
+  },
+  [handlePageJump]
+);
 
   useEffect(() => {
     setPage(1);
@@ -388,7 +415,7 @@ export default function AdminCustomers() {
                     (h) => (
                       <th
                         key={h}
-                        className="px-6 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-widest"
+                        className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
                       >
                         {h}
                       </th>
@@ -411,7 +438,7 @@ export default function AdminCustomers() {
                         {c.firstName} {c.lastName}
                       </td>
 
-                      <td className="px-6 py-4 text-xs font-mono text-gray-400 w-[140px]">
+                      <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[220px]">
                         {c.publicId ?? c.id}
                       </td>
 
@@ -475,30 +502,49 @@ export default function AdminCustomers() {
       </div>
 
       {!loading && !hasNoCustomers && totalPages > 1 && (
-        <div className="flex items-center justify-between px-4 py-4 bg-white border border-gray-200 rounded-2xl shadow-sm">
-          <p className="text-sm text-gray-500">
-            Page {page} of {totalPages} • {totalCount} total customers
-          </p>
+  <div className="flex flex-col gap-3 px-4 py-4 bg-white border border-gray-200 rounded-2xl shadow-sm sm:flex-row sm:items-center sm:justify-between">
+    <p className="text-sm text-gray-500">
+      Page {page} of {totalPages} • {totalCount} total customers
+    </p>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
-            >
-              Previous
-            </button>
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        onClick={() => setPage((p) => Math.max(1, p - 1))}
+        disabled={page === 1}
+        className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
+      >
+        Previous
+      </button>
 
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      )}
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-gray-500">Go to</span>
+        <input
+          type="number"
+          min={1}
+          max={totalPages}
+          value={pageInput}
+          onChange={(e) => setPageInput(e.target.value)}
+          onKeyDown={handlePageInputKeyDown}
+          className="w-20 px-3 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <button
+          onClick={handlePageJump}
+          className="px-3 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+        >
+          Go
+        </button>
+      </div>
+
+      <button
+        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+        disabled={page === totalPages}
+        className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
+      >
+        Next
+      </button>
+    </div>
+  </div>
+)}
 
       <button
         onClick={() => setShowAddModal(true)}

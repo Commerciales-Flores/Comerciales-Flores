@@ -310,6 +310,25 @@ export default function AdminAudit() {
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
+  const [pageInput, setPageInput] = useState('1');
+
+  useEffect(() => {
+    setPageInput(String(page));
+  }, [page]);
+
+    const handlePageJump = useCallback(() => {
+  const parsed = parseInt(pageInput, 10);
+
+  if (Number.isNaN(parsed)) {
+    setPageInput(String(page));
+    return;
+  }
+
+  const nextPage = Math.min(Math.max(parsed, 1), totalPages);
+  setPage(nextPage);
+  setPageInput(String(nextPage));
+}, [pageInput, page, totalPages]);
+
   const formatUserLabel = useCallback(
     (userId?: string) => {
       if (!userId) return '—';
@@ -413,11 +432,28 @@ export default function AdminAudit() {
     pageSize,
   ]);
 
-  const hasNoLogs = !loading && totalCount === 0;
-  const hasNoSearchResults = !loading && totalCount > 0 && rows.length === 0;
 
+
+  const hasActiveSearch = Boolean(debouncedSearchTerm.trim());
   const hasActiveFilters =
-    selectedAction !== 'All' || selectedModule !== 'All' || Boolean(startDate) || Boolean(endDate);
+    hasActiveSearch ||
+    selectedAction !== 'All' ||
+    selectedModule !== 'All' ||
+    Boolean(startDate) ||
+    Boolean(endDate);
+
+  const hasNoLogs = !loading && totalCount === 0 && !hasActiveFilters;
+  const hasNoSearchResults = !loading && totalCount === 0 && hasActiveFilters;
+
+  const handlePageInputKeyDown = useCallback(
+  (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handlePageJump();
+    }
+  },
+  [handlePageJump]
+);
+
 
   const resetFilters = useCallback(() => {
     setSelectedAction('All');
@@ -448,7 +484,7 @@ export default function AdminAudit() {
         <p className="text-gray-500 text-sm">Monitor all administrative and system activities.</p>
       </div>
 
-      {!loading && !hasNoLogs && (
+      {!loading && (!hasNoLogs || hasActiveFilters) && (
         <DesktopFilterBar
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
@@ -492,7 +528,7 @@ export default function AdminAudit() {
                       (header) => (
                         <th
                           key={header}
-                          className="px-6 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-widest"
+                          className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
                         >
                           {header}
                         </th>
@@ -634,12 +670,12 @@ export default function AdminAudit() {
         </div>
 
         {!loading && !hasNoLogs && totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-4 bg-white border border-gray-200 rounded-2xl shadow-sm mt-4">
+          <div className="flex flex-col gap-3 mt-4 bg-white border border-gray-200 rounded-2xl shadow-sm px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-gray-500">
               Page {page} of {totalPages} • {totalCount} total logs
             </p>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
@@ -647,6 +683,25 @@ export default function AdminAudit() {
               >
                 Previous
               </button>
+
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">Go to</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  value={pageInput}
+                  onChange={(e) => setPageInput(e.target.value)}
+                  onKeyDown={handlePageInputKeyDown}
+                  className="w-20 px-3 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  onClick={handlePageJump}
+                  className="px-3 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+                >
+                  Go
+                </button>
+              </div>
 
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}

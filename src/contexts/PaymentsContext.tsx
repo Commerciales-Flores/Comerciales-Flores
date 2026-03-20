@@ -85,67 +85,67 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
   }, [refreshPayments]);
 
   const fetchPaymentsPage = useCallback(
-  async ({
-    page = 1,
-    pageSize = 25,
-    status = 'all',
-    searchTerm = '',
-  }: PaymentsPageFilters): Promise<{
-    data: Payment[];
-    count: number;
-  }> => {
-    let query = supabase
-      .from('payments')
-      .select(
-        'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at',
-        { count: 'exact' }
-      )
-      .order('date', { ascending: false });
+    async ({
+      page = 1,
+      pageSize = 25,
+      status = 'all',
+      searchTerm = '',
+    }: PaymentsPageFilters): Promise<{
+      data: Payment[];
+      count: number;
+    }> => {
+      let query = supabase
+        .from('payments')
+        .select(
+          'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at',
+          { count: 'exact' }
+        )
+        .order('date', { ascending: false });
 
-    if (status !== 'all') {
-      query = query.eq('status', status);
-    }
+      if (status !== 'all') {
+        query = query.eq('status', status);
+      }
 
-    const trimmedSearch = searchTerm.trim();
-    if (trimmedSearch) {
-      query = query.or(
-        [
-          `public_id.ilike.%${trimmedSearch}%`,
-          `reservation_id.ilike.%${trimmedSearch}%`,
-          `user_id.ilike.%${trimmedSearch}%`,
-          `notes.ilike.%${trimmedSearch}%`,
-          `method.ilike.%${trimmedSearch}%`,
-        ].join(',')
-      );
-    }
+      const trimmedSearch = searchTerm.trim();
+      if (trimmedSearch) {
+        query = query.or(
+          [
+            `public_id.ilike.%${trimmedSearch}%`,
+            `reservation_id.ilike.%${trimmedSearch}%`,
+            `user_id.ilike.%${trimmedSearch}%`,
+            `notes.ilike.%${trimmedSearch}%`,
+            `method.ilike.%${trimmedSearch}%`,
+          ].join(',')
+        );
+      }
 
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
 
-    const { data, error, count } = await query.range(from, to);
+      const { data, error, count } = await query.range(from, to);
 
-    if (error) throw error;
+      if (error) throw error;
 
-    return {
-      data: (data ?? []).map((row: any) => ({
-        id: row.payment_id,
-        publicId: row.public_id,
-        reservationId: row.reservation_id,
-        userId: row.user_id,
-        amount: Number(row.amount),
-        method: row.method as PaymentMethod,
-        status: row.status as PaymentStatus,
-        proofOfPayment: row.proofOfPayment,
-        date: row.date,
-        notes: row.notes,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      })),
-      count: count ?? 0,
-    };
-  },
-  []
-);
+      return {
+        data: (data ?? []).map((row: any) => ({
+          id: row.payment_id,
+          publicId: row.public_id,
+          reservationId: row.reservation_id,
+          userId: row.user_id,
+          amount: Number(row.amount),
+          method: row.method as PaymentMethod,
+          status: row.status as PaymentStatus,
+          proofOfPayment: row.proofOfPayment,
+          date: row.date,
+          notes: row.notes,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        })),
+        count: count ?? 0,
+      };
+    },
+    []
+  );
 
   const uploadPaymentProof = useCallback(async (file: File): Promise<string | null> => {
     try {
@@ -227,8 +227,18 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       if (newPayment.status === 'paid') {
         await addLedgerEntry({
           userId: newPayment.userId,
+          reservation_id: newPayment.reservationId,
+          payment_id: newPayment.id,
+          entry_type: 'payment',
           amount: newPayment.amount,
-          date: newPayment.date,
+          method: newPayment.method,
+          status: 'verified',
+          reference_no: null,
+          description: `Payment for reservation ${newPayment.publicId ?? newPayment.id}`,
+          notes: newPayment.notes ?? null,
+          recorded_at: newPayment.date,
+          created_at: new Date().toISOString(),
+          created_by: user?.id ?? null,
         });
 
         const reservation = reservations.find((r) => r.id === newPayment.reservationId);
@@ -290,11 +300,25 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       if (existingPayment.status !== 'paid' && paymentUpdate.status === 'paid') {
         const finalAmount =
           paymentUpdate.amount !== undefined ? paymentUpdate.amount : existingPayment.amount;
+        const finalMethod =
+          paymentUpdate.method !== undefined ? paymentUpdate.method : existingPayment.method;
+        const finalNotes =
+          paymentUpdate.notes !== undefined ? paymentUpdate.notes : existingPayment.notes;
 
         await addLedgerEntry({
           userId: existingPayment.userId,
+          reservation_id: existingPayment.reservationId,
+          payment_id: existingPayment.id,
+          entry_type: 'payment',
           amount: finalAmount,
-          date: new Date().toISOString(),
+          method: finalMethod,
+          status: 'verified',
+          reference_no: null,
+          description: `Payment for reservation ${existingPayment.publicId ?? existingPayment.id}`,
+          notes: finalNotes ?? null,
+          recorded_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          created_by: user?.id ?? null,
         });
       }
 

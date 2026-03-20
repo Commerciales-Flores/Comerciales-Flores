@@ -9,12 +9,13 @@ import {
   FileText,
   X,
   Filter,
-  ChevronRight,
   ChevronDown,
   Notebook,
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { getUnitTypeLabel } from '../../utils/propertyHelpers';
+import { uiTypography } from '../../styles/uiTypography';
+import EmptyState from '../../components/common/EmptyState';
 
 type FilterStatus = 'all' | 'pending' | 'confirmed' | 'cancelled';
 type ReservationStatus =
@@ -45,9 +46,130 @@ const STATUS_ICONS: Record<ReservationStatus, string> = {
   completed: '✓',
 };
 
+type ReservationFilterTabsProps = {
+  filter: FilterStatus;
+  counts: Record<FilterStatus, number>;
+  onChange: (status: FilterStatus) => void;
+};
+
+function ReservationFilterTabs({
+  filter,
+  counts,
+  onChange,
+}: ReservationFilterTabsProps) {
+  return (
+    <div className="hidden w-fit gap-1 rounded-xl bg-gray-100/80 p-1 md:flex">
+      {FILTER_OPTIONS.map((status) => (
+        <button
+          key={status}
+          onClick={() => onChange(status)}
+          className={`inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-medium capitalize transition-all ${
+            filter === status
+              ? 'bg-white text-blue-600 shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <span>{status}</span>
+          <span
+            className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+              filter === status
+                ? 'bg-blue-50 text-blue-600'
+                : 'bg-white text-gray-500'
+            }`}
+          >
+            {counts[status]}
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+type ReservationFilterBottomSheetProps = {
+  isOpen: boolean;
+  filter: FilterStatus;
+  counts: Record<FilterStatus, number>;
+  onClose: () => void;
+  onSelect: (status: FilterStatus) => void;
+};
+
+function ReservationFilterBottomSheet({
+  isOpen,
+  filter,
+  counts,
+  onClose,
+  onSelect,
+}: ReservationFilterBottomSheetProps) {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm md:hidden"
+          />
+
+          <motion.div
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="fixed inset-x-0 bottom-0 z-[70] flex max-h-[70vh] flex-col rounded-t-[32px] bg-white shadow-2xl md:hidden"
+          >
+            <div className="border-b p-6">
+              <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-gray-200" />
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-gray-900">Filter reservations</h2>
+                <button
+                  onClick={onClose}
+                  className="rounded-full bg-gray-100 p-2 transition hover:bg-gray-200"
+                >
+                  <X className="size-5 text-gray-500" />
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-y-auto p-6">
+              <div className="grid gap-2">
+                {FILTER_OPTIONS.map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => onSelect(status)}
+                    className={`flex w-full items-center justify-between rounded-2xl p-4 text-left font-semibold capitalize transition ${
+                      filter === status
+                        ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200'
+                        : 'bg-gray-50 text-gray-600'
+                    }`}
+                  >
+                    <span>{status}</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                        filter === status
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-white text-gray-500'
+                      }`}
+                    >
+                      {counts[status]}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
+
 export default function ClientReservations() {
   const { user } = useAuth();
   const { getReservationsByUserId, units, deleteReservation } = useData();
+  
+const [expandedDetailsId, setExpandedDetailsId] = useState<string | null>(null);
 
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -86,19 +208,27 @@ export default function ClientReservations() {
   }, [filteredReservations]);
 
   useEffect(() => {
-    const handleResize = () => {
-      const mobile = window.innerWidth < 768;
-      setIsMobile(mobile);
+  const handleResize = () => {
+    const mobile = window.innerWidth < 768;
+    setIsMobile(mobile);
 
-      if (!mobile) {
-        setExpandedId(null);
-      }
-    };
+    if (!mobile) {
+      setExpandedId(null);
+      setExpandedDetailsId(null);
+    }
+  };
 
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  handleResize();
+  window.addEventListener('resize', handleResize);
+  return () => window.removeEventListener('resize', handleResize);
+}, []);
+
+const toggleDetails = useCallback(
+  (id: string) => {
+    setExpandedDetailsId((prev) => (prev === id ? null : id));
+  },
+  []
+);
 
   const handleDeleteReservation = useCallback(
     (reservationId: string, unitName: string) => {
@@ -121,15 +251,11 @@ export default function ClientReservations() {
     [isMobile]
   );
 
-  const handleOpenFilterMenu = useCallback(() => {
-    setShowFilterMenu(true);
+  const handleFilterChange = useCallback((status: FilterStatus) => {
+    setFilterStatus(status);
   }, []);
 
-  const handleCloseFilterMenu = useCallback(() => {
-    setShowFilterMenu(false);
-  }, []);
-
-  const handleSelectFilter = useCallback((status: FilterStatus) => {
+  const handleFilterSelectFromSheet = useCallback((status: FilterStatus) => {
     setFilterStatus(status);
     setShowFilterMenu(false);
   }, []);
@@ -137,20 +263,20 @@ export default function ClientReservations() {
   return (
     <div className="bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
-        <div className="flex justify-between items-end">
+        <div className="flex justify-between items-end gap-4">
           <header>
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
               My Reservations
             </h1>
-            <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-              View and manage your reservations requests
+            <p className="mt-0.5 text-xs text-gray-500 sm:text-sm">
+              View and manage your reservation requests
             </p>
           </header>
 
           {userReservations.length > 0 && (
             <button
-              onClick={handleOpenFilterMenu}
-              className="md:hidden p-3 bg-white border border-gray-200 rounded-2xl shadow-sm active:scale-95 transition"
+              onClick={() => setShowFilterMenu(true)}
+              className="rounded-xl border border-gray-200 bg-white p-2.5 shadow-sm transition active:scale-95 md:hidden"
             >
               <Filter className="size-5 text-gray-600" />
             </button>
@@ -158,34 +284,11 @@ export default function ClientReservations() {
         </div>
 
         {userReservations.length > 0 && (
-          <div className="hidden md:flex gap-1 p-1 bg-gray-200/50 backdrop-blur-md rounded-2xl w-fit border border-white/50 shadow-inner">
-            {FILTER_OPTIONS.map((status) => {
-              const count = filterCounts[status];
-
-              return (
-                <button
-                  key={status}
-                  onClick={() => setFilterStatus(status)}
-                  className={`px-6 py-2.5 text-sm font-medium capitalize rounded-xl transition-all flex items-center gap-2 ${
-                    filterStatus === status
-                      ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
-                      : 'text-gray-500 hover:text-gray-700 hover:bg-white/40'
-                  }`}
-                >
-                  {status}
-                  <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                      filterStatus === status
-                        ? 'bg-blue-100 text-blue-600'
-                        : 'bg-gray-200 text-gray-500'
-                    }`}
-                  >
-                    ({count})
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <ReservationFilterTabs
+            filter={filterStatus}
+            counts={filterCounts}
+            onChange={handleFilterChange}
+          />
         )}
 
         <div className="space-y-4">
@@ -194,21 +297,16 @@ export default function ClientReservations() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.25 }}
-              className="flex flex-col items-center justify-center py-20 text-center"
             >
-              <div className="bg-blue-50 p-6 rounded-3xl shadow-sm mb-4">
-                <Notebook className="size-10 text-blue-500" />
-              </div>
-
-              <h3 className="text-lg font-bold text-gray-900">
-                No reservations found
-              </h3>
-
-              <p className="text-gray-500 max-w-xs text-sm mt-1">
-                {filterStatus === 'all'
-                  ? "You haven't made any reservations yet."
-                  : `No ${filterStatus} reservations found.`}
-              </p>
+              <EmptyState
+                icon={<Notebook className="size-10 text-blue-500" />}
+                title="No reservations found"
+                description={
+                  filterStatus === 'all'
+                    ? "You haven't made any reservations yet."
+                    : `No ${filterStatus} reservations found.`
+                }
+              />
             </motion.div>
           ) : (
             <div className="grid gap-4">
@@ -225,7 +323,7 @@ export default function ClientReservations() {
                         )
                       )
                     : 0;
-
+                const isDetailsExpanded = expandedDetailsId === reservation.id;
                 const isCardExpanded = !isMobile || expandedId === reservation.id;
                 const status =
                   (reservation.status as ReservationStatus) in STATUS_COLORS
@@ -251,24 +349,37 @@ export default function ClientReservations() {
                     >
                       <div className="flex justify-between items-start mb-4">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="text-[10px] sm:text-xs text-blue-600 font-medium">
-                              {getUnitTypeLabel(reservation.unitType)}
-                            </span>
+                          <div className="mb-2 flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <span className="text-[13px] font-semibold text-blue-600 sm:text-sm">
+                                {getUnitTypeLabel(reservation.unitType)}
+                              </span>
+
+                              <p
+                                className={`${uiTypography.helperText} mt-1 truncate text-gray-400 text-[11px]`}
+                              >
+                                ID: {reservation.publicId || reservation.id}
+                              </p>
+                            </div>
+
                             <span
-                              className={`px-2 py-0.5 text-[9px] sm:text-[10px] font-bold rounded-full border shadow-sm ${STATUS_COLORS[status]}`}
+                              className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] ${uiTypography.buttonTextBold} shadow-sm ${STATUS_COLORS[status]}`}
                             >
                               {STATUS_ICONS[status]} {status.toUpperCase()}
                             </span>
                           </div>
 
-                          <h3 className="text-base sm:text-lg font-bold text-gray-900 truncate">
+                          <h3
+                            className={`${uiTypography.cardTitle} truncate text-[15px] sm:text-base text-gray-900`}
+                          >
                             {reservation.unitName}
                           </h3>
 
                           <div className="flex items-center gap-1.5 text-gray-500 mt-1">
                             <MapPin className="size-4 text-blue-600" />
-                            <span className="text-xs sm:text-sm truncate">
+                            <span
+                              className={`${uiTypography.bodyText} truncate text-[13px] sm:text-sm`}
+                            >
                               {unit?.location || 'N/A'}
                             </span>
                           </div>
@@ -286,28 +397,40 @@ export default function ClientReservations() {
 
                       <div className="grid grid-cols-3 gap-2 bg-gray-50/80 p-3 rounded-xl border border-gray-100">
                         <div>
-                          <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">
+                          <p
+                            className={`${uiTypography.miniStatLabel} mb-1 text-gray-500 text-[10px]`}
+                          >
                             Start
                           </p>
-                          <p className="text-[11px] sm:text-xs font-semibold text-gray-900">
+                          <p
+                            className={`${uiTypography.miniStatValue} text-gray-900 text-[13px] sm:text-sm`}
+                          >
                             {new Date(reservation.startDate).toLocaleDateString()}
                           </p>
                         </div>
 
                         <div className="border-x border-gray-200 px-2">
-                          <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">
+                          <p
+                            className={`${uiTypography.miniStatLabel} mb-1 text-gray-500 text-[10px]`}
+                          >
                             End
                           </p>
-                          <p className="text-[11px] sm:text-xs font-semibold text-gray-900">
+                          <p
+                            className={`${uiTypography.miniStatValue} text-gray-900 text-[13px] sm:text-sm`}
+                          >
                             {new Date(reservation.endDate).toLocaleDateString()}
                           </p>
                         </div>
 
                         <div className="pl-1">
-                          <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">
+                          <p
+                            className={`${uiTypography.miniStatLabel} mb-1 text-gray-500 text-[10px]`}
+                          >
                             Duration
                           </p>
-                          <p className="text-[11px] sm:text-xs font-semibold text-gray-900">
+                          <p
+                            className={`${uiTypography.miniStatValue} text-gray-900 text-[13px] sm:text-sm`}
+                          >
                             {reservation.duration} {durationLabel}
                           </p>
                         </div>
@@ -315,195 +438,277 @@ export default function ClientReservations() {
                     </div>
 
                     <AnimatePresence>
-                      {isCardExpanded && (
-                        <motion.div
-                          initial={isMobile ? { height: 0, opacity: 0 } : false}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.2 }}
+  {isCardExpanded && (
+    <motion.div
+      initial={isMobile ? { height: 0, opacity: 0 } : false}
+      animate={{ height: 'auto', opacity: 1 }}
+      exit={{ height: 0, opacity: 0 }}
+      transition={{ duration: 0.2 }}
+    >
+      <div className="px-5 pb-5 sm:px-6 sm:pb-6 space-y-4">
+        <div className="border-t border-gray-100 pt-4">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleDetails(reservation.id);
+            }}
+            className="flex w-full items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-left transition hover:bg-gray-100"
+          >
+            <div>
+              <p className={`${uiTypography.miniStatLabel} text-gray-500`}>
+                Reservation Details
+              </p>
+              <p className={`${uiTypography.helperText} mt-1 text-gray-400`}>
+                View visit mode, payment method, purpose, notes, and more
+              </p>
+            </div>
+
+            <motion.div
+              animate={{ rotate: isDetailsExpanded ? 180 : 0 }}
+              transition={{ duration: 0.2 }}
+              className="rounded-lg bg-white p-1.5 shadow-sm"
+            >
+              <ChevronDown className="size-4 text-gray-500" />
+            </motion.div>
+          </button>
+
+          <AnimatePresence initial={false}>
+            {isDetailsExpanded && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="pt-4 space-y-2">
+                  <div className="space-y-1 text-[13px] sm:text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-gray-500">
+                        <Clock className="size-4 text-blue-600" />
+                        <span className={uiTypography.miniStatLabel}>Mode</span>
+                      </div>
+                      <span
+                        className={`${uiTypography.infoBlockValue} capitalize text-gray-900 text-right`}
+                      >
+                        {reservation.modeOfVisit?.replace('_', ' ') || 'N/A'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-gray-500">
+                        <CreditCard className="size-4 text-emerald-600" />
+                        <span className={uiTypography.miniStatLabel}>Payment</span>
+                      </div>
+                      <span
+                        className={`${uiTypography.infoBlockValue} capitalize text-gray-900 text-right`}
+                      >
+                        {reservation.paymentMethod?.replace('_', ' ') || 'N/A'}
+                      </span>
+                    </div>
+
+                    {reservation.paymentCycle && (
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 text-gray-500">
+                          <Clock className="size-4 text-amber-600" />
+                          <span className={uiTypography.miniStatLabel}>Cycle</span>
+                        </div>
+                        <span
+                          className={`${uiTypography.infoBlockValue} capitalize text-gray-900 text-right`}
                         >
-                          <div className="px-5 pb-5 sm:px-6 sm:pb-6 space-y-4">
-                            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-50">
-                              <div className="space-y-3">
-                                <div className="flex items-center gap-2 text-xs sm:text-sm">
-                                  <FileText className="size-3.5 text-gray-400" />
-                                  <span className="text-gray-500">Mode:</span>
-                                  <span className="text-gray-900 capitalize">
-                                    {reservation.modeOfVisit.replace('_', ' ')}
-                                  </span>
-                                </div>
+                          {reservation.paymentCycle}
+                        </span>
+                      </div>
+                    )}
 
-                                <div className="flex items-center gap-2 text-xs sm:text-sm">
-                                  <CreditCard className="size-3.5 text-gray-400" />
-                                  <span className="text-gray-500">Payment:</span>
-                                  <span className="text-gray-900 capitalize">
-                                    {reservation.paymentMethod?.replace('_', ' ') || 'N/A'}
-                                  </span>
-                                </div>
-                              </div>
+                    {reservation.businessType && (
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 text-gray-500">
+                          <Notebook className="size-4 text-violet-600" />
+                          <span className={uiTypography.miniStatLabel}>Business</span>
+                        </div>
+                        <span
+                          className={`${uiTypography.infoBlockValue} text-gray-900 text-right`}
+                        >
+                          {reservation.businessType}
+                        </span>
+                      </div>
+                    )}
 
-                              <div className="space-y-3">
-                                {reservation.paymentCycle && (
-                                  <div className="flex items-center gap-2 text-xs sm:text-sm">
-                                    <Clock className="size-3.5 text-gray-400" />
-                                    <span className="text-gray-500">Cycle:</span>
-                                    <span className="text-gray-900 capitalize">
-                                      {reservation.paymentCycle}
-                                    </span>
-                                  </div>
-                                )}
-                                <p className="text-[10px] text-gray-400">
-                                  ID: {reservation.id}
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="space-y-2">
-                              {reservation.businessType && (
-                                <div className="p-3 bg-white border border-gray-100 rounded-xl">
-                                  <p className="text-xs text-gray-600">
-                                    Business Type:{' '}
-                                    <span className="text-gray-900 font-medium">
-                                      {reservation.businessType}
-                                    </span>
-                                  </p>
-                                </div>
-                              )}
-
-                              {reservation.eventPurpose && (
-                                <div className="p-3 bg-white border border-gray-100 rounded-xl">
-                                  <p className="text-xs text-gray-600">
-                                    Event Purpose:{' '}
-                                    <span className="text-gray-900 font-medium">
-                                      {reservation.eventPurpose}
-                                    </span>
-                                  </p>
-                                  {reservation.attendees && (
-                                    <p className="text-[11px] text-gray-500 mt-1">
-                                      Attendees:{' '}
-                                      <span className="text-gray-900">
-                                        {reservation.attendees}
-                                      </span>
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-
-                              {reservation.vehicleType && (
-                                <div className="p-3 bg-white border border-gray-100 rounded-xl">
-                                  <p className="text-xs text-gray-600">
-                                    Vehicle:{' '}
-                                    <span className="text-gray-900 font-medium">
-                                      {reservation.vehicleType} - {reservation.plateNumber}
-                                    </span>
-                                  </p>
-                                </div>
-                              )}
-
-                              {reservation.notes && (
-                                <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl">
-                                  <p className="text-[11px] text-blue-700 font-bold uppercase mb-1">
-                                    Notes
-                                  </p>
-                                  <p className="text-xs text-gray-700">
-                                    {reservation.notes}
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="border-t border-gray-100 pt-4">
-                              <div className="grid grid-cols-3 gap-2 mb-4">
-                                <div className="text-center sm:text-left">
-                                  <p className="text-[9px] font-bold text-gray-400 uppercase mb-0.5">
-                                    Total
-                                  </p>
-                                  <p className="text-xs sm:text-sm font-bold text-gray-900">
-                                    {formatCurrency(reservation.totalAmount)}
-                                  </p>
-                                </div>
-
-                                <div className="text-center sm:text-left">
-                                  <p className="text-[9px] font-bold text-gray-400 uppercase mb-0.5">
-                                    Paid
-                                  </p>
-                                  <p className="text-xs sm:text-sm font-bold text-green-600">
-                                    {formatCurrency(reservation.paidAmount)}
-                                  </p>
-                                </div>
-
-                                <div className="text-center sm:text-left">
-                                  <p className="text-[9px] font-bold text-gray-400 uppercase mb-0.5">
-                                    Balance
-                                  </p>
-                                  <p
-                                    className={`text-xs sm:text-sm font-bold ${
-                                      balance > 0 ? 'text-red-600' : 'text-green-600'
-                                    }`}
-                                  >
-                                    {formatCurrency(balance)}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {reservation.status === 'confirmed' && (
-                                <div className="mb-4">
-                                  <div className="flex justify-between text-[10px] text-gray-500 mb-1">
-                                    <span>Payment Progress</span>
-                                    <span>{paymentProgress.toFixed(0)}%</span>
-                                  </div>
-
-                                  <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                                    <motion.div
-                                      initial={{ width: 0 }}
-                                      animate={{ width: `${paymentProgress}%` }}
-                                      className={`h-full transition-all ${
-                                        paymentProgress === 100
-                                          ? 'bg-green-600'
-                                          : 'bg-blue-600'
-                                      }`}
-                                    />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-
-                            {reservation.status === 'pending' && (
-                              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-xl text-xs text-yellow-800">
-                                Pending admin approval. You will be notified once reviewed.
-                              </div>
-                            )}
-
-                            {reservation.status === 'confirmed' && balance > 0 && (
-                              <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800">
-                                Approved! Please go to Payments to complete your transaction.
-                              </div>
-                            )}
-
-                            <div className="flex flex-col sm:flex-row justify-between items-center pt-2 gap-3">
-                              <span className="text-[10px] text-gray-400">
-                                Requested{' '}
-                                {new Date(reservation.requestDate).toLocaleDateString()}
-                              </span>
-
-                              {reservation.status === 'pending' && (
-                                <button
-                                  onClick={() =>
-                                    handleDeleteReservation(
-                                      reservation.id,
-                                      reservation.unitName
-                                    )
-                                  }
-                                  className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 bg-red-600 text-white text-sm sm:text-base font-semibold rounded-xl hover:bg-red-700 transition-colors shadow-sm"
-                                >
-                                  Cancel Reservation
-                                </button>
-                              )}
-                            </div>
+                    {reservation.eventPurpose && (
+                      <>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 text-gray-500">
+                            <FileText className="size-4 text-pink-600" />
+                            <span className={uiTypography.miniStatLabel}>Purpose</span>
                           </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
+                          <span
+                            className={`${uiTypography.infoBlockValue} text-gray-900 text-right`}
+                          >
+                            {reservation.eventPurpose}
+                          </span>
+                        </div>
+
+                        {reservation.attendees && (
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 text-gray-500">
+                              <Notebook className="size-4 text-pink-600" />
+                              <span className={uiTypography.miniStatLabel}>Attendees</span>
+                            </div>
+                            <span
+                              className={`${uiTypography.infoBlockValue} text-gray-900 text-right`}
+                            >
+                              {reservation.attendees}
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {reservation.vehicleType && (
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 text-gray-500">
+                          <MapPin className="size-4 text-slate-600" />
+                          <span className={uiTypography.miniStatLabel}>Vehicle</span>
+                        </div>
+                        <span
+                          className={`${uiTypography.infoBlockValue} text-gray-900 text-right`}
+                        >
+                          {reservation.vehicleType}
+                          {reservation.plateNumber ? ` - ${reservation.plateNumber}` : ''}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {reservation.notes && (
+                    <div className="pt-2 border-t border-gray-100">
+                      <div className="flex items-start gap-2">
+                        <Notebook className="size-4 text-blue-600 mt-0.5" />
+                        <div>
+                          <p
+                            className={`${uiTypography.miniStatLabel} text-blue-700 text-[10px]`}
+                          >
+                            Notes
+                          </p>
+                          <p
+                            className={`${uiTypography.bodyText} text-[13px] sm:text-sm text-gray-700`}
+                          >
+                            {reservation.notes}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        <div className="border-t border-gray-100 pt-4">
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            <div className="text-center sm:text-left">
+              <p
+                className={`${uiTypography.miniStatLabel} mb-0.5 text-gray-500 text-[10px]`}
+              >
+                Total
+              </p>
+              <p
+                className={`${uiTypography.miniStatValue} text-gray-900 text-[13px] sm:text-sm`}
+              >
+                {formatCurrency(reservation.totalAmount)}
+              </p>
+            </div>
+
+            <div className="text-center sm:text-left">
+              <p
+                className={`${uiTypography.miniStatLabel} mb-0.5 text-gray-500 text-[10px]`}
+              >
+                Paid
+              </p>
+              <p
+                className={`${uiTypography.miniStatValue} text-green-600 text-[13px] sm:text-sm`}
+              >
+                {formatCurrency(reservation.paidAmount)}
+              </p>
+            </div>
+
+            <div className="text-center sm:text-left">
+              <p
+                className={`${uiTypography.miniStatLabel} mb-0.5 text-gray-500 text-[10px]`}
+              >
+                Balance
+              </p>
+              <p
+                className={`${uiTypography.miniStatValue} text-[13px] sm:text-sm ${
+                  balance > 0 ? 'text-red-600' : 'text-green-600'
+                }`}
+              >
+                {formatCurrency(balance)}
+              </p>
+            </div>
+          </div>
+
+          {reservation.status === 'confirmed' && (
+            <div className="mb-4">
+              <div
+                className={`${uiTypography.helperText} flex justify-between text-gray-500 mb-1 text-[11px]`}
+              >
+                <span>Payment Progress</span>
+                <span>{paymentProgress.toFixed(0)}%</span>
+              </div>
+
+              <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${paymentProgress}%` }}
+                  className={`h-full transition-all ${
+                    paymentProgress === 100 ? 'bg-green-600' : 'bg-blue-600'
+                  }`}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {reservation.status === 'pending' && (
+          <div
+            className={`rounded-2xl border border-yellow-200 bg-yellow-50 p-4 ${uiTypography.bodyText} text-[13px] sm:text-sm text-yellow-800`}
+          >
+            Pending admin approval. You will be notified once reviewed.
+          </div>
+        )}
+
+        {reservation.status === 'confirmed' && balance > 0 && (
+          <div
+            className={`rounded-2xl border border-yellow-200 bg-yellow-50 p-4 ${uiTypography.bodyText} text-[13px] sm:text-sm text-yellow-800`}
+          >
+            Approved! Please go to Payments to complete your transaction.
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row justify-between items-center pt-2 gap-3">
+          <span className={`${uiTypography.helperText} text-gray-400 text-[11px]`}>
+            Requested {new Date(reservation.requestDate).toLocaleDateString()}
+          </span>
+
+          {reservation.status === 'pending' && (
+            <button
+              onClick={() =>
+                handleDeleteReservation(reservation.id, reservation.unitName)
+              }
+              className={`w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 bg-red-600 text-white text-[13px] sm:text-sm ${uiTypography.buttonText} rounded-xl hover:bg-red-700 transition-colors shadow-sm`}
+            >
+              Cancel Reservation
+            </button>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  )}
+</AnimatePresence>
                   </motion.div>
                 );
               })}
@@ -511,54 +716,13 @@ export default function ClientReservations() {
           )}
         </div>
 
-        <AnimatePresence>
-          {showFilterMenu && userReservations.length > 0 && (
-            <>
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={handleCloseFilterMenu}
-                className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[80] md:hidden"
-              />
-
-              <motion.div
-                initial={{ y: '100%' }}
-                animate={{ y: 0 }}
-                exit={{ y: '100%' }}
-                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                className="fixed inset-x-0 bottom-0 max-h-[70vh] bg-white rounded-t-[40px] z-[90] shadow-2xl md:hidden flex flex-col"
-              >
-                <div className="p-6 border-b border-gray-50 flex items-center justify-between">
-                  <h2 className="text-xl font-bold text-gray-900">Filter Status</h2>
-                  <button
-                    onClick={handleCloseFilterMenu}
-                    className="p-2 bg-gray-100 rounded-full"
-                  >
-                    <X className="size-5 text-gray-500" />
-                  </button>
-                </div>
-
-                <div className="p-6 space-y-3">
-                  {FILTER_OPTIONS.map((status) => (
-                    <button
-                      key={status}
-                      onClick={() => handleSelectFilter(status)}
-                      className={`w-full p-4 rounded-2xl text-left font-bold capitalize transition-all flex justify-between items-center ${
-                        filterStatus === status
-                          ? 'bg-blue-600 text-white shadow-lg'
-                          : 'bg-gray-50 text-gray-600'
-                      }`}
-                    >
-                      {status}
-                      {filterStatus === status && <ChevronRight className="size-5" />}
-                    </button>
-                  ))}
-                </div>
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
+        <ReservationFilterBottomSheet
+          isOpen={showFilterMenu}
+          filter={filterStatus}
+          counts={filterCounts}
+          onClose={() => setShowFilterMenu(false)}
+          onSelect={handleFilterSelectFromSheet}
+        />
       </div>
     </div>
   );

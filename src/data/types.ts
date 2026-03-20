@@ -20,6 +20,20 @@ export type PaymentMethod =
 export type PaymentCycle = 'monthly' | 'quarterly' | 'full';
 export type InquiryStatus = 'open' | 'responded' | 'resolved';
 
+export type ParkingSlotStatus = 'active' | 'inactive' | 'maintenance';
+
+export interface ParkingSlot {
+  id: string;
+  unitId: string;
+  slotCode: string;
+  label?: string | null;
+  status: ParkingSlotStatus;
+  vehicleType?: string | null;
+  imagePath?: string | null;
+  imageUrl?: string | null;
+  notes?: string | null;
+}
+
 export interface Unit {
   id: string;
   propertyId: string;
@@ -27,7 +41,8 @@ export interface Unit {
   type: UnitType;
   description: string;
   price: number;
-  images: string[];
+  images: string[];      // public URLs for rendering
+  imagePaths: string[];
   policies: string;
   capacity?: number;
   available: boolean;
@@ -58,6 +73,8 @@ export interface Reservation {
   paymentMethod?: PaymentMethod;
   paymentCycle?: PaymentCycle;
   businessType?: string;
+  appointmentDate?: string | null;
+  appointmentTime?: string | null;
   paymentIntent?: 'pay_onsite' | 'pay_later';
   eventPurpose?: string;
   attendees?: number;
@@ -87,9 +104,26 @@ export interface Payment {
 
 export interface LedgerEntry {
   id: string;
-  userId: string;
+  userId: string | null;
+  reservation_id: string | null;
+  payment_id: string | null;
+  entry_type:
+    | 'payment'
+    | 'deposit'
+    | 'balance'
+    | 'refund'
+    | 'penalty'
+    | 'discount'
+    | 'adjustment';
   amount: number;
-  date: string;
+  method?: string | null;
+  status?: string | null;
+  reference_no?: string | null;
+  description?: string | null;
+  notes?: string | null;
+  recorded_at: string;
+  created_at: string;
+  created_by?: string | null;
 }
 
 export interface AuditLog {
@@ -153,11 +187,6 @@ export interface BusinessSlot {
   available: boolean;
 }
 
-export interface ParkingSlot {
-  id: string;
-  name: string;
-  imageUrl: string;
-}
 
 export interface ContentSettings {
   content_id?: string;

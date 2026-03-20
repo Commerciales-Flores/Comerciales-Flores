@@ -46,7 +46,7 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
     const { data, error } = await supabase
       .from('reservations')
       .select(
-        'reservation_id, public_id, user_id, unit_id, title, unit_type, start_date, end_date, duration, total_amount, status, notes, paid_amount, created_at, payment_method, payment_intent, mode_of_visit, details'
+        'reservation_id, public_id, user_id, unit_id, title, unit_type, start_date, end_date, duration, total_amount, status, notes, paid_amount, created_at, payment_method, payment_intent, mode_of_visit, appointment_date, appointment_time, details'
       )
       .order('created_at', { ascending: false });
 
@@ -79,6 +79,8 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
         paymentMethod: row.payment_method,
         paymentIntent: row.payment_intent,
         modeOfVisit: row.mode_of_visit,
+        appointmentDate: row.appointment_date,
+        appointmentTime: row.appointment_time,
         paymentCycle: row.details?.paymentCycle,
         businessType: row.details?.businessType,
         eventPurpose: row.details?.eventPurpose,
@@ -97,82 +99,84 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
   }, [refreshReservations]);
 
   const fetchReservationsPage = useCallback(
-  async ({
-    page = 1,
-    pageSize = 25,
-    status = 'all',
-    searchTerm = '',
-  }: ReservationsPageFilters): Promise<{
-    data: Reservation[];
-    count: number;
-  }> => {
-    let query = supabase
-      .from('reservations')
-      .select(
-        'reservation_id, public_id, user_id, unit_id, title, unit_type, start_date, end_date, duration, total_amount, status, notes, paid_amount, created_at, payment_method, payment_intent, mode_of_visit, details',
-        { count: 'exact' }
-      )
-      .order('created_at', { ascending: false });
+    async ({
+      page = 1,
+      pageSize = 25,
+      status = 'all',
+      searchTerm = '',
+    }: ReservationsPageFilters): Promise<{
+      data: Reservation[];
+      count: number;
+    }> => {
+      let query = supabase
+        .from('reservations')
+        .select(
+          'reservation_id, public_id, user_id, unit_id, title, unit_type, start_date, end_date, duration, total_amount, status, notes, paid_amount, created_at, payment_method, payment_intent, mode_of_visit, appointment_date, appointment_time, details',
+          { count: 'exact' }
+        )
+        .order('created_at', { ascending: false });
 
-    if (status !== 'all') {
-      query = query.eq('status', status);
-    }
+      if (status !== 'all') {
+        query = query.eq('status', status);
+      }
 
-    const trimmedSearch = searchTerm.trim();
-    if (trimmedSearch) {
-      query = query.or(
-        [
-          `public_id.ilike.%${trimmedSearch}%`,
-          `user_id.ilike.%${trimmedSearch}%`,
-          `title.ilike.%${trimmedSearch}%`,
-          `notes.ilike.%${trimmedSearch}%`,
-          `unit_type.ilike.%${trimmedSearch}%`,
-          `mode_of_visit.ilike.%${trimmedSearch}%`,
-        ].join(',')
-      );
-    }
+      const trimmedSearch = searchTerm.trim();
+      if (trimmedSearch) {
+        query = query.or(
+          [
+            `public_id.ilike.%${trimmedSearch}%`,
+            `user_id.ilike.%${trimmedSearch}%`,
+            `title.ilike.%${trimmedSearch}%`,
+            `notes.ilike.%${trimmedSearch}%`,
+            `unit_type.ilike.%${trimmedSearch}%`,
+            `mode_of_visit.ilike.%${trimmedSearch}%`,
+          ].join(',')
+        );
+      }
 
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
 
-    const { data, error, count } = await query.range(from, to);
+      const { data, error, count } = await query.range(from, to);
 
-    if (error) throw error;
+      if (error) throw error;
 
-    return {
-      data: (data ?? []).map((row: any) => ({
-        id: row.reservation_id,
-        publicId: row.public_id,
-        userId: row.user_id,
-        unitId: row.unit_id,
-        unitName: row.title,
-        unitType: row.unit_type,
-        startDate: row.start_date,
-        endDate: row.end_date,
-        duration: row.duration,
-        totalAmount: Number(row.total_amount),
-        status: row.status,
-        notes: row.notes,
-        paidAmount: Number(row.paid_amount || 0),
-        requestDate: row.created_at,
-        paymentMethod: row.payment_method,
-        paymentIntent: row.payment_intent,
-        modeOfVisit: row.mode_of_visit,
-        paymentCycle: row.details?.paymentCycle,
-        businessType: row.details?.businessType,
-        eventPurpose: row.details?.eventPurpose,
-        attendees: row.details?.attendees,
-        slotId: row.details?.slotId,
-        slotName: row.details?.slotName,
-        vehicleType: row.details?.vehicleType,
-        plateNumber: row.details?.plateNumber,
-        durationType: row.details?.durationType,
-      })),
-      count: count ?? 0,
-    };
-  },
-  []
-);
+      return {
+        data: (data ?? []).map((row: any) => ({
+          id: row.reservation_id,
+          publicId: row.public_id,
+          userId: row.user_id,
+          unitId: row.unit_id,
+          unitName: row.title,
+          unitType: row.unit_type,
+          startDate: row.start_date,
+          endDate: row.end_date,
+          duration: row.duration,
+          totalAmount: Number(row.total_amount),
+          status: row.status,
+          notes: row.notes,
+          paidAmount: Number(row.paid_amount || 0),
+          requestDate: row.created_at,
+          paymentMethod: row.payment_method,
+          paymentIntent: row.payment_intent,
+          modeOfVisit: row.mode_of_visit,
+          appointmentDate: row.appointment_date,
+          appointmentTime: row.appointment_time,
+          paymentCycle: row.details?.paymentCycle,
+          businessType: row.details?.businessType,
+          eventPurpose: row.details?.eventPurpose,
+          attendees: row.details?.attendees,
+          slotId: row.details?.slotId,
+          slotName: row.details?.slotName,
+          vehicleType: row.details?.vehicleType,
+          plateNumber: row.details?.plateNumber,
+          durationType: row.details?.durationType,
+        })),
+        count: count ?? 0,
+      };
+    },
+    []
+  );
 
   const addReservation = useCallback(
     async (
@@ -207,10 +211,12 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
             duration: reservationData.duration,
             total_amount: reservationData.totalAmount,
             status: 'pending',
-            payment_method: reservationData.paymentMethod,
-            payment_intent: reservationData.paymentIntent,
-            mode_of_visit: reservationData.modeOfVisit,
-            notes: reservationData.notes,
+            payment_method: reservationData.paymentMethod ?? null,
+            payment_intent: reservationData.paymentIntent ?? null,
+            mode_of_visit: reservationData.modeOfVisit ?? null,
+            appointment_date: reservationData.appointmentDate ?? null,
+            appointment_time: reservationData.appointmentTime ?? null,
+            notes: reservationData.notes ?? null,
             details: cleanDetails,
           },
         ])
@@ -237,6 +243,8 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
         paymentMethod: data.payment_method,
         paymentIntent: data.payment_intent,
         modeOfVisit: data.mode_of_visit,
+        appointmentDate: data.appointment_date,
+        appointmentTime: data.appointment_time,
         ...cleanDetails,
       };
 
@@ -271,6 +279,15 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
       if (reservation.status !== undefined) dbPayload.status = reservation.status;
       if (reservation.paidAmount !== undefined) dbPayload.paid_amount = reservation.paidAmount;
       if (reservation.notes !== undefined) dbPayload.notes = reservation.notes;
+      if (reservation.appointmentDate !== undefined) {
+        dbPayload.appointment_date = reservation.appointmentDate;
+      }
+      if (reservation.appointmentTime !== undefined) {
+        dbPayload.appointment_time = reservation.appointmentTime;
+      }
+      if (reservation.modeOfVisit !== undefined) {
+        dbPayload.mode_of_visit = reservation.modeOfVisit;
+      }
 
       if (Object.keys(dbPayload).length === 0) return;
 

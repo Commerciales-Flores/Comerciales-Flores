@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, useCallback, type ReactNode } from 'react';
 import { MOCK_PARKING_SLOTS } from '../data/constants';
 import type {
   AuditLog,
@@ -99,6 +99,7 @@ interface DataContextType {
   getUnitById: (id: string) => Unit | undefined;
   getReservationsByUserId: (userId: string) => Reservation[];
   getPaymentsByUserId: (userId: string) => Payment[];
+  getLedgerByUserId: (userId: string) => LedgerEntry[];
   getNotificationsByUserId: (userId: string) => Notification[];
   getInquiriesByUserId: (userId: string) => Inquiry[];
   getUserById: (id: string) => User | undefined;
@@ -153,6 +154,11 @@ function DataComposer({ children }: { children: ReactNode }) {
   } = useNotifications();
   const { contentSettings, updateContentSettings } = useContentSettings();
 
+  const getLedgerByUserId = useCallback(
+    (userId: string) => ledgers.filter((entry) => entry.userId === userId),
+    [ledgers]
+  );
+
   const value = useMemo<DataContextType>(
     () => ({
       users,
@@ -202,6 +208,7 @@ function DataComposer({ children }: { children: ReactNode }) {
       getUnitById,
       getReservationsByUserId,
       getPaymentsByUserId,
+      getLedgerByUserId,
       getNotificationsByUserId,
       getInquiriesByUserId,
       getUserById,
@@ -243,6 +250,7 @@ function DataComposer({ children }: { children: ReactNode }) {
       getUnitById,
       getReservationsByUserId,
       getPaymentsByUserId,
+      getLedgerByUserId,
       getNotificationsByUserId,
       getInquiriesByUserId,
       getUserById,

@@ -1,6 +1,6 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useData } from '../../contexts/DataContext';
+import { useNotifications } from '../../contexts/NotificationContext';
 import type { Notification } from '../../contexts/DataContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -26,6 +26,7 @@ const notificationFilters = [
   'system',
 ] as const;
 
+import EmptyState from '../../components/common/EmptyState';
 type NotificationFilter = (typeof notificationFilters)[number];
 
 const typeIcons: Record<string, React.ElementType> = {
@@ -106,15 +107,23 @@ function formatFullDate(value?: string | null) {
   return fullDateFormatter.format(date);
 }
 
+function startOfDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
 function getNotificationGroup(dateValue?: string | null) {
   if (!dateValue) return 'Earlier';
 
   const date = new Date(dateValue);
   if (Number.isNaN(date.getTime())) return 'Earlier';
 
-  const now = new Date();
-  const diffDays = Math.floor(
-    (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24)
+  const today = startOfDay(new Date());
+  const target = startOfDay(date);
+
+  const diffDays = Math.round(
+    (today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24)
   );
 
   if (diffDays === 0) return 'Today';
@@ -179,15 +188,22 @@ const NotificationCard = React.memo(function NotificationCard({
       </div>
 
       <div className="min-w-0 flex-1">
-        <h3
-          className={`line-clamp-1 text-sm font-bold text-gray-900 ${
-            !notification.read ? 'pr-4' : ''
-          }`}
-        >
-          {notification.title}
-        </h3>
-        <p className="mt-0.5 line-clamp-1 text-xs text-gray-500">
-          {notification.message}
+        <div className="flex items-start justify-between gap-3">
+          <h3
+            className={`line-clamp-1 text-sm font-bold text-gray-900 ${
+              !notification.read ? 'pr-2' : ''
+            }`}
+          >
+            {notification.title || 'Untitled notification'}
+          </h3>
+
+          <span className="shrink-0 text-[11px] text-gray-400">
+            {formatShortDate(notification.date)}
+          </span>
+        </div>
+
+        <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">
+          {notification.message || 'No message content.'}
         </p>
       </div>
 
@@ -195,52 +211,6 @@ const NotificationCard = React.memo(function NotificationCard({
         <span className="mt-2 size-2 rounded-full bg-blue-600" />
       )}
     </motion.div>
-  );
-});
-
-type EmptyStateProps = {
-  filter: NotificationFilter;
-  onClear: () => void;
-  hasNotifications: boolean;
-};
-
-const EmptyState = React.memo(function EmptyState({
-  filter,
-  onClear,
-  hasNotifications,
-}: EmptyStateProps) {
-  if (!hasNotifications) {
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col items-center justify-center py-20 text-center"
-      >
-        <div className="mb-4 rounded-3xl bg-blue-50 p-6 shadow-sm">
-          <Inbox className="size-10 text-blue-500" />
-        </div>
-        <h3 className="text-lg font-bold text-gray-900">No notifications yet</h3>
-        <p className="mt-1 max-w-xs text-sm text-gray-500">
-          We&apos;ll let you know when something important happens.
-        </p>
-      </motion.div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col items-center justify-center py-20 text-center">
-      <Filter className="mb-4 size-10 text-gray-200" />
-      <h3 className="text-lg font-bold text-gray-900">No {filter} updates</h3>
-      <p className="mt-1 text-sm text-gray-500">
-        Try changing your filters to see more.
-      </p>
-      <button
-        onClick={onClear}
-        className="mt-4 text-sm font-bold text-blue-600"
-      >
-        Clear Filter
-      </button>
-    </div>
   );
 });
 
@@ -381,7 +351,7 @@ const QuickViewPanel = React.memo(function QuickViewPanel({
                         getNotificationColor(notification.type).text
                       }`}
                     >
-                      {notification.type}
+                      {notification.type || 'system'}
                     </p>
 
                     <p className="mt-1 text-xs text-gray-400">
@@ -399,16 +369,19 @@ const QuickViewPanel = React.memo(function QuickViewPanel({
               </div>
 
               <h2 className="mt-6 text-3xl font-extrabold leading-tight text-gray-900">
-                {notification.title}
+                {notification.title || 'Untitled notification'}
               </h2>
             </div>
 
             <div className="flex-1 overflow-y-auto p-8">
               <div className="rounded-2xl border border-gray-100 bg-gray-50 p-6 shadow-sm">
                 <div className="space-y-4 text-[15px] leading-relaxed text-gray-700">
-                  {notification.message.split('\n').map((paragraph, index) => (
-                    <p key={index}>{paragraph}</p>
-                  ))}
+                  {(notification.message || 'No message content.')
+                    .split('\n')
+                    .filter((paragraph) => paragraph.trim() !== '')
+                    .map((paragraph, index) => (
+                      <p key={index}>{paragraph}</p>
+                    ))}
                 </div>
               </div>
             </div>
@@ -435,7 +408,7 @@ export default function ClientNotifications() {
     markNotificationRead,
     markAllNotificationsRead,
     deleteNotification,
-  } = useData();
+  } = useNotifications();
 
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [filter, setFilter] = useState<NotificationFilter>('all');
@@ -453,6 +426,27 @@ export default function ClientNotifications() {
       (a, b) => getTimestamp(b.date) - getTimestamp(a.date)
     );
   }, [getNotificationsByUserId, userId]);
+
+  useEffect(() => {
+    const validIds = new Set(sortedNotifications.map((n) => n.id));
+
+    setSelectedNotifs((prev) => {
+      const next = new Set([...prev].filter((id) => validIds.has(id)));
+      return next;
+    });
+
+    setQuickViewNotif((prev) => {
+      if (!prev) return null;
+      const updated = sortedNotifications.find((n) => n.id === prev.id);
+      return updated ?? null;
+    });
+  }, [sortedNotifications]);
+
+  useEffect(() => {
+    if (selectionMode && selectedNotifs.size === 0) {
+      setSelectionMode(false);
+    }
+  }, [selectionMode, selectedNotifs]);
 
   const unreadCount = useMemo(
     () => sortedNotifications.reduce((count, notif) => count + (notif.read ? 0 : 1), 0),
@@ -504,34 +498,45 @@ export default function ClientNotifications() {
   }, []);
 
   const handleOpenNotification = useCallback(
-    (notification: Notification) => {
+    async (notification: Notification) => {
       if (selectionMode) {
         toggleSelection(notification.id);
         return;
       }
 
-      setQuickViewNotif(notification);
+      const optimisticNotif = notification.read
+        ? notification
+        : { ...notification, read: true };
+
+      setQuickViewNotif(optimisticNotif);
 
       if (!notification.read) {
-        markNotificationRead(notification.id);
+        await markNotificationRead(notification.id);
       }
     },
     [selectionMode, toggleSelection, markNotificationRead]
   );
 
-  const handleBulkMarkRead = useCallback(() => {
-    selectedNotifs.forEach((id) => markNotificationRead(id));
+  const handleBulkMarkRead = useCallback(async () => {
+    await Promise.all([...selectedNotifs].map((id) => markNotificationRead(id)));
     clearSelection();
   }, [selectedNotifs, markNotificationRead, clearSelection]);
 
-  const handleBulkDelete = useCallback(() => {
-    selectedNotifs.forEach((id) => deleteNotification(id));
+  const handleBulkDelete = useCallback(async () => {
+    const ids = [...selectedNotifs];
+    await Promise.all(ids.map((id) => deleteNotification(id)));
+
+    setQuickViewNotif((prev) => {
+      if (!prev) return null;
+      return ids.includes(prev.id) ? null : prev;
+    });
+
     clearSelection();
   }, [selectedNotifs, deleteNotification, clearSelection]);
 
-  const handleMarkAllRead = useCallback(() => {
+  const handleMarkAllRead = useCallback(async () => {
     if (!userId) return;
-    markAllNotificationsRead(userId);
+    await markAllNotificationsRead(userId);
   }, [markAllNotificationsRead, userId]);
 
   const handleFilterChange = useCallback((nextFilter: NotificationFilter) => {
@@ -561,7 +566,7 @@ export default function ClientNotifications() {
             <p className="mt-0.5 text-xs text-gray-500 sm:text-sm">
               {!hasNotifications
                 ? 'All caught up!'
-                : `${unreadCount} unread messages.`}
+                : `${unreadCount} unread message${unreadCount === 1 ? '' : 's'}.`}
             </p>
           </header>
 
@@ -611,18 +616,38 @@ export default function ClientNotifications() {
 
         <div className="space-y-8">
           {!hasNotifications ? (
-            <EmptyState
-              filter={filter}
-              onClear={() => setFilter('all')}
-              hasNotifications={false}
-            />
-          ) : filteredCount === 0 ? (
-            <EmptyState
-              filter={filter}
-              onClear={() => setFilter('all')}
-              hasNotifications
-            />
-          ) : (
+  <motion.div
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.25 }}
+  >
+    <EmptyState
+      icon={<Inbox className="size-10 text-blue-500" />}
+      title="No notifications yet"
+      description="We’ll let you know when something important happens."
+    />
+  </motion.div>
+) : filteredCount === 0 ? (
+  <motion.div
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.25 }}
+  >
+    <EmptyState
+      icon={<Filter className="size-10 text-blue-500" />}
+      title={`No ${filter} notifications`}
+      description="Try changing your filters to see more updates."
+    />
+    <div className="mt-4 flex justify-center">
+      <button
+        onClick={() => setFilter('all')}
+        className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+      >
+        Clear Filter
+      </button>
+    </div>
+  </motion.div>
+) : (
             groupedNotifications.map(
               ({ group, items }) =>
                 items.length > 0 && (

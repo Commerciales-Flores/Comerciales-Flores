@@ -1,6 +1,7 @@
 import { Outlet, NavLink, useNavigate, Navigate } from "react-router-dom";
+import { useMemo } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-import { useData } from "../../contexts/DataContext";
+import { useNotifications } from "../../contexts/NotificationContext";
 import LogoutConfirmModal from "../LogoutConfirmModal";
 import { useLocation } from "react-router-dom";
 import ErrorWrapper from "./ErrorWrapper";
@@ -23,7 +24,7 @@ import ContactSupportModal from "../ContactSupportModal";
 export default function ClientLayout() {
   const { user, logout } = useAuth();
 
-  const { getNotificationsByUserId } = useData();
+  const { getNotificationsByUserId } = useNotifications();
   const navigate = useNavigate();
   const [showSupport, setShowSupport] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -32,8 +33,20 @@ export default function ClientLayout() {
   const navRef = useRef<HTMLDivElement>(null);
   const [underlineStyle, setUnderlineStyle] = useState({ left: 0, width: 0 });
 
-  const unreadNotifications = getNotificationsByUserId(user?.id || "",).filter((n) => !n.read).length;
-  const unreadMessages = getNotificationsByUserId(user?.id || "",).filter((n) => !n.read).length;
+  const userNotifications = useMemo(
+  () => getNotificationsByUserId(user?.id || ""),
+  [getNotificationsByUserId, user?.id]
+);
+
+const unreadNotifications = useMemo(
+  () => userNotifications.filter((n) => !n.read && n.type !== "inquiry").length,
+  [userNotifications]
+);
+
+const unreadMessages = useMemo(
+  () => userNotifications.filter((n) => !n.read && n.type === "inquiry").length,
+  [userNotifications]
+);
 
   const location = useLocation();
 

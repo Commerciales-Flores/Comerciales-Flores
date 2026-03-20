@@ -3,6 +3,7 @@ import { useData } from '../../contexts/DataContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import EmptyState from '../../components/common/EmptyState'
 import {
   Mail,
   Send,
@@ -128,39 +129,6 @@ const InquiryListItem = React.memo(function InquiryListItem({
   );
 });
 
-type EmptyMessagesProps = {
-  onOpen: () => void;
-};
-
-const EmptyMessages = React.memo(function EmptyMessages({
-  onOpen,
-}: EmptyMessagesProps) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex flex-1 flex-col items-center justify-center py-20 text-center"
-    >
-      <div className="mb-4 rounded-3xl bg-blue-50 p-6 shadow-sm">
-        <Mail className="size-10 text-blue-500" />
-      </div>
-
-      <h3 className="text-lg font-bold text-gray-900">No messages yet</h3>
-
-      <p className="mt-1 max-w-xs text-sm text-gray-500">
-        Need help? Start a conversation with our team.
-      </p>
-
-      <button
-        onClick={onOpen}
-        className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-100 hover:bg-blue-700"
-      >
-        <PlusCircle className="size-4" />
-        New Message
-      </button>
-    </motion.div>
-  );
-});
 
 type InquiryDetailProps = {
   inquiry: any;
@@ -281,13 +249,14 @@ const InquiryComposerModal = React.memo(function InquiryComposerModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-gray-900/60"
           />
 
           <motion.div
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
             className="relative w-full max-w-lg overflow-hidden rounded-t-[32px] bg-white shadow-2xl sm:rounded-[32px]"
           >
             <div className="flex items-center justify-between border-b border-gray-50 p-6">
@@ -464,25 +433,38 @@ export default function ClientMessages() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
-        <header>
-          <h1 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">
-            Messages
-          </h1>
-          <p className="mt-0.5 text-xs text-gray-500 sm:text-sm">
-            Track your support tickets and inquiries.
-          </p>
-        </header>
+        <div className="flex items-end justify-between gap-4">
+  <header>
+    <h1 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">
+      Messages
+    </h1>
+    <p className="mt-0.5 text-xs text-gray-500 sm:text-sm">
+      Track your support tickets and inquiries.
+    </p>
+  </header>
 
-        <button
-          onClick={openModal}
-          className="fixed bottom-8 right-8 z-[55] flex size-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-2xl shadow-blue-400 transition-all hover:scale-110 hover:bg-blue-700 active:scale-95 md:hidden"
-        >
-          <PlusCircle className="size-8" />
-        </button>
+  <button
+    onClick={openModal}
+    className="hidden md:inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-100 transition-all hover:bg-blue-700 active:scale-95"
+  >
+    <PlusCircle className="size-5" />
+    New Message
+  </button>
+</div>
 
         {sortedInquiries.length === 0 ? (
-          <EmptyMessages onOpen={openModal} />
-        ) : (
+  <motion.div
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.25 }}
+  >
+    <EmptyState
+      icon={<Mail className="size-10 text-blue-500" />}
+      title="No messages yet"
+      description="Need help? Start a conversation with our team."
+    />
+  </motion.div>
+) : (
           <div className="relative flex flex-1 gap-6 overflow-hidden">
             <div
               className={`custom-scrollbar w-full flex-col gap-3 overflow-y-auto pb-24 lg:w-1/3 lg:pb-0 ${

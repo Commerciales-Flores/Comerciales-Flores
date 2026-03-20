@@ -4,32 +4,39 @@ import { useData } from '../../contexts/DataContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import {
   CreditCard,
-  CheckCircle,
-  Clock,
+  CheckCircle2,
+  Clock3,
   Plus,
-  Download,
   FileDown,
   X,
   XCircle,
-  Paperclip,
   Trash2,
   Eye,
+  Search,
+  Wallet,
+  Landmark,
+  Image as ImageIcon,
+  ReceiptText,
+  CircleDollarSign,
+  AlertCircle,
+  ArrowUpRight,
 } from 'lucide-react';
 import { getUnitTypeLabel } from '../../utils/propertyHelpers';
 import Papa from 'papaparse';
 import { formatCurrency } from '../../utils/currency';
-import { motion } from 'framer-motion';
+import { uiTypography } from '../../styles/uiTypography';
+import EmptyState from '../../components/common/EmptyState';
 
 const PAYMENT_STATUS_COLORS = {
-  paid: 'bg-green-100 text-green-800',
-  unpaid: 'bg-yellow-100 text-yellow-800',
-  partial: 'bg-blue-100 text-blue-800',
+  paid: 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200',
+  unpaid: 'bg-amber-100 text-amber-700 ring-1 ring-amber-200',
+  partial: 'bg-sky-100 text-sky-700 ring-1 ring-sky-200',
 } as const;
 
 const PAYMENT_STATUS_ICONS = {
-  paid: CheckCircle,
-  unpaid: Clock,
-  partial: Clock,
+  paid: CheckCircle2,
+  unpaid: Clock3,
+  partial: Clock3,
 } as const;
 
 const INITIAL_PAYMENT_FORM = {
@@ -39,9 +46,44 @@ const INITIAL_PAYMENT_FORM = {
   notes: '',
 };
 
+const UNIT_TYPE_COLORS: Record<string, string> = {
+  rental_space: 'text-indigo-600',
+  function_hall: 'text-purple-600',
+  parking_slot: 'text-orange-600',
+};
+
+function formatPaymentMethod(method?: string | null) {
+  if (!method) return 'N/A';
+
+  return method
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getSafeDate(value?: string | Date | null) {
+  if (!value) return new Date(0);
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? new Date(0) : date;
+}
+
+function clampPercentage(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
+}
+
+function getReservationProgress(totalAmount?: number, paidAmount?: number) {
+  if (!totalAmount || totalAmount <= 0) return 0;
+  return clampPercentage((Number(paidAmount || 0) / Number(totalAmount)) * 100);
+}
+
 export default function ClientPayments() {
   const { user } = useAuth();
-  const { getReservationsByUserId, getPaymentsByUserId, addPayment } = useData();
+  const {
+    getReservationsByUserId,
+    getPaymentsByUserId,
+    getLedgerByUserId,
+    addPayment,
+  } = useData();
   const { sendSystemNotification } = useNotifications();
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -52,7 +94,6 @@ export default function ClientPayments() {
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
   const [paymentForm, setPaymentForm] = useState(INITIAL_PAYMENT_FORM);
 
   const fullName = useMemo(
@@ -70,16 +111,33 @@ export default function ClientPayments() {
     [getPaymentsByUserId, user?.id]
   );
 
+  const userLedger = useMemo(
+    () => getLedgerByUserId(user?.id || ''),
+    [getLedgerByUserId, user?.id]
+  );
+
   const reservationMap = useMemo(() => {
     return new Map(userReservations.map((reservation) => [reservation.id, reservation]));
   }, [userReservations]);
+
+  const ledgerByPaymentId = useMemo(() => {
+    const map = new Map<string, any>();
+
+    userLedger.forEach((entry: any) => {
+      if (entry.payment_id) {
+        map.set(entry.payment_id, entry);
+      }
+    });
+
+    return map;
+  }, [userLedger]);
 
   const hasPayments = userPayments.length > 0;
 
   const eligibleReservations = useMemo(() => {
     return userReservations.filter(
       (reservation) =>
-        reservation.status === 'completed' &&
+        ['approved', 'confirmed', 'completed'].includes(reservation.status) &&
         reservation.paidAmount < reservation.totalAmount
     );
   }, [userReservations]);
@@ -91,21 +149,26 @@ export default function ClientPayments() {
       if (!query) return true;
 
       const reservation = reservationMap.get(payment.reservationId);
+      const ledgerEntry = ledgerByPaymentId.get(payment.id);
 
       return (
         payment.id.toLowerCase().includes(query) ||
         String(payment.method).toLowerCase().includes(query) ||
         payment.notes?.toLowerCase().includes(query) ||
         payment.amount.toString().includes(query) ||
+        payment.status?.toLowerCase().includes(query) ||
         reservation?.unitName?.toLowerCase().includes(query) ||
-        reservation?.id?.toLowerCase().includes(query)
+        reservation?.publicId?.toLowerCase().includes(query) ||
+        reservation?.id?.toLowerCase().includes(query) ||
+        ledgerEntry?.reference_no?.toLowerCase().includes(query) ||
+        ledgerEntry?.description?.toLowerCase().includes(query)
       );
     });
 
     return [...list].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      (a, b) => getSafeDate(b.date).getTime() - getSafeDate(a.date).getTime()
     );
-  }, [userPayments, reservationMap, searchQuery]);
+  }, [userPayments, reservationMap, ledgerByPaymentId, searchQuery]);
 
   const paymentOverview = useMemo(() => {
     const totalPaid = userPayments
@@ -116,12 +179,46 @@ export default function ClientPayments() {
       .filter((payment) => payment.status === 'unpaid')
       .reduce((sum, payment) => sum + payment.amount, 0);
 
+    const partialAmount = userPayments
+      .filter((payment) => payment.status === 'partial')
+      .reduce((sum, payment) => sum + payment.amount, 0);
+
+    const grandTotal = userReservations.reduce(
+      (sum, reservation) => sum + Number(reservation.totalAmount || 0),
+      0
+    );
+
+    const totalPaidAcrossReservations = userReservations.reduce(
+      (sum, reservation) => sum + Number(reservation.paidAmount || 0),
+      0
+    );
+
+    const overallProgress = getReservationProgress(grandTotal, totalPaidAcrossReservations);
+
     return {
       totalPaid,
       pendingAmount,
+      partialAmount,
       transactions: userPayments.length,
+      grandTotal,
+      totalPaidAcrossReservations,
+      overallProgress,
     };
-  }, [userPayments]);
+  }, [userPayments, userReservations]);
+
+  const outstandingTotal = useMemo(() => {
+    return eligibleReservations.reduce((sum, reservation) => {
+      return sum + (reservation.totalAmount - reservation.paidAmount);
+    }, 0);
+  }, [eligibleReservations]);
+
+  const clearProofPreview = useCallback(() => {
+    setProofFile(null);
+    setProofPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+  }, []);
 
   const resetPaymentModalState = useCallback(() => {
     setShowPaymentModal(false);
@@ -129,18 +226,19 @@ export default function ClientPayments() {
     setPaymentForm(INITIAL_PAYMENT_FORM);
     setPaymentSuccess(false);
     setIsSubmitting(false);
-    setProofFile(null);
-
-    setProofPreviewUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return null;
-    });
-  }, []);
+    clearProofPreview();
+  }, [clearProofPreview]);
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
+
+      const isValidType = ['image/png', 'image/jpeg', 'image/jpg'].includes(file.type);
+      if (!isValidType) {
+        alert('Please upload a PNG, JPG, or JPEG image.');
+        return;
+      }
 
       setProofFile(file);
 
@@ -153,19 +251,20 @@ export default function ClientPayments() {
   );
 
   const handleRemoveImage = useCallback(() => {
-    setProofFile(null);
-    setProofPreviewUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return null;
-    });
-  }, []);
+    clearProofPreview();
+  }, [clearProofPreview]);
 
-  const handleMakePayment = useCallback((reservationId: string) => {
-    setSelectedReservation(reservationId);
-    setPaymentForm(INITIAL_PAYMENT_FORM);
-    setPaymentSuccess(false);
-    setShowPaymentModal(true);
-  }, []);
+  const handleMakePayment = useCallback(
+    (reservationId: string) => {
+      setSelectedReservation(reservationId);
+      setPaymentForm(INITIAL_PAYMENT_FORM);
+      setPaymentSuccess(false);
+      setIsSubmitting(false);
+      clearProofPreview();
+      setShowPaymentModal(true);
+    },
+    [clearProofPreview]
+  );
 
   const selectedReservationData = useMemo(() => {
     if (!selectedReservation) return null;
@@ -219,7 +318,7 @@ export default function ClientPayments() {
 
         setTimeout(() => {
           resetPaymentModalState();
-        }, 2000);
+        }, 1800);
       } catch (error) {
         console.error('Failed to submit payment:', error);
         alert('Failed to submit payment. Please try again.');
@@ -244,41 +343,73 @@ export default function ClientPayments() {
   const handleDownloadInvoice = useCallback(
     (payment: any) => {
       const reservation = reservationMap.get(payment.reservationId);
+      const ledgerEntry = ledgerByPaymentId.get(payment.id);
+
+      if (!ledgerEntry) {
+        alert(
+          'Invoice is not available yet. It can be downloaded once this payment has been verified and posted to the ledger.'
+        );
+        return;
+      }
+
+      const invoiceNumber = ledgerEntry.id || payment.id;
+      const invoiceDate = ledgerEntry.recorded_at || payment.date;
+      const amount = Number(ledgerEntry.amount ?? payment.amount) || 0;
+      const remaining =
+        Number(reservation?.totalAmount || 0) - Number(reservation?.paidAmount || 0);
 
       const invoiceContent = `
 ========================================
-PAYMENT INVOICE
+INVOICE
 ========================================
 
-INVOICE ID:   ${payment.id}
-PAYMENT DATE: ${new Date(payment.date).toLocaleDateString()}
+INVOICE NO:      ${invoiceNumber}
+INVOICE DATE:    ${getSafeDate(invoiceDate).toLocaleDateString()}
 
 ----------------------------------------
-BILLED TO
+CUSTOMER
 ----------------------------------------
-Name:    ${fullName}
-Email:   ${user?.email ?? ''}
+Name:            ${fullName || 'N/A'}
+Email:           ${user?.email ?? 'N/A'}
 
 ----------------------------------------
-RESERVATION DETAILS
+PAYMENT
 ----------------------------------------
-Reservation ID:   ${reservation?.id ?? 'N/A'}
-Unit:             ${reservation?.unitName ?? 'N/A'}
-Unit Type:        ${getUnitTypeLabel(reservation?.unitType || 'rental_space')}
-Reservation Date: ${reservation?.startDate ? new Date(reservation.startDate).toLocaleDateString() : 'N/A'}
+Payment ID:      ${payment.id}
+Method:          ${formatPaymentMethod(ledgerEntry.method || payment.method)}
+Status:          ${String(ledgerEntry.status || payment.status || 'N/A').toUpperCase()}
+Submitted On:    ${getSafeDate(payment.date).toLocaleDateString()}
+Reference No:    ${ledgerEntry.reference_no || 'N/A'}
 
 ----------------------------------------
-PAYMENT DETAILS
+LEDGER ENTRY
 ----------------------------------------
-Description:    Payment for ${reservation?.unitName ?? 'N/A'}
-Payment Method: ${String(payment.method).replaceAll('_', ' ')}
-Amount Paid:    ${formatCurrency(payment.amount)}
+Ledger ID:       ${ledgerEntry.id}
+Entry Type:      ${formatPaymentMethod(ledgerEntry.entry_type)}
+Recorded Date:   ${getSafeDate(ledgerEntry.recorded_at).toLocaleDateString()}
+Amount:          ${formatCurrency(amount)}
 
 ----------------------------------------
-STATUS:         ${String(payment.status).toUpperCase()}
+RESERVATION
 ----------------------------------------
+Reservation ID:  ${reservation?.publicId ?? reservation?.id ?? 'N/A'}
+Unit:            ${reservation?.unitName ?? 'N/A'}
+Unit Type:       ${reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A'}
+Total Bill:      ${formatCurrency(reservation?.totalAmount || 0)}
+Paid To Date:    ${formatCurrency(reservation?.paidAmount || 0)}
+Remaining:       ${formatCurrency(remaining)}
 
-Thank you for your business!
+----------------------------------------
+DESCRIPTION
+----------------------------------------
+${ledgerEntry.description?.trim() || 'No description provided.'}
+
+----------------------------------------
+NOTES
+----------------------------------------
+${ledgerEntry.notes?.trim() || payment.notes?.trim() || 'No notes provided.'}
+
+Thank you for your payment.
       `.trim();
 
       const blob = new Blob([invoiceContent], {
@@ -288,31 +419,37 @@ Thank you for your business!
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `Invoice-${payment.id}.txt`;
+      link.download = `Invoice-${invoiceNumber}.txt`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     },
-    [reservationMap, fullName, user?.email]
+    [ledgerByPaymentId, reservationMap, fullName, user?.email]
   );
 
   const handleExportCSV = useCallback(() => {
     const csvData = userPayments.map((payment) => {
       const reservation = reservationMap.get(payment.reservationId);
+      const ledgerEntry = ledgerByPaymentId.get(payment.id);
 
       return {
         'Payment ID': payment.id,
-        'Payment Date': new Date(payment.date).toLocaleDateString(),
-        'Reservation ID': payment.reservationId,
+        'Payment Date': getSafeDate(payment.date).toLocaleDateString(),
+        'Reservation ID': reservation?.publicId ?? payment.reservationId,
         'Unit Name': reservation?.unitName ?? 'N/A',
         'Unit Type': reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A',
         Amount: payment.amount,
-        'Payment Method': payment.method,
+        'Payment Method': formatPaymentMethod(payment.method),
         'Payment Status': payment.status,
+        'Ledger ID': ledgerEntry?.id ?? '',
+        'Ledger Entry Type': ledgerEntry?.entry_type ?? '',
+        'Ledger Status': ledgerEntry?.status ?? '',
+        'Reference No': ledgerEntry?.reference_no ?? '',
         Notes: payment.notes ?? '',
       };
     });
+
 
     const csv = Papa.unparse(csvData);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -325,19 +462,25 @@ Thank you for your business!
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, [userPayments, reservationMap, fullName]);
+  }, [userPayments, reservationMap, ledgerByPaymentId, fullName]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setViewingImage(null);
-        setShowPaymentModal(false);
+        if (viewingImage) {
+          setViewingImage(null);
+          return;
+        }
+
+        if (showPaymentModal) {
+          resetPaymentModalState();
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [viewingImage, showPaymentModal, resetPaymentModalState]);
 
   useEffect(() => {
     return () => {
@@ -347,484 +490,669 @@ Thank you for your business!
     };
   }, [proofPreviewUrl]);
 
+  const shouldShowOverview = hasPayments || eligibleReservations.length > 0;
+
   return (
-    <div className="bg-gray-50 min-h-screen">
-      <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
-        <div className="flex justify-between items-center">
-          <header>
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900 tracking-tight">
-              Payments
-            </h1>
-            <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
-              Manage your payment records and view payment history
+    <div className="min-h-screen bg-gray-50">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
+        <header>
+          <h1 className={uiTypography.pageTitle}>Payments</h1>
+          <p className={uiTypography.pageDescription}>
+            View balances, track progress, submit payments, and download invoices.
+          </p>
+        </header>
+        
+
+        {shouldShowOverview && (
+  <section className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm">
+    <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4 sm:p-6">
+      <div className="rounded-[24px] border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className={`${uiTypography.miniStatLabel} text-emerald-700/80`}>
+              Total Paid
             </p>
-          </header>
+            <p className={`${uiTypography.cardTitle} mt-2 text-slate-900`}>
+              {formatCurrency(paymentOverview.totalPaid)}
+            </p>
+          </div>
+          <div className="rounded-2xl bg-emerald-100 p-2.5 text-emerald-700">
+            <CheckCircle2 className="size-5" />
+          </div>
         </div>
+      </div>
+
+      <div className="rounded-[24px] border border-amber-100 bg-gradient-to-br from-amber-50 to-white p-4 shadow-sm">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className={`${uiTypography.miniStatLabel} text-amber-700/80`}>
+              Pending
+            </p>
+            <p className={`${uiTypography.cardTitle} mt-2 text-slate-900`}>
+              {formatCurrency(paymentOverview.pendingAmount)}
+            </p>
+          </div>
+          <div className="rounded-2xl bg-amber-100 p-2.5 text-amber-700">
+            <Clock3 className="size-5" />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-[24px] border border-rose-100 bg-gradient-to-br from-rose-50 to-white p-4 shadow-sm">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className={`${uiTypography.miniStatLabel} text-rose-700/80`}>
+              Outstanding
+            </p>
+            <p className={`${uiTypography.cardTitle} mt-2 text-slate-900`}>
+              {formatCurrency(outstandingTotal)}
+            </p>
+          </div>
+          <div className="rounded-2xl bg-rose-100 p-2.5 text-rose-700">
+            <AlertCircle className="size-5" />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-[24px] border border-sky-100 bg-gradient-to-br from-sky-50 to-white p-4 shadow-sm">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className={`${uiTypography.miniStatLabel} text-sky-700/80`}>
+              Transactions
+            </p>
+            <p className={`${uiTypography.cardTitle} mt-2 text-slate-900`}>
+              {paymentOverview.transactions}
+            </p>
+          </div>
+          <div className="rounded-2xl bg-sky-100 p-2.5 text-sky-700">
+            <CircleDollarSign className="size-5" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+)}
 
         {eligibleReservations.length > 0 && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h2 className="mb-4">Balance due</h2>
-            <div className="space-y-3">
+          <section className="rounded-[32px] border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-100 px-5 py-5 sm:px-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className={uiTypography.sectionTitle}>Balance due</h2>
+                  <p className={uiTypography.sectionDescription}>
+                    You have {eligibleReservations.length}{' '}
+                    {eligibleReservations.length === 1 ? 'reservation' : 'reservations'} with
+                    remaining balances.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 p-5 sm:p-6 xl:grid-cols-2">
               {eligibleReservations.map((reservation) => {
                 const balance = reservation.totalAmount - reservation.paidAmount;
+                const progress = getReservationProgress(
+                  reservation.totalAmount,
+                  reservation.paidAmount
+                );
 
                 return (
                   <div
                     key={reservation.id}
-                    className="flex justify-between items-center p-4 bg-yellow-50 border border-yellow-200 rounded-lg"
+                    className="rounded-[26px] border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                   >
-                    <div className="flex-1">
-                      <h3 className="text-gray-900">{reservation.unitName}</h3>
-                      <p className="text-sm text-gray-600">
-                        Reservation ID: {reservation.id}
-                      </p>
-                      <div className="mt-2 text-sm">
-                        <span className="text-gray-600">
-                          Total: {formatCurrency(reservation.totalAmount)}
-                        </span>
-                        <span className="mx-2">•</span>
-                        <span className="text-green-600">
-                          Paid: {formatCurrency(reservation.paidAmount)}
-                        </span>
-                        <span className="mx-2">•</span>
-                        <span className="text-red-600">
-                          Balance: {formatCurrency(balance)}
-                        </span>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <h3 className={`${uiTypography.sectionTitle} truncate`}>
+                          {reservation.unitName}
+                        </h3>
+                        <p className={uiTypography.cardSubtitle}>
+                          Reservation ID: {reservation.publicId || reservation.id}
+                        </p>
+                        <p
+                          className={`${uiTypography.badgeLabel} mt-1 ${
+                            UNIT_TYPE_COLORS[reservation.unitType] || 'text-slate-400'
+                          }`}
+                        >
+                          {getUnitTypeLabel(reservation.unitType)}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => handleMakePayment(reservation.id)}
+                        className={`inline-flex shrink-0 items-center gap-2 rounded-xl bg-gradient-to-r from-slate-900 to-slate-700 px-4 py-2.5 text-white transition hover:opacity-95 ${uiTypography.buttonText}`}
+                      >
+                        <Plus className="size-4" />
+                        Pay
+                      </button>
+                    </div>
+
+                    <div className="mt-5">
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className={`${uiTypography.miniStatLabel} text-slate-500`}>
+                          Payment Progress
+                        </p>
+                        <p className={`${uiTypography.miniStatValue} text-slate-700`}>
+                          {progress.toFixed(0)}%
+                        </p>
+                      </div>
+
+                      <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-sky-500 transition-all duration-500"
+                          style={{ width: `${progress}%` }}
+                        />
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => handleMakePayment(reservation.id)}
-                      className="flex items-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors w-full sm:w-auto justify-center"
-                    >
-                      <Plus className="size-4" />
-                      Make Payment
-                    </button>
+                    <div className="mt-4 grid grid-cols-3 gap-3">
+                      <div className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
+                        <p className={`${uiTypography.infoBlockLabel} text-slate-400`}>Total</p>
+                        <p className={`${uiTypography.infoBlockValue} text-slate-900`}>
+                          {formatCurrency(reservation.totalAmount)}
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
+                        <p className={`${uiTypography.infoBlockLabel} text-slate-400`}>Paid</p>
+                        <p className={`${uiTypography.infoBlockValue} text-emerald-600`}>
+                          {formatCurrency(reservation.paidAmount)}
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
+                        <p className={`${uiTypography.infoBlockLabel} text-slate-400`}>
+                          Balance
+                        </p>
+                        <p className={`${uiTypography.infoBlockValue} text-rose-600`}>
+                          {formatCurrency(balance)}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 );
               })}
             </div>
-          </div>
+          </section>
         )}
 
         {hasPayments ? (
-          <div className="bg-white rounded-lg border border-gray-200">
-            <div className="p-6 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
-                <Clock className="size-5 text-gray-600" />
-                History
-              </h2>
+          <section className="rounded-[32px] border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-100 px-5 py-5 sm:px-6">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h2 className={`${uiTypography.sectionTitle} flex items-center gap-2`}>
+                    <Clock3 className="size-5 text-slate-500" />
+                    Payment history
+                  </h2>
+                  <p className={uiTypography.sectionDescription}>
+                    Review submitted payments and download invoice copies once verified.
+                  </p>
+                </div>
 
-              <div className="flex w-full sm:w-auto gap-2 mt-3 sm:mt-0 sm:ml-auto">
-                <input
-                  type="text"
-                  placeholder="Search payments..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="flex-1 sm:flex-[2] md:flex-[3] px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm outline-none"
-                />
-
-                <button
-                  onClick={handleExportCSV}
-                  className="flex items-center justify-center gap-2 px-3 py-2 bg-gray-700 text-white text-sm rounded-lg hover:bg-gray-800 transition-colors"
-                >
-                  <FileDown className="size-4 sm:hidden" />
-                  <div className="hidden sm:flex items-center gap-2">
-                    <FileDown className="size-4" />
-                    Export as CSV
+                <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+                  <div className="relative w-full lg:w-80">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search by reservation, amount, method..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className={`w-full rounded-2xl border border-slate-300 bg-white py-3 pl-10 pr-4 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
+                    />
                   </div>
-                </button>
+
+                  <button
+                    onClick={handleExportCSV}
+                    className={`inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-700 px-4 py-3 text-white transition hover:opacity-95 ${uiTypography.buttonText}`}
+                  >
+                    <FileDown className="size-4" />
+                    Export CSV
+                  </button>
+                </div>
               </div>
             </div>
 
             {filteredPayments.length > 0 ? (
-              <div className="divide-y divide-gray-200">
+              <div className="grid gap-4 p-5 sm:p-6">
                 {filteredPayments.map((payment) => {
                   const reservation = reservationMap.get(payment.reservationId);
+                  const ledgerEntry = ledgerByPaymentId.get(payment.id);
+                  const progress = getReservationProgress(
+                    reservation?.totalAmount || 0,
+                    reservation?.paidAmount || 0
+                  );
                   const StatusIcon =
                     PAYMENT_STATUS_ICONS[
                       payment.status as keyof typeof PAYMENT_STATUS_ICONS
                     ];
 
                   return (
-                    <div key={payment.id} className="p-4 sm:p-6 hover:bg-gray-50/50">
-                      <div className="flex flex-col sm:flex-row justify-between items-start gap-3">
-                        <div className="flex flex-col gap-1 w-full">
-                          <div className="flex items-center justify-between sm:justify-start gap-2">
-                            <span
-                              className={`inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold rounded-md ${
-                                PAYMENT_STATUS_COLORS[
-                                  payment.status as keyof typeof PAYMENT_STATUS_COLORS
-                                ]
-                              }`}
-                            >
-                              <StatusIcon className="size-3" />
-                              {String(payment.status).toUpperCase()}
-                            </span>
+                    <div
+                      key={payment.id}
+                      className="overflow-hidden rounded-[26px] border border-slate-200 bg-gradient-to-br from-white via-white to-slate-50 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                    >
+                      <div className="border-b border-slate-100 bg-gradient-to-r from-white to-slate-50 px-5 py-4 sm:px-6">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span
+                                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 ${uiTypography.badgeLabel} ${
+                                  PAYMENT_STATUS_COLORS[
+                                    payment.status as keyof typeof PAYMENT_STATUS_COLORS
+                                  ]
+                                }`}
+                              >
+                                <StatusIcon className="size-3.5" />
+                                {String(payment.status)}
+                              </span>
 
-                            <button
-                              onClick={() => handleDownloadInvoice(payment)}
-                              className="sm:hidden flex items-center gap-1 text-blue-600 text-xs font-semibold"
-                            >
-                              <Download className="size-3" />
-                              Invoice
-                            </button>
+                              <span className={`inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 ring-1 ring-slate-200 ${uiTypography.helperText} font-medium text-slate-600`}>
+                                <Landmark className="size-3.5" />
+                                {formatPaymentMethod(payment.method)}
+                              </span>
+
+                              {ledgerEntry ? (
+                                <span className={`inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 ring-1 ring-emerald-200 ${uiTypography.helperText} font-medium text-emerald-700`}>
+                                  <ReceiptText className="size-3.5" />
+                                  Posted to ledger
+                                </span>
+                              ) : (
+                                <span className={`inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 ring-1 ring-amber-200 ${uiTypography.helperText} font-medium text-amber-700`}>
+                                  <Clock3 className="size-3.5" />
+                                  Awaiting posting
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="mt-3">
+                              <h3 className={`${uiTypography.cardTitle} text-slate-900`}>
+                                {formatCurrency(payment.amount)}
+                              </h3>
+                              <p className={uiTypography.cardSubtitle}>
+                                Paid on {getSafeDate(payment.date).toLocaleDateString()}
+                              </p>
+                            </div>
                           </div>
 
-                          <h3 className="text-lg font-bold text-gray-900 mt-1">
-                            {formatCurrency(payment.amount)}
-                          </h3>
-                          <p className="text-xs text-gray-500 font-medium">
-                            Paid on {new Date(payment.date).toLocaleDateString()}
-                          </p>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadInvoice(payment)}
+                            className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border shadow-sm transition ${
+                              ledgerEntry
+                                ? 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                            }`}
+                            title={
+                              ledgerEntry
+                                ? 'Download invoice'
+                                : 'Invoice available after ledger posting'
+                            }
+                            aria-label="Download invoice"
+                          >
+                            <FileDown className="size-4" />
+                          </button>
                         </div>
-
-                        <button
-                          onClick={() => handleDownloadInvoice(payment)}
-                          className="hidden sm:flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100"
-                        >
-                          <Download className="size-4" />
-                          Invoice
-                        </button>
                       </div>
 
-                      <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                        <h4 className="text-sm font-semibold mb-2">
-                          {reservation?.unitName ?? 'Unknown Unit'}
-                        </h4>
+                      <div className="p-5 sm:p-6">
+                        <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <h4 className={`${uiTypography.sectionTitle} truncate`}>
+                                {reservation?.unitName ?? 'Unknown Unit'}
+                              </h4>
+                              <p className={`${uiTypography.badgeLabel} mt-1 text-slate-400`}>
+                                {reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A'}
+                              </p>
+                            </div>
 
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-                          {[
-                            { label: 'Reservation ID', value: reservation?.id ?? 'N/A' },
-                            {
-                              label: 'Method',
-                              value: String(payment.method).replaceAll('_', ' '),
-                              className: 'capitalize',
-                            },
-                            {
-                              label: 'Cycle',
-                              value: reservation?.paymentCycle,
-                              hide: !reservation?.paymentCycle,
-                            },
-                            {
-                              label: 'Total Bill',
-                              value: formatCurrency(reservation?.totalAmount || 0),
-                            },
-                            {
-                              label: 'Total Paid',
-                              value: formatCurrency(reservation?.paidAmount || 0),
-                              className: 'text-green-600 font-medium',
-                            },
-                            {
-                              label: 'Balance',
-                              value: formatCurrency(
-                                (reservation?.totalAmount || 0) -
-                                  (reservation?.paidAmount || 0)
-                              ),
-                              className: 'text-red-600 font-medium',
-                            },
-                          ].map(
-                            (item, idx) =>
-                              !item.hide && (
-                                <div
-                                  key={idx}
-                                  className="flex flex-col border-l-2 border-gray-100 pl-3"
+                            <div className="flex items-center gap-2">
+                              {payment.proofOfPayment && (
+                                <button
+                                  onClick={() => setViewingImage(payment.proofOfPayment || null)}
+                                  className={`inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-700 transition hover:bg-slate-50 ${uiTypography.buttonText}`}
                                 >
-                                  <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">
-                                    {item.label}
-                                  </span>
-                                  <span className={`text-gray-900 ${item.className || ''}`}>
-                                    {item.value}
-                                  </span>
-                                </div>
-                              )
+                                  <Eye className="size-3.5" />
+                                  Proof
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadInvoice(payment)}
+                                className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 transition ${uiTypography.buttonText} ${
+                                  ledgerEntry
+                                    ? 'bg-slate-900 text-white hover:bg-slate-800'
+                                    : 'cursor-not-allowed bg-slate-200 text-slate-500'
+                                }`}
+                              >
+                                <FileDown className="size-3.5" />
+                                Invoice
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 rounded-2xl border border-white bg-white p-4">
+                            <div className="mb-2 flex items-center justify-between">
+                              <p className={`${uiTypography.miniStatLabel} text-slate-400`}>
+                                Reservation Payment Progress
+                              </p>
+                              <div className={`inline-flex items-center gap-1 ${uiTypography.miniStatValue} text-slate-700`}>
+                                {progress.toFixed(0)}%
+                                <ArrowUpRight className="size-4 text-slate-400" />
+                              </div>
+                            </div>
+
+                            <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
+                              <div
+                                className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-sky-500 transition-all duration-500"
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <div className="rounded-2xl border border-white bg-white px-3 py-3">
+                              <span className={`block ${uiTypography.infoBlockLabel}`}>
+                                Reservation ID
+                              </span>
+                              <span className={`block ${uiTypography.infoBlockValue}`}>
+                                {reservation?.publicId ?? reservation?.id ?? 'N/A'}
+                              </span>
+                            </div>
+
+                            <div className="rounded-2xl border border-white bg-white px-3 py-3">
+                              <span className={`block ${uiTypography.infoBlockLabel}`}>
+                                Total Bill
+                              </span>
+                              <span className={`block ${uiTypography.infoBlockValue}`}>
+                                {formatCurrency(reservation?.totalAmount || 0)}
+                              </span>
+                            </div>
+
+                            <div className="rounded-2xl border border-white bg-white px-3 py-3">
+                              <span className={`block ${uiTypography.infoBlockLabel}`}>
+                                Paid To Date
+                              </span>
+                              <span className={`block ${uiTypography.infoBlockValue} text-emerald-600`}>
+                                {formatCurrency(reservation?.paidAmount || 0)}
+                              </span>
+                            </div>
+
+                            <div className="rounded-2xl border border-white bg-white px-3 py-3">
+                              <span className={`block ${uiTypography.infoBlockLabel}`}>
+                                Remaining
+                              </span>
+                              <span className={`block ${uiTypography.infoBlockValue} text-rose-600`}>
+                                {formatCurrency(
+                                  Number(reservation?.totalAmount || 0) -
+                                    Number(reservation?.paidAmount || 0)
+                                )}
+                              </span>
+                            </div>
+                          </div>
+
+                          {ledgerEntry && (
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                              <div className="rounded-2xl border border-white bg-white p-4">
+                                <p className={uiTypography.infoBlockLabel}>Ledger Entry</p>
+                                <p className={`${uiTypography.infoBlockValue} text-slate-900`}>
+                                  {ledgerEntry.id}
+                                </p>
+                                <p className={uiTypography.helperText}>
+                                  {formatPaymentMethod(ledgerEntry.entry_type)} ·{' '}
+                                  {formatPaymentMethod(ledgerEntry.status)}
+                                </p>
+                              </div>
+
+                              <div className="rounded-2xl border border-white bg-white p-4">
+                                <p className={uiTypography.infoBlockLabel}>Reference No</p>
+                                <p className={`${uiTypography.infoBlockValue} text-slate-900`}>
+                                  {ledgerEntry.reference_no || 'N/A'}
+                                </p>
+                                <p className={uiTypography.helperText}>
+                                  Recorded {getSafeDate(ledgerEntry.recorded_at).toLocaleDateString()}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {payment.notes && (
+                            <div className="mt-4 rounded-2xl border border-white bg-white p-4">
+                              <p className={uiTypography.infoBlockLabel}>Notes</p>
+                              <p className={`${uiTypography.bodyText} mt-2 text-slate-600`}>
+                                {payment.notes}
+                              </p>
+                            </div>
                           )}
                         </div>
-
-                        {payment.notes && (
-                          <div className="mt-2 pt-2 border-t border-gray-200">
-                            <p className="text-sm">
-                              <strong>Notes:</strong> {payment.notes}
-                            </p>
-                          </div>
-                        )}
-
-                        {payment.proofOfPayment && (
-                          <div className="mt-2 pt-2 border-t border-gray-200">
-                            <button
-                              onClick={() =>
-                                setViewingImage(payment.proofOfPayment || null)
-                              }
-                              className="text-sm text-blue-600 hover:underline font-medium"
-                            >
-                              <Eye className="size-4 text-blue-600 sm:hidden" />
-                              <span className="hidden sm:inline">
-                                View Proof of Payment
-                              </span>
-                            </button>
-                          </div>
-                        )}
                       </div>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <div className="p-12 text-center">
-                <CreditCard className="size-16 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-gray-600 mb-2">No payments matched your search</h3>
-                <p className="text-sm text-gray-500">
-                  Try a different keyword or amount
-                </p>
+              <div className="p-6 sm:p-8">
+                <EmptyState
+                  icon={<Search className="size-10 text-blue-500" />}
+                  title="No matching payments found"
+                  description="Try searching by reservation ID, unit name, amount, payment method, or status."
+                />
+
+                <div className="mt-5 flex justify-center">
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className={`inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-slate-700 transition hover:bg-slate-50 ${uiTypography.buttonText}`}
+                  >
+                    Clear Search
+                  </button>
+                </div>
               </div>
             )}
-          </div>
-        ) : (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25 }}
-            className="flex flex-col items-center justify-center py-20 text-center"
-          >
-            <div className="bg-blue-50 p-6 rounded-3xl shadow-sm mb-4">
-              <CreditCard className="size-10 text-blue-500" />
-            </div>
-
-            <h3 className="text-lg font-bold text-gray-900">No payments yet</h3>
-
-            <p className="text-gray-500 max-w-xs text-sm mt-1">
-              Your payment history will appear here once you make a payment.
-            </p>
-          </motion.div>
-        )}
-
-        {userPayments.length > 0 && (
-          <section className="w-full">
-            <h3 className="text-[12px] font-bold uppercase tracking-widest text-gray-400 mb-3 px-1">
-              Payment Overview
-            </h3>
-
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6">
-              <div className="col-span-2 sm:col-span-1 bg-gradient-to-br from-green-50 to-white p-5 rounded-2xl border border-green-100 shadow-sm flex flex-col justify-between">
-                <div className="flex justify-between items-start">
-                  <div className="p-2 bg-green-500/10 rounded-lg text-green-600">
-                    <CheckCircle className="size-5" />
-                  </div>
-                  <span className="text-[10px] font-bold text-green-700 bg-green-500/10 px-2 py-0.5 rounded-full uppercase">
-                    Verified
-                  </span>
-                </div>
-                <div className="mt-5">
-                  <p className="text-xs font-medium text-green-700/70">Total Paid</p>
-                  <p className="text-2xl font-bold text-gray-900 leading-none mt-1">
-                    {formatCurrency(paymentOverview.totalPaid)}
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between transition-all active:scale-95">
-                <div className="p-2 bg-amber-500/10 rounded-lg text-amber-600 w-fit">
-                  <Clock className="size-5" />
-                </div>
-                <div className="mt-4">
-                  <p className="text-xs font-medium text-gray-500">Pending</p>
-                  <p className="text-lg font-bold text-amber-600 mt-1">
-                    {formatCurrency(paymentOverview.pendingAmount)}
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col justify-between transition-all active:scale-95">
-                <div className="p-2 bg-blue-500/10 rounded-lg text-blue-600 w-fit">
-                  <CreditCard className="size-5" />
-                </div>
-                <div className="mt-4">
-                  <p className="text-xs font-medium text-gray-500">Transactions</p>
-                  <p className="text-lg font-bold text-gray-900 mt-1">
-                    {paymentOverview.transactions}
-                  </p>
-                </div>
-              </div>
-            </div>
           </section>
-        )}
+        ) : eligibleReservations.length === 0 ? (
+          <EmptyState
+  icon={<CreditCard className="size-10 text-blue-500" />}
+  title="No payments yet"
+  description="Your payment history will appear here once you make a payment for an approved reservation."
+/>
+        ) : null}
 
         {showPaymentModal && selectedReservation && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-md w-full flex flex-col max-h-[90vh]">
-              <div className="flex-shrink-0 p-6 border-b flex justify-between items-center">
-                <h2 className="text-lg font-semibold">Make Payment</h2>
-                <button
-                  onClick={resetPaymentModalState}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <XCircle className="size-6" />
-                </button>
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
+            onClick={resetPaymentModalState}
+          >
+            <div
+              className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="border-b border-slate-100 bg-white px-6 py-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className={uiTypography.modalTitle}>Make Payment</h2>
+                    <p className={uiTypography.modalBody}>
+                      Submit your payment and upload proof for verification.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={resetPaymentModalState}
+                    className="rounded-xl p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                  >
+                    <XCircle className="size-6" />
+                  </button>
+                </div>
               </div>
 
               {paymentSuccess ? (
                 <div className="p-10 text-center">
-                  <CheckCircle className="size-16 text-green-500 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">Payment Submitted!</h3>
-                  <p className="text-gray-600">
-                    Your payment is pending admin verification. You can now close
-                    this window.
+                  <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-[28px] bg-emerald-50 text-emerald-500">
+                    <CheckCircle2 className="size-10" />
+                  </div>
+                  <h3 className={uiTypography.cardTitle}>Payment Submitted</h3>
+                  <p className={uiTypography.modalBody}>
+                    Your payment is now pending admin verification.
                   </p>
                 </div>
               ) : (
                 <form
                   id="payment-form"
                   onSubmit={handlePaymentSubmit}
-                  className="p-6 space-y-4 overflow-y-auto"
+                  className="space-y-5 overflow-y-auto p-6"
                 >
-                  {selectedReservationData && (
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <p className="text-sm text-gray-600 mb-2">
-                        {selectedReservationData.unitName}
-                      </p>
-                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Total Amount:</span>
-                          <span className="text-gray-900">
-                            {formatCurrency(selectedReservationData.totalAmount)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Paid Amount:</span>
-                          <span className="text-green-600">
-                            {formatCurrency(selectedReservationData.paidAmount)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between border-t border-gray-200 pt-1 mt-1">
-                          <span className="font-semibold text-gray-900">
-                            Outstanding Balance:
-                          </span>
-                          <span className="font-semibold text-red-600">
-                            {formatCurrency(selectedReservationBalance)}
-                          </span>
-                        </div>
+                  <div className="grid gap-5">
+                    <div>
+                      <label className={`${uiTypography.formLabel} mb-2 ml-0`}>
+                        Payment Amount (₱)
+                      </label>
+                      <div className="relative">
+                        <Wallet className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="number"
+                          required
+                          min="0.01"
+                          step="0.01"
+                          max={selectedReservationBalance}
+                          value={paymentForm.amount}
+                          onChange={(e) =>
+                            setPaymentForm((prev) => ({
+                              ...prev,
+                              amount: e.target.value,
+                            }))
+                          }
+                          className={`w-full rounded-2xl border border-slate-300 py-3 pl-10 pr-4 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
+                          placeholder="0.00"
+                        />
                       </div>
                     </div>
-                  )}
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Payment Amount (₱)
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      min="0.01"
-                      step="0.01"
-                      max={selectedReservationBalance}
-                      value={paymentForm.amount}
-                      onChange={(e) =>
-                        setPaymentForm((prev) => ({
-                          ...prev,
-                          amount: e.target.value,
-                        }))
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="0.00"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Payment Method
-                    </label>
-                    <select
-                      value={paymentForm.method}
-                      onChange={(e) =>
-                        setPaymentForm((prev) => ({
-                          ...prev,
-                          method: e.target.value,
-                        }))
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="gcash">GCash</option>
-                      <option value="cash">Cash</option>
-                      <option value="cheque">Cheque</option>
-                      <option value="paymaya">PayMaya</option>
-                      <option value="bank_transfer">Bank Transfer</option>
-                      <option value="credit_card">Credit/Debit Card</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Proof of Payment
-                    </label>
-
-                    {!proofPreviewUrl && (
-                      <label
-                        htmlFor="file-upload"
-                        className="relative cursor-pointer w-full flex justify-center items-center gap-2 px-4 py-4 border-2 border-gray-300 border-dashed rounded-lg text-sm text-gray-600 hover:border-blue-500 hover:text-blue-600 transition-colors"
-                      >
-                        <Paperclip className="size-4" />
-                        <span>Choose File to Upload</span>
-                        <input
-                          id="file-upload"
-                          name="file-upload"
-                          type="file"
-                          className="sr-only"
-                          onChange={handleFileChange}
-                          accept="image/png, image/jpeg, image/jpg"
-                        />
+                    <div>
+                      <label className={`${uiTypography.formLabel} mb-2 ml-0`}>
+                        Payment Method
                       </label>
-                    )}
+                      <select
+                        value={paymentForm.method}
+                        onChange={(e) =>
+                          setPaymentForm((prev) => ({
+                            ...prev,
+                            method: e.target.value,
+                          }))
+                        }
+                        className={`w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
+                      >
+                        <option value="gcash">GCash</option>
+                        <option value="cash">Cash</option>
+                        <option value="cheque">Cheque</option>
+                        <option value="paymaya">PayMaya</option>
+                        <option value="bank_transfer">Bank Transfer</option>
+                        <option value="credit_card">Credit / Debit Card</option>
+                      </select>
+                    </div>
 
-                    {proofPreviewUrl && (
-                      <div className="relative group w-36 h-36">
-                        <img
-                          src={proofPreviewUrl}
-                          alt="Proof preview"
-                          className="w-full h-full object-cover rounded-lg shadow-sm"
-                        />
-                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-lg">
-                          <button
-                            type="button"
-                            onClick={handleRemoveImage}
-                            className="flex items-center gap-2 px-3 py-1.5 text-xs bg-red-600 text-white rounded-full hover:bg-red-700"
-                            title="Remove Image"
-                          >
-                            <Trash2 className="size-4" />
-                            Remove
-                          </button>
+                    <div>
+                      <label className={`${uiTypography.formLabel} mb-2 ml-0`}>
+                        Proof of Payment
+                      </label>
+
+                      {!proofPreviewUrl ? (
+                        <label
+                          htmlFor="file-upload"
+                          className="flex min-h-[172px] w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-[24px] border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center transition hover:border-sky-400 hover:bg-sky-50/50"
+                        >
+                          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-sky-600 shadow-sm ring-1 ring-slate-200">
+                            <ImageIcon className="size-6" />
+                          </div>
+
+                          <div>
+                            <p className={`${uiTypography.buttonTextBold} text-slate-800`}>
+                              Upload receipt or screenshot
+                            </p>
+                            <p className={`${uiTypography.helperText} mt-1`}>
+                              PNG, JPG, or JPEG supported
+                            </p>
+                          </div>
+
+                          <input
+                            id="file-upload"
+                            name="file-upload"
+                            type="file"
+                            className="sr-only"
+                            onChange={handleFileChange}
+                            accept="image/png, image/jpeg, image/jpg"
+                          />
+                        </label>
+                      ) : (
+                        <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-3">
+                          <div className="flex items-start gap-3">
+                            <img
+                              src={proofPreviewUrl}
+                              alt="Proof preview"
+                              className="h-24 w-24 shrink-0 rounded-2xl object-cover shadow-sm"
+                            />
+
+                            <div className="min-w-0 flex-1">
+                              <p className={`${uiTypography.buttonTextBold} truncate text-slate-900`}>
+                                {proofFile?.name || 'Uploaded receipt'}
+                              </p>
+                              <p className={`${uiTypography.helperText} mt-1`}>
+                                Make sure the amount and date are visible.
+                              </p>
+
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingImage(proofPreviewUrl)}
+                                  className={`inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-700 transition hover:bg-slate-50 ${uiTypography.buttonText}`}
+                                >
+                                  <Eye className="size-3.5" />
+                                  Preview
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={handleRemoveImage}
+                                  className={`inline-flex items-center gap-2 rounded-xl bg-rose-600 px-3 py-2 text-white transition hover:bg-rose-700 ${uiTypography.buttonText}`}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
 
-                    <p className="text-xs text-gray-500 mt-2">
-                      Please upload a screenshot or photo of your receipt (PNG,
-                      JPG).
-                    </p>
+                      <p className={`${uiTypography.helperText} mt-2`}>
+                        Uploading proof helps speed up admin verification.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className={`${uiTypography.formLabel} mb-2 ml-0`}>
+                        Notes (Optional)
+                      </label>
+                      <textarea
+                        value={paymentForm.notes}
+                        onChange={(e) =>
+                          setPaymentForm((prev) => ({
+                            ...prev,
+                            notes: e.target.value,
+                          }))
+                        }
+                        rows={4}
+                        className={`w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
+                        placeholder="Add reference numbers or extra payment details"
+                      />
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Notes (Optional)
-                    </label>
-                    <textarea
-                      value={paymentForm.notes}
-                      onChange={(e) =>
-                        setPaymentForm((prev) => ({
-                          ...prev,
-                          notes: e.target.value,
-                        }))
-                      }
-                      rows={3}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="Any additional information"
-                    />
-                  </div>
-
-                  <div className="flex gap-3 pt-4">
+                  <div className="flex gap-3 pt-1">
                     <button
                       type="button"
                       onClick={resetPaymentModalState}
-                      className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                      className={`flex-1 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-700 transition hover:bg-slate-50 ${uiTypography.buttonText}`}
                     >
                       Cancel
                     </button>
@@ -832,7 +1160,7 @@ Thank you for your business!
                       type="submit"
                       form="payment-form"
                       disabled={isSubmitting}
-                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                      className={`flex-1 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-700 px-4 py-3 text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60 ${uiTypography.buttonText}`}
                     >
                       {isSubmitting ? 'Submitting...' : 'Submit Payment'}
                     </button>
@@ -845,7 +1173,7 @@ Thank you for your business!
 
         {viewingImage && (
           <div
-            className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md"
             onClick={() => setViewingImage(null)}
             role="dialog"
             aria-modal="true"
@@ -853,23 +1181,23 @@ Thank you for your business!
           >
             <button
               onClick={() => setViewingImage(null)}
-              className="absolute top-6 right-6 text-white/70 hover:text-white transition-colors"
+              className="absolute right-6 top-6 rounded-xl p-1 text-white/70 transition hover:bg-white/10 hover:text-white"
               title="Close (Esc)"
             >
               <X className="size-8" />
             </button>
 
             <div
-              className="relative max-w-full sm:max-w-5xl max-h-screen p-2"
+              className="relative max-h-screen max-w-full p-2 sm:max-w-5xl"
               onClick={(e) => e.stopPropagation()}
             >
               <img
                 src={viewingImage}
                 alt="Proof of Payment Receipt"
-                className="max-w-full max-h-[85vh] object-contain rounded-md shadow-2xl border border-white/10"
+                className="max-h-[85vh] max-w-full rounded-2xl border border-white/10 object-contain shadow-2xl"
               />
-              <p className="text-white/60 text-center mt-4 text-sm font-light">
-                Click anywhere outside to close
+              <p className="mt-4 text-center text-sm font-light text-white/60">
+                Click outside to close
               </p>
             </div>
           </div>

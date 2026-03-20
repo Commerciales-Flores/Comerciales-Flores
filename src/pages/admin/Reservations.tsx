@@ -90,6 +90,34 @@ export default function AdminReservations() {
   const [pageSize] = useState(25);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
+  const [pageInput, setPageInput] = useState('1');
+
+useEffect(() => {
+  setPageInput(String(page));
+}, [page]);
+
+const handlePageJump = useCallback(() => {
+  const parsed = parseInt(pageInput, 10);
+
+  if (Number.isNaN(parsed)) {
+    setPageInput(String(page));
+    return;
+  }
+
+  const nextPage = Math.min(Math.max(parsed, 1), totalPages);
+  setPage(nextPage);
+  setPageInput(String(nextPage));
+}, [pageInput, page, totalPages]);
+
+const handlePageInputKeyDown = useCallback(
+  (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handlePageJump();
+    }
+  },
+  [handlePageJump]
+);
+
   useEffect(() => {
     setPage(1);
   }, [filterStatus, debouncedSearch]);
@@ -117,8 +145,8 @@ export default function AdminReservations() {
           setTotalCount(0);
         }
       } finally {
-        if (!cancelled){ 
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
         }
       }
     };
@@ -161,8 +189,11 @@ export default function AdminReservations() {
       : null;
   }, [selectedReservation, enrichedReservations]);
 
-  const hasNoReservations = !loading && totalCount === 0;
-  const hasNoSearchResults = !loading && totalCount > 0 && enrichedReservations.length === 0;
+  const hasActiveSearch = Boolean(debouncedSearch.trim());
+  const hasActiveFilters = filterStatus !== 'all' || hasActiveSearch;
+
+  const hasNoReservations = !loading && totalCount === 0 && !hasActiveFilters;
+  const hasNoSearchResults = !loading && totalCount === 0 && hasActiveFilters;
 
   const reloadPage = useCallback(async () => {
     const result = await fetchReservationsPage({
@@ -176,24 +207,36 @@ export default function AdminReservations() {
   }, [fetchReservationsPage, page, pageSize, filterStatus, debouncedSearch]);
 
   const handleApprove = useCallback(
-    async (reservationId: string, userId: string) => {
-      await updateReservation(reservationId, { status: 'confirmed' });
-      await sendReservationNotification(userId, reservationId, 'approved');
-      setSelectedReservation(null);
-      await reloadPage();
-    },
-    [updateReservation, sendReservationNotification, reloadPage]
-  );
+  async (reservation: EnrichedReservation) => {
+    await updateReservation(reservation.id, { status: 'confirmed' });
+
+    await sendReservationNotification({
+      userId: reservation.userId,
+      reservationPublicId: reservation.reservationPublicId,
+      action: 'approved',
+    });
+
+    setSelectedReservation(null);
+    await reloadPage();
+  },
+  [updateReservation, sendReservationNotification, reloadPage]
+);
 
   const handleReject = useCallback(
-    async (reservationId: string, userId: string) => {
-      await updateReservation(reservationId, { status: 'cancelled' });
-      await sendReservationNotification(userId, reservationId, 'rejected');
-      setSelectedReservation(null);
-      await reloadPage();
-    },
-    [updateReservation, sendReservationNotification, reloadPage]
-  );
+  async (reservation: EnrichedReservation) => {
+    await updateReservation(reservation.id, { status: 'cancelled' });
+
+    await sendReservationNotification({
+      userId: reservation.userId,
+      reservationPublicId: reservation.reservationPublicId,
+      action: 'rejected',
+    });
+
+    setSelectedReservation(null);
+    await reloadPage();
+  },
+  [updateReservation, sendReservationNotification, reloadPage]
+);
 
   const closeDetails = useCallback(() => setSelectedReservation(null), []);
   const openCreateModal = useCallback(() => setIsActionModalOpen(true), []);
@@ -217,7 +260,7 @@ export default function AdminReservations() {
         </button>
       </div>
 
-      {!loading && !hasNoReservations && (
+      {!loading && (!hasNoReservations || hasActiveFilters) && (
         <div className="space-y-4">
           <div className="flex lg:hidden items-center gap-2">
             <div className="relative flex-1">
@@ -250,7 +293,7 @@ export default function AdminReservations() {
                 placeholder="Search by ID, Unit, or Customer..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               />
             </div>
 
@@ -380,14 +423,14 @@ export default function AdminReservations() {
                       {reservation.status === 'pending' && (
                         <>
                           <button
-                            onClick={() => handleApprove(reservation.id, reservation.userId)}
+                            onClick={() => handleApprove(reservation)}
                             className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl"
                           >
                             <CheckCircle className="size-5" />
                           </button>
 
                           <button
-                            onClick={() => handleReject(reservation.id, reservation.userId)}
+                            onClick={() => handleReject(reservation)}
                             className="p-2.5 bg-rose-50 text-rose-600 rounded-xl"
                           >
                             <XCircle className="size-5" />
@@ -400,7 +443,7 @@ export default function AdminReservations() {
               ))}
             </div>
 
-            <div className="hidden lg:block bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="hidden lg:block bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full text-left">
                   <thead className="bg-gray-50 border-b border-gray-200">
@@ -415,12 +458,12 @@ export default function AdminReservations() {
                         'Visit Type',
                         'Status',
                         'Actions',
-                      ].map((h) => (
+                      ].map((header) => (
                         <th
-                          key={h}
-                          className="px-6 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-widest"
+                          key={header}
+                          className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
                         >
-                          {h}
+                          {header}
                         </th>
                       ))}
                     </tr>
@@ -428,45 +471,52 @@ export default function AdminReservations() {
 
                   <tbody className="divide-y divide-gray-100">
                     {enrichedReservations.map((reservation) => (
-                      <tr key={reservation.id} className="hover:bg-blue-50/30 transition-colors">
-                        <td className="px-6 py-4 text-xs font-mono text-gray-400 w-[140px]">
-                          {reservation.reservationPublicId}
+                      <tr
+                        key={reservation.id}
+                        className="hover:bg-blue-50/30 transition-colors"
+                      >
+                        <td className="px-6 py-4 w-[180px]">
+                          <span className="inline-block whitespace-nowrap text-sm font-semibold text-gray-900">
+                            {reservation.reservationPublicId}
+                          </span>
                         </td>
 
-                        <td className="px-6 py-4 text-xs font-mono text-gray-400 w-[140px]">
-                          {reservation.userPublicId || reservation.userId}
+                        <td className="px-6 py-4 w-[160px]">
+                          <span className="inline-block whitespace-nowrap text-sm text-gray-600">
+                            {reservation.userPublicId || reservation.userId}
+                          </span>
                         </td>
 
-                        <td className="px-6 py-4 w-[220px]">
+                        <td className="px-6 py-4 w-[240px]">
                           <div className="text-sm font-semibold text-gray-900">
                             {reservation.unitName}
                           </div>
-                          <div className="text-[10px] text-gray-400 uppercase">
+                          <div className="text-xs text-gray-500 mt-0.5">
                             {getUnitTypeLabel(reservation.unitType)}
                           </div>
                         </td>
 
-                        <td className="px-6 py-4 text-sm text-gray-500 w-[180px]">
+                        <td className="px-6 py-4 text-sm text-gray-500 w-[200px]">
                           <div>{reservation.startDateLabel}</div>
-                          <div className="text-[10px] text-gray-400">
+                          <div className="text-xs text-gray-400">
                             to {reservation.endDateLabel}
                           </div>
                         </td>
 
-                        <td className="px-6 py-4 w-[150px]">
-                          <div className="text-sm font-medium text-emerald-600">
+                        <td className="px-6 py-4 w-[170px]">
+                          <div className="text-sm font-semibold text-emerald-600">
                             {formatCurrency(reservation.paidAmount)}
                           </div>
-                          <div className="text-[10px] text-gray-400">
+                          <div className="text-xs text-gray-400">
                             {reservation.paidPercent}
                           </div>
                         </td>
 
-                        <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[140px]">
+                        <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[150px]">
                           {formatCurrency(reservation.totalAmount)}
                         </td>
 
-                        <td className="px-6 py-4 w-[120px]">
+                        <td className="px-6 py-4 w-[140px]">
                           <span
                             className={`px-2.5 py-1 text-[10px] font-bold rounded-full border ${
                               reservation.modeOfVisit === 'onsite'
@@ -478,7 +528,7 @@ export default function AdminReservations() {
                           </span>
                         </td>
 
-                        <td className="px-6 py-4 w-[120px]">
+                        <td className="px-6 py-4 w-[130px]">
                           <span
                             className={`px-2.5 py-1 text-[10px] font-bold rounded-full border ${
                               statusColors[reservation.status as keyof typeof statusColors]
@@ -488,7 +538,7 @@ export default function AdminReservations() {
                           </span>
                         </td>
 
-                        <td className="px-6 py-4 text-right w-[120px]">
+                        <td className="px-6 py-4 text-right w-[130px]">
                           <div className="flex justify-end gap-1">
                             <button
                               onClick={() => setSelectedReservation(reservation.id)}
@@ -501,7 +551,7 @@ export default function AdminReservations() {
                             {reservation.status === 'pending' && (
                               <>
                                 <button
-                                  onClick={() => handleApprove(reservation.id, reservation.userId)}
+                                  onClick={() => handleApprove(reservation)}
                                   className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"
                                   title="Approve"
                                 >
@@ -509,7 +559,7 @@ export default function AdminReservations() {
                                 </button>
 
                                 <button
-                                  onClick={() => handleReject(reservation.id, reservation.userId)}
+                                  onClick={() => handleReject(reservation)}
                                   className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg"
                                   title="Reject"
                                 >
@@ -530,30 +580,49 @@ export default function AdminReservations() {
       </div>
 
       {!loading && !hasNoReservations && totalPages > 1 && (
-        <div className="flex items-center justify-between px-4 py-4 bg-white border border-gray-200 rounded-2xl shadow-sm">
-          <p className="text-sm text-gray-500">
-            Page {page} of {totalPages} • {totalCount} total reservations
-          </p>
+  <div className="flex flex-col gap-3 bg-white border border-gray-200 rounded-2xl shadow-sm px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <p className="text-sm text-gray-500">
+      Page {page} of {totalPages} • {totalCount} total reservations
+    </p>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
-            >
-              Previous
-            </button>
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        onClick={() => setPage((p) => Math.max(1, p - 1))}
+        disabled={page === 1}
+        className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
+      >
+        Previous
+      </button>
 
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      )}
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-gray-500">Go to</span>
+        <input
+          type="number"
+          min={1}
+          max={totalPages}
+          value={pageInput}
+          onChange={(e) => setPageInput(e.target.value)}
+          onKeyDown={handlePageInputKeyDown}
+          className="w-20 px-3 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <button
+          onClick={handlePageJump}
+          className="px-3 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+        >
+          Go
+        </button>
+      </div>
+
+      <button
+        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+        disabled={page === totalPages}
+        className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
+      >
+        Next
+      </button>
+    </div>
+  </div>
+)}
 
       {isFilterPanelOpen && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center lg:hidden">
@@ -793,18 +862,14 @@ export default function AdminReservations() {
                 {selectedReservationData.status === 'pending' && (
                   <>
                     <button
-                      onClick={() =>
-                        handleReject(selectedReservationData.id, selectedReservationData.userId)
-                      }
+                      onClick={() => handleReject(selectedReservationData)}
                       className="px-5 py-2.5 border border-rose-200 text-rose-600 rounded-xl hover:bg-rose-50 font-semibold transition-all"
                     >
                       Reject
                     </button>
 
                     <button
-                      onClick={() =>
-                        handleApprove(selectedReservationData.id, selectedReservationData.userId)
-                      }
+                      onClick={() => handleApprove(selectedReservationData)}
                       className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-semibold shadow-lg shadow-emerald-600/20 transition-all"
                     >
                       Approve

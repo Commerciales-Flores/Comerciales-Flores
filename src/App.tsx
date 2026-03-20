@@ -20,7 +20,7 @@ const ClientReservations = lazy(() => import('./pages/client/Reservations'));
 const ClientPayments = lazy(() => import('./pages/client/Payments'));
 const ClientNotifications = lazy(() => import('./pages/client/Notifications'));
 const ClientProfile = lazy(() => import('./pages/client/Profile'));
-const ClientMessages = lazy(() => import('./pages/client/messages'));
+const ClientMessages = lazy(() => import('./pages/client/Messages'));
 
 // Admin Pages
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));

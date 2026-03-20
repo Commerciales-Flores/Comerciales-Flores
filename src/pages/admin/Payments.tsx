@@ -11,12 +11,16 @@ import {
   Search,
   Eye,
   Plus,
-  Filter,
+  SlidersHorizontal,
+  ReceiptText,
+  CalendarDays,
+  BadgeDollarSign,
+  ImageIcon,
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import Papa from 'papaparse';
 import AdminActionModal from '../../components/modals/AdminActionModal';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import EmptyState from '../../components/common/EmptyState';
 
 type PaymentFilterStatus = 'all' | 'paid' | 'unpaid' | 'partial';
@@ -61,6 +65,13 @@ function useDebouncedValue<T>(value: T, delay = 250) {
   return debounced;
 }
 
+function getStatusLabel(status: PaymentFilterStatus | PaymentView['status']) {
+  if (status === 'paid') return 'Verified';
+  if (status === 'partial') return 'Partial';
+  if (status === 'unpaid') return 'Pending';
+  return 'All';
+}
+
 export default function AdminPayments() {
   const { reservations, updatePayment, getUserById } = useData();
   const { sendPaymentNotification } = useNotifications();
@@ -82,6 +93,33 @@ export default function AdminPayments() {
 
   const debouncedSearch = useDebouncedValue(searchTerm, 250);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const [pageInput, setPageInput] = useState('1');
+
+  useEffect(() => {
+    setPageInput(String(page));
+  }, [page]);
+
+  const handlePageJump = useCallback(() => {
+    const parsed = parseInt(pageInput, 10);
+
+    if (Number.isNaN(parsed)) {
+      setPageInput(String(page));
+      return;
+    }
+
+    const nextPage = Math.min(Math.max(parsed, 1), totalPages);
+    setPage(nextPage);
+    setPageInput(String(nextPage));
+  }, [pageInput, page, totalPages]);
+
+  const handlePageInputKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        handlePageJump();
+      }
+    },
+    [handlePageJump]
+  );
 
   useEffect(() => {
     setPage(1);
@@ -200,22 +238,37 @@ export default function AdminPayments() {
   const hasNoSearchResults = !loading && totalCount > 0 && paymentViews.length === 0;
 
   const handleVerify = useCallback(
-    async (paymentId: string, userId: string, amount: number) => {
-      await updatePayment(paymentId, { status: 'paid' });
-      await sendPaymentNotification(userId, paymentId, amount);
-      setSelectedPayment(null);
+  async (payment: PaymentView) => {
+    await updatePayment(payment.id, { status: 'paid' });
 
-      const result = await fetchPaymentsPage({
-        page,
-        pageSize,
-        status: filterStatus,
-        searchTerm: debouncedSearch,
-      });
-      setPayments(result.data);
-      setTotalCount(result.count);
-    },
-    [updatePayment, sendPaymentNotification, fetchPaymentsPage, page, pageSize, filterStatus, debouncedSearch]
-  );
+    await sendPaymentNotification({
+      userId: payment.userId,
+      paymentPublicId: payment.publicId || payment.id,
+      amount: payment.amount,
+    });
+
+    setSelectedPayment(null);
+
+    const result = await fetchPaymentsPage({
+      page,
+      pageSize,
+      status: filterStatus,
+      searchTerm: debouncedSearch,
+    });
+
+    setPayments(result.data);
+    setTotalCount(result.count);
+  },
+  [
+    updatePayment,
+    sendPaymentNotification,
+    fetchPaymentsPage,
+    page,
+    pageSize,
+    filterStatus,
+    debouncedSearch,
+  ]
+);
 
   const handleReject = useCallback(
     async (paymentId: string) => {
@@ -263,140 +316,143 @@ export default function AdminPayments() {
     URL.revokeObjectURL(objectUrl);
   }, [paymentViews, page]);
 
+  const filterOptions: PaymentFilterStatus[] = ['all', 'paid', 'partial', 'unpaid'];
+
   return (
-    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6 relative pb-24 lg:pb-8">
-      <div className="flex justify-between items-center">
+    <div className="bg-gray-50 min-h-screen p-4 md:p-6 lg:p-8 flex flex-col gap-6 pb-24 lg:pb-8">
+      <div className="hidden lg:flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Payment Management</h1>
-          <p className="text-gray-600 text-sm">Verify and manage customer payments</p>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Payment Management
+          </h1>
+          <p className="text-sm text-gray-500">
+            Verify and manage customer payments
+          </p>
         </div>
 
         <button
           onClick={() => setIsActionModalOpen(true)}
-          className="bg-blue-600 text-white p-2.5 sm:px-4 sm:py-2 rounded-xl cursor-pointer hover:bg-blue-700 transition-all shadow-sm flex items-center gap-2 active:scale-95 font-semibold text-sm"
-        >
+          className="hidden lg:flex items-center justify-center cursor-pointer gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md shadow-blue-100 transition-all text-sm font-bold active:scale-95"
+                  >
           <Plus className="size-5" />
           Create Payment
         </button>
       </div>
 
       {!loading && !hasNoPayments && (
-        <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-4 shadow-sm">
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search by Payment ID, Reservation ID, User ID, or Notes..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search by payment ID, reservation ID, user ID, or customer..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full rounded-xl border border-gray-300 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                />
+              </div>
+
+              <div className="flex gap-2 lg:hidden">
+                <button
+                  onClick={() => setShowMobileFilters((prev) => !prev)}
+                  className={`rounded-xl border p-2.5 transition ${
+                    showMobileFilters
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : 'border-gray-300 bg-white text-gray-600'
+                  }`}
+                >
+                  <SlidersHorizontal className="size-5" />
+                </button>
+
+                <button
+                  onClick={handleExportCSV}
+                  className="rounded-xl bg-gray-800 p-2.5 text-white transition hover:bg-gray-900"
+                >
+                  <FileDown className="size-5" />
+                </button>
+              </div>
             </div>
 
-            <div className="flex lg:hidden gap-2">
-              <button
-                onClick={() => setShowMobileFilters((prev) => !prev)}
-                className={`p-2 border rounded-lg ${
-                  showMobileFilters
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-600 border-gray-300'
-                }`}
-              >
-                <Filter className="size-5" />
-              </button>
+            <div className="hidden items-center justify-between gap-4 border-t border-gray-100 pt-4 lg:flex">
+              <div className="flex flex-wrap gap-2">
+                {filterOptions.map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => setFilterStatus(status)}
+                    className={`rounded-xl px-4 py-2 text-sm font-medium transition-all ${
+                      filterStatus === status
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {getStatusLabel(status)}
+                    {status !== 'all' && (
+                      <span className="ml-2 rounded-full bg-black/10 px-2 py-0.5 text-xs">
+                        {paymentCounts[status]}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
 
               <button
                 onClick={handleExportCSV}
-                className="p-2 bg-gray-700 text-white rounded-lg"
+                className="flex items-center gap-2 rounded-xl bg-gray-800 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-gray-900"
               >
-                <FileDown className="size-5" />
+                <FileDown className="size-4" />
+                Export CSV
               </button>
             </div>
-          </div>
 
-          <div className="hidden lg:flex items-center justify-between gap-4 border-t border-gray-200 pt-4">
-            <div className="flex gap-2">
-              {(['all', 'paid', 'partial', 'unpaid'] as const).map((status) => (
-                <button
-                  key={status}
-                  onClick={() => setFilterStatus(status)}
-                  className={`px-4 py-2 text-sm rounded-lg transition-colors ${
-                    filterStatus === status
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+            <AnimatePresence>
+              {showMobileFilters && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="grid grid-cols-2 gap-2 pt-1 lg:hidden"
                 >
-                  {status === 'all'
-                    ? 'All'
-                    : status === 'paid'
-                    ? 'Verified'
-                    : status === 'partial'
-                    ? 'Partial'
-                    : 'Pending'}
-                  {status !== 'all' && (
-                    <span className="ml-2 bg-black/10 text-xs px-2 py-0.5 rounded-full">
-                      {paymentCounts[status]}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-
-            <button
-              onClick={handleExportCSV}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors"
-            >
-              <FileDown className="size-4" />
-              Export CSV
-            </button>
+                  {filterOptions.map((status) => (
+                    <button
+                      key={status}
+                      onClick={() => setFilterStatus(status)}
+                      className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+                        filterStatus === status
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-gray-50 text-gray-600'
+                      }`}
+                    >
+                      {getStatusLabel(status)}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
-
-          {showMobileFilters && (
-            <div className="flex lg:hidden gap-2 pt-2 animate-in fade-in slide-in-from-top-1">
-              {(['all', 'paid', 'partial', 'unpaid'] as const).map((status) => (
-                <button
-                  key={status}
-                  onClick={() => setFilterStatus(status)}
-                  className={`flex-1 py-2 text-xs rounded-lg font-bold ${
-                    filterStatus === status
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'bg-gray-50 text-gray-500'
-                  }`}
-                >
-                  {status === 'all'
-                    ? 'All'
-                    : status === 'paid'
-                    ? 'Verified'
-                    : status === 'partial'
-                    ? 'Partial'
-                    : 'Pending'}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       )}
 
       <button
         onClick={() => setIsActionModalOpen(true)}
-        className="fixed lg:hidden bottom-6 right-6 z-40 size-14 bg-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center active:scale-90 transition-transform"
+        className="fixed bottom-6 right-6 z-40 flex size-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-2xl transition-transform active:scale-90 sm:hidden"
       >
         <Plus className="size-8" />
       </button>
 
       <div className="grid grid-cols-1 gap-4 lg:hidden">
         {loading ? (
-                          <EmptyState
-                            icon={
-                              <div className="flex items-center justify-center">
-                                <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-                              </div>
-                            }
-                            title="Loading payments..."
-                            description="Please wait while payment records are being retrieved."
-                          />
-                        ) : hasNoPayments ? (
+          <EmptyState
+            icon={
+              <div className="flex items-center justify-center">
+                <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+              </div>
+            }
+            title="Loading payments..."
+            description="Please wait while payment records are being retrieved."
+          />
+        ) : hasNoPayments ? (
           <EmptyState
             icon={<CreditCard className="size-10 text-blue-500" />}
             title="No payments yet"
@@ -407,14 +463,16 @@ export default function AdminPayments() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25 }}
-            className="bg-white rounded-2xl border border-gray-200 shadow-sm py-16 px-6"
+            className="rounded-2xl border border-gray-200 bg-white px-6 py-16 shadow-sm"
           >
             <div className="flex flex-col items-center justify-center text-center">
-              <div className="bg-gray-50 p-5 rounded-3xl shadow-sm mb-4">
+              <div className="mb-4 rounded-3xl bg-gray-50 p-5 shadow-sm">
                 <Search className="size-10 text-gray-400" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900">No matching payments found</h3>
-              <p className="text-sm text-gray-500 mt-1 max-w-sm">
+              <h3 className="text-lg font-bold text-gray-900">
+                No matching payments found
+              </h3>
+              <p className="mt-1 max-w-sm text-sm text-gray-500">
                 Try adjusting your search term or payment status filter.
               </p>
             </div>
@@ -423,14 +481,20 @@ export default function AdminPayments() {
           paymentViews.map((payment) => (
             <div
               key={payment.id}
-              className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm flex flex-col gap-2"
+              className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
             >
-              <div className="flex justify-between items-center">
-                <span className="font-mono text-xs text-gray-400">
-                  {payment.publicId ?? payment.id}
-                </span>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-mono text-xs text-gray-400">
+                    {payment.publicId ?? payment.id}
+                  </p>
+                  <h3 className="mt-1 truncate text-sm font-semibold text-gray-900">
+                    {payment.userFullName}
+                  </h3>
+                </div>
+
                 <span
-                  className={`px-2.5 py-1 text-[10px] font-bold rounded-full border ${statusColors[payment.status]}`}
+                  className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${statusColors[payment.status]}`}
                 >
                   {payment.status === 'paid'
                     ? 'VERIFIED'
@@ -440,42 +504,48 @@ export default function AdminPayments() {
                 </span>
               </div>
 
-              <div className="text-sm font-semibold text-gray-900 truncate">
-                {payment.userFullName}
+              <div className="mt-4 space-y-2 text-sm">
+                <div className="flex items-center gap-2 text-gray-600">
+                  <ReceiptText className="size-4 text-gray-400" />
+                  <span className="truncate">Reservation: {payment.reservationPublicId}</span>
+                </div>
+
+                <div className="flex items-center gap-2 text-gray-600">
+                  <CalendarDays className="size-4 text-gray-400" />
+                  <span>{payment.dateLabel}</span>
+                </div>
+
+                <div className="flex items-center gap-2 text-gray-900">
+                  <BadgeDollarSign className="size-4 text-gray-400" />
+                  <span className="font-semibold">{formatCurrency(payment.amount)}</span>
+                </div>
               </div>
 
-              <div className="text-sm text-gray-600 truncate">
-                Reservation: {payment.reservationPublicId}
-              </div>
-
-              <div className="text-sm font-semibold text-gray-900">
-                {formatCurrency(payment.amount)}
-              </div>
-
-              <div className="flex gap-2 mt-2">
+              <div className="mt-4 flex gap-2">
                 <button
                   onClick={() => setSelectedPayment(payment.id)}
-                  className="flex-1 p-2 text-blue-600 hover:bg-blue-50 rounded-lg flex justify-center items-center gap-1"
+                  className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-blue-50 px-3 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-100"
                 >
-                  <Eye className="size-4" /> View
+                  <Eye className="size-4" />
+                  View
                 </button>
 
                 {payment.status === 'unpaid' && (
                   <>
                     <button
-                      onClick={() =>
-                        handleVerify(payment.id, payment.userId, payment.amount)
-                      }
-                      className="flex-1 p-2 text-green-600 hover:bg-green-50 rounded-lg flex justify-center items-center gap-1"
+                      onClick={() => handleVerify(payment)}
+                      className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-600 transition hover:bg-emerald-100"
                     >
-                      <CheckCircle className="size-4" /> Verify
+                      <CheckCircle className="size-4" />
+                      Verify
                     </button>
 
                     <button
                       onClick={() => handleReject(payment.id)}
-                      className="flex-1 p-2 text-red-600 hover:bg-red-50 rounded-lg flex justify-center items-center gap-1"
+                      className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-100"
                     >
-                      <XCircle className="size-4" /> Reject
+                      <XCircle className="size-4" />
+                      Reject
                     </button>
                   </>
                 )}
@@ -485,18 +555,18 @@ export default function AdminPayments() {
         )}
       </div>
 
-      <div className="hidden lg:block bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
+      <div className="hidden overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm lg:block">
         {loading ? (
-                          <EmptyState
-                            icon={
-                              <div className="flex items-center justify-center">
-                                <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-                              </div>
-                            }
-                            title="Loading payments..."
-                            description="Please wait while customers payment are being retrieved."
-                          />
-                        ) : hasNoPayments ? (
+          <EmptyState
+            icon={
+              <div className="flex items-center justify-center">
+                <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+              </div>
+            }
+            title="Loading payments..."
+            description="Please wait while payment records are being retrieved."
+          />
+        ) : hasNoPayments ? (
           <EmptyState
             icon={<CreditCard className="size-10 text-blue-500" />}
             title="No payments yet"
@@ -505,13 +575,13 @@ export default function AdminPayments() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="border-b border-gray-200 bg-gray-50">
                 <tr>
                   {[
                     'User ID',
                     'Payment ID',
                     'Reservation ID',
-                    'Amount',
+                    'Amount Progress',
                     'Date',
                     'Status',
                     'Proof',
@@ -519,7 +589,7 @@ export default function AdminPayments() {
                   ].map((h) => (
                     <th
                       key={h}
-                      className="px-6 py-4 text-[11px] font-bold text-gray-400 uppercase tracking-widest"
+                      className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-gray-400"
                     >
                       {h}
                     </th>
@@ -537,13 +607,13 @@ export default function AdminPayments() {
                         transition={{ duration: 0.25 }}
                         className="flex flex-col items-center justify-center text-center"
                       >
-                        <div className="bg-gray-50 p-5 rounded-3xl shadow-sm mb-4">
+                        <div className="mb-4 rounded-3xl bg-gray-50 p-5 shadow-sm">
                           <Search className="size-10 text-gray-400" />
                         </div>
                         <h3 className="text-lg font-bold text-gray-900">
                           No matching payments found
                         </h3>
-                        <p className="text-sm text-gray-500 mt-1">
+                        <p className="mt-1 text-sm text-gray-500">
                           Try adjusting your search term or payment status filter.
                         </p>
                       </motion.div>
@@ -551,28 +621,34 @@ export default function AdminPayments() {
                   </tr>
                 ) : (
                   paymentViews.map((payment) => (
-                    <tr key={payment.id} className="hover:bg-blue-50/30 transition-colors">
-                      <td className="px-6 py-4 text-xs font-mono text-gray-400 w-[140px]">
-                        {payment.userPublicId}
+                    <tr key={payment.id} className="transition-colors hover:bg-blue-50/30">
+                      <td className="w-[160px] px-6 py-4">
+                        <span className="inline-block whitespace-nowrap rounded-md bg-gray-50 px-2 py-1 font-mono text-xs text-gray-500">
+                          {payment.userPublicId}
+                        </span>
                       </td>
 
-                      <td className="px-6 py-4 text-xs font-mono text-gray-400 w-[140px]">
-                        {payment.publicId ?? payment.id}
+                      <td className="w-[160px] px-6 py-4">
+                        <span className="inline-block whitespace-nowrap rounded-md bg-gray-50 px-2 py-1 font-mono text-xs text-gray-500">
+                          {payment.publicId ?? payment.id}
+                        </span>
                       </td>
 
-                      <td className="px-6 py-4 text-xs font-mono text-gray-400 w-[140px]">
-                        {payment.reservationPublicId}
+                      <td className="w-[170px] px-6 py-4">
+                        <span className="inline-block whitespace-nowrap rounded-md bg-gray-50 px-2 py-1 font-mono text-xs text-gray-500">
+                          {payment.reservationPublicId}
+                        </span>
                       </td>
 
-                      <td className="px-6 py-4 w-[150px]">
-                        <div className="flex justify-between text-xs text-gray-500 mb-1">
+                      <td className="w-[220px] px-6 py-4">
+                        <div className="mb-1 flex justify-between text-xs text-gray-500">
                           <span>
                             {formatCurrency(payment.reservationPaidAmount)} /{' '}
                             {formatCurrency(payment.reservationTotalAmount)}
                           </span>
                         </div>
 
-                        <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
                           <div
                             className={`h-full transition-all ${
                               payment.status === 'paid'
@@ -591,7 +667,7 @@ export default function AdminPayments() {
                           />
                         </div>
 
-                        <div className="text-[10px] text-gray-400 mt-1 text-right">
+                        <div className="mt-1 text-right text-[10px] text-gray-400">
                           {payment.progress < 1
                             ? payment.progress.toFixed(2)
                             : payment.progress.toFixed(0)}
@@ -599,13 +675,13 @@ export default function AdminPayments() {
                         </div>
                       </td>
 
-                      <td className="px-6 py-4 text-sm text-gray-500 w-[140px]">
+                      <td className="w-[140px] px-6 py-4 text-sm text-gray-500">
                         {payment.dateLabel}
                       </td>
 
-                      <td className="px-6 py-4 w-[120px]">
+                      <td className="w-[130px] px-6 py-4">
                         <span
-                          className={`px-2.5 py-1 text-[10px] font-bold rounded-full ${statusColors[payment.status]}`}
+                          className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${statusColors[payment.status]}`}
                         >
                           {payment.status === 'paid'
                             ? 'VERIFIED'
@@ -613,12 +689,13 @@ export default function AdminPayments() {
                         </span>
                       </td>
 
-                      <td className="px-6 py-4 text-sm w-[120px]">
+                      <td className="w-[140px] px-6 py-4 text-sm">
                         {payment.proofOfPayment ? (
                           <button
                             onClick={() => setProofImageUrl(payment.proofOfPayment || null)}
-                            className="text-blue-600 hover:underline"
+                            className="inline-flex items-center gap-1 font-medium text-blue-600 transition hover:text-blue-700 hover:underline"
                           >
+                            <ImageIcon className="size-4" />
                             View Proof
                           </button>
                         ) : (
@@ -626,11 +703,12 @@ export default function AdminPayments() {
                         )}
                       </td>
 
-                      <td className="px-6 py-4 w-[120px]">
+                      <td className="w-[140px] px-6 py-4">
                         <div className="flex gap-1">
                           <button
                             onClick={() => setSelectedPayment(payment.id)}
-                            className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg"
+                            className="rounded-lg p-2 text-blue-600 transition hover:bg-blue-100"
+                            title="View"
                           >
                             <Eye className="size-4" />
                           </button>
@@ -638,17 +716,17 @@ export default function AdminPayments() {
                           {payment.status === 'unpaid' && (
                             <>
                               <button
-                                onClick={() =>
-                                  handleVerify(payment.id, payment.userId, payment.amount)
-                                }
-                                className="p-2 text-green-600 hover:bg-green-50 rounded-lg"
+                                onClick={() => handleVerify(payment)}
+                                className="rounded-lg p-2 text-emerald-600 transition hover:bg-emerald-50"
+                                title="Verify"
                               >
                                 <CheckCircle className="size-4" />
                               </button>
 
                               <button
                                 onClick={() => handleReject(payment.id)}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                                className="rounded-lg p-2 text-rose-600 transition hover:bg-rose-50"
+                                title="Reject"
                               >
                                 <XCircle className="size-4" />
                               </button>
@@ -666,24 +744,43 @@ export default function AdminPayments() {
       </div>
 
       {!loading && !hasNoPayments && totalPages > 1 && (
-        <div className="flex items-center justify-between px-4 py-4 bg-white border border-gray-200 rounded-2xl shadow-sm">
+        <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-gray-500">
             Page {page} of {totalPages} • {totalCount} total payments
           </p>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
             >
               Previous
             </button>
 
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">Go to</span>
+              <input
+                type="number"
+                min={1}
+                max={totalPages}
+                value={pageInput}
+                onChange={(e) => setPageInput(e.target.value)}
+                onKeyDown={handlePageInputKeyDown}
+                className="w-20 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={handlePageJump}
+                className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+              >
+                Go
+              </button>
+            </div>
+
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
-              className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
             >
               Next
             </button>
@@ -695,130 +792,159 @@ export default function AdminPayments() {
         <AdminActionModal actionType="payment" onClose={() => setIsActionModalOpen(false)} />
       )}
 
-      {selectedPaymentData && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-lg w-full max-h-[90vh] flex flex-col">
-            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-              <div>
-                <h2 className="text-xl font-semibold">Payment Details</h2>
-                <p className="text-sm text-gray-500 mt-1">
-                  User:{' '}
-                  <span className="font-medium text-gray-700">
-                    {selectedPaymentData.userFullName}
-                  </span>
-                </p>
+      <AnimatePresence>
+        {selectedPaymentData && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 20, scale: 0.98 }}
+              className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
+            >
+              <div className="flex items-start justify-between border-b border-gray-200 px-6 py-5">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">Payment Details</h2>
+                  <p className="mt-1 text-sm text-gray-500">
+                    User:{' '}
+                    <span className="font-medium text-gray-700">
+                      {selectedPaymentData.userFullName}
+                    </span>
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setSelectedPayment(null)}
+                  className="rounded-full p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+                >
+                  <X className="size-5" />
+                </button>
               </div>
 
-              <button
-                onClick={() => setSelectedPayment(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="size-6" />
-              </button>
-            </div>
+              <div className="space-y-5 overflow-y-auto p-6">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="text-gray-500">Payment ID</div>
+                  <div className="font-mono text-gray-900">
+                    {selectedPaymentData.publicId ?? selectedPaymentData.id}
+                  </div>
 
-            <div className="p-6 space-y-4 overflow-y-auto">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div><span className="text-gray-600">Payment ID:</span></div>
-                <div className="text-gray-900 font-mono">
-                  {selectedPaymentData.publicId ?? selectedPaymentData.id}
-                </div>
+                  <div className="text-gray-500">Reservation ID</div>
+                  <div className="font-mono text-gray-900">
+                    {selectedPaymentData.reservationPublicId}
+                  </div>
 
-                <div><span className="text-gray-600">Reservation ID:</span></div>
-                <div className="text-gray-900 font-mono">
-                  {selectedPaymentData.reservationPublicId}
-                </div>
+                  <div className="text-gray-500">User ID</div>
+                  <div className="font-mono text-gray-900">
+                    {selectedPaymentData.userPublicId}
+                  </div>
 
-                <div><span className="text-gray-600">Unit:</span></div>
-                <div className="text-gray-900">{selectedPaymentData.unitName}</div>
+                  <div className="text-gray-500">Unit</div>
+                  <div className="text-gray-900">{selectedPaymentData.unitName}</div>
 
-                <div><span className="text-gray-600">Amount:</span></div>
-                <div className="text-gray-900 font-semibold">
-                  {formatCurrency(selectedPaymentData.amount)}
-                </div>
+                  <div className="text-gray-500">Amount</div>
+                  <div className="font-semibold text-gray-900">
+                    {formatCurrency(selectedPaymentData.amount)}
+                  </div>
 
-                <div><span className="text-gray-600">Method:</span></div>
-                <div className="text-gray-900 capitalize">
-                  {selectedPaymentData.method.replace('_', ' ')}
-                </div>
+                  <div className="text-gray-500">Method</div>
+                  <div className="capitalize text-gray-900">
+                    {selectedPaymentData.method.replace('_', ' ')}
+                  </div>
 
-                <div><span className="text-gray-600">Date:</span></div>
-                <div className="text-gray-900">{selectedPaymentData.dateLabel}</div>
+                  <div className="text-gray-500">Date</div>
+                  <div className="text-gray-900">{selectedPaymentData.dateLabel}</div>
 
-                <div><span className="text-gray-600">Status:</span></div>
-                <div>
-                  <span
-                    className={`px-2 py-1 text-xs rounded-full font-semibold ${statusColors[selectedPaymentData.status]}`}
-                  >
-                    {selectedPaymentData.status === 'paid'
-                      ? 'VERIFIED'
-                      : selectedPaymentData.status.toUpperCase()}
-                  </span>
-                </div>
-              </div>
-
-              {selectedPaymentData.notes && (
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Notes:</p>
-                  <div className="bg-gray-50 p-3 rounded-lg text-sm text-gray-700">
-                    {selectedPaymentData.notes}
+                  <div className="text-gray-500">Status</div>
+                  <div>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusColors[selectedPaymentData.status]}`}
+                    >
+                      {selectedPaymentData.status === 'paid'
+                        ? 'VERIFIED'
+                        : selectedPaymentData.status.toUpperCase()}
+                    </span>
                   </div>
                 </div>
-              )}
 
-              {selectedPaymentData.status === 'unpaid' && (
-                <div className="flex gap-3 pt-4 border-t border-gray-200">
-                  <button
-                    onClick={() => handleReject(selectedPaymentData.id)}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                  >
-                    <XCircle className="size-5" />
-                    Reject
-                  </button>
+                {selectedPaymentData.notes && (
+                  <div>
+                    <p className="mb-1 text-sm text-gray-600">Notes</p>
+                    <div className="rounded-2xl bg-gray-50 p-4 text-sm text-gray-700">
+                      {selectedPaymentData.notes}
+                    </div>
+                  </div>
+                )}
 
-                  <button
-                    onClick={() =>
-                      handleVerify(
-                        selectedPaymentData.id,
-                        selectedPaymentData.userId,
-                        selectedPaymentData.amount
-                      )
-                    }
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                  >
-                    <CheckCircle className="size-5" />
-                    Verify Payment
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+                {selectedPaymentData.proofOfPayment && (
+                  <div>
+                    <p className="mb-2 text-sm text-gray-600">Proof of Payment</p>
+                    <button
+                      onClick={() => setProofImageUrl(selectedPaymentData.proofOfPayment || null)}
+                      className="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-4 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-100"
+                    >
+                      <ImageIcon className="size-4" />
+                      View Proof
+                    </button>
+                  </div>
+                )}
 
-      {proofImageUrl && (
-        <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-lg flex items-center justify-center z-50"
-          onClick={() => setProofImageUrl(null)}
-        >
-          <button
+                {selectedPaymentData.status === 'unpaid' && (
+                  <div className="flex gap-3 border-t border-gray-200 pt-4">
+                    <button
+                      onClick={() => handleReject(selectedPaymentData.id)}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-white transition hover:bg-rose-700"
+                    >
+                      <XCircle className="size-5" />
+                      Reject
+                    </button>
+
+                    <button
+                      onClick={() => handleVerify(selectedPaymentData)}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-white transition hover:bg-emerald-700"
+                    >
+                      <CheckCircle className="size-5" />
+                      Verify Payment
+                    </button>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {proofImageUrl && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-lg"
             onClick={() => setProofImageUrl(null)}
-            className="absolute top-4 right-4 bg-white/20 text-white rounded-full p-2 hover:bg-white/30"
-            title="Close"
           >
-            <X className="size-7" />
-          </button>
+            <button
+              onClick={() => setProofImageUrl(null)}
+              className="absolute right-4 top-4 rounded-full bg-white/20 p-2 text-white transition hover:bg-white/30"
+              title="Close"
+            >
+              <X className="size-7" />
+            </button>
 
-          <div className="p-4">
-            <img
-              src={proofImageUrl}
-              alt="Proof of Payment"
-              className="max-h-[90vh] max-w-[90vw] rounded-lg shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </div>
-        </div>
-      )}
+            <div className="p-4">
+              <img
+                src={proofImageUrl}
+                alt="Proof of Payment"
+                className="max-h-[90vh] max-w-[90vw] rounded-2xl shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
