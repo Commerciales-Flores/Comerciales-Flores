@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import AddressPicker from '../../components/common/AddressPicker';
 import {
   Building2,
   AlertCircle,
@@ -11,14 +12,9 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 
-const normalizeName = (value: string) =>
-  value.trim().replace(/\s+/g, ' ');
-
-const normalizeEmail = (value: string) =>
-  value.trim().toLowerCase();
-
-const normalizeAddress = (value: string) =>
-  value.trim().replace(/\s+/g, ' ');
+const normalizeName = (value: string) => value.trim().replace(/\s+/g, ' ');
+const normalizeEmail = (value: string) => value.trim().toLowerCase();
+const normalizeAddress = (value: string) => value.trim().replace(/\s+/g, ' ');
 
 const normalizePhone = (value: string) => {
   const raw = value.trim();
@@ -26,22 +22,18 @@ const normalizePhone = (value: string) => {
 
   if (!digits) return '';
 
-  // PH local: 09171234567 -> +639171234567
   if (digits.startsWith('09') && digits.length === 11) {
     return `+63${digits.slice(1)}`;
   }
 
-  // PH intl without plus: 639171234567 -> +639171234567
   if (digits.startsWith('639') && digits.length === 12) {
     return `+${digits}`;
   }
 
-  // PH local without leading 0: 9171234567 -> +639171234567
   if (digits.startsWith('9') && digits.length === 10) {
     return `+63${digits}`;
   }
 
-  // Generic international with +
   if (raw.startsWith('+') && digits.length >= 10 && digits.length <= 15) {
     return `+${digits}`;
   }
@@ -59,6 +51,8 @@ export default function Register() {
     email: '',
     contactNumber: '',
     address: '',
+    latitude: '',
+    longitude: '',
     password: '',
     confirmPassword: '',
   });
@@ -140,6 +134,7 @@ export default function Register() {
     const cleanedLastName = normalizeName(formData.lastName);
     const cleanedEmail = normalizeEmail(formData.email);
     const cleanedContactNumber = normalizePhone(formData.contactNumber);
+    const cleanedAddress = normalizeAddress(formData.address);
 
     if (!cleanedFirstName) errs.firstName = 'First name is required.';
     if (!cleanedLastName) errs.lastName = 'Last name is required.';
@@ -172,6 +167,10 @@ export default function Register() {
       errs.confirmPassword = 'Passwords do not match.';
     }
 
+    if (cleanedAddress && (!formData.latitude || !formData.longitude)) {
+      errs.address = 'Please confirm your address on the map.';
+    }
+
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }, [formData]);
@@ -195,43 +194,8 @@ export default function Register() {
       address: cleanedAddress,
     }));
 
-    const nextErrors: Record<string, string> = {};
-
-    if (!cleanedFirstName) nextErrors.firstName = 'First name is required.';
-    if (!cleanedLastName) nextErrors.lastName = 'Last name is required.';
-
-    if (!cleanedEmail) {
-      nextErrors.email = 'Email is required.';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanedEmail)) {
-      nextErrors.email = 'Invalid email format.';
-    }
-
-    if (cleanedContactNumber && !/^\+\d{10,15}$/.test(cleanedContactNumber)) {
-      nextErrors.contactNumber = 'Invalid phone number.';
-    }
-
-    if (!formData.password) {
-      nextErrors.password = 'Password is required.';
-    } else if (formData.password.length < 8) {
-      nextErrors.password = 'Password must be at least 8 characters.';
-    } else if (!/[A-Z]/.test(formData.password)) {
-      nextErrors.password = 'Include an uppercase letter.';
-    } else if (!/[0-9]/.test(formData.password)) {
-      nextErrors.password = 'Include a number.';
-    } else if (!/[^A-Za-z0-9]/.test(formData.password)) {
-      nextErrors.password = 'Include a special character.';
-    }
-
-    if (!formData.confirmPassword) {
-      nextErrors.confirmPassword = 'Please confirm your password.';
-    } else if (formData.password !== formData.confirmPassword) {
-      nextErrors.confirmPassword = 'Passwords do not match.';
-    }
-
-    if (Object.keys(nextErrors).length > 0) {
-      setErrors(nextErrors);
-      return;
-    }
+    const isValid = validate();
+    if (!isValid) return;
 
     setErrors({});
 
@@ -280,9 +244,11 @@ export default function Register() {
     [errors]
   );
 
+  const addressConfirmed = Boolean(formData.address && formData.latitude && formData.longitude);
+
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 selection:bg-blue-100">
-      <div className="bg-white rounded-[1.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] w-full max-w-[1000px] overflow-hidden border border-slate-200/60">
+      <div className="bg-white rounded-[1.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] w-full max-w-[1100px] overflow-hidden border border-slate-200/60">
         <div className="grid grid-cols-1 md:grid-cols-2">
           <div className="p-12 bg-slate-900 flex flex-col justify-between relative overflow-hidden hidden md:flex">
             <div className="relative z-10">
@@ -297,8 +263,8 @@ export default function Register() {
               </h2>
 
               <p className="text-slate-400 mb-10 leading-relaxed font-medium">
-                Join our community to reserve premium commercial spaces, event
-                venues, and secure parking effortlessly.
+                Join our community to reserve premium commercial spaces, event venues,
+                and secure parking effortlessly.
               </p>
 
               <div className="space-y-5">
@@ -309,7 +275,7 @@ export default function Register() {
                 ].map((text, i) => (
                   <div
                     key={i}
-                    className="flex items-center gap-4 text-sm text-slate-300 font-medium group"
+                    className="flex items-center gap-4 text-sm text-slate-300 font-medium"
                   >
                     <div className="size-6 rounded-full bg-blue-500/10 flex items-center justify-center border border-blue-500/20">
                       <CheckCircle2 className="size-4 text-blue-500" />
@@ -332,7 +298,7 @@ export default function Register() {
             <div className="absolute top-0 right-0 size-64 bg-blue-600/10 blur-[100px] rounded-full -mr-32 -mt-32" />
           </div>
 
-          <main className="p-6 md:p-12 bg-white">
+          <main className="p-6 md:p-10 bg-white">
             <div className="mb-10">
               <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight">
                 Create Account
@@ -410,6 +376,7 @@ export default function Register() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Contact */}
                 <div className="space-y-1.5">
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
                     Contact Number
@@ -431,24 +398,47 @@ export default function Register() {
                   />
                 </div>
 
+                {/* Address Status */}
                 <div className="space-y-1.5">
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                    Location / Address
+                    Address Status
                   </label>
-                  <input
-                    name="street-address"
-                    type="text"
-                    autoComplete="street-address"
-                    value={formData.address}
-                    onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, address: e.target.value }))
-                    }
-                    onBlur={() => handleBlur('address')}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
-                    placeholder="Manila, PH (Optional)"
-                  />
+
+                  <div className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
+                    <p
+                      className={`text-sm font-medium ${
+                        addressConfirmed ? 'text-emerald-600' : 'text-slate-500'
+                      }`}
+                    >
+                      {addressConfirmed ? 'Confirmed on map' : 'Not confirmed yet'}
+                    </p>
+
+                    <div
+                      className={`flex items-center justify-center ${
+                        addressConfirmed
+                          ? 'text-emerald-600'
+                          : 'text-rose-500'
+                      }`}
+                    >
+                      <CheckCircle2 className="size-4" />
+                    </div>
+                  </div>
                 </div>
               </div>
+
+              <AddressPicker
+                value={formData.address}
+                latitude={formData.latitude}
+                longitude={formData.longitude}
+                onChange={({ address, latitude, longitude }) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    address,
+                    latitude,
+                    longitude,
+                  }))
+                }
+              />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5 relative">
@@ -472,7 +462,7 @@ export default function Register() {
                     />
                     <button
                       type="button"
-                      onClick={() => setShowPassword(!showPassword)}
+                      onClick={() => setShowPassword((prev) => !prev)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                     >
                       {showPassword ? (
@@ -538,7 +528,7 @@ export default function Register() {
                     />
                     <button
                       type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      onClick={() => setShowConfirmPassword((prev) => !prev)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
                     >
                       {showConfirmPassword ? (
