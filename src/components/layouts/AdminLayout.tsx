@@ -32,6 +32,8 @@ export default function AdminLayout() {
 
   const navRef = useRef<HTMLDivElement>(null);
 
+  const isHiddenAdminRoute = location.pathname === '/admin/reviews';
+
   const navItems = useMemo(
     () => [
       { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -48,7 +50,13 @@ export default function AdminLayout() {
     []
   );
 
-  const validPaths = useMemo(() => navItems.map((item) => item.to), [navItems]);
+  const validPaths = useMemo(
+    () => [
+      ...navItems.map((item) => item.to),
+      '/admin/reviews', // ✅ allow hidden route
+    ],
+    [navItems]
+  );
 
   const displayName = useMemo(() => {
     if (user?.firstName && user?.lastName) return `${user.firstName} ${user.lastName}`;
@@ -110,23 +118,30 @@ export default function AdminLayout() {
   }, [user, logout, navigate, location.pathname]);
 
   useEffect(() => {
-    const updateUnderline = () => {
-      const activeLink = navRef.current?.querySelector<HTMLAnchorElement>(
-        'a[data-active="true"]'
-      );
+  const updateUnderline = () => {
+    if (isHiddenAdminRoute) {
+      setUnderlineStyle({ left: 0, width: 0 });
+      return;
+    }
 
-      if (activeLink) {
-        setUnderlineStyle({
-          left: activeLink.offsetLeft,
-          width: activeLink.offsetWidth,
-        });
-      }
-    };
+    const activeLink = navRef.current?.querySelector<HTMLAnchorElement>(
+      'a[data-active="true"]'
+    );
 
-    updateUnderline();
-    window.addEventListener("resize", updateUnderline);
-    return () => window.removeEventListener("resize", updateUnderline);
-  }, [location.pathname]);
+    if (activeLink) {
+      setUnderlineStyle({
+        left: activeLink.offsetLeft,
+        width: activeLink.offsetWidth,
+      });
+    } else {
+      setUnderlineStyle({ left: 0, width: 0 });
+    }
+  };
+
+  updateUnderline();
+  window.addEventListener("resize", updateUnderline);
+  return () => window.removeEventListener("resize", updateUnderline);
+}, [location.pathname, isHiddenAdminRoute]);
 
   return (
     <ErrorWrapper validPaths={validPaths} allowedRoles={['admin']}>

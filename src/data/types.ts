@@ -176,12 +176,19 @@ export interface Inquiry {
   responseDate?: string;
 }
 
+export type NotificationType =
+  | 'reservation'
+  | 'payment'
+  | 'inquiry'
+  | 'review'
+  | 'system';
+
 export interface Notification {
   id: string;
   userId: string;
   title: string;
   message: string;
-  type: 'reservation' | 'payment' | 'inquiry' | 'system';
+  type: NotificationType;
   read: boolean;
   date: string;
 }

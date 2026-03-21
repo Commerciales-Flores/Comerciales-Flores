@@ -37,6 +37,11 @@ interface NotificationsDataContextType {
     subject: string;
   }) => Promise<void>;
 
+  sendReviewReminderNotification: (params: {
+    userId: string;
+    unitName: string;
+  }) => Promise<void>;
+
   sendSystemNotification: (
     userId: string,
     title: string,
@@ -284,6 +289,24 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     [addNotification]
   );
 
+  const sendReviewReminderNotification = useCallback(
+    async ({
+      userId,
+      unitName,
+    }: {
+      userId: string;
+      unitName: string;
+    }): Promise<void> => {
+      await addNotification({
+        userId,
+        title: 'Leave a Review',
+        message: `Your reservation is complete. Share your experience for ${unitName}.`,
+        type: 'review',
+      });
+    },
+    [addNotification]
+  );
+
   const sendSystemNotification = useCallback(
     async (userId: string, title: string, message: string): Promise<void> => {
       await addNotification({
@@ -307,6 +330,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       sendReservationNotification,
       sendPaymentNotification,
       sendInquiryResponseNotification,
+      sendReviewReminderNotification,
       sendSystemNotification,
     }),
     [
@@ -319,6 +343,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       sendReservationNotification,
       sendPaymentNotification,
       sendInquiryResponseNotification,
+      sendReviewReminderNotification,
       sendSystemNotification,
     ]
   );

@@ -4,6 +4,7 @@ import { useData } from "../../contexts/DataContext";
 import { motion, AnimatePresence } from "framer-motion"; // Modern animations
 import 'react-calendar/dist/Calendar.css';
 import UnitModal from "../../components/PropertyModal";
+import { useReviews } from "../../contexts/ReviewsContext";
 import {
   Building2,
   Menu,
@@ -24,14 +25,15 @@ import {
 
 export default function LandingPage() {
   const { units, contentSettings, addInquiry } = useData();
+  const { reviews } = useReviews();
   const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
   const [inquirySubmitted, setInquirySubmitted] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigate = useNavigate();
   const [inquiryForm, setInquiryForm] = useState({
-    first_name: "",
-    last_name: "",
+    firstName: "",
+    lastName: "",
     email: "",
     subject: "",
     message: "",
@@ -92,8 +94,8 @@ export default function LandingPage() {
       addInquiry(inquiryForm);
       setInquirySubmitted(true);
       setInquiryForm({
-        first_name: "",
-        last_name: "",
+        firstName: "",
+        lastName: "",
         email: "",
         subject: "",
         message: "",
@@ -551,7 +553,18 @@ export default function LandingPage() {
           animate={{ x: `-${currentSlide * 100}%` }}
           transition={{ type: "spring", stiffness: 50, damping: 15 }}
         >
-          {featuredProperties.map((Unit) => (
+          {featuredProperties.map((Unit) => {
+            const unitReviews = reviews.filter(
+              (r) => r.unit_id === (Unit.id)
+            );
+
+            const averageRating =
+              unitReviews.length > 0
+                ? unitReviews.reduce((sum, r) => sum + (r.rating || 0), 0) /
+                  unitReviews.length
+                : 0;
+
+            return (
             <div
               key={Unit.id}
               className="w-full flex-shrink-0 cursor-pointer"
@@ -577,9 +590,26 @@ export default function LandingPage() {
                     <h3 className="text-lg md:text-3xl font-bold text-slate-900 mb-2 md:mb-4">
                       {Unit.name}
                     </h3>
-                    <p className="text-xs md:text-sm text-slate-500 mb-3 md:mb-4 flex items-center gap-1">
+                    <p className="text-xs md:text-sm text-slate-500 mb-2 flex items-center gap-1">
                       <MapPin className="size-3 md:size-4 text-blue-600" /> {Unit.location}
                     </p>
+
+                    <div className="mb-3 md:mb-4 flex items-center gap-1.5 text-xs md:text-sm">
+                      {averageRating > 0 ? (
+                        <>
+                          <span className="text-amber-500">★</span>
+                          <span className="font-semibold text-slate-900">
+                            {averageRating.toFixed(1)}
+                          </span>
+                          <span className="text-slate-400">
+                            ({unitReviews.length})
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-slate-400">No ratings yet</span>
+                      )}
+                    </div>
+
                     <p className="text-slate-600 text-sm md:text-lg leading-relaxed mb-6 md:mb-8 line-clamp-3 md:line-clamp-4">
                       {Unit.description}
                     </p>
@@ -604,7 +634,7 @@ export default function LandingPage() {
                 </div>
               </div>
             </div>
-          ))}
+          )})}
         </motion.div>
       </div>
 
@@ -682,9 +712,9 @@ export default function LandingPage() {
     <input
       type="text"
       placeholder="First Name"
-      value={inquiryForm.first_name}
+      value={inquiryForm.firstName}
       onChange={(e) =>
-        setInquiryForm({ ...inquiryForm, first_name: e.target.value })
+        setInquiryForm({ ...inquiryForm, firstName: e.target.value })
       }
       className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
       required
@@ -693,9 +723,9 @@ export default function LandingPage() {
     <input
       type="text"
       placeholder="Last Name"
-      value={inquiryForm.last_name}
+      value={inquiryForm.lastName}
       onChange={(e) =>
-        setInquiryForm({ ...inquiryForm, last_name: e.target.value })
+        setInquiryForm({ ...inquiryForm, lastName: e.target.value })
       }
       className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
       required

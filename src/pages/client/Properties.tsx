@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import { useAuth } from "../../contexts/AuthContext";
 import { useNotifications } from "../../contexts/NotificationContext";
 import { useUnits } from '../../contexts/UnitsContext';    
+import { useReviews } from '../../contexts/ReviewsContext';
 import type { Reservation } from '../../data/types';
 import {
   Search,
@@ -186,6 +187,7 @@ function buildInitialReservationForm(unitType: UnitType): ReservationForm {
 export default function ClientUnits() {
   const { user } = useAuth();
   const { addReservation, reservations } = useData();
+  const { reviews } = useReviews();
   const { units, parkingSlots } = useUnits();
   const { sendSystemNotification } = useNotifications();
 
@@ -219,6 +221,8 @@ export default function ClientUnits() {
       ),
     ];
   }, [units]);
+
+  
 
   const selectedUnitData = useMemo(() => {
     if (!selectedUnitId) return null;
@@ -607,7 +611,18 @@ export default function ClientUnits() {
 
        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
   {filteredUnits.length > 0 ? (
-    filteredUnits.map((unit) => (
+    filteredUnits.map((unit) => {
+      const unitReviews = reviews.filter(
+        (r) => r.unit_id === (unit.id)
+      );
+
+      const averageRating =
+        unitReviews.length > 0
+          ? unitReviews.reduce((sum, r) => sum + (r.rating || 0), 0) /
+            unitReviews.length
+          : 0;
+
+      return (
       <div
         key={unit.id}
         className="group flex h-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:shadow-md"
@@ -635,7 +650,7 @@ export default function ClientUnits() {
             </p>
           </div>
 
-          <div className="mt-2 min-h-[22px]">
+          <div className="mt-2 space-y-1 min-h-[40px]">
             {unit.location ? (
               <div className="flex items-center gap-1.5 text-xs text-gray-500">
                 <MapPin className="size-3.5 text-red-500" />
@@ -644,6 +659,22 @@ export default function ClientUnits() {
             ) : (
               <div className="select-none text-xs text-transparent">placeholder</div>
             )}
+
+            <div className="flex items-center gap-1 text-xs text-gray-600">
+              {averageRating > 0 ? (
+                <>
+                  <span className="text-amber-500">★</span>
+                  <span className="font-medium text-gray-900">
+                    {averageRating.toFixed(1)}
+                  </span>
+                  <span className="text-gray-400">
+                    ({unitReviews.length})
+                  </span>
+                </>
+              ) : (
+                <span className="text-gray-400">No ratings yet</span>
+              )}
+            </div>
           </div>
 
           <div className="mt-3 flex min-h-[44px] items-end justify-between">
@@ -675,7 +706,7 @@ export default function ClientUnits() {
           </div>
         </div>
       </div>
-    ))
+    )})
   ) : (
     <motion.div
       initial={{ opacity: 0, y: 10 }}

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useData } from '../../contexts/DataContext';
+import { useReviews } from '../../contexts/ReviewsContext';
 import {
   AlertCircle,
   TrendingUp,
@@ -32,6 +33,7 @@ type TopUnit = {
   images: string[];
   revenue: number;
 };
+
 
 const StatCard = ({
   title,
@@ -166,6 +168,7 @@ const EmptyPanel = ({ text }: { text: string }) => (
 
 export default function AdminDashboard() {
   const { reservations, payments, units, inquiries, auditLogs } = useData();
+  const { reviews } = useReviews();
 
   const dashboardData = useMemo(() => {
     const now = new Date();
@@ -180,6 +183,7 @@ export default function AdminDashboard() {
       (p) => p.status === 'unpaid' || p.status === 'partial'
     );
     const recentInquiries = inquiries.filter((i) => i.status === 'open').slice(0, 3);
+    const recentReviews = (reviews ?? []).slice(0, 3);
 
     const overdueReservations = pendingReservationsAll.filter(
       (r) => new Date(r.requestDate) < fortyEightHoursAgo
@@ -270,6 +274,7 @@ export default function AdminDashboard() {
       pendingReservations: pendingReservationsAll.slice(0, 3),
       pendingPayments: pendingPayments.slice(0, 3),
       recentInquiries,
+      recentReviews,
       confirmedReservationsCount,
       cancelledReservationsCount,
       paidPaymentsCount,
@@ -281,7 +286,7 @@ export default function AdminDashboard() {
       topUnits,
       latestActivity,
     };
-  }, [reservations, payments, units, inquiries, auditLogs]);
+  }, [reservations, payments, units, inquiries, auditLogs, reviews]);
 
   return (
     <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
@@ -487,10 +492,53 @@ export default function AdminDashboard() {
             </div>
           </section>
 
+          <section className="relative overflow-hidden rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-white p-6 shadow-sm">
+  <div className="absolute top-0 right-0 h-24 w-24 bg-amber-100 rounded-full blur-2xl opacity-60" />
+
+  <div className="relative z-10">
+    <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center gap-3">
+        <div className="rounded-xl bg-amber-100 p-2.5 text-amber-600">
+          <MessageSquare className="size-5" />
+        </div>
+
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">Reviews</h2>
+          <p className="text-[11px] text-gray-500">
+            Client feedback & ratings
+          </p>
+        </div>
+      </div>
+
+      <Link
+        to="/admin/reviews"
+        className="text-xs font-semibold text-amber-600 hover:text-amber-700 transition"
+      >
+        View All
+      </Link>
+    </div>
+
+    <div className="rounded-lg border border-amber-100 bg-white p-4 mb-4">
+      <p className="text-sm text-gray-700 leading-relaxed">
+        Monitor client feedback, identify low-rated units, and stay updated with
+        the latest reviews across your properties.
+      </p>
+    </div>
+
+    <Link
+      to="/admin/reviews"
+      className="group flex items-center justify-between rounded-lg bg-amber-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-700"
+    >
+      <span>Go to Reviews</span>
+      <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
+    </Link>
+  </div>
+</section>
+
           <section className="rounded-xl bg-gray-900 p-8 text-white shadow-lg">
-  <h2 className="mb-4 text-sm font-semibold tracking-widest text-gray-400">
-    SYSTEM STATUS
-  </h2>
+            <h2 className="mb-4 text-sm font-semibold tracking-widest text-gray-400">
+              SYSTEM STATUS
+            </h2>
 
   <div className="space-y-4">
     <div>

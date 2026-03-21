@@ -16,7 +16,8 @@ import {
   LogOut,
   MessageCircle,
   Menu,
-  X
+  X,
+  Star,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import ContactSupportModal from "../ContactSupportModal";
@@ -89,10 +90,6 @@ const unreadMessages = useMemo(
   };
 }, [user, logout, navigate, location.pathname]);
 
-useEffect(() => {
-    document.body.style.overflow = mobileNavOpen ? "hidden" : "";
-  }, [mobileNavOpen]);
-
   const handleLogout = () => {
     setShowLogoutConfirm(true);
   };
@@ -134,6 +131,7 @@ useEffect(() => {
     { to: "/client/properties", icon: Building2, label: "Properties" },
     { to: "/client/reservations", icon: Calendar, label: "Reservations" },
     { to: "/client/payments", icon: CreditCard, label: "Payments" },
+    { to: "/client/reviews", icon: Star, label: "Reviews" },
     { to: "/client/notifications", icon: Bell, label: "Notifications", badge: unreadNotifications },
     { to: "/client/messages", icon: MessageCircle, label: "Messages", badge: unreadMessages },
     { to: "/client/profile", icon: User, label: "Profile" },

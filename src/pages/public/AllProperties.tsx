@@ -1,5 +1,6 @@
 import { useData, type Unit, type UnitType } from "../../contexts/DataContext";
 import { Link } from "react-router-dom";
+import { useReviews } from "../../contexts/ReviewsContext";
 import {
   ArrowLeft,
   MapPin,
@@ -23,7 +24,7 @@ const FALLBACK_IMAGE =
 export default function AllUnits() {
   const { units } = useData();
   const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null);
-
+  const { reviews } = useReviews();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<UnitType | "all">("all");
   const [filterLocation, setFilterLocation] = useState<string>("all");
@@ -321,7 +322,17 @@ export default function AllUnits() {
 
             {filteredUnits.length > 0 ? (
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 items-stretch">
-                {filteredUnits.map((prop) => (
+                {filteredUnits.map((prop) => {
+                  const unitReviews = reviews.filter(
+  (r) => r.unit_id === (prop.id)
+);
+
+const averageRating =
+  unitReviews.length > 0
+    ? unitReviews.reduce((sum, r) => sum + (r.rating || 0), 0) /
+      unitReviews.length
+    : 0;
+                  return (
   <motion.div
     key={prop.id}
     initial={{ opacity: 0, y: 10 }}
@@ -352,7 +363,7 @@ export default function AllUnits() {
         </p>
       </div>
 
-      <div className="mt-3 min-h-[22px]">
+      <div className="mt-3 space-y-1 min-h-[40px]">
         {prop.location?.trim() ? (
           <p className="flex items-center gap-1.5 text-xs text-slate-400">
             <MapPin className="size-3.5 text-red-500" />
@@ -361,6 +372,22 @@ export default function AllUnits() {
         ) : (
           <p className="text-xs text-transparent select-none">placeholder</p>
         )}
+
+        <div className="flex items-center gap-1 text-xs text-slate-600">
+          {averageRating > 0 ? (
+            <>
+              <span className="text-amber-500">★</span>
+              <span className="font-semibold text-slate-900">
+                {averageRating.toFixed(1)}
+              </span>
+              <span className="text-slate-400">
+                ({unitReviews.length})
+              </span>
+            </>
+          ) : (
+            <span className="text-slate-400">No ratings yet</span>
+          )}
+        </div>
       </div>
 
       <div className="mt-4 flex items-center justify-between border-t border-slate-50 pt-4">
@@ -382,7 +409,8 @@ export default function AllUnits() {
       </div>
     </div>
   </motion.div>
-))}
+                  );
+                })}
               </div>
             ) : (
               <div className="rounded-3xl border border-dashed border-slate-200 bg-white py-20 text-center shadow-sm">

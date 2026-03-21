@@ -15,6 +15,7 @@ import {
   Inbox,
   Filter,
   ListChecks,
+  Star,
 } from 'lucide-react';
 
 const notificationFilters = [
@@ -23,6 +24,7 @@ const notificationFilters = [
   'booking',
   'payment',
   'inquiry',
+  'review',
   'system',
 ] as const;
 
@@ -34,6 +36,7 @@ const typeIcons: Record<string, React.ElementType> = {
   reservation: Calendar,
   payment: CreditCard,
   inquiry: MessageSquare,
+  review: Star,
   system: AlertCircle,
 };
 
@@ -65,6 +68,11 @@ const typeColors: Record<
     bg: 'bg-slate-600',
     text: 'text-slate-600',
     light: 'bg-slate-50',
+  },
+  review: {
+    bg: 'bg-amber-600',
+    text: 'text-amber-600',
+    light: 'bg-amber-50',
   },
 };
 

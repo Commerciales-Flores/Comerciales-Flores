@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DataProvider } from './contexts/DataContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { IndicatorProvider } from './contexts/IndicatorContext';
+import { ReviewsProvider } from './contexts/ReviewsContext';
 import SessionWarningModal from './components/auth/SessionWarningModal';
 
 // Public Pages
@@ -18,6 +19,7 @@ const ClientDashboard = lazy(() => import('./pages/client/Dashboard'));
 const ClientProperties = lazy(() => import('./pages/client/Properties'));
 const ClientReservations = lazy(() => import('./pages/client/Reservations'));
 const ClientPayments = lazy(() => import('./pages/client/Payments'));
+const ClientReview = lazy(() => import('./pages/client/Reviews'));
 const ClientNotifications = lazy(() => import('./pages/client/Notifications'));
 const ClientProfile = lazy(() => import('./pages/client/Profile'));
 const ClientMessages = lazy(() => import('./pages/client/Messages'));
@@ -29,6 +31,7 @@ const AdminAudit = lazy(() => import('./pages/admin/Audit'));
 const AdminBusinessSlots = lazy(() => import('./pages/admin/BusinessSlots'));
 const AdminReservations = lazy(() => import('./pages/admin/Reservations'));
 const AdminPayments = lazy(() => import('./pages/admin/Payments'));
+const AdminReview = lazy(() => import('./pages/admin/Reviews'));
 const AdminInquiries = lazy(() => import('./pages/admin/Inquiries'));
 const AdminContent = lazy(() => import('./pages/admin/Content'));
 const AdminAnalytics = lazy(() => import('./pages/admin/Analytics'));
@@ -116,6 +119,7 @@ function AppRoutes() {
             <Route path="properties" element={<ClientProperties />} />
             <Route path="reservations" element={<ClientReservations />} />
             <Route path="payments" element={<ClientPayments />} />
+            <Route path="reviews" element={<ClientReview />} />
             <Route path="notifications" element={<ClientNotifications />} />
             <Route path="messages" element={<ClientMessages />} />
             <Route path="profile" element={<ClientProfile />} />
@@ -140,6 +144,7 @@ function AppRoutes() {
             <Route path="business-slots" element={<AdminBusinessSlots />} />
             <Route path="reservations" element={<AdminReservations />} />
             <Route path="payments" element={<AdminPayments />} />
+            <Route path="reviews" element={<AdminReview />} />
             <Route path="inquiries" element={<AdminInquiries />} />
             <Route path="content" element={<AdminContent />} />
             <Route path="analytics" element={<AdminAnalytics />} />
@@ -170,7 +175,9 @@ export default function App() {
         <AuthProvider>
           <DataProvider>
             <NotificationProvider>
-              <AppRoutes />
+              <ReviewsProvider>
+                <AppRoutes />
+              </ReviewsProvider>
             </NotificationProvider>
           </DataProvider>
         </AuthProvider>
