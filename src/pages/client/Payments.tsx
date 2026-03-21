@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import { useNotifications } from '../../contexts/NotificationContext';
+import type { LedgerEntry } from '../../data/types';
 import {
   CreditCard,
   CheckCircle2,
@@ -121,11 +122,11 @@ export default function ClientPayments() {
   }, [userReservations]);
 
   const ledgerByPaymentId = useMemo(() => {
-    const map = new Map<string, any>();
+    const map = new Map<string, LedgerEntry>();
 
-    userLedger.forEach((entry: any) => {
-      if (entry.payment_id) {
-        map.set(entry.payment_id, entry);
+    userLedger.forEach((entry: LedgerEntry) => {
+      if (entry.paymentId) {
+        map.set(entry.paymentId, entry);
       }
     });
 
@@ -160,7 +161,7 @@ export default function ClientPayments() {
         reservation?.unitName?.toLowerCase().includes(query) ||
         reservation?.publicId?.toLowerCase().includes(query) ||
         reservation?.id?.toLowerCase().includes(query) ||
-        ledgerEntry?.reference_no?.toLowerCase().includes(query) ||
+        ledgerEntry?.referenceNo?.toLowerCase().includes(query) ||
         ledgerEntry?.description?.toLowerCase().includes(query)
       );
     });
@@ -171,40 +172,59 @@ export default function ClientPayments() {
   }, [userPayments, reservationMap, ledgerByPaymentId, searchQuery]);
 
   const paymentOverview = useMemo(() => {
-    const totalPaid = userPayments
-      .filter((payment) => payment.status === 'paid')
-      .reduce((sum, payment) => sum + payment.amount, 0);
+  const totalPaid = userLedger
+    .filter((e) =>
+      ['payment', 'deposit', 'balance'].includes(e.entryType)
+    )
+    .reduce((sum, e) => sum + e.amount, 0);
 
-    const pendingAmount = userPayments
-      .filter((payment) => payment.status === 'unpaid')
-      .reduce((sum, payment) => sum + payment.amount, 0);
+  const refunds = userLedger
+    .filter((e) => e.entryType === 'refund')
+    .reduce((sum, e) => sum + e.amount, 0);
 
-    const partialAmount = userPayments
-      .filter((payment) => payment.status === 'partial')
-      .reduce((sum, payment) => sum + payment.amount, 0);
+  const discounts = userLedger
+    .filter((e) => e.entryType === 'discount')
+    .reduce((sum, e) => sum + e.amount, 0);
 
-    const grandTotal = userReservations.reduce(
-      (sum, reservation) => sum + Number(reservation.totalAmount || 0),
-      0
-    );
+  const penalties = userLedger
+    .filter((e) => e.entryType === 'penalty')
+    .reduce((sum, e) => sum + e.amount, 0);
 
-    const totalPaidAcrossReservations = userReservations.reduce(
-      (sum, reservation) => sum + Number(reservation.paidAmount || 0),
-      0
-    );
+  const netPaid = totalPaid - refunds - discounts + penalties;
 
-    const overallProgress = getReservationProgress(grandTotal, totalPaidAcrossReservations);
+  const grandTotal = userReservations.reduce(
+    (sum, r) => sum + Number(r.totalAmount || 0),
+    0
+  );
 
-    return {
-      totalPaid,
-      pendingAmount,
-      partialAmount,
-      transactions: userPayments.length,
-      grandTotal,
-      totalPaidAcrossReservations,
-      overallProgress,
-    };
-  }, [userPayments, userReservations]);
+  const totalPaidAcrossReservations = userReservations.reduce(
+    (sum, r) => sum + Number(r.paidAmount || 0),
+    0
+  );
+
+  const overallProgress = getReservationProgress(
+    grandTotal,
+    totalPaidAcrossReservations
+  );
+
+  const pendingAmount = userPayments
+  .filter((p) => p.status === 'unpaid')
+  .reduce((sum, p) => sum + p.amount, 0);
+
+  const partialAmount = userPayments
+  .filter((p) => p.status === 'partial')
+  .reduce((sum, p) => sum + p.amount, 0);
+
+  return {
+    totalPaid: netPaid,
+    pendingAmount: pendingAmount, // optional (can remove entirely)
+    partialAmount: partialAmount,
+    transactions: userPayments.length,
+    grandTotal,
+    totalPaidAcrossReservations,
+    overallProgress,
+  };
+}, [userLedger, userReservations, userPayments]);
 
   const outstandingTotal = useMemo(() => {
     return eligibleReservations.reduce((sum, reservation) => {
@@ -353,7 +373,7 @@ export default function ClientPayments() {
       }
 
       const invoiceNumber = ledgerEntry.id || payment.id;
-      const invoiceDate = ledgerEntry.recorded_at || payment.date;
+      const invoiceDate = ledgerEntry.recordedAt || payment.date;
       const amount = Number(ledgerEntry.amount ?? payment.amount) || 0;
       const remaining =
         Number(reservation?.totalAmount || 0) - Number(reservation?.paidAmount || 0);
@@ -379,14 +399,14 @@ Payment ID:      ${payment.id}
 Method:          ${formatPaymentMethod(ledgerEntry.method || payment.method)}
 Status:          ${String(ledgerEntry.status || payment.status || 'N/A').toUpperCase()}
 Submitted On:    ${getSafeDate(payment.date).toLocaleDateString()}
-Reference No:    ${ledgerEntry.reference_no || 'N/A'}
+Reference No:    ${ledgerEntry.referenceNo || 'N/A'}
 
 ----------------------------------------
 LEDGER ENTRY
 ----------------------------------------
 Ledger ID:       ${ledgerEntry.id}
-Entry Type:      ${formatPaymentMethod(ledgerEntry.entry_type)}
-Recorded Date:   ${getSafeDate(ledgerEntry.recorded_at).toLocaleDateString()}
+Entry Type:      ${formatPaymentMethod(ledgerEntry.entryType)}
+Recorded Date:   ${getSafeDate(ledgerEntry.recordedAt).toLocaleDateString()}
 Amount:          ${formatCurrency(amount)}
 
 ----------------------------------------
@@ -443,9 +463,9 @@ Thank you for your payment.
         'Payment Method': formatPaymentMethod(payment.method),
         'Payment Status': payment.status,
         'Ledger ID': ledgerEntry?.id ?? '',
-        'Ledger Entry Type': ledgerEntry?.entry_type ?? '',
+        'Ledger Entry Type': ledgerEntry?.entryType ?? '',
         'Ledger Status': ledgerEntry?.status ?? '',
-        'Reference No': ledgerEntry?.reference_no ?? '',
+        'Reference No': ledgerEntry?.referenceNo ?? '',
         Notes: payment.notes ?? '',
       };
     });
@@ -901,7 +921,7 @@ Thank you for your payment.
                                   {ledgerEntry.id}
                                 </p>
                                 <p className={uiTypography.helperText}>
-                                  {formatPaymentMethod(ledgerEntry.entry_type)} ·{' '}
+                                  {formatPaymentMethod(ledgerEntry.entryType)} ·{' '}
                                   {formatPaymentMethod(ledgerEntry.status)}
                                 </p>
                               </div>
@@ -909,10 +929,10 @@ Thank you for your payment.
                               <div className="rounded-2xl border border-white bg-white p-4">
                                 <p className={uiTypography.infoBlockLabel}>Reference No</p>
                                 <p className={`${uiTypography.infoBlockValue} text-slate-900`}>
-                                  {ledgerEntry.reference_no || 'N/A'}
+                                  {ledgerEntry.referenceNo || 'N/A'}
                                 </p>
                                 <p className={uiTypography.helperText}>
-                                  Recorded {getSafeDate(ledgerEntry.recorded_at).toLocaleDateString()}
+                                  Recorded {getSafeDate(ledgerEntry.recordedAt).toLocaleDateString()}
                                 </p>
                               </div>
                             </div>

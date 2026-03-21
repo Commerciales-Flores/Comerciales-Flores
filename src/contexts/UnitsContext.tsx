@@ -69,7 +69,7 @@ interface UnitsContextType {
   uploadUnitImage: (file: File) => Promise<string | null>;
   getUnitById: (id: string) => Unit | undefined;
   refreshUnits: () => Promise<void>;
-
+  getParkingSlotById: (slotId: string) => ParkingSlot | undefined;
   getParkingSlotsByUnit: (unitId: string) => ParkingSlot[];
   addParkingSlot: (slot: AddParkingSlotPayload) => Promise<void>;
   updateParkingSlot: (slotId: string, slot: UpdateParkingSlotPayload) => Promise<void>;
@@ -310,7 +310,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
               action: 'CREATE',
               targetTable: 'units',
               targetId: newUnitId,
-              beforeValue: undefined,
+              beforeValue: null,
               afterValue: createdUnit,
               changedFields: Object.keys(createdUnit),
               notes: `Created unit ${createdUnit.name} (${publicId})`,
@@ -475,6 +475,11 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
     [parkingSlots]
   );
 
+  const getParkingSlotById = useCallback(
+    (slotId: string) => parkingSlots.find((slot) => slot.id === slotId),
+    [parkingSlots]
+  );
+
   const addParkingSlot = useCallback(
     async (slot: AddParkingSlotPayload): Promise<void> => {
       try {
@@ -624,6 +629,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
       getUnitById,
       refreshUnits,
       getParkingSlotsByUnit,
+      getParkingSlotById,
       addParkingSlot,
       updateParkingSlot,
       deleteParkingSlot,
@@ -638,6 +644,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
       uploadUnitImage,
       getUnitById,
       refreshUnits,
+      getParkingSlotById,
       getParkingSlotsByUnit,
       addParkingSlot,
       updateParkingSlot,

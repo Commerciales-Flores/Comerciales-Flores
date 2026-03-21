@@ -35,8 +35,8 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
         data.map((row: any) => ({
           id: row.message_id,
           userId: row.user_id,
-          first_name: row.first_name ?? '',
-          last_name: row.last_name ?? '',
+          firstName: row.first_name ?? '',
+          lastName: row.last_name ?? '',
           email: row.email,
           subject: row.subject,
           message: row.message,
@@ -61,8 +61,8 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
       .insert([
         {
           user_id: inquiryData.userId || null,
-          first_name: inquiryData.first_name,
-          last_name: inquiryData.last_name,
+          first_name: inquiryData.firstName,
+          last_name: inquiryData.lastName,
           email: inquiryData.email,
           subject: inquiryData.subject,
           message: inquiryData.message,
@@ -78,8 +78,8 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
     const newInquiry: Inquiry = {
       id: data.message_id,
       userId: data.user_id,
-      first_name: data.first_name ?? '',
-      last_name: data.last_name ?? '',
+      firstName: data.first_name ?? '',
+      lastName: data.last_name ?? '',
       email: data.email,
       subject: data.subject,
       message: data.message,

@@ -94,7 +94,7 @@ export default function AdminProfile() {
       firstName: user?.firstName || '',
       lastName: user?.lastName || '',
       email: user?.email || '',
-      contactNumber: user?.contactNumber || '',
+      contactNumber: user?.phone || '',
       address: user?.address || '',
     });
   }, [user]);
@@ -259,7 +259,7 @@ export default function AdminProfile() {
       firstName: user?.firstName || '',
       lastName: user?.lastName || '',
       email: user?.email || '',
-      contactNumber: user?.contactNumber || '',
+      contactNumber: user?.phone || '',
       address: user?.address || '',
     });
   }, [user]);
@@ -378,8 +378,8 @@ export default function AdminProfile() {
                     />
                     <MiniStat
                       label="Status"
-                      value={user?.is_active === false ? 'Inactive' : 'Active'}
-                      variant={user?.is_active === false ? 'rose' : 'emerald'}
+                      value={user?.isActive === false ? 'Inactive' : 'Active'}
+                      variant={user?.isActive === false ? 'rose' : 'emerald'}
                     />
                   </div>
               </div>
@@ -508,7 +508,7 @@ export default function AdminProfile() {
                       <InfoBlock label="Email" value={user?.email} icon={<Mail className="size-4" />} />
                       <InfoBlock
                         label="Phone"
-                        value={user?.contactNumber}
+                        value={user?.phone}
                         icon={<Phone className="size-4" />}
                       />
                       <InfoBlock

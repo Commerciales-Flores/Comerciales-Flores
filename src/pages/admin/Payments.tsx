@@ -22,6 +22,7 @@ import Papa from 'papaparse';
 import AdminActionModal from '../../components/modals/AdminActionModal';
 import { motion, AnimatePresence } from 'framer-motion';
 import EmptyState from '../../components/common/EmptyState';
+import type { Payment } from '../../data/types';
 
 type PaymentFilterStatus = 'all' | 'paid' | 'unpaid' | 'partial';
 
@@ -31,6 +32,7 @@ type PaymentView = {
   reservationId: string;
   reservationPublicId: string;
   amount: number;
+  derivedStatus: 'paid' | 'partial' | 'unpaid'; 
   status: 'paid' | 'unpaid' | 'partial';
   date: string;
   dateMs: number;
@@ -54,6 +56,12 @@ const statusColors: Record<string, string> = {
   partial: 'bg-blue-100 text-blue-700 border-blue-200',
 };
 
+function getReservationPaymentStatus(progress: number): 'paid' | 'partial' | 'unpaid' {
+  if (progress >= 100) return 'paid';
+  if (progress > 0) return 'partial';
+  return 'unpaid';
+}
+
 function useDebouncedValue<T>(value: T, delay = 250) {
   const [debounced, setDebounced] = useState(value);
 
@@ -73,11 +81,11 @@ function getStatusLabel(status: PaymentFilterStatus | PaymentView['status']) {
 }
 
 export default function AdminPayments() {
-  const { reservations, updatePayment, getUserById } = useData();
+  const { reservations, getUserById } = useData();
   const { sendPaymentNotification } = useNotifications();
-  const { fetchPaymentsPage } = usePayments();
+  const { fetchPaymentsPage, updatePayment } = usePayments();
 
-  const [payments, setPayments] = useState<any[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
@@ -94,6 +102,7 @@ export default function AdminPayments() {
   const debouncedSearch = useDebouncedValue(searchTerm, 250);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const [pageInput, setPageInput] = useState('1');
+  
 
   useEffect(() => {
     setPageInput(String(page));
@@ -170,7 +179,7 @@ export default function AdminPayments() {
       const reservationPublicId = reservation?.publicId ?? payment.reservationId;
       const userPublicId = user?.publicId ?? user?.id ?? payment.userId;
       const userFullName = user
-        ? `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim() || user.email
+        ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email
         : 'Unknown User';
 
       const reservationPaidAmount = reservation?.paidAmount ?? 0;
@@ -179,6 +188,7 @@ export default function AdminPayments() {
         reservationTotalAmount > 0
           ? Math.min((reservationPaidAmount / reservationTotalAmount) * 100, 100)
           : 0;
+      const derivedStatus = getReservationPaymentStatus(progress);
 
       return {
         id: payment.id,
@@ -200,6 +210,7 @@ export default function AdminPayments() {
         reservationTotalAmount,
         reservationPaidAmount,
         progress,
+        derivedStatus,
         searchableText: [
           payment.publicId ?? payment.id,
           reservationPublicId,
@@ -494,11 +505,11 @@ export default function AdminPayments() {
                 </div>
 
                 <span
-                  className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${statusColors[payment.status]}`}
+                  className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${statusColors[payment.derivedStatus]}`}
                 >
-                  {payment.status === 'paid'
+                  {payment.derivedStatus === 'paid'
                     ? 'VERIFIED'
-                    : payment.status === 'partial'
+                    : payment.derivedStatus === 'partial'
                     ? 'PARTIAL'
                     : 'PENDING'}
                 </span>
@@ -648,23 +659,29 @@ export default function AdminPayments() {
                           </span>
                         </div>
 
-                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
-                          <div
-                            className={`h-full transition-all ${
-                              payment.status === 'paid'
-                                ? 'bg-emerald-500'
-                                : payment.status === 'partial'
-                                ? 'bg-blue-500'
-                                : 'bg-amber-500'
-                            }`}
-                            style={{
-                              width: `${
-                                payment.progress > 0
-                                  ? Math.max(Math.min(payment.progress, 100), 2)
-                                  : 0
-                              }%`,
-                            }}
-                          />
+                        <div className="mt-3">
+                          {/* Progress bar */}
+                          <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-emerald-400 to-sky-500 transition-all"
+                              style={{
+                                width: `${
+                                  payment.progress > 0
+                                    ? Math.max(Math.min(payment.progress, 100), 2)
+                                    : 0
+                                }%`,
+                              }}
+                            />
+                          </div>
+
+                          {/* Label */}
+                          <div className="mt-1 flex items-center justify-between text-[11px] font-medium text-gray-600">
+                            <span>
+                              {formatCurrency(payment.reservationPaidAmount)} /{' '}
+                              {formatCurrency(payment.reservationTotalAmount)}
+                            </span>
+                            <span>{Math.round(payment.progress)}%</span>
+                          </div>
                         </div>
 
                         <div className="mt-1 text-right text-[10px] text-gray-400">
@@ -681,11 +698,13 @@ export default function AdminPayments() {
 
                       <td className="w-[130px] px-6 py-4">
                         <span
-                          className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${statusColors[payment.status]}`}
+                          className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${statusColors[payment.derivedStatus]}`}
                         >
-                          {payment.status === 'paid'
+                          {payment.derivedStatus === 'paid'
                             ? 'VERIFIED'
-                            : payment.status.toUpperCase()}
+                            : payment.derivedStatus === 'partial'
+                            ? 'PARTIAL'
+                            : 'PENDING'}
                         </span>
                       </td>
 
@@ -861,11 +880,13 @@ export default function AdminPayments() {
                   <div className="text-gray-500">Status</div>
                   <div>
                     <span
-                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusColors[selectedPaymentData.status]}`}
+                      className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusColors[selectedPaymentData.derivedStatus]}`}
                     >
-                      {selectedPaymentData.status === 'paid'
+                      {selectedPaymentData.derivedStatus === 'paid'
                         ? 'VERIFIED'
-                        : selectedPaymentData.status.toUpperCase()}
+                        : selectedPaymentData.derivedStatus === 'partial'
+                        ? 'PARTIAL'
+                        : 'PENDING'}
                     </span>
                   </div>
                 </div>

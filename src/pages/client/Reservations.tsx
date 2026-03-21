@@ -190,14 +190,22 @@ const [expandedDetailsId, setExpandedDetailsId] = useState<string | null>(null);
     return {
       all: userReservations.length,
       pending: userReservations.filter((r) => r.status === 'pending').length,
-      confirmed: userReservations.filter((r) => r.status === 'confirmed').length,
+      confirmed: userReservations.filter((r) =>
+        ['approved', 'confirmed', 'completed'].includes(r.status)
+      ).length,
       cancelled: userReservations.filter((r) => r.status === 'cancelled').length,
     };
   }, [userReservations]);
 
   const filteredReservations = useMemo(() => {
     if (filterStatus === 'all') return userReservations;
-    return userReservations.filter((reservation) => reservation.status === filterStatus);
+    return userReservations.filter((reservation) => {
+      if (filterStatus === 'confirmed') {
+        return ['approved', 'confirmed', 'completed'].includes(reservation.status);
+      }
+
+      return reservation.status === filterStatus;
+    });
   }, [filterStatus, userReservations]);
 
   const sortedReservations = useMemo(() => {
@@ -231,13 +239,13 @@ const toggleDetails = useCallback(
 );
 
   const handleDeleteReservation = useCallback(
-    (reservationId: string, unitName: string) => {
+  async (reservationId: string, unitName: string) => {
       if (
         window.confirm(
           `Are you sure you want to cancel your reservation for "${unitName}"?`
         )
       ) {
-        deleteReservation(reservationId);
+        await deleteReservation(reservationId);
       }
     },
     [deleteReservation]
@@ -651,7 +659,7 @@ const toggleDetails = useCallback(
             </div>
           </div>
 
-          {reservation.status === 'confirmed' && (
+          {['approved', 'confirmed', 'completed'].includes(reservation.status) && (
             <div className="mb-4">
               <div
                 className={`${uiTypography.helperText} flex justify-between text-gray-500 mb-1 text-[11px]`}
@@ -681,7 +689,7 @@ const toggleDetails = useCallback(
           </div>
         )}
 
-        {reservation.status === 'confirmed' && balance > 0 && (
+        {['approved', 'confirmed', 'completed'].includes(reservation.status) && balance > 0 && (
           <div
             className={`rounded-2xl border border-yellow-200 bg-yellow-50 p-4 ${uiTypography.bodyText} text-[13px] sm:text-sm text-yellow-800`}
           >

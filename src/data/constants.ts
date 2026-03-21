@@ -1,10 +1,4 @@
-import type { ContentSettings, ParkingSlot } from './types';
-
-export const MOCK_PARKING_SLOTS: ParkingSlot[] = Array.from({ length: 10 }, (_, i) => ({
-  id: `slot-${i + 1}`,
-  name: `Slot ${i + 1}`,
-  imageUrl: `https://placehold.co/400x300/e2e8f0/475569?text=Slot%20${i + 1}`,
-}));
+import type { ContentSettings } from './types';
 
 export const DEFAULT_CONTENT: ContentSettings = {
   hero: {

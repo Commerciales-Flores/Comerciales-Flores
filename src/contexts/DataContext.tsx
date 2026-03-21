@@ -1,5 +1,4 @@
 import { createContext, useContext, useMemo, useCallback, type ReactNode } from 'react';
-import { MOCK_PARKING_SLOTS } from '../data/constants';
 import type {
   AuditLog,
   BusinessSlot,
@@ -61,7 +60,7 @@ interface DataContextType {
   notifications: Notification[];
   businessSlots: BusinessSlot[];
   contentSettings: ContentSettings;
-  parkingSlots: ParkingSlot[];
+  // parkingSlots: ParkingSlot[];
 
   addUnit: (unit: Omit<Unit, 'id'>) => Promise<void>;
   updateUnit: (id: string, unit: Partial<Unit>) => Promise<void>;
@@ -171,7 +170,7 @@ function DataComposer({ children }: { children: ReactNode }) {
       notifications,
       businessSlots,
       contentSettings,
-      parkingSlots: MOCK_PARKING_SLOTS,
+      // parkingSlots: MOCK_PARKING_SLOTS,
 
       addUnit,
       updateUnit,

@@ -37,31 +37,82 @@ interface ReservationsContextType {
 
 const ReservationsContext = createContext<ReservationsContextType | undefined>(undefined);
 
+function buildReservationDetails(reservation: Partial<Reservation>) {
+  const details = {
+    paymentCycle: reservation.paymentCycle,
+    businessType: reservation.businessType,
+    eventPurpose: reservation.eventPurpose,
+    attendees: reservation.attendees,
+    slotId: reservation.slotId,
+    slotName: reservation.slotName,
+    vehicleType: reservation.vehicleType,
+    plateNumber: reservation.plateNumber,
+    durationType: reservation.durationType,
+  };
+
+  return Object.fromEntries(
+    Object.entries(details).filter(([, value]) => value !== undefined)
+  );
+}
+
 export function ReservationsProvider({ children }: { children: ReactNode }) {
   const [reservations, setReservations] = useState<Reservation[]>([]);
-  const { addAuditLog } = useRecords();
+  const { addAuditLog, ledgers } = useRecords();
   const { user } = useAuth();
 
-  const refreshReservations = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('reservations')
-      .select(
-        'reservation_id, public_id, user_id, unit_id, title, unit_type, start_date, end_date, duration, total_amount, status, notes, paid_amount, created_at, payment_method, payment_intent, mode_of_visit, appointment_date, appointment_time, details'
-      )
-      .order('created_at', { ascending: false });
+  const getLedgerTotalsByReservationId = useCallback(
+    (reservationId: string) => {
+      const entries = ledgers.filter(
+        (entry) => entry.reservationId === reservationId
+      );
 
-    if (error) {
-      console.error('Error loading reservations:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-      });
-      return;
-    }
+      let paid = 0;
+      let refunds = 0;
+      let discounts = 0;
+      let penalties = 0;
+      let adjustments = 0;
 
-    setReservations(
-      (data ?? []).map((row: any) => ({
+      for (const entry of entries) {
+        switch (entry.entryType) {
+          case 'payment':
+          case 'deposit':
+          case 'balance':
+            paid += entry.amount;
+            break;
+          case 'refund':
+            refunds += entry.amount;
+            break;
+          case 'discount':
+            discounts += entry.amount;
+            break;
+          case 'penalty':
+            penalties += entry.amount;
+            break;
+          case 'adjustment':
+            adjustments += entry.amount;
+            break;
+        }
+      }
+
+      const netPaid = paid - refunds - discounts + penalties + adjustments;
+
+      return {
+        paid,
+        refunds,
+        discounts,
+        penalties,
+        adjustments,
+        netPaid,
+      };
+    },
+    [ledgers]
+  );
+
+  const mapReservationRow = useCallback(
+    (row: any): Reservation => {
+      const totals = getLedgerTotalsByReservationId(row.reservation_id);
+
+      return {
         id: row.reservation_id,
         publicId: row.public_id,
         userId: row.user_id,
@@ -74,7 +125,7 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
         totalAmount: Number(row.total_amount),
         status: row.status as ReservationStatus,
         notes: row.notes,
-        paidAmount: Number(row.paid_amount || 0),
+        paidAmount: totals.netPaid,
         requestDate: row.created_at,
         paymentMethod: row.payment_method,
         paymentIntent: row.payment_intent,
@@ -90,9 +141,52 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
         vehicleType: row.details?.vehicleType,
         plateNumber: row.details?.plateNumber,
         durationType: row.details?.durationType,
-      }))
-    );
-  }, []);
+      };
+    },
+    [getLedgerTotalsByReservationId]
+  );
+
+  const refreshReservations = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('reservations')
+      .select(
+        `
+        reservation_id,
+        public_id,
+        user_id,
+        unit_id,
+        title,
+        unit_type,
+        start_date,
+        end_date,
+        duration,
+        total_amount,
+        status,
+        notes,
+        paid_amount,
+        created_at,
+        payment_method,
+        payment_intent,
+        mode_of_visit,
+        appointment_date,
+        appointment_time,
+        details
+        `
+      )
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error loading reservations:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+      return;
+    }
+
+    setReservations((data ?? []).map(mapReservationRow));
+  }, [mapReservationRow]);
 
   useEffect(() => {
     void refreshReservations();
@@ -111,7 +205,28 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
       let query = supabase
         .from('reservations')
         .select(
-          'reservation_id, public_id, user_id, unit_id, title, unit_type, start_date, end_date, duration, total_amount, status, notes, paid_amount, created_at, payment_method, payment_intent, mode_of_visit, appointment_date, appointment_time, details',
+          `
+          reservation_id,
+          public_id,
+          user_id,
+          unit_id,
+          title,
+          unit_type,
+          start_date,
+          end_date,
+          duration,
+          total_amount,
+          status,
+          notes,
+          paid_amount,
+          created_at,
+          payment_method,
+          payment_intent,
+          mode_of_visit,
+          appointment_date,
+          appointment_time,
+          details
+          `,
           { count: 'exact' }
         )
         .order('created_at', { ascending: false });
@@ -142,61 +257,18 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
       if (error) throw error;
 
       return {
-        data: (data ?? []).map((row: any) => ({
-          id: row.reservation_id,
-          publicId: row.public_id,
-          userId: row.user_id,
-          unitId: row.unit_id,
-          unitName: row.title,
-          unitType: row.unit_type,
-          startDate: row.start_date,
-          endDate: row.end_date,
-          duration: row.duration,
-          totalAmount: Number(row.total_amount),
-          status: row.status,
-          notes: row.notes,
-          paidAmount: Number(row.paid_amount || 0),
-          requestDate: row.created_at,
-          paymentMethod: row.payment_method,
-          paymentIntent: row.payment_intent,
-          modeOfVisit: row.mode_of_visit,
-          appointmentDate: row.appointment_date,
-          appointmentTime: row.appointment_time,
-          paymentCycle: row.details?.paymentCycle,
-          businessType: row.details?.businessType,
-          eventPurpose: row.details?.eventPurpose,
-          attendees: row.details?.attendees,
-          slotId: row.details?.slotId,
-          slotName: row.details?.slotName,
-          vehicleType: row.details?.vehicleType,
-          plateNumber: row.details?.plateNumber,
-          durationType: row.details?.durationType,
-        })),
+        data: (data ?? []).map(mapReservationRow),
         count: count ?? 0,
       };
     },
-    []
+    [mapReservationRow]
   );
 
   const addReservation = useCallback(
     async (
       reservationData: Omit<Reservation, 'id' | 'requestDate' | 'status' | 'paidAmount'>
     ): Promise<string> => {
-      const details = {
-        paymentCycle: reservationData.paymentCycle,
-        businessType: reservationData.businessType,
-        eventPurpose: reservationData.eventPurpose,
-        attendees: reservationData.attendees,
-        slotId: reservationData.slotId,
-        slotName: reservationData.slotName,
-        vehicleType: reservationData.vehicleType,
-        plateNumber: reservationData.plateNumber,
-        durationType: reservationData.durationType,
-      };
-
-      const cleanDetails = Object.fromEntries(
-        Object.entries(details).filter(([_, v]) => v !== undefined)
-      );
+      const cleanDetails = buildReservationDetails(reservationData);
 
       const { data, error } = await supabase
         .from('reservations')
@@ -238,7 +310,7 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
         totalAmount: Number(data.total_amount),
         status: data.status,
         notes: data.notes,
-        paidAmount: Number(data.paid_amount || 0),
+        paidAmount: 0,
         requestDate: data.created_at,
         paymentMethod: data.payment_method,
         paymentIntent: data.payment_intent,
@@ -256,7 +328,7 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
           action: 'CREATE',
           targetTable: 'reservations',
           targetId: newReservation.id,
-          beforeValue: undefined,
+          beforeValue: null,
           afterValue: newReservation,
           changedFields: Object.keys(newReservation),
           notes: `Created reservation ${newReservation.publicId ?? newReservation.id}`,
@@ -271,22 +343,31 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
   );
 
   const updateReservation = useCallback(
-    async (id: string, reservation: Partial<Reservation>): Promise<void> => {
+    async (id: string, reservationUpdate: Partial<Reservation>): Promise<void> => {
       const existingReservation = reservations.find((r) => r.id === id);
       if (!existingReservation) return;
 
-      const dbPayload: any = {};
-      if (reservation.status !== undefined) dbPayload.status = reservation.status;
-      if (reservation.paidAmount !== undefined) dbPayload.paid_amount = reservation.paidAmount;
-      if (reservation.notes !== undefined) dbPayload.notes = reservation.notes;
-      if (reservation.appointmentDate !== undefined) {
-        dbPayload.appointment_date = reservation.appointmentDate;
+      const dbPayload: Record<string, unknown> = {};
+
+      if (reservationUpdate.status !== undefined) dbPayload.status = reservationUpdate.status;
+      if (reservationUpdate.notes !== undefined) dbPayload.notes = reservationUpdate.notes;
+      if (reservationUpdate.appointmentDate !== undefined) {
+        dbPayload.appointment_date = reservationUpdate.appointmentDate;
       }
-      if (reservation.appointmentTime !== undefined) {
-        dbPayload.appointment_time = reservation.appointmentTime;
+      if (reservationUpdate.appointmentTime !== undefined) {
+        dbPayload.appointment_time = reservationUpdate.appointmentTime;
       }
-      if (reservation.modeOfVisit !== undefined) {
-        dbPayload.mode_of_visit = reservation.modeOfVisit;
+      if (reservationUpdate.modeOfVisit !== undefined) {
+        dbPayload.mode_of_visit = reservationUpdate.modeOfVisit;
+      }
+
+      const detailsPatch = buildReservationDetails(reservationUpdate);
+      if (Object.keys(detailsPatch).length > 0) {
+        const existingDetails = buildReservationDetails(existingReservation);
+        dbPayload.details = {
+          ...existingDetails,
+          ...detailsPatch,
+        };
       }
 
       if (Object.keys(dbPayload).length === 0) return;
@@ -298,13 +379,13 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
 
-      const updatedReservation = buildAuditSnapshot(existingReservation, reservation);
+      const updatedReservation = buildAuditSnapshot(existingReservation, reservationUpdate);
 
       setReservations((prev) =>
         prev.map((r) => (r.id === id ? updatedReservation : r))
       );
 
-      const changedFields = getChangedFields(existingReservation, reservation);
+      const changedFields = getChangedFields(existingReservation, reservationUpdate);
 
       if (changedFields.length === 0) return;
 
@@ -347,7 +428,7 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
           targetTable: 'reservations',
           targetId: id,
           beforeValue: existingReservation,
-          afterValue: undefined,
+          afterValue: null,
           changedFields: Object.keys(existingReservation),
           notes: `Deleted reservation ${existingReservation.publicId ?? id}`,
         });
@@ -363,7 +444,7 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
     [reservations]
   );
 
-  const value = useMemo(
+  const value = useMemo<ReservationsContextType>(
     () => ({
       reservations,
       addReservation,

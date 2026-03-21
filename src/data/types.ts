@@ -105,9 +105,9 @@ export interface Payment {
 export interface LedgerEntry {
   id: string;
   userId: string | null;
-  reservation_id: string | null;
-  payment_id: string | null;
-  entry_type:
+  reservationId: string | null;
+  paymentId: string | null;
+  entryType:
     | 'payment'
     | 'deposit'
     | 'balance'
@@ -118,12 +118,12 @@ export interface LedgerEntry {
   amount: number;
   method?: string | null;
   status?: string | null;
-  reference_no?: string | null;
+  referenceNo?: string | null;
   description?: string | null;
   notes?: string | null;
-  recorded_at: string;
-  created_at: string;
-  created_by?: string | null;
+  recordedAt: string;
+  createdAt: string;
+  createdBy?: string | null;
 }
 
 export interface AuditLog {
@@ -133,9 +133,9 @@ export interface AuditLog {
   action: string;
   targetTable: string;
   targetId: string;
-  beforeValue?: Record<string, any>;
-  afterValue?: Record<string, any>;
-  changedFields?: Record<string, any>;
+  beforeValue?: unknown | null;
+  afterValue?: unknown | null;
+  changedFields?: string[] | Record<string, unknown> | null;
   timestamp: string;
   notes?: string;
 }
@@ -143,20 +143,30 @@ export interface AuditLog {
 export interface User {
   id: string;
   publicId?: string;
-  role: 'admin' | 'client' | 'customer';
-  first_name: string;
-  last_name: string;
+  role: 'admin' | 'client';
+  firstName: string;
+  lastName: string;
   email: string;
-  contactNumber?: string;
+  phone?: string;
   address?: string;
-  is_active?: boolean;
+  formattedAddress?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  isActive: boolean;
+  profilePictureUrl?: string;
+  lastLogin?: string;
+  phoneVerified: boolean;
+  phoneVerifiedAt?: string | null;
+  addressConfirmed: boolean;
+  addressConfirmedAt?: string | null;
+  createdAt?: string;
 }
 
 export interface Inquiry {
   id: string;
   userId?: string;
-  first_name: string;
-  last_name: string;
+  firstName: string;
+  lastName: string;
   email: string;
   subject: string;
   message: string;

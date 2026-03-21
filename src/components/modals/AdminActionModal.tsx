@@ -1,4 +1,13 @@
-import { useState, useMemo } from 'react';
+import React, {
+  lazy,
+  memo,
+  Suspense,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { useData } from '../../contexts/DataContext';
 import type { User } from '../../contexts/DataContext';
 import {
@@ -11,14 +20,438 @@ import {
   RotateCcw,
   Mail,
   CreditCard,
-  ShieldCheck,
+  Loader2,
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
-import AdminPaymentForm from '../forms/AdminPaymentForm';
-import AdminReservationForm from '../forms/AdminReservationForm';
+
+const AdminPaymentForm = lazy(() => import('../forms/AdminPaymentForm'));
+const AdminReservationForm = lazy(() => import('../forms/AdminReservationForm'));
 
 type ActionType = 'payment' | 'reservation';
 type Stage = 'select_user' | 'select_target' | 'fill_form' | 'success';
+
+type ReservationLike = {
+  id: string;
+  userId: string;
+  status?: string | null;
+  unitName?: string | null;
+  totalAmount?: number | null;
+  paidAmount?: number | null;
+};
+
+type UnitLike = {
+  id: string;
+  name?: string | null;
+  type?: string | null;
+  price?: number | null;
+};
+
+const PAYMENT_ELIGIBLE_STATUSES = new Set(['approved', 'confirmed', 'completed']);
+
+function isPaymentEligibleStatus(status?: string | null) {
+  return PAYMENT_ELIGIBLE_STATUSES.has((status ?? '').toLowerCase());
+}
+
+function getRemainingBalance(totalAmount?: number | null, paidAmount?: number | null) {
+  return Math.max(Number(totalAmount || 0) - Number(paidAmount || 0), 0);
+}
+
+function getUserLabel(user: User) {
+  return `${user.firstName} ${user.lastName}`.trim();
+}
+
+const SearchInput = memo(function SearchInput({
+  value,
+  placeholder,
+  onChange,
+}: {
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="relative">
+      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+      <input
+        type="text"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-11 w-full rounded-2xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+      />
+    </div>
+  );
+});
+
+const EmptyState = memo(function EmptyState({
+  icon,
+  title,
+  subtitle,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-10 text-center">
+      <div className="mx-auto mb-3 flex size-11 items-center justify-center rounded-2xl bg-white text-slate-400 shadow-sm">
+        {icon}
+      </div>
+      <p className="text-sm font-semibold text-slate-800">{title}</p>
+      {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
+    </div>
+  );
+});
+
+const UserRow = memo(function UserRow({
+  user,
+  onSelect,
+}: {
+  user: User;
+  onSelect: (user: User) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(user)}
+      className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 text-left transition-colors hover:border-blue-200 hover:bg-blue-50/50"
+    >
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+        <UserIcon className="size-4" />
+      </div>
+
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-slate-900">
+          {getUserLabel(user)}
+        </p>
+        <p className="truncate text-sm text-slate-500">{user.email}</p>
+      </div>
+    </button>
+  );
+});
+
+const ReservationRow = memo(function ReservationRow({
+  reservation,
+  remaining,
+  onSelect,
+}: {
+  reservation: ReservationLike;
+  remaining: number;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(reservation.id)}
+      className="w-full rounded-2xl border border-slate-200 bg-white p-3.5 text-left transition-colors hover:border-emerald-200 hover:bg-emerald-50/50"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-slate-900">
+            {reservation.unitName || 'Reservation'}
+          </p>
+          <p className="mt-1 text-sm text-slate-500">
+            {formatCurrency(reservation.paidAmount || 0)} paid of{' '}
+            {formatCurrency(reservation.totalAmount || 0)}
+          </p>
+        </div>
+
+        <div className="shrink-0 text-right">
+          <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+            {String(reservation.status || '').toUpperCase()}
+          </span>
+          <p className="mt-2 text-sm font-semibold text-rose-600">
+            {formatCurrency(remaining)} left
+          </p>
+        </div>
+      </div>
+    </button>
+  );
+});
+
+const UnitRow = memo(function UnitRow({
+  unit,
+  onSelect,
+}: {
+  unit: UnitLike;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(unit.id)}
+      className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 text-left transition-colors hover:border-violet-200 hover:bg-violet-50/50"
+    >
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-slate-50 text-slate-500">
+        <Building className="size-4" />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-slate-900">
+          {unit.name || 'Unit'}
+        </p>
+        <p className="truncate text-sm text-slate-500">
+          {String(unit.type || '').replaceAll('_', ' ') || 'Property'} •{' '}
+          {formatCurrency(unit.price || 0)}
+        </p>
+      </div>
+    </button>
+  );
+});
+
+const StepBackButton = memo(function StepBackButton({
+  onClick,
+}: {
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-blue-600"
+    >
+      <ArrowLeft className="size-4" />
+      Back
+    </button>
+  );
+});
+
+const SelectUserStep = memo(function SelectUserStep({
+  users,
+  searchTerm,
+  onSearchChange,
+  onSelectUser,
+}: {
+  users: User[];
+  searchTerm: string;
+  onSearchChange: (value: string) => void;
+  onSelectUser: (user: User) => void;
+}) {
+  return (
+    <div className="flex h-full flex-col">
+      <div className="mb-4">
+        <h3 className="text-base font-semibold text-slate-900">Select customer</h3>
+        <p className="mt-1 text-sm text-slate-500">Choose a client to continue.</p>
+      </div>
+
+      <div className="mb-4">
+        <SearchInput
+          value={searchTerm}
+          placeholder="Search name or email"
+          onChange={onSearchChange}
+        />
+      </div>
+
+      <div className="flex-1 space-y-2 overflow-y-auto pr-1">
+        {users.length > 0 ? (
+          users.map((user) => (
+            <UserRow key={user.id} user={user} onSelect={onSelectUser} />
+          ))
+        ) : (
+          <EmptyState
+            icon={<UserIcon className="size-5" />}
+            title="No customers found"
+            subtitle="Try another name or email."
+          />
+        )}
+      </div>
+    </div>
+  );
+});
+
+const SelectTargetStep = memo(function SelectTargetStep({
+  actionType,
+  searchTerm,
+  onSearchChange,
+  onBack,
+  reservations,
+  units,
+  onSelectReservation,
+  onSelectUnit,
+}: {
+  actionType: ActionType;
+  searchTerm: string;
+  onSearchChange: (value: string) => void;
+  onBack: () => void;
+  reservations: ReservationLike[];
+  units: UnitLike[];
+  onSelectReservation: (id: string) => void;
+  onSelectUnit: (id: string) => void;
+}) {
+  return (
+    <div className="flex h-full flex-col">
+      <StepBackButton onClick={onBack} />
+
+      <div className="mb-4">
+        <h2 className="text-base font-semibold text-slate-900">
+          {actionType === 'payment' ? 'Select reservation' : 'Select unit'}
+        </h2>
+      </div>
+
+      <div className="mb-4">
+        <SearchInput
+          value={searchTerm}
+          placeholder={
+            actionType === 'payment'
+              ? 'Search reservation or unit'
+              : 'Search unit name or type'
+          }
+          onChange={onSearchChange}
+        />
+      </div>
+
+      <div className="flex-1 space-y-2 overflow-y-auto pr-1">
+        {actionType === 'payment' ? (
+          reservations.length > 0 ? (
+            reservations.map((reservation) => (
+              <ReservationRow
+                key={reservation.id}
+                reservation={reservation}
+                remaining={getRemainingBalance(
+                  reservation.totalAmount,
+                  reservation.paidAmount
+                )}
+                onSelect={onSelectReservation}
+              />
+            ))
+          ) : (
+            <EmptyState
+              icon={<CreditCard className="size-5" />}
+              title="No reservations available"
+              subtitle="Nothing eligible for payment."
+            />
+          )
+        ) : units.length > 0 ? (
+          units.map((unit) => (
+            <UnitRow key={unit.id} unit={unit} onSelect={onSelectUnit} />
+          ))
+        ) : (
+          <EmptyState
+            icon={<Building className="size-5" />}
+            title="No units found"
+            subtitle="Try another search."
+          />
+        )}
+      </div>
+    </div>
+  );
+});
+
+const FormLoader = memo(function FormLoader() {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5">
+      <div className="flex items-center gap-2 text-sm text-slate-500">
+        <Loader2 className="size-4 animate-spin" />
+        Loading form...
+      </div>
+    </div>
+  );
+});
+
+const FillFormStep = memo(function FillFormStep({
+  actionType,
+  selectedUser,
+  selectedReservation,
+  selectedTargetId,
+  onBack,
+  onComplete,
+}: {
+  actionType: ActionType;
+  selectedUser: User | null;
+  selectedReservation: ReservationLike | null;
+  selectedTargetId: string | null;
+  onBack: () => void;
+  onComplete: () => void;
+}) {
+  const remaining = selectedReservation
+    ? getRemainingBalance(
+        selectedReservation.totalAmount,
+        selectedReservation.paidAmount
+      )
+    : 0;
+
+  return (
+    <div>
+      <StepBackButton onClick={onBack} />
+
+      <Suspense fallback={<FormLoader />}>
+        {actionType === 'payment' &&
+          selectedUser &&
+          selectedTargetId &&
+          selectedReservation &&
+          isPaymentEligibleStatus(selectedReservation.status) &&
+          remaining > 0 && (
+            <AdminPaymentForm
+              userId={selectedUser.id}
+              reservationId={selectedTargetId}
+              onComplete={onComplete}
+            />
+          )}
+
+        {actionType === 'payment' &&
+          selectedUser &&
+          selectedTargetId &&
+          (!selectedReservation ||
+            !isPaymentEligibleStatus(selectedReservation.status) ||
+            remaining <= 0) && (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              Reservation is no longer eligible for payment.
+            </div>
+          )}
+
+        {actionType === 'reservation' && selectedUser && selectedTargetId && (
+          <AdminReservationForm
+            userId={selectedUser.id}
+            unitId={selectedTargetId}
+            onComplete={onComplete}
+          />
+        )}
+      </Suspense>
+    </div>
+  );
+});
+
+const SuccessStep = memo(function SuccessStep({
+  actionType,
+  onCreateAnother,
+  onDone,
+}: {
+  actionType: ActionType;
+  onCreateAnother: () => void;
+  onDone: () => void;
+}) {
+  return (
+    <div className="px-4 py-12 text-center">
+      <div className="mx-auto mb-5 flex size-16 items-center justify-center rounded-full bg-emerald-100">
+        <CheckCircle2 className="size-9 text-emerald-600" />
+      </div>
+
+      <h3 className="text-xl font-semibold text-slate-900">Saved</h3>
+      <p className="mt-2 text-sm text-slate-500">
+        The {actionType} has been created successfully.
+      </p>
+
+      <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
+        <button
+          type="button"
+          onClick={onCreateAnother}
+          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-5 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+        >
+          <RotateCcw className="size-4" />
+          Create another
+        </button>
+
+        <button
+          type="button"
+          onClick={onDone}
+          className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-black"
+        >
+          Done
+        </button>
+      </div>
+    </div>
+  );
+});
 
 export default function AdminActionModal({
   actionType,
@@ -34,418 +467,246 @@ export default function AdminActionModal({
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const selectableUsers = useMemo(
-    () =>
-      users.filter(
-        (u) =>
-          (u.role === 'client' || u.role === 'customer') &&
-          `${u.first_name} ${u.last_name} ${u.email}`
-            .toLowerCase()
-            .includes(searchTerm.toLowerCase())
-      ),
-    [users, searchTerm]
-  );
+  const deferredSearch = useDeferredValue(searchTerm);
+  const normalizedSearch = deferredSearch.trim().toLowerCase();
+
+  useEffect(() => {
+    return () => {
+      setStage('select_user');
+      setSelectedUser(null);
+      setSelectedTargetId(null);
+      setSearchTerm('');
+    };
+  }, []);
+
+  const reservationsById = useMemo(() => {
+    return new Map(
+      reservations.map((reservation) => [reservation.id, reservation])
+    );
+  }, [reservations]);
+
+  const unitsById = useMemo(() => {
+    return new Map(units.map((unit) => [unit.id, unit]));
+  }, [units]);
+
+  const selectableUsers = useMemo(() => {
+    const clientUsers = users.filter((u) => u.role === 'client');
+
+    if (!normalizedSearch) return clientUsers;
+
+    return clientUsers.filter((u) =>
+      `${u.firstName} ${u.lastName} ${u.email}`
+        .toLowerCase()
+        .includes(normalizedSearch)
+    );
+  }, [users, normalizedSearch]);
+
+  const selectableUnits = useMemo(() => {
+    if (actionType !== 'reservation') return [];
+
+    if (!normalizedSearch) return units;
+
+    return units.filter((unit) =>
+      `${unit.name} ${unit.type}`.toLowerCase().includes(normalizedSearch)
+    );
+  }, [actionType, units, normalizedSearch]);
 
   const userReservationsWithBalance = useMemo(() => {
-    if (!selectedUser) return [];
+    if (!selectedUser || actionType !== 'payment') return [];
 
-    return reservations.filter(
-      (r) =>
-        r.userId === selectedUser.id &&
-        r.status === 'confirmed' &&
-        r.totalAmount > r.paidAmount
-    );
-  }, [reservations, selectedUser]);
+    const filtered = reservations.filter((reservation) => {
+      if (reservation.userId !== selectedUser.id) return false;
+      if (!isPaymentEligibleStatus(reservation.status)) return false;
 
-  const selectedReservation =
-    actionType === 'payment' && selectedTargetId
-      ? reservations.find((r) => r.id === selectedTargetId) ?? null
-      : null;
+      const remaining = getRemainingBalance(
+        reservation.totalAmount,
+        reservation.paidAmount
+      );
 
-  const selectedUnit =
-    actionType === 'reservation' && selectedTargetId
-      ? units.find((u) => u.id === selectedTargetId) ?? null
-      : null;
+      if (remaining <= 0) return false;
 
-  const resetFlow = () => {
+      if (!normalizedSearch) return true;
+
+      return `${reservation.unitName ?? ''} ${reservation.status ?? ''}`
+        .toLowerCase()
+        .includes(normalizedSearch);
+    });
+
+    filtered.sort((a, b) => {
+      const remainingA = getRemainingBalance(a.totalAmount, a.paidAmount);
+      const remainingB = getRemainingBalance(b.totalAmount, b.paidAmount);
+      return remainingB - remainingA;
+    });
+
+    return filtered;
+  }, [actionType, reservations, selectedUser, normalizedSearch]);
+
+  const selectedReservation = useMemo(() => {
+    if (actionType !== 'payment' || !selectedTargetId) return null;
+    return (reservationsById.get(selectedTargetId) as ReservationLike | null) ?? null;
+  }, [actionType, reservationsById, selectedTargetId]);
+
+  const selectedUnit = useMemo(() => {
+    if (actionType !== 'reservation' || !selectedTargetId) return null;
+    return (unitsById.get(selectedTargetId) as UnitLike | null) ?? null;
+  }, [actionType, unitsById, selectedTargetId]);
+
+  const resetFlow = useCallback(() => {
     setStage('select_user');
     setSelectedUser(null);
     setSelectedTargetId(null);
     setSearchTerm('');
-  };
+  }, []);
 
-  const handleResetAndClose = () => {
+  const handleClose = useCallback(() => {
     resetFlow();
     onClose();
-  };
+  }, [onClose, resetFlow]);
 
-  const stepTitle =
-    stage === 'select_user'
-      ? 'Select Customer'
-      : stage === 'select_target'
-      ? actionType === 'payment'
-        ? 'Select Reservation'
-        : 'Select Unit'
-      : stage === 'fill_form'
-      ? actionType === 'payment'
-        ? 'Payment Details'
-        : 'Reservation Details'
-      : 'Completed';
+  const handleSelectUser = useCallback((user: User) => {
+    setSelectedUser(user);
+    setSelectedTargetId(null);
+    setSearchTerm('');
+    setStage('select_target');
+  }, []);
 
-  const stepDescription =
-    stage === 'select_user'
-      ? 'Choose a customer account to continue.'
-      : stage === 'select_target'
-      ? actionType === 'payment'
-        ? 'Choose a confirmed reservation with an outstanding balance.'
-        : 'Choose a unit to reserve for the selected customer.'
-      : stage === 'fill_form'
-      ? 'Complete the required information below.'
-      : 'The record has been successfully processed.';
+  const handleBackToUsers = useCallback(() => {
+    setSelectedTargetId(null);
+    setSearchTerm('');
+    setStage('select_user');
+  }, []);
 
-  const renderSummaryBar = () => {
-    if (!selectedUser || stage === 'select_user' || stage === 'success') return null;
+  const handleSelectReservation = useCallback((id: string) => {
+    setSelectedTargetId(id);
+    setStage('fill_form');
+  }, []);
 
-    return (
-      <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              Customer
-            </p>
-            <p className="mt-1 text-sm font-semibold text-slate-900">
-              {selectedUser.first_name} {selectedUser.last_name}
-            </p>
-            <p className="mt-1 inline-flex items-center gap-1 text-xs text-slate-500">
-              <Mail className="size-3" />
-              {selectedUser.email}
-            </p>
-          </div>
+  const handleSelectUnit = useCallback((id: string) => {
+    setSelectedTargetId(id);
+    setStage('fill_form');
+  }, []);
 
-          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              {actionType === 'payment' ? 'Selected Reservation' : 'Selected Unit'}
-            </p>
+  const handleBackToTargets = useCallback(() => {
+    setStage('select_target');
+  }, []);
 
-            {actionType === 'payment' ? (
-              selectedReservation ? (
-                <>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">
-                    {selectedReservation.unitName}
-                  </p>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                      {selectedReservation.status?.toUpperCase() || 'CONFIRMED'}
-                    </span>
-                    <span className="text-xs text-slate-500">
-                      Balance:{' '}
-                      {formatCurrency(
-                        selectedReservation.totalAmount - selectedReservation.paidAmount
-                      )}
-                    </span>
-                  </div>
-                </>
-              ) : (
-                <p className="mt-1 text-sm text-slate-400">Not selected yet</p>
-              )
-            ) : selectedUnit ? (
-              <p className="mt-1 text-sm font-semibold text-slate-900">
-                {selectedUnit.name}
-              </p>
-            ) : (
-              <p className="mt-1 text-sm text-slate-400">Not selected yet</p>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderStageContent = () => {
-    switch (stage) {
-      case 'select_user':
-        return (
-          <div className="flex h-full flex-col">
-            <div className="sticky top-0 z-10 bg-white pb-4">
-              <div className="space-y-1">
-                <h3 className="text-lg font-bold text-slate-900">Select Customer</h3>
-                <p className="text-sm text-slate-500">
-                  Search and choose a customer to continue.
-                </p>
-              </div>
-
-              <div className="relative mt-4">
-                <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search customer name or email..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
-                />
-              </div>
-            </div>
-
-            <div className="flex-1 space-y-3 overflow-y-auto pt-2">
-              {selectableUsers.length > 0 ? (
-                selectableUsers.map((user) => (
-                  <button
-                    key={user.id}
-                    onClick={() => {
-                      setSelectedUser(user);
-                      setSelectedTargetId(null);
-                      setStage('select_target');
-                      setSearchTerm('');
-                    }}
-                    className="flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition-all hover:border-blue-200 hover:bg-blue-50 active:scale-[0.99]"
-                  >
-                    <div className="flex size-11 flex-shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-blue-600">
-                      <UserIcon className="size-5" />
-                    </div>
-
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-slate-900">
-                        {user.first_name} {user.last_name}
-                      </p>
-                      <p className="truncate text-sm text-slate-500">{user.email}</p>
-                    </div>
-                  </button>
-                ))
-              ) : (
-                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-14 text-center">
-                  <UserIcon className="mx-auto mb-3 size-12 text-slate-300" />
-                  <p className="font-medium text-slate-500">No customers found</p>
-                  <p className="mt-1 text-sm text-slate-400">
-                    Try a different name or email.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-
-      case 'select_target':
-        return (
-          <div className="flex h-full flex-col">
-            <button
-              onClick={() => {
-                setSelectedTargetId(null);
-                setStage('select_user');
-              }}
-              className="mb-5 flex items-center gap-2 text-sm font-medium text-blue-600 transition-colors hover:text-blue-700"
-            >
-              <ArrowLeft size={18} />
-              Back to customers
-            </button>
-
-            <div className="mb-4">
-              <h3 className="text-lg font-bold capitalize text-slate-900">
-                Select {actionType === 'payment' ? 'Reservation' : 'Unit'}
-              </h3>
-              <p className="mt-1 text-sm text-slate-500">
-                Assigning to{' '}
-                <span className="font-semibold text-slate-900">
-                  {selectedUser?.first_name} {selectedUser?.last_name}
-                </span>
-              </p>
-            </div>
-
-            <div className="flex-1 space-y-3 overflow-y-auto">
-              {actionType === 'payment' &&
-                (userReservationsWithBalance.length > 0 ? (
-                  userReservationsWithBalance.map((res) => (
-                    <button
-                      key={res.id}
-                      onClick={() => {
-                        setSelectedTargetId(res.id);
-                        setStage('fill_form');
-                      }}
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition-all hover:border-blue-200 hover:bg-blue-50 active:scale-[0.99]"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate font-semibold text-slate-900">
-                            {res.unitName}
-                          </p>
-                          <p className="mt-1 text-xs font-mono text-slate-400">
-                            ID: {res.publicId ?? res.id}
-                          </p>
-                        </div>
-
-                        <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
-                          CONFIRMED
-                        </span>
-                      </div>
-
-                      <div className="mt-3 flex items-end justify-between gap-3">
-                        <span className="text-xs text-slate-500">
-                          Outstanding Balance
-                        </span>
-                        <span className="rounded-full border border-rose-100 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-600">
-                          {formatCurrency(res.totalAmount - res.paidAmount)} due
-                        </span>
-                      </div>
-                    </button>
-                  ))
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 py-14 text-center">
-                    <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl bg-white text-slate-300">
-                      <CreditCard className="size-6" />
-                    </div>
-                    <p className="font-medium text-slate-500">
-                      No confirmed reservations with outstanding balances found.
-                    </p>
-                    <p className="mt-1 text-sm text-slate-400">
-                      Only confirmed reservations can receive admin-created payments.
-                    </p>
-                  </div>
-                ))}
-
-              {actionType === 'reservation' &&
-                units.map((unit) => (
-                  <button
-                    key={unit.id}
-                    onClick={() => {
-                      setSelectedTargetId(unit.id);
-                      setStage('fill_form');
-                    }}
-                    className="flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition-all hover:border-blue-200 hover:bg-blue-50 active:scale-[0.99]"
-                  >
-                    <div className="flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500">
-                      <Building className="size-5" />
-                    </div>
-
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-slate-900">
-                        {unit.name}
-                      </p>
-                    </div>
-                  </button>
-                ))}
-            </div>
-          </div>
-        );
-
-      case 'fill_form':
-        return (
-          <div className="animate-in slide-in-from-bottom-4 fade-in duration-300">
-            <button
-              onClick={() => setStage('select_target')}
-              className="mb-6 flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700"
-            >
-              <ArrowLeft size={18} />
-              Back to selection
-            </button>
-
-            {actionType === 'payment' &&
-              selectedUser &&
-              selectedTargetId &&
-              selectedReservation?.status === 'confirmed' && (
-                <AdminPaymentForm
-                  userId={selectedUser.id}
-                  reservationId={selectedTargetId}
-                  onComplete={() => setStage('success')}
-                />
-              )}
-
-            {actionType === 'payment' &&
-              selectedUser &&
-              selectedTargetId &&
-              selectedReservation?.status !== 'confirmed' && (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-                  Payments can only be created for confirmed reservations.
-                </div>
-              )}
-
-            {actionType === 'reservation' && selectedUser && selectedTargetId && (
-              <AdminReservationForm
-                userId={selectedUser.id}
-                unitId={selectedTargetId}
-                onComplete={() => setStage('success')}
-              />
-            )}
-          </div>
-        );
-
-      case 'success':
-        return (
-          <div className="animate-in zoom-in-95 px-4 py-12 text-center duration-300">
-            <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-full bg-emerald-100">
-              <CheckCircle2 className="size-12 text-emerald-600" />
-            </div>
-
-            <h3 className="text-2xl font-bold text-slate-900">Success!</h3>
-            <p className="mx-auto mt-3 max-w-sm text-slate-500">
-              The {actionType} record has been processed and is now visible in the
-              customer portal.
-            </p>
-
-            <div className="mt-10 flex flex-col justify-center gap-3 sm:flex-row">
-              <button
-                onClick={resetFlow}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-6 py-3.5 font-semibold text-slate-700 transition-all hover:bg-slate-50"
-              >
-                <RotateCcw className="size-4" />
-                Create Another
-              </button>
-
-              <button
-                onClick={handleResetAndClose}
-                className="rounded-2xl bg-slate-900 px-8 py-3.5 font-semibold text-white shadow-lg transition-all hover:bg-black active:scale-[0.98]"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        );
-    }
-  };
+  const handleComplete = useCallback(() => {
+    setStage('success');
+  }, []);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-900/60 p-0 backdrop-blur-sm transition-all duration-300 sm:items-center sm:p-4">
-      <div className="animate-in zoom-in-95 slide-in-from-bottom duration-300 flex h-[95vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[2rem] border border-slate-200/60 bg-white shadow-2xl sm:h-auto sm:max-h-[88vh] sm:rounded-[2rem]">
-        <div className="flex items-center justify-between bg-slate-900 p-6">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] p-0 sm:p-4 transition-all duration-300">
+          <div className="bg-white w-full sm:max-w-4xl h-[92vh] sm:h-auto sm:max-h-[92vh] rounded-t-[2rem] sm:rounded-[2rem] overflow-hidden shadow-2xl border border-slate-200/60 animate-in fade-in zoom-in-95 slide-in-from-bottom duration-300 flex flex-col">
+            <div className="bg-slate-900 p-6 flex justify-between items-center">
+          <div className="min-w-0">
+            <h2 className="text-xl font-bold text-white tracking-tight">
               Administrator Tools
-            </p>
-            <h2 className="mt-1 text-xl font-bold tracking-tight text-white">
-              New {actionType === 'payment' ? 'Payment' : 'Reservation'}
             </h2>
-            <p className="mt-1 text-xs font-medium text-slate-400">
-              {stepTitle} · {stepDescription}
+            <p className="text-slate-400 text-xs font-medium mt-1">
+              New {actionType === 'payment' ? 'Payment' : 'Reservation'}
             </p>
           </div>
 
+
           <button
-            onClick={handleResetAndClose}
-            className="rounded-xl bg-white/5 p-2 text-slate-400 transition-all hover:bg-white/10"
+            type="button"
+            onClick={handleClose}
+            className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-white/10"
           >
             <X className="size-5" />
           </button>
         </div>
 
-        {actionType === 'payment' && stage !== 'select_user' && stage !== 'success' && (
-          <div className="border-b border-emerald-100 bg-emerald-50/80 px-6 py-3">
-            <div className="flex items-start gap-3 rounded-2xl border border-emerald-100 bg-white px-4 py-3">
-              <div className="mt-0.5 rounded-xl bg-emerald-100 p-2 text-emerald-700">
-                <ShieldCheck className="size-4" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-emerald-800">
-                  Payment eligibility check enabled
-                </p>
-                <p className="mt-0.5 text-xs text-emerald-700">
-                  Only confirmed reservations with remaining balances can be selected.
-                </p>
-              </div>
+        {actionType === 'payment' && stage !== 'select_user' && stage !== 'success' ? (
+          <div className="border-b border-emerald-100 bg-emerald-50 px-5 py-2.5">
+            <p className="text-xs font-medium text-emerald-800">
+              Only approved, confirmed, or completed reservations with remaining
+              balance can receive payments.
+            </p>
+          </div>
+        ) : null}
+
+        {selectedUser && stage !== 'select_user' && stage !== 'success' ? (
+          <div className="border-b border-slate-200 px-5 py-3 text-sm text-slate-600">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="font-semibold text-slate-800">
+                {getUserLabel(selectedUser)}
+              </span>
+              <span className="text-slate-300">•</span>
+              <span className="inline-flex items-center gap-1">
+                <Mail className="size-3.5" />
+                {selectedUser.email}
+              </span>
+
+              {selectedReservation ? (
+                <>
+                  <span className="text-slate-300">•</span>
+                  <span>{selectedReservation.unitName}</span>
+                  <span className="text-slate-300">•</span>
+                  <span className="font-semibold text-rose-600">
+                    {formatCurrency(
+                      getRemainingBalance(
+                        selectedReservation.totalAmount,
+                        selectedReservation.paidAmount
+                      )
+                    )}{' '}
+                    left
+                  </span>
+                </>
+              ) : null}
+
+              {selectedUnit ? (
+                <>
+                  <span className="text-slate-300">•</span>
+                  <span>{selectedUnit.name}</span>
+                </>
+              ) : null}
             </div>
           </div>
-        )}
+        ) : null}
 
-        {renderSummaryBar()}
+        <div className="flex-1 overflow-y-auto p-5">
+          {stage === 'select_user' && (
+            <SelectUserStep
+              users={selectableUsers}
+              searchTerm={searchTerm}
+              onSearchChange={setSearchTerm}
+              onSelectUser={handleSelectUser}
+            />
+          )}
 
-        <div className="flex-1 overflow-y-auto p-6 sm:p-8">{renderStageContent()}</div>
+          {stage === 'select_target' && (
+            <SelectTargetStep
+              actionType={actionType}
+              searchTerm={searchTerm}
+              onSearchChange={setSearchTerm}
+              onBack={handleBackToUsers}
+              reservations={userReservationsWithBalance}
+              units={selectableUnits}
+              onSelectReservation={handleSelectReservation}
+              onSelectUnit={handleSelectUnit}
+            />
+          )}
+
+          {stage === 'fill_form' && (
+            <FillFormStep
+              actionType={actionType}
+              selectedUser={selectedUser}
+              selectedReservation={selectedReservation}
+              selectedTargetId={selectedTargetId}
+              onBack={handleBackToTargets}
+              onComplete={handleComplete}
+            />
+          )}
+
+          {stage === 'success' && (
+            <SuccessStep
+              actionType={actionType}
+              onCreateAnother={resetFlow}
+              onDone={handleClose}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

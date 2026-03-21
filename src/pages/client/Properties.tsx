@@ -6,6 +6,8 @@ import type { UnitType } from "../../contexts/DataContext";
 import { motion } from "framer-motion";
 import { useAuth } from "../../contexts/AuthContext";
 import { useNotifications } from "../../contexts/NotificationContext";
+import { useUnits } from '../../contexts/UnitsContext';    
+import type { Reservation } from '../../data/types';
 import {
   Search,
   Filter,
@@ -183,7 +185,8 @@ function buildInitialReservationForm(unitType: UnitType): ReservationForm {
 
 export default function ClientUnits() {
   const { user } = useAuth();
-  const { units, addReservation, parkingSlots, reservations } = useData();
+  const { addReservation, reservations } = useData();
+  const { units, parkingSlots } = useUnits();
   const { sendSystemNotification } = useNotifications();
 
   const [isSlotPanelOpen, setIsSlotPanelOpen] = useState(false);
@@ -399,7 +402,7 @@ export default function ClientUnits() {
   }, []);
 
   const handleReservationSubmit = useCallback(
-    (e: React.FormEvent) => {
+  async (e: React.FormEvent) => {
       e.preventDefault();
 
       if (!selectedUnitData || !user) return;
@@ -444,7 +447,10 @@ export default function ClientUnits() {
         return;
       }
 
-      const reservationData: any = {
+      const reservationData: Omit<
+        Reservation,
+        'id' | 'requestDate' | 'status' | 'paidAmount'
+      > = {
         userId: user.id,
         unitId: selectedUnitData.id,
         unitName: selectedUnitData.name,
@@ -489,7 +495,7 @@ export default function ClientUnits() {
         reservationData.appointmentTime = reservationForm.appointmentTime || null;
       }
 
-      addReservation(reservationData);
+      await addReservation(reservationData);
 
       sendSystemNotification(
         user.id,

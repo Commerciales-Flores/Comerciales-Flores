@@ -38,8 +38,8 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
 
     addInquiry({
       userId: user.id,
-      first_name: user.firstName,
-      last_name: user.lastName,
+      firstName: user.firstName,
+      lastName: user.lastName,
       email: user.email,
       subject: formData.subject,
       message: formData.message

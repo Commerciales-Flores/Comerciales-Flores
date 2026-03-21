@@ -56,65 +56,21 @@ type DashboardStatCardProps = {
   label: string;
   value: number | string;
   icon: React.ReactNode;
-  tone?: 'blue' | 'emerald' | 'amber' | 'rose' | 'indigo';
 };
 
 const DashboardStatCard = memo(function DashboardStatCard({
   label,
   value,
   icon,
-  tone = 'blue',
 }: DashboardStatCardProps) {
-  const toneStyles = {
-    blue: {
-      card: 'border-blue-100 bg-gradient-to-br from-blue-50 to-white',
-      iconWrap: 'bg-blue-100 text-blue-700',
-      accent: 'bg-blue-500',
-    },
-    emerald: {
-      card: 'border-emerald-100 bg-gradient-to-br from-emerald-50 to-white',
-      iconWrap: 'bg-emerald-100 text-emerald-700',
-      accent: 'bg-emerald-500',
-    },
-    amber: {
-      card: 'border-amber-100 bg-gradient-to-br from-amber-50 to-white',
-      iconWrap: 'bg-amber-100 text-amber-700',
-      accent: 'bg-amber-500',
-    },
-    rose: {
-      card: 'border-rose-100 bg-gradient-to-br from-rose-50 to-white',
-      iconWrap: 'bg-rose-100 text-rose-700',
-      accent: 'bg-rose-500',
-    },
-    indigo: {
-      card: 'border-indigo-100 bg-gradient-to-br from-indigo-50 to-white',
-      iconWrap: 'bg-indigo-100 text-indigo-700',
-      accent: 'bg-indigo-500',
-    },
-  }[tone];
-
   return (
-    <div
-      className={`relative overflow-hidden rounded-2xl border p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md sm:p-5 ${toneStyles.card}`}
-    >
-      <div className={`absolute inset-x-0 top-0 h-1 ${toneStyles.accent}`} />
-
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 sm:text-[11px]">
-            {label}
-          </p>
-          <p className="mt-2 truncate text-lg font-bold text-gray-900 sm:text-2xl">
-            {value}
-          </p>
-        </div>
-
-        <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl ${toneStyles.iconWrap}`}
-        >
-          {icon}
-        </div>
+    <div className="bg-white p-4 sm:p-5 min-h-[100px] rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-medium text-gray-500">{label}</p>
+        {icon}
       </div>
+
+      <p className="text-2xl font-bold text-gray-900">{value}</p>
     </div>
   );
 });
@@ -155,31 +111,48 @@ const SectionHeader = memo(function SectionHeader({
 });
 
 type EmptyStateProps = {
-  message: string;
+  icon?: React.ReactNode;
+  title: string;
+  description?: string;
   actionLabel?: string;
   actionTo?: string;
 };
 
-const EmptyState = memo(function EmptyState({
-  message,
+export function EmptyState({
+  icon,
+  title,
+  description,
   actionLabel,
   actionTo,
 }: EmptyStateProps) {
   return (
-    <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-10 text-center">
-      <p className={`${uiTypography.bodyText} text-gray-400`}>{message}</p>
-      {actionLabel && actionTo ? (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-10 text-center">
+      
+      <div className="mb-3 text-gray-400">
+        {icon}
+      </div>
+
+      <h3 className="text-sm font-semibold text-gray-800">
+        {title}
+      </h3>
+
+      {description && (
+        <p className="mt-1 text-xs text-gray-500 max-w-[260px]">
+          {description}
+        </p>
+      )}
+
+      {actionLabel && actionTo && (
         <Link
           to={actionTo}
-          className={`mt-4 inline-flex items-center gap-1.5 ${uiTypography.buttonText} text-sm text-blue-600 hover:underline`}
+          className="mt-4 text-xs font-medium text-blue-600 hover:underline"
         >
           {actionLabel}
-          <ArrowRight className="size-4" />
         </Link>
-      ) : null}
+      )}
     </div>
   );
-});
+}
 
 export default function ClientDashboard() {
   const { user } = useAuth();
@@ -310,36 +283,31 @@ export default function ClientDashboard() {
           </div>
         </header>
 
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <div className="grid grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
           <DashboardStatCard
             label="Reservations"
             value={dashboard.totalReservations}
-            icon={<Calendar className="size-5" />}
-            tone="blue"
+            icon={<Calendar className="size-5 text-purple-500" />}
           />
           <DashboardStatCard
             label="Upcoming"
             value={dashboard.upcomingCount}
-            icon={<Clock3 className="size-5" />}
-            tone="emerald"
+            icon={<Clock3 className="size-5 text-green-500" />}
           />
           <DashboardStatCard
             label="Pending"
             value={dashboard.pendingCount}
-            icon={<AlertCircle className="size-5" />}
-            tone="amber"
+            icon={<AlertCircle className="size-5 text-red-500" />}
           />
           <DashboardStatCard
             label="Reminders"
             value={dashboard.paymentReminderCount}
-            icon={<CreditCard className="size-5" />}
-            tone="rose"
+            icon={<CreditCard className="size-5 text-orange-500" />}
           />
           <DashboardStatCard
             label="Paid"
             value={formatCurrency(dashboard.totalPaid)}
-            icon={<CreditCard className="size-5" />}
-            tone="indigo"
+            icon={<CreditCard className="size-5 text-blue-500" />}
           />
         </div>
 
@@ -433,8 +401,10 @@ export default function ClientDashboard() {
               <div className="p-4 pt-3 sm:p-6 sm:pt-4">
                 {dashboard.recentReservations.length === 0 ? (
                   <EmptyState
-                    message="No reservations yet."
-                    actionLabel="Browse Properties"
+                    icon={<Calendar className="size-5" />}
+                    title="No reservations yet"
+                    description="Start by booking a property."
+                    actionLabel="Browse properties"
                     actionTo="/client/properties"
                   />
                 ) : (
@@ -536,38 +506,49 @@ export default function ClientDashboard() {
               </div>
             </section>
 
-            <section className={CARD_CLASS}>
-              <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-purple-100 text-purple-600">
-                  <Bell className="size-4" />
-                </div>
-                <h2 className={`${uiTypography.badgeLabel} text-gray-700`}>Alerts</h2>
-              </div>
+            <section className="rounded-2xl bg-gray-900 p-4 text-white shadow-sm">
+  <div className="mb-4">
+    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">
+      ALERTS
+    </p>
+    <h2 className="mt-1 text-base font-semibold text-white">
+      Notifications & Updates
+    </h2>
+    <p className="mt-1 text-xs text-gray-400">
+      Important updates about your reservations and payments.
+    </p>
+  </div>
 
-              <div className="p-4">
-                {dashboard.userNotifications.length > 0 ? (
-                  <div className="space-y-3">
-                    {dashboard.userNotifications.map((notification) => (
-                      <div
-                        key={notification.id}
-                        className="rounded-2xl border border-purple-100 bg-purple-50 p-3.5"
-                      >
-                        <p className="text-[11px] leading-relaxed text-purple-900">
-                          {notification.message}
-                        </p>
-                        <span className="mt-2 inline-block text-[9px] font-medium uppercase tracking-wide text-purple-400">
-                          {formatDate(notification.date)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 py-8 text-center">
-                    <p className="text-[11px] text-gray-400">All clear!</p>
-                  </div>
-                )}
-              </div>
-            </section>
+  <div className="space-y-3">
+    {dashboard.userNotifications.length > 0 ? (
+      <div className="space-y-3">
+        {dashboard.userNotifications.slice(0, 2).map((notification) => (
+          <div
+            key={notification.id}
+            className="rounded-2xl border border-gray-800 bg-white/5 p-3"
+          >
+            <p className="text-sm leading-relaxed text-white">
+              {notification.message}
+            </p>
+
+            <p className="mt-2 text-[11px] text-gray-500">
+              {new Date(notification.date).toLocaleString()}
+            </p>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-700 bg-white/5 py-8 text-center">
+        <p className="text-sm font-medium text-gray-300">
+          You're all caught up 🎉
+        </p>
+        <p className="mt-1 text-xs text-gray-500">
+          No new alerts at the moment.
+        </p>
+      </div>
+    )}
+  </div>
+</section>
           </div>
         </div>
       </div>

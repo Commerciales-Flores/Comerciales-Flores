@@ -38,6 +38,27 @@ interface PaymentsContextType {
 
 const PaymentsContext = createContext<PaymentsContextType | undefined>(undefined);
 
+function mapPaymentRow(row: any): Payment {
+  return {
+    id: row.payment_id,
+    publicId: row.public_id,
+    reservationId: row.reservation_id,
+    userId: row.user_id,
+    amount: Number(row.amount),
+    method: row.method as PaymentMethod,
+    status: row.status as PaymentStatus,
+    proofOfPayment: row.proofOfPayment,
+    date: row.date,
+    notes: row.notes,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function normalizeSearchTerm(value: string) {
+  return value.trim();
+}
+
 export function PaymentsProvider({ children }: { children: ReactNode }) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const { reservations, updateReservation } = useReservations();
@@ -62,22 +83,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    setPayments(
-      (data ?? []).map((row: any) => ({
-        id: row.payment_id,
-        publicId: row.public_id,
-        reservationId: row.reservation_id,
-        userId: row.user_id,
-        amount: Number(row.amount),
-        method: row.method as PaymentMethod,
-        status: row.status as PaymentStatus,
-        proofOfPayment: row.proofOfPayment,
-        date: row.date,
-        notes: row.notes,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      }))
-    );
+    setPayments((data ?? []).map(mapPaymentRow));
   }, []);
 
   useEffect(() => {
@@ -106,7 +112,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
         query = query.eq('status', status);
       }
 
-      const trimmedSearch = searchTerm.trim();
+      const trimmedSearch = normalizeSearchTerm(searchTerm);
       if (trimmedSearch) {
         query = query.or(
           [
@@ -127,20 +133,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       if (error) throw error;
 
       return {
-        data: (data ?? []).map((row: any) => ({
-          id: row.payment_id,
-          publicId: row.public_id,
-          reservationId: row.reservation_id,
-          userId: row.user_id,
-          amount: Number(row.amount),
-          method: row.method as PaymentMethod,
-          status: row.status as PaymentStatus,
-          proofOfPayment: row.proofOfPayment,
-          date: row.date,
-          notes: row.notes,
-          createdAt: row.created_at,
-          updatedAt: row.updated_at,
-        })),
+        data: (data ?? []).map(mapPaymentRow),
         count: count ?? 0,
       };
     },
@@ -187,58 +180,30 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
             notes: paymentData.notes,
           },
         ])
-        .select()
+        .select(
+          'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at'
+        )
         .single();
 
       if (error) throw error;
 
-      const newPayment: Payment = {
-        id: data.payment_id,
-        publicId: data.public_id,
-        reservationId: data.reservation_id,
-        userId: data.user_id,
-        amount: Number(data.amount),
-        method: data.method as PaymentMethod,
-        status: data.status as PaymentStatus,
-        proofOfPayment: data.proofOfPayment,
-        date: data.date,
-        notes: data.notes,
-        createdAt: data.created_at,
-        updatedAt: data.updated_at,
-      };
-
-      if (user?.id) {
-        try {
-          await addAuditLog({
-            userId: user.id,
-            action: 'PAYMENT_CREATED',
-            targetTable: 'payments',
-            targetId: newPayment.id,
-            beforeValue: undefined,
-            afterValue: newPayment,
-            changedFields: Object.keys(newPayment),
-            notes: `Created payment ${newPayment.publicId ?? newPayment.id} for reservation ${newPayment.reservationId}`,
-          });
-        } catch (auditError) {
-          console.error('Failed to audit payment creation:', auditError);
-        }
-      }
+      const newPayment = mapPaymentRow(data);
 
       if (newPayment.status === 'paid') {
         await addLedgerEntry({
           userId: newPayment.userId,
-          reservation_id: newPayment.reservationId,
-          payment_id: newPayment.id,
-          entry_type: 'payment',
+          reservationId: newPayment.reservationId,
+          paymentId: newPayment.id,
+          entryType: 'payment',
           amount: newPayment.amount,
           method: newPayment.method,
           status: 'verified',
-          reference_no: null,
+          referenceNo: null,
           description: `Payment for reservation ${newPayment.publicId ?? newPayment.id}`,
           notes: newPayment.notes ?? null,
-          recorded_at: newPayment.date,
-          created_at: new Date().toISOString(),
-          created_by: user?.id ?? null,
+          recordedAt: newPayment.date,
+          createdAt: new Date().toISOString(),
+          createdBy: user?.id ?? null,
         });
 
         const reservation = reservations.find((r) => r.id === newPayment.reservationId);
@@ -249,10 +214,27 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      setPayments((prev) => [newPayment, ...prev]);
+      if (user?.id) {
+        try {
+          await addAuditLog({
+            userId: user.id,
+            action: 'PAYMENT_CREATED',
+            targetTable: 'payments',
+            targetId: newPayment.id,
+            beforeValue: null,
+            afterValue: newPayment,
+            changedFields: Object.keys(newPayment),
+            notes: `Created payment ${newPayment.publicId ?? newPayment.id} for reservation ${newPayment.reservationId}`,
+          });
+        } catch (auditError) {
+          console.error('Failed to audit payment creation:', auditError);
+        }
+      }
+
+      await refreshPayments();
       return newPayment.id;
     },
-    [addAuditLog, addLedgerEntry, reservations, updateReservation, user?.id]
+    [addAuditLog, addLedgerEntry, refreshPayments, reservations, updateReservation, user?.id]
   );
 
   const updatePayment = useCallback(
@@ -260,7 +242,24 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       const existingPayment = payments.find((p) => p.id === id);
       if (!existingPayment) return;
 
-      const dbPayload: any = {};
+      if (
+        existingPayment.status === 'paid' &&
+        paymentUpdate.amount !== undefined &&
+        paymentUpdate.amount !== existingPayment.amount
+      ) {
+        throw new Error('Changing the amount of an already paid payment is not supported yet.');
+      }
+
+      if (
+        existingPayment.status === 'paid' &&
+        paymentUpdate.status !== undefined &&
+        paymentUpdate.status !== 'paid'
+      ) {
+        throw new Error('Reverting an already paid payment is not supported yet.');
+      }
+
+      const dbPayload: Record<string, unknown> = {};
+
       if (paymentUpdate.status !== undefined) dbPayload.status = paymentUpdate.status;
       if (paymentUpdate.amount !== undefined) dbPayload.amount = paymentUpdate.amount;
       if (paymentUpdate.method !== undefined) dbPayload.method = paymentUpdate.method;
@@ -307,56 +306,27 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
 
         await addLedgerEntry({
           userId: existingPayment.userId,
-          reservation_id: existingPayment.reservationId,
-          payment_id: existingPayment.id,
-          entry_type: 'payment',
+          reservationId: existingPayment.reservationId,
+          paymentId: existingPayment.id,
+          entryType: 'payment',
           amount: finalAmount,
           method: finalMethod,
           status: 'verified',
-          reference_no: null,
+          referenceNo: null,
           description: `Payment for reservation ${existingPayment.publicId ?? existingPayment.id}`,
           notes: finalNotes ?? null,
-          recorded_at: new Date().toISOString(),
-          created_at: new Date().toISOString(),
-          created_by: user?.id ?? null,
+          recordedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          createdBy: user?.id ?? null,
         });
-      }
 
-      const reservation = reservations.find((r) => r.id === existingPayment.reservationId);
-      if (reservation) {
-        let newPaidAmount = reservation.paidAmount;
-        let needsReservationUpdate = false;
-
-        if (existingPayment.status !== 'paid' && paymentUpdate.status === 'paid') {
-          newPaidAmount += paymentUpdate.amount ?? existingPayment.amount;
-          needsReservationUpdate = true;
-        } else if (
-          existingPayment.status === 'paid' &&
-          paymentUpdate.status !== undefined &&
-          paymentUpdate.status !== 'paid'
-        ) {
-          newPaidAmount -= existingPayment.amount;
-          needsReservationUpdate = true;
-        } else if (
-          existingPayment.status === 'paid' &&
-          (paymentUpdate.status === undefined || paymentUpdate.status === 'paid') &&
-          paymentUpdate.amount !== undefined &&
-          paymentUpdate.amount !== existingPayment.amount
-        ) {
-          newPaidAmount = newPaidAmount - existingPayment.amount + paymentUpdate.amount;
-          needsReservationUpdate = true;
-        }
-
-        if (needsReservationUpdate) {
+        const reservation = reservations.find((r) => r.id === existingPayment.reservationId);
+        if (reservation) {
           await updateReservation(reservation.id, {
-            paidAmount: Math.max(0, newPaidAmount),
+            paidAmount: reservation.paidAmount + finalAmount,
           });
         }
       }
-
-      setPayments((prev) =>
-        prev.map((p) => (p.id === id ? updatedPayment : p))
-      );
 
       if (user?.id && changedFields.length > 0) {
         try {
@@ -381,8 +351,10 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
           console.error('Failed to audit payment update:', auditError);
         }
       }
+
+      await refreshPayments();
     },
-    [addAuditLog, addLedgerEntry, payments, reservations, updateReservation, user?.id]
+    [addAuditLog, addLedgerEntry, payments, refreshPayments, reservations, updateReservation, user?.id]
   );
 
   const getPaymentsByUserId = useCallback(
@@ -390,7 +362,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
     [payments]
   );
 
-  const value = useMemo(
+  const value = useMemo<PaymentsContextType>(
     () => ({
       payments,
       addPayment,
@@ -420,6 +392,8 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
 
 export function usePayments() {
   const context = useContext(PaymentsContext);
-  if (!context) throw new Error('usePayments must be used within PaymentsProvider');
+  if (!context) {
+    throw new Error('usePayments must be used within PaymentsProvider');
+  }
   return context;
 }

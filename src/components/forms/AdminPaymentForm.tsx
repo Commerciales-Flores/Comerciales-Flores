@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
+import { usePayments } from '../../contexts/PaymentsContext';
+import type { PaymentMethod } from '../../data/types';
 import { formatCurrency } from '../../utils/currency';
 import {
   Paperclip,
@@ -21,13 +23,23 @@ export default function AdminPaymentForm({
   reservationId,
   onComplete,
 }: AdminPaymentFormProps) {
-  const { reservations, addPayment } = useData();
-  const reservation = reservations.find((r) => r.id === reservationId);
-  const balance = reservation ? reservation.totalAmount - reservation.paidAmount : 0;
+  const { reservations } = useData();
+  const { addPayment } = usePayments();
 
-  const [formState, setFormState] = useState({
+  const reservation = reservations.find((r) => r.id === reservationId);
+  const balance = reservation
+    ? Math.max(Number(reservation.totalAmount || 0) - Number(reservation.paidAmount || 0), 0)
+    : 0;
+
+  const [formState, setFormState] = useState<{
+    amount: string;
+    method: PaymentMethod;
+    notes: string;
+    bank: string;
+    referenceNumber: string;
+  }>({
     amount: '',
-    method: 'cash' as any,
+    method: 'cash',
     notes: '',
     bank: '',
     referenceNumber: '',
@@ -35,6 +47,7 @@ export default function AdminPaymentForm({
 
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofPreviewUrl, setProofPreviewUrl] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const showReferenceFields =
     formState.method === 'bank_transfer' ||
@@ -44,15 +57,22 @@ export default function AdminPaymentForm({
 
   const enteredAmount = Number(formState.amount || 0);
   const isInvalidAmount =
-    !formState.amount || Number.isNaN(enteredAmount) || enteredAmount <= 0 || enteredAmount > balance;
+    !formState.amount ||
+    Number.isNaN(enteredAmount) ||
+    enteredAmount <= 0 ||
+    enteredAmount > balance;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setProofFile(file);
-      const previewUrl = URL.createObjectURL(file);
-      setProofPreviewUrl(previewUrl);
+    if (!e.target.files?.[0]) return;
+
+    const file = e.target.files[0];
+
+    if (proofPreviewUrl) {
+      URL.revokeObjectURL(proofPreviewUrl);
     }
+
+    setProofFile(file);
+    setProofPreviewUrl(URL.createObjectURL(file));
   };
 
   const handleRemoveImage = () => {
@@ -67,25 +87,47 @@ export default function AdminPaymentForm({
     };
   }, [proofPreviewUrl]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!reservation || isInvalidAmount) return;
 
-    const simulatedProofUrl = proofFile
-      ? `https://your-storage-service.com/receipts/admin-${Date.now()}-${proofFile.name}`
-      : '';
+    if (!reservation || isInvalidAmount || balance <= 0 || isSubmitting) return;
 
-    addPayment({
-      reservationId: reservation.id,
-      userId,
-      amount: parseFloat(formState.amount),
-      method: formState.method,
-      status: 'paid',
-      notes: formState.notes,
-      proofOfPayment: simulatedProofUrl,
-    });
+    try {
+      setIsSubmitting(true);
 
-    onComplete();
+      const simulatedProofUrl = proofFile
+        ? `https://your-storage-service.com/receipts/admin-${Date.now()}-${proofFile.name}`
+        : '';
+
+      const compiledNotes = [
+        formState.notes.trim(),
+        showReferenceFields && formState.bank.trim()
+          ? `Bank/Provider: ${formState.bank.trim()}`
+          : '',
+        showReferenceFields && formState.referenceNumber.trim()
+          ? `Reference No: ${formState.referenceNumber.trim()}`
+          : '',
+      ]
+        .filter(Boolean)
+        .join(' | ');
+
+      await addPayment({
+        reservationId: reservation.id,
+        userId,
+        amount: parseFloat(formState.amount),
+        method: formState.method,
+        status: 'paid',
+        notes: compiledNotes,
+        proofOfPayment: simulatedProofUrl,
+      });
+
+      onComplete();
+    } catch (error) {
+      console.error('Failed to add payment:', error);
+      alert('Failed to add verified payment. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (!reservation) {
@@ -96,11 +138,19 @@ export default function AdminPaymentForm({
     );
   }
 
+  if (balance <= 0) {
+    return (
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+        This reservation is already fully paid.
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Reservation Summary */}
       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-        <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
           Payment Target
         </p>
 
@@ -109,16 +159,16 @@ export default function AdminPaymentForm({
             <p className="text-sm font-semibold text-slate-900">
               {reservation.unitName}
             </p>
-            <p className="text-xs text-slate-500 mt-1 font-mono">
+            <p className="mt-1 font-mono text-xs text-slate-500">
               Reservation ID: {reservation.publicId ?? reservation.id}
             </p>
           </div>
 
           <div className="text-right">
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
               Outstanding Balance
             </p>
-            <p className="text-base font-bold text-rose-600 mt-1">
+            <p className="mt-1 text-base font-bold text-rose-600">
               {formatCurrency(balance)}
             </p>
           </div>
@@ -128,18 +178,18 @@ export default function AdminPaymentForm({
       {/* Payment Info */}
       <div className="space-y-5">
         <div>
-          <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-3 ml-1">
+          <h3 className="mb-3 ml-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
             Payment Information
           </h3>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {/* Amount */}
             <div className="space-y-1.5">
-              <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wide ml-1">
+              <label className="ml-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                 Payment Amount
               </label>
               <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-semibold">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-400">
                   ₱
                 </span>
                 <input
@@ -153,11 +203,12 @@ export default function AdminPaymentForm({
                   min="0.01"
                   step="0.01"
                   placeholder="0.00"
-                  className="w-full pl-8 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
+                  disabled={isSubmitting}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-8 pr-4 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </div>
               <p
-                className={`text-[11px] ml-1 ${
+                className={`ml-1 text-[11px] ${
                   isInvalidAmount && formState.amount
                     ? 'text-rose-500'
                     : 'text-slate-400'
@@ -169,15 +220,19 @@ export default function AdminPaymentForm({
 
             {/* Method */}
             <div className="space-y-1.5">
-              <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wide ml-1">
+              <label className="ml-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                 Payment Method
               </label>
               <select
                 value={formState.method}
                 onChange={(e) =>
-                  setFormState({ ...formState, method: e.target.value })
+                  setFormState({
+                    ...formState,
+                    method: e.target.value as PaymentMethod,
+                  })
                 }
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
+                disabled={isSubmitting}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <option value="cash">Cash</option>
                 <option value="bank_transfer">Bank Transfer</option>
@@ -190,11 +245,11 @@ export default function AdminPaymentForm({
             {/* Bank / Provider */}
             {showReferenceFields && (
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wide ml-1">
+                <label className="ml-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                   Bank / Provider
                 </label>
                 <div className="relative">
-                  <Landmark className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+                  <Landmark className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
                     value={formState.bank}
@@ -202,7 +257,8 @@ export default function AdminPaymentForm({
                       setFormState({ ...formState, bank: e.target.value })
                     }
                     placeholder="e.g. BDO, GCash, Maya"
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
+                    disabled={isSubmitting}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
                   />
                 </div>
               </div>
@@ -211,11 +267,11 @@ export default function AdminPaymentForm({
             {/* Reference Number */}
             {showReferenceFields && (
               <div className="space-y-1.5">
-                <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wide ml-1">
+                <label className="ml-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                   Reference Number
                 </label>
                 <div className="relative">
-                  <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
+                  <CreditCard className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
                     value={formState.referenceNumber}
@@ -226,7 +282,8 @@ export default function AdminPaymentForm({
                       })
                     }
                     placeholder="Optional reference or transaction no."
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
+                    disabled={isSubmitting}
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
                   />
                 </div>
               </div>
@@ -236,14 +293,14 @@ export default function AdminPaymentForm({
 
         {/* Proof Upload */}
         <div>
-          <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-3 ml-1">
+          <h3 className="mb-3 ml-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
             Proof of Payment
           </h3>
 
           {!proofPreviewUrl ? (
             <label
               htmlFor="admin-file-upload"
-              className="w-full min-h-28 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 hover:border-blue-400 hover:bg-blue-50 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer text-slate-500"
+              className="flex min-h-28 w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 text-slate-500 transition-all hover:border-blue-400 hover:bg-blue-50"
             >
               <Paperclip className="size-5" />
               <span className="text-sm font-semibold">Attach Receipt</span>
@@ -256,30 +313,32 @@ export default function AdminPaymentForm({
                 className="sr-only"
                 onChange={handleFileChange}
                 accept="image/*"
+                disabled={isSubmitting}
               />
             </label>
           ) : (
             <div className="flex items-start gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="relative w-28 h-28 rounded-2xl overflow-hidden border border-slate-200 bg-white flex-shrink-0">
+              <div className="relative h-28 w-28 flex-shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white">
                 <img
                   src={proofPreviewUrl}
                   alt="Proof preview"
-                  className="w-full h-full object-cover"
+                  className="h-full w-full object-cover"
                 />
               </div>
 
-              <div className="flex-1 min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-slate-900">
                   {proofFile?.name ?? 'Receipt attached'}
                 </p>
-                <p className="text-xs text-slate-500 mt-1">
+                <p className="mt-1 text-xs text-slate-500">
                   Review the uploaded proof before submitting this verified payment.
                 </p>
 
                 <button
                   type="button"
                   onClick={handleRemoveImage}
-                  className="mt-4 inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 transition-all text-sm font-medium"
+                  disabled={isSubmitting}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 transition-all hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <Trash2 className="size-4" />
                   Remove
@@ -291,12 +350,12 @@ export default function AdminPaymentForm({
 
         {/* Notes */}
         <div>
-          <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-3 ml-1">
+          <h3 className="mb-3 ml-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
             Notes
           </h3>
 
           <div className="space-y-1.5">
-            <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wide ml-1">
+            <label className="ml-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
               Internal Remarks
             </label>
             <div className="relative">
@@ -308,7 +367,8 @@ export default function AdminPaymentForm({
                 }
                 rows={4}
                 placeholder="e.g. Manual payment recorded by admin"
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium resize-none"
+                disabled={isSubmitting}
+                className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
               />
             </div>
           </div>
@@ -319,15 +379,15 @@ export default function AdminPaymentForm({
       <div className="pt-2">
         <button
           type="submit"
-          disabled={isInvalidAmount}
-          className={`w-full py-4 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
-            isInvalidAmount
-              ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-              : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-[0.98] shadow-xl shadow-blue-600/20'
+          disabled={isInvalidAmount || isSubmitting || balance <= 0}
+          className={`flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-xs font-bold uppercase tracking-widest transition-all ${
+            isInvalidAmount || isSubmitting || balance <= 0
+              ? 'cursor-not-allowed bg-slate-200 text-slate-400'
+              : 'bg-blue-600 text-white shadow-xl shadow-blue-600/20 hover:bg-blue-700 active:scale-[0.98]'
           }`}
         >
           <CheckCircle className="size-5" />
-          Add Verified Payment
+          {isSubmitting ? 'Processing...' : 'Add Verified Payment'}
         </button>
       </div>
     </form>

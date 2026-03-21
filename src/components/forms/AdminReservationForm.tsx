@@ -138,6 +138,7 @@ export default function AdminReservationForm({
   );
   const [showCalendar, setShowCalendar] = useState(false);
   const [isSlotPanelOpen, setIsSlotPanelOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!unit) return;
@@ -149,7 +150,11 @@ export default function AdminReservationForm({
 
     setFormState((prev) => ({
       ...prev,
-      endDate: computeEndFromForm(prev.startDate, Number(prev.duration) || 1, prev.durationType),
+      endDate: computeEndFromForm(
+        prev.startDate,
+        Number(prev.duration) || 1,
+        prev.durationType
+      ),
     }));
   }, [formState.startDate, formState.duration, formState.durationType, unit]);
 
@@ -211,11 +216,39 @@ export default function AdminReservationForm({
     return <div className="p-4 text-red-500">Error: User information could not be found.</div>;
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (isSubmitting) return;
 
     if (unit.type === 'parking_slot' && !formState.slotId) {
       alert('Please select a parking slot before creating the reservation.');
+      return;
+    }
+
+    if (unit.type === 'rental_space' && !formState.businessType.trim()) {
+      alert('Please enter the business type.');
+      return;
+    }
+
+    if (unit.type === 'function_hall' && !formState.eventPurpose.trim()) {
+      alert('Please enter the event purpose.');
+      return;
+    }
+
+    if (
+      unit.type === 'function_hall' &&
+      (!formState.attendees.trim() || Number(formState.attendees) <= 0)
+    ) {
+      alert('Please enter a valid number of attendees.');
+      return;
+    }
+
+    if (
+      unit.type === 'parking_slot' &&
+      (!formState.vehicleType.trim() || !formState.plateNumber.trim())
+    ) {
+      alert('Please enter the vehicle type and plate number.');
       return;
     }
 
@@ -233,23 +266,23 @@ export default function AdminReservationForm({
       notes: formState.notes,
       modeOfVisit: 'online',
       paymentMethod: resolvedPaymentMethod,
-      status: 'confirmed',
+      status: 'approved',
 
       ...(unit.type === 'rental_space' && {
         paymentCycle: formState.paymentCycle as PaymentCycle,
-        businessType: formState.businessType,
+        businessType: formState.businessType.trim(),
         durationType: 'years' as const,
       }),
 
       ...(unit.type === 'function_hall' && {
-        eventPurpose: formState.eventPurpose,
-        attendees: Number(formState.attendees) || 0,
+        eventPurpose: formState.eventPurpose.trim(),
+        attendees: Math.max(1, Number(formState.attendees) || 1),
         durationType: 'days' as const,
       }),
 
       ...(unit.type === 'parking_slot' && {
-        vehicleType: formState.vehicleType,
-        plateNumber: formState.plateNumber,
+        vehicleType: formState.vehicleType.trim(),
+        plateNumber: formState.plateNumber.trim(),
         durationType: formState.durationType as 'hours' | 'days' | 'months',
         slotId: formState.slotId,
         slotName:
@@ -259,8 +292,16 @@ export default function AdminReservationForm({
       }),
     };
 
-    addReservation(finalReservationData);
-    onComplete();
+    try {
+      setIsSubmitting(true);
+      await addReservation(finalReservationData);
+      onComplete();
+    } catch (error) {
+      console.error('Failed to create reservation:', error);
+      alert('Failed to create reservation. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -268,7 +309,7 @@ export default function AdminReservationForm({
       <form onSubmit={handleSubmit} className="space-y-4 text-sm">
         <div className="rounded-lg bg-gray-50 p-4">
           <p className="font-semibold text-gray-800">{unit.name}</p>
-          <p className="text-gray-600 capitalize">Type: {unit.type.replace('_', ' ')}</p>
+          <p className="capitalize text-gray-600">Type: {unit.type.replace('_', ' ')}</p>
         </div>
 
         <div>
@@ -276,7 +317,7 @@ export default function AdminReservationForm({
           <div className="flex items-center gap-2">
             <UserIcon className="size-4 text-gray-500" />
             <p className="font-semibold text-gray-800">
-              {user.first_name} {user.last_name}{' '}
+              {user.firstName} {user.lastName}{' '}
               <span className="font-mono font-normal text-gray-500">(ID: {user.id})</span>
             </p>
           </div>
@@ -293,6 +334,7 @@ export default function AdminReservationForm({
                 type="button"
                 onClick={() => setShowCalendar((prev) => !prev)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-left"
+                disabled={isSubmitting}
               >
                 {formState.startDate.toLocaleDateString()} - {formState.endDate.toLocaleDateString()}
               </button>
@@ -343,6 +385,7 @@ export default function AdminReservationForm({
               type="button"
               onClick={() => setShowCalendar((prev) => !prev)}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-left"
+              disabled={isSubmitting}
             >
               {formState.startDate.toLocaleDateString()} - {formState.endDate.toLocaleDateString()}
             </button>
@@ -406,6 +449,7 @@ export default function AdminReservationForm({
                 type="button"
                 onClick={() => setShowCalendar((prev) => !prev)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-left"
+                disabled={isSubmitting}
               >
                 {formState.startDate.toLocaleDateString()}
               </button>
@@ -442,6 +486,7 @@ export default function AdminReservationForm({
                   }))
                 }
                 className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                disabled={isSubmitting}
               />
             </div>
 
@@ -466,6 +511,7 @@ export default function AdminReservationForm({
                   setFormState((prev) => ({ ...prev, businessType: e.target.value }))
                 }
                 className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                disabled={isSubmitting}
               />
             </div>
 
@@ -480,6 +526,7 @@ export default function AdminReservationForm({
                   }))
                 }
                 className="w-full rounded-lg border border-gray-300 px-3 py-2"
+                disabled={isSubmitting}
               >
                 <option value="monthly">Monthly</option>
                 <option value="quarterly">Quarterly</option>
@@ -501,6 +548,7 @@ export default function AdminReservationForm({
                   setFormState((prev) => ({ ...prev, eventPurpose: e.target.value }))
                 }
                 className="w-full rounded-lg border px-3 py-2"
+                disabled={isSubmitting}
               />
             </div>
 
@@ -518,6 +566,7 @@ export default function AdminReservationForm({
                   setFormState((prev) => ({ ...prev, attendees: e.target.value }))
                 }
                 className="w-full rounded-lg border px-3 py-2"
+                disabled={isSubmitting}
               />
             </div>
           </div>
@@ -555,6 +604,7 @@ export default function AdminReservationForm({
                     type="button"
                     onClick={() => setFormState((prev) => ({ ...prev, slotId: '' }))}
                     className="rounded-full p-1 text-gray-500 hover:text-red-600"
+                    disabled={isSubmitting}
                   >
                     <X className="h-5 w-5" />
                   </button>
@@ -564,6 +614,7 @@ export default function AdminReservationForm({
                   type="button"
                   onClick={() => setIsSlotPanelOpen(true)}
                   className="w-full rounded-lg border-2 border-dashed py-3 text-gray-500 hover:border-blue-500 hover:text-blue-600"
+                  disabled={isSubmitting}
                 >
                   Click to Select a Slot
                 </button>
@@ -581,6 +632,7 @@ export default function AdminReservationForm({
                     setFormState((prev) => ({ ...prev, vehicleType: e.target.value }))
                   }
                   className="w-full rounded-lg border px-3 py-2"
+                  disabled={isSubmitting}
                 />
               </div>
 
@@ -594,6 +646,7 @@ export default function AdminReservationForm({
                     setFormState((prev) => ({ ...prev, plateNumber: e.target.value }))
                   }
                   className="w-full rounded-lg border px-3 py-2"
+                  disabled={isSubmitting}
                 />
               </div>
             </div>
@@ -611,6 +664,7 @@ export default function AdminReservationForm({
               }))
             }
             className="w-full rounded-lg border px-3 py-2"
+            disabled={isSubmitting}
           >
             <option value="cash">Cash</option>
             <option value="bank_transfer">Bank Transfer</option>
@@ -628,6 +682,7 @@ export default function AdminReservationForm({
             rows={3}
             className="w-full rounded-lg border px-3 py-2"
             placeholder="Internal notes..."
+            disabled={isSubmitting}
           />
         </div>
 
@@ -663,10 +718,15 @@ export default function AdminReservationForm({
 
           <button
             type="submit"
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-3 font-semibold text-white transition-colors hover:bg-blue-700"
+            disabled={isSubmitting}
+            className={`flex w-full items-center justify-center gap-2 rounded-lg py-3 font-semibold text-white transition-colors ${
+              isSubmitting
+                ? 'cursor-not-allowed bg-gray-400'
+                : 'bg-blue-600 hover:bg-blue-700'
+            }`}
           >
             <CheckCircle className="size-5" />
-            Create Approved Reservation
+            {isSubmitting ? 'Creating...' : 'Create Approved Reservation'}
           </button>
         </div>
       </form>
@@ -706,7 +766,8 @@ export default function AdminReservationForm({
                         disabled={
                           isReserved ||
                           slot.status === 'inactive' ||
-                          slot.status === 'maintenance'
+                          slot.status === 'maintenance' ||
+                          isSubmitting
                         }
                         onClick={() => {
                           setFormState((prev) => ({ ...prev, slotId: slot.id }));

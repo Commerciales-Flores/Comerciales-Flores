@@ -42,10 +42,51 @@ interface RecordsContextType {
 
 const RecordsContext = createContext<RecordsContextType | undefined>(undefined);
 
+/* ------------------ MAPPERS ------------------ */
+
+function mapLedgerRow(row: any): LedgerEntry {
+  return {
+    id: row.ledger_id,
+    userId: row.user_id,
+    reservationId: row.reservation_id,
+    paymentId: row.payment_id,
+    entryType: row.entry_type,
+    amount: Number(row.amount),
+    method: row.method,
+    status: row.status,
+    referenceNo: row.reference_no,
+    description: row.description,
+    notes: row.notes,
+    recordedAt: row.recorded_at,
+    createdAt: row.created_at,
+    createdBy: row.created_by,
+  };
+}
+
+function mapAuditRow(row: any): AuditLog {
+  return {
+    id: row.audit_id,
+    publicId: row.public_id,
+    userId: row.user_id,
+    action: row.action,
+    targetTable: row.target_table,
+    targetId: row.target_id,
+    beforeValue: row.before_value,
+    afterValue: row.after_value,
+    changedFields: row.changed_fields,
+    timestamp: row.timestamp,
+    notes: row.notes,
+  };
+}
+
+/* ------------------ PROVIDER ------------------ */
+
 export function RecordsProvider({ children }: { children: ReactNode }) {
   const [ledgers, setLedgers] = useState<LedgerEntry[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [businessSlots, setBusinessSlots] = useState<BusinessSlot[]>([]);
+
+  /* ---------- LOADERS ---------- */
 
   const refreshLedgers = async () => {
     const { data, error } = await supabase
@@ -73,25 +114,38 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    setLedgers(
-      (data ?? []).map((row: any) => ({
-        id: row.ledger_id,
-        userId: row.user_id,
-        reservation_id: row.reservation_id,
-        payment_id: row.payment_id,
-        entry_type: row.entry_type,
-        amount: Number(row.amount),
-        method: row.method,
-        status: row.status,
-        reference_no: row.reference_no,
-        description: row.description,
-        notes: row.notes,
-        recorded_at: row.recorded_at,
-        created_at: row.created_at,
-        created_by: row.created_by,
-      }))
-    );
+    setLedgers((data ?? []).map(mapLedgerRow));
   };
+
+  const refreshAuditLogs = async () => {
+    const { data, error } = await supabase
+      .from('audit_log')
+      .select(`
+        audit_id,
+        public_id,
+        user_id,
+        action,
+        target_table,
+        target_id,
+        before_value,
+        after_value,
+        changed_fields,
+        timestamp,
+        notes
+      `)
+      .order('timestamp', { ascending: false });
+
+    if (!error && data) {
+      setAuditLogs(data.map(mapAuditRow));
+    }
+  };
+
+  useEffect(() => {
+    void refreshLedgers();
+    void refreshAuditLogs();
+  }, []);
+
+  /* ---------- PAGINATION ---------- */
 
   const fetchAuditLogsPage = async ({
     searchTerm = '',
@@ -101,10 +155,7 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
     endDate = '',
     page = 1,
     pageSize = 25,
-  }: AuditLogFilters): Promise<{
-    data: AuditLog[];
-    count: number;
-  }> => {
+  }: AuditLogFilters) => {
     let query = supabase
       .from('audit_log')
       .select(
@@ -113,32 +164,21 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
       )
       .order('timestamp', { ascending: false });
 
-    if (action !== 'All') {
-      query = query.eq('action', action);
-    }
+    if (action !== 'All') query = query.eq('action', action);
+    if (module !== 'All') query = query.eq('target_table', module);
 
-    if (module !== 'All') {
-      query = query.eq('target_table', module);
-    }
+    if (startDate) query = query.gte('timestamp', `${startDate}T00:00:00`);
+    if (endDate) query = query.lte('timestamp', `${endDate}T23:59:59`);
 
-    if (startDate) {
-      query = query.gte('timestamp', `${startDate}T00:00:00`);
-    }
-
-    if (endDate) {
-      query = query.lte('timestamp', `${endDate}T23:59:59`);
-    }
-
-    const trimmedSearch = searchTerm.trim();
-    if (trimmedSearch) {
+    if (searchTerm.trim()) {
       query = query.or(
         [
-          `action.ilike.%${trimmedSearch}%`,
-          `target_table.ilike.%${trimmedSearch}%`,
-          `target_id.ilike.%${trimmedSearch}%`,
-          `user_id.ilike.%${trimmedSearch}%`,
-          `notes.ilike.%${trimmedSearch}%`,
-          `public_id.ilike.%${trimmedSearch}%`,
+          `action.ilike.%${searchTerm}%`,
+          `target_table.ilike.%${searchTerm}%`,
+          `target_id.ilike.%${searchTerm}%`,
+          `user_id.ilike.%${searchTerm}%`,
+          `notes.ilike.%${searchTerm}%`,
+          `public_id.ilike.%${searchTerm}%`,
         ].join(',')
       );
     }
@@ -147,58 +187,15 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
     const to = from + pageSize - 1;
 
     const { data, error, count } = await query.range(from, to);
-
     if (error) throw error;
 
     return {
-      data: (data ?? []).map((row: any) => ({
-        id: row.audit_id,
-        publicId: row.public_id,
-        userId: row.user_id,
-        action: row.action,
-        targetTable: row.target_table,
-        targetId: row.target_id,
-        beforeValue: row.before_value,
-        afterValue: row.after_value,
-        changedFields: row.changed_fields,
-        timestamp: row.timestamp,
-        notes: row.notes,
-      })),
+      data: (data ?? []).map(mapAuditRow),
       count: count ?? 0,
     };
   };
 
-  const refreshAuditLogs = async () => {
-    const { data, error } = await supabase
-      .from('audit_log')
-      .select(
-        'audit_id, public_id, user_id, action, target_table, target_id, before_value, after_value, changed_fields, timestamp, notes'
-      )
-      .order('timestamp', { ascending: false });
-
-    if (!error && data) {
-      setAuditLogs(
-        data.map((row: any) => ({
-          id: row.audit_id,
-          publicId: row.public_id,
-          userId: row.user_id,
-          action: row.action,
-          targetTable: row.target_table,
-          targetId: row.target_id,
-          beforeValue: row.before_value,
-          afterValue: row.after_value,
-          changedFields: row.changed_fields,
-          timestamp: row.timestamp,
-          notes: row.notes,
-        }))
-      );
-    }
-  };
-
-  useEffect(() => {
-    void refreshLedgers();
-    void refreshAuditLogs();
-  }, []);
+  /* ---------- MUTATIONS ---------- */
 
   const addLedgerEntry = async (
     entry: Omit<LedgerEntry, 'id'>
@@ -208,18 +205,18 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
       .insert([
         {
           user_id: entry.userId,
-          reservation_id: entry.reservation_id,
-          payment_id: entry.payment_id,
-          entry_type: entry.entry_type,
+          reservation_id: entry.reservationId,
+          payment_id: entry.paymentId,
+          entry_type: entry.entryType,
           amount: entry.amount,
           method: entry.method,
           status: entry.status,
-          reference_no: entry.reference_no,
+          reference_no: entry.referenceNo,
           description: entry.description,
           notes: entry.notes,
-          recorded_at: entry.recorded_at,
-          created_at: entry.created_at,
-          created_by: entry.created_by,
+          recorded_at: entry.recordedAt,
+          created_at: entry.createdAt,
+          created_by: entry.createdBy,
         },
       ])
       .select()
@@ -227,23 +224,7 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
 
     if (error) throw error;
 
-    const newEntry: LedgerEntry = {
-      id: data.ledger_id,
-      userId: data.user_id,
-      reservation_id: data.reservation_id,
-      payment_id: data.payment_id,
-      entry_type: data.entry_type,
-      amount: Number(data.amount),
-      method: data.method,
-      status: data.status,
-      reference_no: data.reference_no,
-      description: data.description,
-      notes: data.notes,
-      recorded_at: data.recorded_at,
-      created_at: data.created_at,
-      created_by: data.created_by,
-    };
-
+    const newEntry = mapLedgerRow(data);
     setLedgers((prev) => [newEntry, ...prev]);
     return newEntry.id;
   };
@@ -271,39 +252,28 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
 
     if (error) throw error;
 
-    const newLog: AuditLog = {
-      id: data.audit_id,
-      publicId: data.public_id,
-      userId: data.user_id,
-      action: data.action,
-      targetTable: data.target_table,
-      targetId: data.target_id,
-      beforeValue: data.before_value,
-      afterValue: data.after_value,
-      changedFields: data.changed_fields,
-      timestamp: data.timestamp,
-      notes: data.notes,
-    };
-
+    const newLog = mapAuditRow(data);
     setAuditLogs((prev) => [newLog, ...prev]);
     return newLog.id;
   };
 
+  /* ---------- BUSINESS SLOTS ---------- */
+
   const addBusinessSlot = (slot: Omit<BusinessSlot, 'id'>) => {
-    const newSlot: BusinessSlot = {
-      ...slot,
-      id: crypto.randomUUID(),
-    };
-    setBusinessSlots((prev) => [newSlot, ...prev]);
+    setBusinessSlots((prev) => [{ ...slot, id: crypto.randomUUID() }, ...prev]);
   };
 
   const updateBusinessSlot = (id: string, slot: Partial<BusinessSlot>) => {
-    setBusinessSlots((prev) => prev.map((s) => (s.id === id ? { ...s, ...slot } : s)));
+    setBusinessSlots((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, ...slot } : s))
+    );
   };
 
   const deleteBusinessSlot = (id: string) => {
     setBusinessSlots((prev) => prev.filter((s) => s.id !== id));
   };
+
+  /* ---------- CONTEXT ---------- */
 
   const value = useMemo(
     () => ({

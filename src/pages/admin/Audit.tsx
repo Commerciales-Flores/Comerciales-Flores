@@ -337,7 +337,7 @@ export default function AdminAudit() {
       if (!user) return userId;
 
       const fullName =
-        [user.first_name, user.last_name].filter(Boolean).join(' ').trim() || user.email;
+        [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.email;
 
       return user.publicId ? `${user.publicId}` : fullName;
     },

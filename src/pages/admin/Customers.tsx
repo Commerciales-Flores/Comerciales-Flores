@@ -195,10 +195,10 @@ const handlePageInputKeyDown = useCallback(
         if (cancelled) return;
 
         const mapped: CustomerRow[] = result.data.map((u) => {
-          const first = u.first_name ?? '';
-          const last = u.last_name ?? '';
+          const first = u.firstName ?? '';
+          const last = u.lastName ?? '';
           const publicId = u.publicId ?? u.id;
-          const contact = u.contactNumber ?? '';
+          const contact = u.phone ?? '';
           const address = u.address ?? '';
           const email = u.email ?? '';
 
@@ -210,7 +210,7 @@ const handlePageInputKeyDown = useCallback(
             email,
             contactNumber: contact,
             address,
-            is_active: u.is_active,
+            is_active: u.isActive,
             initials: `${first[0] ?? ''}${last[0] ?? ''}`,
             searchableText: [first, last, email, publicId, contact, address]
               .filter(Boolean)

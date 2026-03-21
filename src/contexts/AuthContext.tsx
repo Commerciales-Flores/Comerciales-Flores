@@ -19,11 +19,19 @@ interface User {
   firstName: string;
   lastName: string;
   role: 'client' | 'admin';
-  contactNumber: string;
+  phone: string;
   address: string;
-  is_active: boolean;
+  formattedAddress?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  isActive: boolean;
   profilePictureUrl?: string;
   lastLogin?: string;
+  phoneVerified: boolean;
+  phoneVerifiedAt?: string | null;
+  addressConfirmed: boolean;
+  addressConfirmedAt?: string | null;
+  createdAt?: string;
 }
 
 interface RegisterInput {
@@ -133,11 +141,19 @@ const mapProfileToUser = (data: any): User => ({
   firstName: normalizeName(data.first_name ?? ''),
   lastName: normalizeName(data.last_name ?? ''),
   role: data.role,
-  contactNumber: normalizePhone(data.phone ?? ''),
+  phone: normalizePhone(data.phone ?? ''),
   address: normalizeAddress(data.address ?? ''),
-  is_active: Boolean(data.is_active),
+  formattedAddress: data.formatted_address ?? undefined,
+  latitude: data.latitude ?? null,
+  longitude: data.longitude ?? null,
+  isActive: Boolean(data.is_active),
   profilePictureUrl: data.profile_picture_url ?? undefined,
   lastLogin: data.last_login ?? undefined,
+  phoneVerified: Boolean(data.phone_verified),
+  phoneVerifiedAt: data.phone_verified_at ?? null,
+  addressConfirmed: Boolean(data.address_confirmed),
+  addressConfirmedAt: data.address_confirmed_at ?? null,
+  createdAt: data.created_at ?? undefined,
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -166,6 +182,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const warningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const logoutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const USER_SELECT = `
+    user_id,
+    public_id,
+    email,
+    first_name,
+    last_name,
+    phone,
+    role,
+    address,
+    formatted_address,
+    latitude,
+    longitude,
+    is_active,
+    profile_picture_url,
+    last_login,
+    phone_verified,
+    phone_verified_at,
+    address_confirmed,
+    address_confirmed_at,
+    created_at
+  `;
 
   const persistUserSession = useCallback((profile: User) => {
     setUser(profile);
@@ -293,9 +331,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         let { data, error } = await supabase
           .from('users')
-          .select(
-            'user_id, public_id, email, first_name, last_name, phone, role, address, is_active, profile_picture_url, last_login'
-          )
+          .select(USER_SELECT)
           .eq('user_id', authUser.id)
           .maybeSingle();
 
@@ -323,9 +359,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               is_active: true,
               profile_picture_url: meta.avatar_url || meta.picture || null,
             })
-            .select(
-              'user_id, public_id, email, first_name, last_name, phone, role, address, is_active, profile_picture_url, last_login'
-            )
+            .select(USER_SELECT)
             .single();
 
           data = insertResult.data;
@@ -791,8 +825,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           dbPayload.last_name = normalizeName(userData.lastName);
         }
 
-        if (userData.contactNumber !== undefined) {
-          dbPayload.phone = normalizePhone(userData.contactNumber);
+        if (userData.phone !== undefined) {
+          dbPayload.phone = normalizePhone(userData.phone);
         }
 
         if (userData.address !== undefined) {
@@ -822,8 +856,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ...(userData.lastName !== undefined
             ? { lastName: normalizeName(userData.lastName) }
             : {}),
-          ...(userData.contactNumber !== undefined
-            ? { contactNumber: normalizePhone(userData.contactNumber) }
+          ...(userData.phone !== undefined
+            ? { phone: normalizePhone(userData.phone) }
             : {}),
           ...(userData.address !== undefined
             ? { address: normalizeAddress(userData.address) }
@@ -868,32 +902,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const recoverPassword = useCallback(
-    async (email: string): Promise<boolean> => {
-      if (authActionPending) return true;
+  async (email: string): Promise<boolean> => {
+    if (authActionPending) return false;
 
-      setAuthActionPending(true);
+    setAuthActionPending(true);
 
-      try {
-        const normalizedEmail = normalizeEmail(email);
+    try {
+      const normalizedEmail = normalizeEmail(email);
 
-        const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-          redirectTo: `${window.location.origin}/reset-password`,
-        });
+      const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
 
-        if (error) {
-          console.error('Password recovery failed:', error.message);
-        }
-
-        return true;
-      } catch (err) {
-        console.error('Unexpected password recovery error:', err);
-        return true;
-      } finally {
-        setAuthActionPending(false);
+      if (error) {
+        console.error('Password recovery failed:', error.message);
+        return false;
       }
-    },
-    [authActionPending]
-  );
+
+      return true;
+    } catch (err) {
+      console.error('Unexpected password recovery error:', err);
+      return false;
+    } finally {
+      setAuthActionPending(false);
+    }
+  },
+  [authActionPending]
+);
 
   const uploadProfilePicture = useCallback(
     async (file: File): Promise<string | null> => {

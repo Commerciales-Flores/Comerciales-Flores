@@ -403,8 +403,8 @@ export default function ClientMessages() {
       try {
         await addInquiry({
           userId: user.id,
-          first_name: user.firstName,
-          last_name: user.lastName,
+          firstName: user.firstName,
+          lastName: user.lastName,
           email: user.email,
           subject,
           message,
