@@ -6,6 +6,7 @@ import { NotificationProvider } from './contexts/NotificationContext';
 import { IndicatorProvider } from './contexts/IndicatorContext';
 import { ReviewsProvider } from './contexts/ReviewsContext';
 import SessionWarningModal from './components/auth/SessionWarningModal';
+import { Building2 } from 'lucide-react';
 
 // Public Pages
 const LandingPage = lazy(() => import('./pages/public/LandingPage'));
@@ -61,10 +62,37 @@ import { ProtectedRoute, GuestRoute } from './components/auth/RouteGuards';
 
 function RouteLoader() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="text-center">
-        <div className="w-10 h-10 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-sm font-medium text-slate-500">Loading...</p>
+    <div className="relative min-h-screen w-full flex flex-col items-center justify-center p-6 bg-white overflow-hidden">
+      <div className="absolute top-8 left-8 flex items-center gap-3 select-none">
+        <div className="bg-blue-600 p-1.5 sm:p-2 rounded-xl shadow-lg shadow-blue-100">
+          <Building2 className="size-5 sm:size-6 text-white" />
+        </div>
+        <span className="text-lg font-bold text-gray-900 tracking-tight">
+          Comerciales Flores
+        </span>
+      </div>
+
+      <div className="max-w-md w-full text-center">
+        <h1 className="text-7xl sm:text-8xl font-black text-gray-100 leading-none select-none italic">
+          ...
+        </h1>
+
+        <div className="relative -mt-8 mb-8 inline-flex items-center justify-center w-20 h-20 bg-blue-600 rounded-2xl rotate-12 shadow-xl shadow-blue-100">
+          <Building2 className="size-10 text-white -rotate-12" />
+        </div>
+
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">
+          Loading page
+        </h2>
+        <p className="text-gray-500 mb-8 leading-relaxed">
+          Please wait while we prepare this page.
+        </p>
+
+        <div className="flex items-center justify-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-blue-600 animate-bounce [animation-delay:-0.3s]" />
+          <span className="h-2.5 w-2.5 rounded-full bg-blue-600 animate-bounce [animation-delay:-0.15s]" />
+          <span className="h-2.5 w-2.5 rounded-full bg-blue-600 animate-bounce" />
+        </div>
       </div>
     </div>
   );

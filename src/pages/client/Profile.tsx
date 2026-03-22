@@ -17,7 +17,6 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -278,8 +277,8 @@ export default function ClientProfile() {
   }, [deleteAccount, deleting, logout, showMessage, user]);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
-      <div className="flex flex-col gap-6">
+    <div className="min-h-screen bg-gray-50">
+  <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <header className="flex flex-col justify-between gap-4 border-b border-slate-100 pb-6 md:flex-row md:items-end">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-gray-900">Account Settings</h1>

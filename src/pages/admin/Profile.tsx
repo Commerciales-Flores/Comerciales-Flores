@@ -280,8 +280,8 @@ export default function AdminProfile() {
   }, [changingPassword]);
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8">
-      <div className="flex flex-col gap-6">
+    <div className="min-h-screen bg-gray-50">
+  <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <header className="flex flex-col justify-between gap-4 border-b border-slate-100 pb-6 md:flex-row md:items-end">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Account Settings</h1>

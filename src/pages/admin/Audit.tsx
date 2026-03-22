@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useData } from '../../contexts/DataContext';
 import { useRecords } from '../../contexts/RecordsContext';
@@ -471,7 +471,8 @@ export default function AdminAudit() {
   }, []);
 
   return (
-    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6 relative">
+    <div className="min-h-screen bg-gray-50">
+  <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
       <div
         className={`fixed inset-0 z-40 bg-gray-900/20 backdrop-blur-sm transition-opacity duration-300 md:hidden ${
           isMobileDropdownOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
@@ -748,6 +749,7 @@ export default function AdminAudit() {
           )}
         </button>
       </div>
+    </div>
     </div>
   );
 }

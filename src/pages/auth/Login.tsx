@@ -265,10 +265,10 @@ export default function Login() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 antialiased">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6 antialiased animate-in fade-in duration-500">
       <div className="w-full max-w-5xl lg:max-w-6xl bg-white rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.05)] overflow-hidden border border-slate-200/60">
         <div className="grid grid-cols-1 lg:grid-cols-2">
-          <div className="p-12 bg-slate-900 text-white flex flex-col items-center justify-center relative overflow-hidden hidden lg:flex transition-all duration-500">
+          <div className="p-12 bg-slate-900 text-white flex flex-col items-center justify-center relative overflow-hidden hidden lg:flex transition-all duration-500 animate-in fade-in">
             <div className="relative z-10 flex flex-col items-center gap-8 w-full max-w-sm">
               {previousUser ? (
                 <div className="flex flex-col items-center">

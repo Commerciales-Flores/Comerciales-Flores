@@ -93,50 +93,52 @@ export async function fetchUnits(limit = 3): Promise<Unit[]> {
 
   // Step 4: assemble Unit objects
   return unitsData.map((row): Unit => {
-    const property = propertiesMap[row.property_id];
+  const property = propertiesMap[row.property_id];
 
-    const unitType = typeMap[row.unit_type] ?? 'rental_space';
+  const unitType = typeMap[row.unit_type] ?? 'rental_space';
 
-    const price =
-      unitType === 'rental_space'
-        ? Number(rentalMap[row.unit_id]?.rental_price ?? 0)
-        : unitType === 'function_hall'
-        ? Number(functionMap[row.unit_id]?.price_per_day ?? 0)
-        : Number(
-            parkingMap[row.unit_id]?.price_per_day ??
-            parkingMap[row.unit_id]?.price_per_hour ??
-            0
-          );
+  const price =
+    unitType === 'rental_space'
+      ? Number(rentalMap[row.unit_id]?.rental_price ?? 0)
+      : unitType === 'function_hall'
+      ? Number(functionMap[row.unit_id]?.price_per_day ?? 0)
+      : Number(
+          parkingMap[row.unit_id]?.price_per_day ??
+          parkingMap[row.unit_id]?.price_per_hour ??
+          0
+        );
 
-    const capacity =
-      unitType === 'function_hall'
-        ? functionMap[row.unit_id]?.capacity
-        : undefined;
+  const capacity =
+    unitType === 'function_hall'
+      ? functionMap[row.unit_id]?.capacity
+      : undefined;
 
-    const images = mediaMap[row.unit_id] ?? [];
+  const images =
+    mediaMap[row.unit_id] && mediaMap[row.unit_id].length > 0
+      ? mediaMap[row.unit_id]
+      : ['https://images.unsplash.com/photo-1497366216548-37526070297c?w=800'];
 
-    return {
-      id: row.unit_id,
-      propertyId: row.property_id,   // required by Unit
-      location: row.location ?? '',  // required by Unit
-      name: row.title ?? 'Untitled Unit',
-      type: unitType,
-      description: row.description ?? '',
-      price,
-      images: images.length > 0
-        ? images
-        : ['https://images.unsplash.com/photo-1497366216548-37526070297c?w=800'],
-      policies: '',
-      capacity,
-      available: row.is_available,
-      features: [],
-      property: property
-        ? {
-            id: property.property_id,
-            title: property.title ?? '',
-            address: property.address ?? '',
-          }
-        : null,
-    };
-  });
+  return {
+    id: row.unit_id,
+    propertyId: row.property_id,
+    location: row.location ?? '',
+    name: row.title ?? 'Untitled Unit',
+    type: unitType,
+    description: row.description ?? '',
+    price,
+    images,
+    imagePaths: images, // <- add this
+    policies: '',
+    capacity,
+    available: row.is_available,
+    features: [],
+    property: property
+      ? {
+          id: property.property_id,
+          title: property.title ?? '',
+          address: property.address ?? '',
+        }
+      : null,
+  };
+});
 }

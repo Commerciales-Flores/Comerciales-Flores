@@ -244,7 +244,8 @@ const handlePageInputKeyDown = useCallback(
   const closeFilterPanel = useCallback(() => setIsFilterPanelOpen(false), []);
 
   return (
-    <div className="bg-gray-50 min-h-screen p-4 md:p-6 lg:p-8 flex flex-col gap-6 pb-24 lg:pb-8">
+    <div className="min-h-screen bg-gray-50">
+  <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
       <div className="hidden lg:flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Reservation Management</h1>
@@ -577,6 +578,7 @@ const handlePageInputKeyDown = useCallback(
             </div>
           </>
         )}
+      </div>
       </div>
 
       {!loading && !hasNoReservations && totalPages > 1 && (

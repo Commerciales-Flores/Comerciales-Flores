@@ -52,7 +52,7 @@ export default function AdminReview() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
+  <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <div className="flex items-end justify-between gap-4">
           <header>
             <h1 className="text-2xl font-bold tracking-tight text-gray-900">

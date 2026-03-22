@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useData } from '../../contexts/DataContext';
 import {
   Save,
@@ -151,87 +151,11 @@ export default function AdminContent() {
     }));
   };
 
-  const snapshotItems = useMemo(
-    () => [
-      { label: 'Hero title', value: formData.hero.title || 'Empty' },
-      { label: 'Hero badge', value: formData.hero.badge || 'Empty' },
-      { label: 'About title', value: formData.about.title || 'Empty' },
-      { label: 'History title', value: formData.history.title || 'Empty' },
-      { label: 'Featured title', value: formData.featured.title || 'Empty' },
-      { label: 'Announcements', value: String(formData.announcements.length) },
-      { label: 'Contact email', value: formData.contact.email || 'Empty' },
-      { label: 'Contact phone', value: formData.contact.phone || 'Empty' },
-      {
-        label: 'Footer brand',
-        value: formData.footer.brandName || 'Empty',
-      },
-      {
-        label: 'Menu title',
-        value: formData.menu.title || 'Empty',
-      },
-      {
-        label: 'Policies',
-        value: formData.policies ? 'Configured' : 'Empty',
-      },
-    ],
-    [formData]
-  );
 
-    const sectionStatuses = useMemo(
-    () => [
-      {
-        key: 'hero' as EditableSection,
-        label: 'Hero Section',
-        complete: Boolean(formData.hero.title?.trim()),
-      },
-      {
-        key: 'about' as EditableSection,
-        label: 'About Us',
-        complete: Boolean(formData.about.title?.trim()),
-      },
-      {
-        key: 'history' as EditableSection,
-        label: 'History Section',
-        complete: Boolean(formData.history.title?.trim()),
-      },
-      {
-        key: 'featured' as EditableSection,
-        label: 'Featured Section',
-        complete: Boolean(formData.featured.title?.trim()),
-      },
-      {
-        key: 'contactSection' as EditableSection,
-        label: 'Contact Section',
-        complete: Boolean(formData.contact.title?.trim()),
-      },
-      {
-        key: 'contactInfo' as EditableSection,
-        label: 'Contact Info',
-        complete: Boolean(
-          formData.contact.email?.trim() || formData.contact.phone?.trim()
-        ),
-      },
-      {
-        key: 'footerMenu' as EditableSection,
-        label: 'Footer & Menu',
-        complete: Boolean(
-          formData.footer.brandName?.trim() && formData.menu.title?.trim()
-        ),
-      },
-      {
-        key: 'announcements' as EditableSection,
-        label: 'Announcements',
-        complete: formData.announcements.length > 0,
-      },
-    ],
-    [formData]
-  );
-
-  const completedSections = sectionStatuses.filter((section) => section.complete).length;
-  const totalSections = sectionStatuses.length;
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8 pb-28 md:pb-10">
+    <div className="min-h-screen bg-gray-50">
+  <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
       <div className="mb-6 flex flex-col gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">
@@ -1212,6 +1136,7 @@ export default function AdminContent() {
         </div>
       )}
     </div>
+    </div>
   );
 }
 
@@ -1452,102 +1377,6 @@ function TipItem({ text }: { text: string }) {
   );
 }
 
-function OverviewMetricCard({
-  label,
-  value,
-  helper,
-  tone = 'slate',
-}: {
-  label: string;
-  value: string;
-  helper: string;
-  tone?: 'slate' | 'blue' | 'emerald' | 'orange' | 'amber';
-}) {
-  const toneMap = {
-    slate: 'border-slate-200 bg-slate-50 text-slate-900',
-    blue: 'border-blue-200 bg-blue-50 text-blue-900',
-    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-900',
-    orange: 'border-orange-200 bg-orange-50 text-orange-900',
-    amber: 'border-amber-200 bg-amber-50 text-amber-900',
-  };
-
-  return (
-    <div className={`rounded-2xl border p-4 ${toneMap[tone]}`}>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-        {label}
-      </p>
-      <p className="mt-2 text-base font-semibold">{value}</p>
-      <p className="mt-1 text-xs leading-relaxed text-slate-500">{helper}</p>
-    </div>
-  );
-}
-
-function EnhancedStatusRow({
-  label,
-  status,
-  active = false,
-}: {
-  label: string;
-  status: 'complete' | 'empty';
-  active?: boolean;
-}) {
-  return (
-    <div
-      className={`group rounded-[1.25rem] border px-4 py-3.5 transition-all ${
-        active
-          ? 'border-blue-200 bg-blue-50 shadow-sm'
-          : status === 'complete'
-          ? 'border-emerald-200 bg-emerald-50/60'
-          : 'border-slate-200 bg-slate-50 hover:border-slate-300'
-      }`}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <div
-            className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl ${
-              active
-                ? 'bg-blue-100 text-blue-700'
-                : status === 'complete'
-                ? 'bg-emerald-100 text-emerald-700'
-                : 'bg-amber-100 text-amber-700'
-            }`}
-          >
-            <CheckCircle className="size-4" />
-          </div>
-
-          <div className="min-w-0">
-            <p
-              className={`truncate text-sm font-semibold ${
-                active ? 'text-blue-900' : 'text-slate-800'
-              }`}
-            >
-              {label}
-            </p>
-            <p className="mt-1 text-xs leading-relaxed text-slate-500">
-              {active
-                ? 'Currently being edited'
-                : status === 'complete'
-                ? 'Configured and ready for display'
-                : 'Needs content before it feels complete'}
-            </p>
-          </div>
-        </div>
-
-        <span
-          className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-            active
-              ? 'bg-blue-100 text-blue-700'
-              : status === 'complete'
-              ? 'bg-emerald-100 text-emerald-700'
-              : 'bg-amber-100 text-amber-700'
-          }`}
-        >
-          {active ? 'Active' : status === 'complete' ? 'Ready' : 'Empty'}
-        </span>
-      </div>
-    </div>
-  );
-}
 
 function MiniCardEditor({
   titleLabel,

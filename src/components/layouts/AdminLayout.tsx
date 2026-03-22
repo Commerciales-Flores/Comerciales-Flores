@@ -149,18 +149,19 @@ export default function AdminLayout() {
         <header className="bg-blue-900 text-white sticky top-0 z-50 shadow-md border-b border-blue-800">
           <div className="max-w-7xl mx-auto px-4 flex justify-between items-center h-16">
             <div className="flex items-center gap-3">
-              <div className="bg-blue-800 p-2 rounded-lg">
-                <Building2 className="size-6 text-blue-300" />
-              </div>
-              <div className="flex flex-col">
-                <h1 className="font-bold tracking-tight text-sm md:text-lg leading-none">
-                  Commerciales Flores
-                </h1>
-                <p className="text-[10px] uppercase font-bold text-blue-400 tracking-widest mt-1">
-                  Admin Portal
-                </p>
-              </div>
+            <div className="bg-blue-800 p-2 rounded-lg">
+              <Building2 className="size-6 text-blue-300" />
             </div>
+
+            <div className="flex flex-col">
+              <h1 className="font-bold tracking-tight text-sm md:text-lg leading-none text-white">
+                Comerciales Flores
+              </h1>
+              <p className="text-[10px] uppercase font-bold text-blue-400 tracking-widest mt-1">
+                Admin Portal
+              </p>
+            </div>
+          </div>
 
             <div className="hidden lg:flex items-center gap-6">
               <div className="flex items-center gap-4 pr-6 border-r border-blue-800">

@@ -4,7 +4,6 @@ import { useNotifications } from '../../contexts/NotificationContext';
 import {
   Mail,
   Send,
-  X,
   CheckCircle,
   Clock,
   MessageSquare,

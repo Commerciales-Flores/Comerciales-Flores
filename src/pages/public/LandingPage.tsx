@@ -211,12 +211,13 @@ export default function LandingPage() {
       <section className="relative min-h-[60vh] md:h-[85vh] flex items-center overflow-hidden">
         <div className="absolute inset-0 z-0">
           <img
-            src={contentSettings.hero.image || "/fallback-hero.webp"}
-            alt="Hero"
-            decoding="async"
-            fetchPriority="high"
-            className="w-full h-full object-cover"
-          />
+          src={contentSettings.hero.image || "/fallback-hero.webp"}
+          alt="Hero"
+          loading="eager"
+          decoding="async"
+          {...{ fetchpriority: 'high' }}
+          className="w-full h-full object-cover"
+        />
           <div className="absolute inset-0 bg-gradient-to-r from-slate-900/90 via-slate-900/40 to-transparent"></div>
         </div>
 

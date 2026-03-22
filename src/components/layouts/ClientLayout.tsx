@@ -163,9 +163,14 @@ const unreadMessages = useMemo(
       <div className="bg-blue-50 p-2 rounded-lg">
         <Building2 className="size-6 text-blue-600" />
       </div>
-      <div>
-        <h1 className="text-blue-600 font-bold tracking-tight leading-none">Commerciales Flores</h1>
-        <p className="text-[10px] uppercase font-bold text-gray-400 tracking-widest mt-1">Client Portal</p>
+
+      <div className="flex flex-col">
+        <h1 className="font-bold tracking-tight text-sm md:text-lg leading-none text-gray-900">
+          Comerciales Flores
+        </h1>
+        <p className="text-[10px] uppercase font-bold text-gray-400 tracking-widest mt-1">
+          Client Portal
+        </p>
       </div>
     </div>
 

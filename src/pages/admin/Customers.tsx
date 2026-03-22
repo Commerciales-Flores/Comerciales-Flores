@@ -268,7 +268,6 @@ const handlePageInputKeyDown = useCallback(
   const handleAddCustomer = useCallback(async () => {
     if (!canSubmitNewCustomer) return;
 
-    console.log('Register new customer:', newCustomer);
 
     setShowAddModal(false);
     setNewCustomer(INITIAL_CUSTOMER_FORM);
@@ -276,7 +275,6 @@ const handlePageInputKeyDown = useCallback(
   }, [canSubmitNewCustomer, newCustomer]);
 
   const toggleStatus = useCallback(async (id: string, status: boolean) => {
-    console.log('Toggle user status:', id, status);
     setConfirmDeactivateId(null);
     if (!status) setSelectedCustomer(null);
   }, []);
@@ -298,7 +296,8 @@ const handlePageInputKeyDown = useCallback(
   );
 
   return (
-    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6 pb-24 lg:pb-8">
+    <div className="min-h-screen bg-gray-50">
+  <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Customer Management</h1>
@@ -307,9 +306,9 @@ const handlePageInputKeyDown = useCallback(
 
         <button
           onClick={() => setShowAddModal(true)}
-          className="bg-blue-600 text-white p-2.5 sm:px-4 sm:py-2 rounded-xl cursor-pointer hover:bg-blue-700 transition-all shadow-sm flex items-center gap-2 active:scale-95 font-semibold text-sm"
+                  className="hidden lg:flex items-center justify-center cursor-pointer gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md shadow-blue-100 transition-all text-sm font-bold active:scale-95"
         >
-          <Plus size={18} /> Add Customer
+          <Plus className="size-5" /> Add Customer
         </button>
       </div>
 
@@ -821,6 +820,7 @@ const handlePageInputKeyDown = useCallback(
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

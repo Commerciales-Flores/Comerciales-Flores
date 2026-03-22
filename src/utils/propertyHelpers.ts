@@ -1,4 +1,4 @@
-import type { UnitType } from '../contexts/DataContext';
+import type { UnitType, PaymentCycle } from '../contexts/DataContext';
 
 export function getUnitTypeLabel(type: UnitType): string {
   switch (type) {
@@ -35,17 +35,22 @@ export function getPriceLabel(type: UnitType): string {
   }
 }
 
-export function calculateTotalAmount(type: UnitType, price: number, duration: number, paymentCycle?: string): number {
+export function calculateTotalAmount(
+  type: UnitType,
+  price: number,
+  duration: number,
+  _paymentCycle?: PaymentCycle // underscore avoids unused warning
+): number {
   switch (type) {
     case 'rental_space':
-      // Duration is in months, price is monthly
       return price * duration;
+
     case 'function_hall':
-      // Duration is in days, price is daily
       return price * duration;
+
     case 'parking_slot':
-      // Duration is in months, price is monthly
       return price * duration;
+
     default:
       return price * duration;
   }

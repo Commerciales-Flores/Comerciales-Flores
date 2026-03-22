@@ -289,7 +289,8 @@ export default function AdminDashboard() {
   }, [reservations, payments, units, inquiries, auditLogs, reviews]);
 
   return (
-    <div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
+    <div className="min-h-screen bg-gray-50">
+  <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
       <header>
         <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
         <p className="text-sm text-gray-500">Overview of your rental management system</p>
@@ -573,6 +574,7 @@ export default function AdminDashboard() {
 </section>
         </div>
       </div>
+    </div>
     </div>
   );
 }

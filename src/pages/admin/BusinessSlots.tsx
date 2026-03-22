@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import type { JSX } from 'react';
 import { useUnits } from '../../contexts/UnitsContext';
-import type { UnitType, Unit } from '../../data/types';
+import type { UnitType } from '../../data/types';
 import supabase from '../../supabaseClient';
 import {
   Plus,
@@ -650,7 +650,8 @@ const slotFileInputRef = useRef<HTMLInputElement | null>(null);
   );
 
   return (
-    <div className="bg-gray-50 min-h-screen p-4 md:p-6 lg:p-8 flex flex-col gap-6 pb-24 lg:pb-8">
+    <div className="min-h-screen bg-gray-50">
+  <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-gray-900">Unit Management</h1>
@@ -1785,6 +1786,7 @@ const slotFileInputRef = useRef<HTMLInputElement | null>(null);
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

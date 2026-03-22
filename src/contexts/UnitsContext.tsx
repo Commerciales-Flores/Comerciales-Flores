@@ -104,8 +104,8 @@ function mapParkingSlotRow(row: any): ParkingSlot {
     label: row.label,
     status: row.status,
     vehicleType: row.vehicle_type,
-    imagePath: row.image_path,
-    imageUrl: row.image_path ? getPublicImageUrl(row.image_path) : null,
+    imagePath: row.image_url,
+    imageUrl: row.image_url || null,
     notes: row.notes,
   };
 }
@@ -134,7 +134,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
       supabase.from('parking_units').select('unit_id, title, description, policies, features'),
       supabase
         .from('parking_slots')
-        .select('slot_id, unit_id, slot_code, label, status, vehicle_type, image_path, notes')
+        .select('slot_id, unit_id, slot_code, label, status, vehicle_type, image_url, notes')
         .order('slot_code', { ascending: true }),
     ]);
 
@@ -492,7 +492,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
           label: slot.label?.trim() || null,
           status: slot.status,
           vehicle_type: slot.vehicleType?.trim() || null,
-          image_path: slot.imagePath?.trim() || null,
+          image_url: slot.imagePath?.trim() || null,
           notes: slot.notes?.trim() || null,
         };
 
@@ -538,7 +538,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         if (slotUpdate.label !== undefined) payload.label = slotUpdate.label.trim() || null;
         if (slotUpdate.status !== undefined) payload.status = slotUpdate.status;
         if (slotUpdate.vehicleType !== undefined) payload.vehicle_type = slotUpdate.vehicleType.trim() || null;
-        if (slotUpdate.imagePath !== undefined) payload.image_path = slotUpdate.imagePath.trim() || null;
+        if (slotUpdate.imagePath !== undefined) payload.image_url = slotUpdate.imagePath.trim() || null;
         if (slotUpdate.notes !== undefined) payload.notes = slotUpdate.notes.trim() || null;
 
         if (Object.keys(payload).length === 0) return;

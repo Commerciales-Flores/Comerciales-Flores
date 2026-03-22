@@ -5,7 +5,6 @@ import {
   CreditCard,
   AlertCircle,
   MessageSquare,
-  Bell,
   ArrowRight,
   Clock3,
 } from 'lucide-react';
@@ -258,7 +257,7 @@ export default function ClientDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
+  <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className={uiTypography.pageTitle}>Welcome back, {firstName}!</h1>
