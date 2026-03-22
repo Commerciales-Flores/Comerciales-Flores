@@ -264,11 +264,39 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
     [mapReservationRow]
   );
 
+
   const addReservation = useCallback(
     async (
       reservationData: Omit<Reservation, 'id' | 'requestDate' | 'status' | 'paidAmount'>
     ): Promise<string> => {
+
+      if (!user?.id) {
+        throw new Error('User not authenticated.');
+      }
       const cleanDetails = buildReservationDetails(reservationData);
+
+        if (
+          reservationData.unitType === 'parking_slot' &&
+          reservationData.slotId
+        ) {
+          const { data: existing, error: checkError } = await supabase
+            .from('reservations')
+            .select('reservation_id')
+            .eq('unit_type', 'parking_slot')
+            .eq('details->>slotId', reservationData.slotId)
+            .in('status', ['approved', 'confirmed']);
+
+          if (checkError) {
+            console.error('Slot validation failed:', checkError);
+            throw new Error('Unable to validate parking slot.');
+          }
+
+          if (existing && existing.length > 0) {
+            throw new Error(
+              'This parking slot is already occupied. Please select another.'
+            );
+          }
+        }
 
       const { data, error } = await supabase
         .from('reservations')
@@ -324,7 +352,7 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
 
       try {
         await addAuditLog({
-          userId: user?.id || data.user_id,
+          userId: user.id,
           action: 'CREATE',
           targetTable: 'reservations',
           targetId: newReservation.id,

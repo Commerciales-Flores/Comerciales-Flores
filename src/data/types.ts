@@ -32,6 +32,11 @@ export interface ParkingSlot {
   imagePath?: string | null;
   imageUrl?: string | null;
   notes?: string | null;
+
+  isOccupied?: boolean;
+  occupiedByUserId?: string | null;
+  occupiedByName?: string | null;
+  occupiedSince?: string | null;
 }
 
 export interface Unit {
@@ -160,6 +165,17 @@ export interface User {
   addressConfirmed: boolean;
   addressConfirmedAt?: string | null;
   createdAt?: string;
+
+  hasActiveOccupancy?: boolean;
+  activeUnitName?: string | null;
+  activeUnitType?: UnitType | null;
+  activeSince?: string | null;
+
+  hasUpcomingReservation?: boolean;
+  hasUnpaidBalance?: boolean;
+
+  deactivationBlocked?: boolean;
+  deactivationReason?: string | null;
 }
 
 export interface Inquiry {

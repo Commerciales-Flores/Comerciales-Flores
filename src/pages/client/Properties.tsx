@@ -425,6 +425,27 @@ export default function ClientUnits() {
         return;
       }
 
+      // 🔥 Prevent selecting occupied slot (double check)
+      if (selectedUnitData.type === "parking_slot") {
+        const selectedSlot = parkingSlots.find(
+          (s) => s.id === reservationForm.slotId
+        );
+
+        if (!selectedSlot) {
+          alert("Invalid slot selected.");
+          return;
+        }
+
+        if (
+          selectedSlot.isOccupied ||
+          selectedSlot.status !== "active" ||
+          reservedSlotIds.has(selectedSlot.id)
+        ) {
+          alert("This parking slot is no longer available. Please select another.");
+          return;
+        }
+      }
+
       if (
         selectedUnitData.type === "rental_space" &&
         !reservationForm.businessType.trim()
@@ -499,19 +520,27 @@ export default function ClientUnits() {
         reservationData.appointmentTime = reservationForm.appointmentTime || null;
       }
 
-      await addReservation(reservationData);
+      try {
+        await addReservation(reservationData);
 
-      sendSystemNotification(
-        user.id,
-        "Reservation Request Submitted",
-        `Your reservation request for ${selectedUnitData.name} has been submitted and is pending admin approval.`
-      );
+        sendSystemNotification(
+          user.id,
+          "Reservation Request Submitted",
+          `Your reservation request for ${selectedUnitData.name} has been submitted and is pending admin approval.`
+        );
 
-      setReservationSuccess(true);
-      setTimeout(() => {
-        setShowReservationModal(false);
-        setReservationSuccess(false);
-      }, 2000);
+        setReservationSuccess(true);
+        setTimeout(() => {
+          setShowReservationModal(false);
+          setReservationSuccess(false);
+        }, 2000);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Unable to submit reservation. Please try again.';
+        alert(message);
+      }
     },
     [
       selectedUnitData,
@@ -1609,6 +1638,7 @@ export default function ClientUnits() {
                       const isReserved = reservedSlotIds.has(slot.id);
                       const isUnavailable =
                         isReserved ||
+                        slot.isOccupied ||
                         slot.status === "inactive" ||
                         slot.status === "maintenance";
                       const isSelected = reservationForm.slotId === slot.id;
@@ -1650,6 +1680,12 @@ export default function ClientUnits() {
                               className="h-32 w-full object-cover"
                             />
 
+                            {slot.isOccupied && (
+                              <div className="absolute left-2 top-2 z-10 rounded-full bg-red-600 px-2 py-1 text-[10px] font-bold text-white">
+                                OCCUPIED
+                              </div>
+                            )}
+
                             {isUnavailable && (
                               <div className="absolute inset-0 flex items-center justify-center bg-white/65 backdrop-blur-[2px]">
                                 <span
@@ -1659,7 +1695,11 @@ export default function ClientUnits() {
                                       : "bg-slate-700 text-white"
                                   }`}
                                 >
-                                  {isReserved ? "TAKEN" : slot.status.toUpperCase()}
+                                  {slot.isOccupied
+                                    ? "OCCUPIED"
+                                    : isReserved
+                                    ? "RESERVED"
+                                    : slot.status.toUpperCase()}
                                 </span>
                               </div>
                             )}

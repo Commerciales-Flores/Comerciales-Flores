@@ -79,6 +79,15 @@ type ParkingSlotRecord = {
   vehicleType?: string | null;
   imagePath?: string | null;
   notes?: string | null;
+
+  occupiedByUserId?: string | null;
+  occupiedByName?: string | null;
+  occupiedByPublicId?: string | null;
+  occupancyReservationId?: string | null;
+
+  isOccupied?: boolean;
+  isReservable?: boolean;
+  occupiedSince?: string | null;
 };
 
 const SLOT_STATUS_STYLES: Record<
@@ -476,9 +485,14 @@ const slotFileInputRef = useRef<HTMLInputElement | null>(null);
   );
 
   const handleEditSlot = useCallback(
-    (slotId: string) => {
-      const slot = selectedParkingUnitSlots.find((item) => item.id === slotId);
-      if (!slot) return;
+  (slotId: string) => {
+    const slot = selectedParkingUnitSlots.find((item) => item.id === slotId);
+    if (!slot) return;
+
+    if (slot.isOccupied) {
+      alert('Cannot edit an occupied parking slot.');
+      return;
+    }
 
       setSlotImagePreview(slot.imagePath ? getPublicImageUrl(slot.imagePath) : '');
 
@@ -562,9 +576,15 @@ const slotFileInputRef = useRef<HTMLInputElement | null>(null);
   }, [deleteUnit, isDeleting, unitToDelete]);
 
   const confirmDeleteSlot = useCallback(async () => {
-    if (!slotToDelete || isDeletingSlot) return;
+  if (!slotToDelete || isDeletingSlot) return;
 
-    setIsDeletingSlot(true);
+  const targetSlot = selectedParkingUnitSlots.find((slot) => slot.id === slotToDelete);
+  if (targetSlot?.isOccupied) {
+    alert('Cannot delete an occupied parking slot.');
+    return;
+  }
+
+  setIsDeletingSlot(true);
 
     try {
       await deleteParkingSlot(slotToDelete);
@@ -577,7 +597,14 @@ const slotFileInputRef = useRef<HTMLInputElement | null>(null);
     } finally {
       setIsDeletingSlot(false);
     }
-  }, [slotToDelete, isDeletingSlot, deleteParkingSlot, editingSlotId, resetSlotForm]);
+  }, [
+    slotToDelete,
+    isDeletingSlot,
+    deleteParkingSlot,
+    editingSlotId,
+    resetSlotForm,
+    selectedParkingUnitSlots,
+  ]);
 
   const handleFilesSelected = useCallback(
     async (filesList: FileList | null) => {
@@ -644,7 +671,7 @@ const slotFileInputRef = useRef<HTMLInputElement | null>(null);
           ? getParkingSlotsByUnit(unitId) ?? []
           : (parkingSlots ?? []).filter((slot: ParkingSlotRecord) => slot.unitId === unitId);
 
-      return slots.filter((slot: ParkingSlotRecord) => slot.status === 'active').length;
+      return slots.filter((slot: ParkingSlotRecord) => slot.status === 'active' && !slot.isOccupied).length;
     },
     [getParkingSlotsByUnit, parkingSlots]
   );
@@ -1302,23 +1329,61 @@ const slotFileInputRef = useRef<HTMLInputElement | null>(null);
                                 {slot.imagePath ? <span>Image attached</span> : null}
                                 {slot.notes ? <span className="truncate max-w-[220px]">Notes: {slot.notes}</span> : null}
                               </div>
+                              {slot.isOccupied && (
+                                <div className="mt-2 w-full rounded-xl bg-red-50 border border-red-100 px-3 py-2 text-xs text-red-700">
+                                  <p className="font-bold uppercase tracking-wider text-[10px]">
+                                    Occupied
+                                  </p>
+
+                                  {slot.occupiedByName && (
+                                    <p>Client: {slot.occupiedByName}</p>
+                                  )}
+
+                                  {slot.occupiedByPublicId && (
+                                    <p>ID: {slot.occupiedByPublicId}</p>
+                                  )}
+
+                                  {slot.occupiedSince && (
+                                    <p>
+                                      Since:{' '}
+                                      {new Date(slot.occupiedSince).toLocaleDateString()}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
                             </div>
 
                             <div className="flex gap-2">
                               <button
                                 type="button"
-                                onClick={() => handleEditSlot(slot.id)}
-                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
-                                title="Edit slot"
+                                onClick={() => {
+                                  if (slot.isOccupied) return;
+                                  handleEditSlot(slot.id);
+                                }}
+                                disabled={slot.isOccupied}
+                                className={`rounded-lg p-2 ${
+                                  slot.isOccupied
+                                    ? 'cursor-not-allowed text-gray-300'
+                                    : 'text-blue-600 hover:bg-blue-50'
+                                }`}
+                                title={slot.isOccupied ? 'Cannot edit an occupied slot' : 'Edit slot'}
                               >
                                 <Edit className="size-4.5" />
                               </button>
 
                               <button
                                 type="button"
-                                onClick={() => handleDeleteSlot(slot.id)}
-                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                                title="Delete slot"
+                                onClick={() => {
+                                  if (slot.isOccupied) return;
+                                  handleDeleteSlot(slot.id);
+                                }}
+                                disabled={slot.isOccupied}
+                                className={`rounded-lg p-2 ${
+                                  slot.isOccupied
+                                    ? 'cursor-not-allowed text-gray-300'
+                                    : 'text-red-600 hover:bg-red-50'
+                                }`}
+                                title={slot.isOccupied ? 'Cannot delete an occupied slot' : 'Delete slot'}
                               >
                                 <Trash2 className="size-4.5" />
                               </button>
@@ -1733,6 +1798,12 @@ const slotFileInputRef = useRef<HTMLInputElement | null>(null);
                       {selectedSlotToDelete.vehicleType}
                     </span>
                   ) : null}
+
+                  {selectedSlotToDelete?.isOccupied && (
+                    <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      This parking slot is currently occupied and cannot be deleted.
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1749,10 +1820,18 @@ const slotFileInputRef = useRef<HTMLInputElement | null>(null);
                 <button
                   type="button"
                   onClick={confirmDeleteSlot}
-                  disabled={isDeletingSlot}
-                  className="flex-1 rounded-2xl bg-red-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isDeletingSlot || selectedSlotToDelete?.isOccupied}
+                  className={`flex-1 rounded-2xl px-4 py-3 text-sm font-semibold transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 ${
+                    selectedSlotToDelete?.isOccupied
+                      ? 'bg-gray-200 text-gray-400'
+                      : 'bg-red-600 text-white shadow-lg shadow-red-600/20 hover:bg-red-700'
+                  }`}
                 >
-                  {isDeletingSlot ? 'Deleting...' : 'Delete Slot'}
+                  {selectedSlotToDelete?.isOccupied
+                    ? 'Occupied Slot'
+                    : isDeletingSlot
+                    ? 'Deleting...'
+                    : 'Delete Slot'}
                 </button>
               </div>
             </div>

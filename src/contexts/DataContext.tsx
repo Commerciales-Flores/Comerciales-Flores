@@ -6,7 +6,6 @@ import type {
   Inquiry,
   LedgerEntry,
   Notification,
-  ParkingSlot,
   Payment,
   Reservation,
   Unit,

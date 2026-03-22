@@ -24,6 +24,7 @@ interface UsersContextType {
     data: User[];
     count: number;
   }>;
+  updateUserStatus: (id: string, isActive: boolean) => Promise<boolean>;
 }
 
 const UsersContext = createContext<UsersContextType | undefined>(undefined);
@@ -49,6 +50,47 @@ function mapUserRow(row: any): User {
     addressConfirmed: Boolean(row.address_confirmed),
     addressConfirmedAt: row.address_confirmed_at ?? null,
     createdAt: row.created_at ?? undefined,
+  };
+}
+
+const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+
+function parseLastLogin(value?: string | null) {
+  if (!value) return null;
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function getDeactivationRuleState(params: {
+  hasActiveReservation: boolean;
+  lastLogin?: string | null;
+}) {
+  const { hasActiveReservation, lastLogin } = params;
+
+  if (hasActiveReservation) {
+    return {
+      blocked: true,
+      reason:
+        'This customer cannot be deactivated because they have an active reservation or ongoing occupancy.',
+    };
+  }
+
+  const parsedLastLogin = parseLastLogin(lastLogin);
+  const isRecentlyActive =
+    parsedLastLogin && Date.now() - parsedLastLogin.getTime() < THIRTY_DAYS;
+
+  if (isRecentlyActive) {
+    return {
+      blocked: true,
+      reason:
+        'This customer cannot be deactivated because the account has recent login activity.',
+    };
+  }
+
+  return {
+    blocked: false,
+    reason: null as string | null,
   };
 }
 
@@ -146,15 +188,129 @@ export function UsersProvider({ children }: { children: ReactNode }) {
 
       const { data, error, count } = await query.range(from, to);
 
+      // Fetch active reservations
+      const { data: reservations } = await supabase
+        .from('reservations')
+        .select(`
+          user_id,
+          unit_id,
+          unit_type,
+          start_date,
+          status
+        `)
+        .in('status', ['approved', 'confirmed']);
+
+      // Fetch deletion requests
+      const { data: deletionRequests } = await supabase
+        .from('account_deletion_requests')
+        .select(`
+          user_id,
+          status,
+          request_reason
+        `);
+
       if (error) throw error;
 
+      const usersMapped = (data ?? []).map(mapUserRow);
+
+        const enriched = usersMapped.map((user) => {
+        const userReservations =
+          reservations?.filter((r) => r.user_id === user.id) ?? [];
+
+        const activeReservation = userReservations.find((r) =>
+          ['approved', 'confirmed'].includes(r.status)
+        );
+
+        const deletionRequest =
+          deletionRequests?.find((d) => d.user_id === user.id) ?? null;
+
+        const deactivationState = getDeactivationRuleState({
+          hasActiveReservation: !!activeReservation,
+          lastLogin: user.lastLogin ?? null,
+        });
+
+        return {
+          ...user,
+          hasActiveOccupancy: !!activeReservation,
+          activeUnitType: activeReservation?.unit_type ?? null,
+          activeSince: activeReservation?.start_date ?? null,
+
+          // 🔥 NEW
+          deletionRequested: !!deletionRequest,
+          deletionStatus: deletionRequest?.status ?? null,
+          deletionRequestReason: deletionRequest?.request_reason ?? null,
+
+          deactivationBlocked: deactivationState.blocked,
+          deactivationReason: deactivationState.reason,
+        };
+      });
+
       return {
-        data: (data ?? []).map(mapUserRow),
+        data: enriched,
         count: count ?? 0,
       };
     },
     []
   );
+
+  
+
+const updateUserStatus = useCallback(async (id: string, isActive: boolean) => {
+  if (!isActive) {
+    const { data: userRow, error: userError } = await supabase
+      .from('users')
+      .select('last_login')
+      .eq('user_id', id)
+      .maybeSingle();
+
+    if (userError) {
+      console.error('Error checking user activity:', userError);
+      return false;
+    }
+
+    const { data: activeReservation, error: reservationError } = await supabase
+      .from('reservations')
+      .select('reservation_id')
+      .eq('user_id', id)
+      .in('status', ['approved', 'confirmed'])
+      .limit(1)
+      .maybeSingle();
+
+    if (reservationError) {
+      console.error('Error checking active reservation:', reservationError);
+      return false;
+    }
+
+    const deactivationState = getDeactivationRuleState({
+      hasActiveReservation: !!activeReservation,
+      lastLogin: userRow?.last_login ?? null,
+    });
+
+    if (deactivationState.blocked) {
+      console.warn(
+        'Cannot deactivate user:',
+        deactivationState.reason ?? 'deactivation rule blocked'
+      );
+      return false;
+    }
+  }
+
+  const { error } = await supabase
+    .from('users')
+    .update({ is_active: isActive })
+    .eq('user_id', id);
+
+  if (error) {
+    console.error('Error updating user status:', error);
+    return false;
+  }
+
+  setUsers((prev) =>
+    prev.map((u) => (u.id === id ? { ...u, isActive } : u))
+  );
+
+  return true;
+}, []);
 
   const getUserById = useCallback(
     (id: string) => users.find((u) => u.id === id),
@@ -171,8 +327,9 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       getUserById,
       refreshUsers,
       fetchUsersPage,
+      updateUserStatus,
     }),
-    [users, getUserById, refreshUsers, fetchUsersPage]
+    [users, getUserById, refreshUsers, fetchUsersPage, updateUserStatus]
   );
 
   return <UsersContext.Provider value={value}>{children}</UsersContext.Provider>;

@@ -148,6 +148,21 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
     const parkingUnits = parkingRes.data ?? [];
     const slotRows = parkingSlotsRes.data ?? [];
 
+    const { data: activeParking } = await supabase
+      .from('reservations')
+      .select(`
+        user_id,
+        start_date,
+        details,
+        users (
+          first_name,
+          last_name,
+          public_id
+        )
+      `)
+      .eq('unit_type', 'parking_slot')
+      .in('status', ['approved', 'confirmed']);
+
     const combinedUnits: Unit[] = (baseUnits ?? []).map((base) => {
       let specific:
         | {
@@ -196,7 +211,30 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
     });
 
     setUnits(combinedUnits);
-    setParkingSlots(slotRows.map(mapParkingSlotRow));
+    const mappedSlots = slotRows.map((slot) => {
+    const occupancy = activeParking?.find(
+      (r) => r.details?.slotId === slot.slot_id
+    );
+
+    const userInfo = occupancy?.users?.[0];
+
+    return {
+      ...mapParkingSlotRow(slot),
+      isOccupied: !!occupancy,
+
+      occupiedByUserId: occupancy?.user_id ?? null,
+
+      occupiedByName: userInfo
+        ? `${userInfo.first_name ?? ''} ${userInfo.last_name ?? ''}`.trim()
+        : null,
+
+      occupiedByPublicId: userInfo?.public_id ?? null,
+
+      occupiedSince: occupancy?.start_date ?? null,
+    };
+  });
+
+  setParkingSlots(mappedSlots);
   } catch (error) {
     console.error('Error loading base units from Supabase:', error);
     setUnits([]);

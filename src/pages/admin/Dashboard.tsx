@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { useReviews } from '../../contexts/ReviewsContext';
+import { useUsers } from '../../contexts/UsersContext';
 import {
   AlertCircle,
   TrendingUp,
@@ -11,6 +12,8 @@ import {
   MessageSquare,
   CreditCard,
   Clock,
+  ShieldAlert,
+  Star,
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { Link } from 'react-router-dom';
@@ -34,6 +37,22 @@ type TopUnit = {
   revenue: number;
 };
 
+type WatchlistItem = {
+  id: string;
+  name: string;
+  reason: 'Deletion Pending' | 'Deactivation Restricted' | 'Recently Active';
+  publicId?: string;
+};
+
+type ReviewRow = {
+  review_id: string;
+  user_id: string | null;
+  unit_id: string | null;
+  rating: number | null;
+  comment: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
 
 const StatCard = ({
   title,
@@ -47,16 +66,16 @@ const StatCard = ({
   change?: number;
 }) => {
   return (
-    <div className="bg-white p-3 sm:p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col">
-      <div className="flex items-center justify-between mb-2">
-        <p className="text-xs font-medium text-gray-500">{title}</p>
+    <div className="flex min-h-[112px] flex-col rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md sm:p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{title}</p>
         {icon}
       </div>
 
-      <p className="text-xl font-bold text-gray-900">{value}</p>
+      <p className="text-2xl font-bold text-gray-900">{value}</p>
 
       {typeof change === 'number' && (
-        <span className={`text-sm ${change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+        <span className={`mt-2 text-sm font-medium ${change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
           {change >= 0 ? '↑' : '↓'} {Math.abs(change).toFixed(1)}%
         </span>
       )}
@@ -84,12 +103,17 @@ const MiniListCard = ({
   badgeClassName: string;
 }) => {
   return (
-    <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-gray-800 flex items-center gap-2 text-sm">
-          {icon} {title}
+    <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-center justify-between">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+          {icon}
+          {title}
         </h3>
-        <Link to={viewAllTo} className="text-xs text-blue-600">
+
+        <Link
+          to={viewAllTo}
+          className="text-xs font-semibold text-blue-600 transition hover:text-blue-700"
+        >
           View All
         </Link>
       </div>
@@ -99,21 +123,21 @@ const MiniListCard = ({
           items.map((item) => (
             <div
               key={item.id}
-              className="flex justify-between items-center bg-gray-50 p-2 rounded gap-3"
+              className="flex items-center justify-between gap-3 rounded-xl bg-gray-50 px-3 py-3"
             >
               <div className="min-w-0 flex-1">{valueRenderer(item)}</div>
-              <span className={`text-[10px] px-2 py-0.5 rounded uppercase ${badgeClassName}`}>
+              <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${badgeClassName}`}>
                 {badgeText}
               </span>
             </div>
           ))
         ) : (
-          <div className="flex items-center justify-center bg-gray-50 p-3 rounded text-xs text-gray-500">
+          <div className="flex min-h-[88px] items-center justify-center rounded-xl bg-gray-50 px-4 text-center text-xs text-gray-500">
             {emptyText}
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 };
 
@@ -135,23 +159,29 @@ const TrendCard = ({
   formatter: (value: number | undefined) => [string, string];
 }) => {
   return (
-    <div className="bg-white p-8 rounded-xl border border-gray-200 shadow-sm">
-      <div className="flex justify-between items-start mb-2">
-        <p className="text-xs font-medium text-gray-500">{title}</p>
+    <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="mb-3 flex items-start justify-between">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{title}</p>
         {icon}
       </div>
 
-      <div className="flex items-end gap-2 mb-2">
-        <span className="text-2xl font-bold">{value}</span>
+      <div className="mb-4">
+        <span className="text-2xl font-bold text-gray-900">{value}</span>
       </div>
 
-      <div className="h-32">
+      <div className="h-36">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>
             <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-            <Line type="monotone" dataKey={lineDataKey} stroke={stroke} strokeWidth={2} dot={false} />
+            <Line
+              type="monotone"
+              dataKey={lineDataKey}
+              stroke={stroke}
+              strokeWidth={2.5}
+              dot={false}
+            />
             <Tooltip
-              contentStyle={{ fontSize: 10 }}
+              contentStyle={{ fontSize: 10, borderRadius: 12 }}
               formatter={(value: number | undefined) => formatter(value)}
               labelFormatter={(label) => `Month: ${label}`}
             />
@@ -162,13 +192,67 @@ const TrendCard = ({
   );
 };
 
-const EmptyPanel = ({ text }: { text: string }) => (
-  <div className="flex items-center justify-center p-4 text-xs text-gray-500">{text}</div>
+const EmptyPanel = ({
+  text,
+  compact = false,
+}: {
+  text: string;
+  compact?: boolean;
+}) => (
+  <div
+    className={`flex items-center justify-center rounded-xl bg-gray-50 px-4 text-center text-xs text-gray-500 ${
+      compact ? 'min-h-[88px]' : 'min-h-[120px]'
+    }`}
+  >
+    {text}
+  </div>
 );
+
+const getWatchlistBadgeClass = (reason: WatchlistItem['reason']) => {
+  switch (reason) {
+    case 'Deletion Pending':
+      return 'bg-purple-100 text-purple-800';
+    case 'Deactivation Restricted':
+      return 'bg-amber-100 text-amber-800';
+    default:
+      return 'bg-blue-100 text-blue-800';
+  }
+};
 
 export default function AdminDashboard() {
   const { reservations, payments, units, inquiries, auditLogs } = useData();
   const { reviews } = useReviews();
+  const { fetchUsersPage } = useUsers();
+  const [watchlistUsers, setWatchlistUsers] = useState<any[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadWatchlistUsers = async () => {
+      try {
+        const result = await fetchUsersPage({
+          page: 1,
+          pageSize: 100,
+          searchTerm: '',
+        });
+
+        if (!cancelled) {
+          setWatchlistUsers(result.data ?? []);
+        }
+      } catch (error) {
+        console.error('Failed to load watchlist users:', error);
+        if (!cancelled) {
+          setWatchlistUsers([]);
+        }
+      }
+    };
+
+    void loadWatchlistUsers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchUsersPage]);
 
   const dashboardData = useMemo(() => {
     const now = new Date();
@@ -177,13 +261,29 @@ export default function AdminDashboard() {
     const pendingReservationsAll = reservations.filter((r) => r.status === 'pending');
     const confirmedReservationsCount = reservations.filter((r) => r.status === 'confirmed').length;
     const cancelledReservationsCount = reservations.filter((r) => r.status === 'cancelled').length;
+
     const paidPayments = payments.filter((p) => p.status === 'paid');
     const paidPaymentsCount = paidPayments.length;
     const pendingPayments = payments.filter(
       (p) => p.status === 'unpaid' || p.status === 'partial'
     );
-    const recentInquiries = inquiries.filter((i) => i.status === 'open').slice(0, 3);
-    const recentReviews = (reviews ?? []).slice(0, 3);
+
+    const recentInquiries = inquiries.filter((i) => i.status === 'open').slice(0, 4);
+
+    const recentReviews: Array<
+      ReviewRow & {
+        unitName: string;
+      }
+    > = (reviews ?? [])
+      .slice(0, 4)
+      .map((review: ReviewRow) => {
+        const matchedUnit = units.find((unit) => unit.id === review.unit_id);
+
+        return {
+          ...review,
+          unitName: matchedUnit?.name || 'Unit Review',
+        };
+      });
 
     const overdueReservations = pendingReservationsAll.filter(
       (r) => new Date(r.requestDate) < fortyEightHoursAgo
@@ -201,7 +301,8 @@ export default function AdminDashboard() {
         .filter((p) => p.date.startsWith(yearMonth))
         .reduce((sum, p) => sum + p.amount, 0);
 
-      const monthOccupancy = units.length > 0 ? (monthReservations.length / units.length) * 100 : 0;
+      const monthOccupancy =
+        units.length > 0 ? (monthReservations.length / units.length) * 100 : 0;
 
       return {
         month: monthLabel,
@@ -246,6 +347,7 @@ export default function AdminDashboard() {
     for (const payment of paidPayments) {
       const reservation = reservationById.get(payment.reservationId);
       if (!reservation?.unitId) continue;
+
       revenueByUnitId.set(
         reservation.unitId,
         (revenueByUnitId.get(reservation.unitId) ?? 0) + payment.amount
@@ -288,293 +390,490 @@ export default function AdminDashboard() {
     };
   }, [reservations, payments, units, inquiries, auditLogs, reviews]);
 
+  const customerWatchlist = useMemo<WatchlistItem[]>(() => {
+    const now = Date.now();
+    const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
+
+    const list: WatchlistItem[] = [];
+
+    for (const user of watchlistUsers) {
+      const name = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || 'Customer';
+
+      if (user.deletionStatus === 'pending') {
+        list.push({
+          id: user.id,
+          publicId: user.publicId,
+          name,
+          reason: 'Deletion Pending',
+        });
+        continue;
+      }
+
+      if (user.deactivationBlocked) {
+        list.push({
+          id: user.id,
+          publicId: user.publicId,
+          name,
+          reason: 'Deactivation Restricted',
+        });
+        continue;
+      }
+
+      if (user.lastLogin) {
+        const lastLogin = new Date(user.lastLogin);
+
+        if (!Number.isNaN(lastLogin.getTime()) && now - lastLogin.getTime() < THREE_DAYS) {
+          list.push({
+            id: user.id,
+            publicId: user.publicId,
+            name,
+            reason: 'Recently Active',
+          });
+        }
+      }
+    }
+
+    return list.slice(0, 5);
+  }, [watchlistUsers]);
+
   return (
     <div className="min-h-screen bg-gray-50">
-  <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
-      <header>
-        <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-        <p className="text-sm text-gray-500">Overview of your rental management system</p>
-      </header>
+      <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
+        <header className="space-y-1">
+          <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+          <p className="text-sm text-gray-500">
+            Overview of your rental management system
+          </p>
+        </header>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard
-          title="Total Reservations"
-          value={reservations.length}
-          icon={<Activity className="size-5 text-purple-500" />}
-          change={dashboardData.reservationsChange}
-        />
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            title="Total Reservations"
+            value={reservations.length}
+            icon={<Activity className="size-5 text-purple-500" />}
+            change={dashboardData.reservationsChange}
+          />
 
-        <StatCard
-          title="Confirmed"
-          value={dashboardData.confirmedReservationsCount}
-          icon={<CheckCircle2 className="size-5 text-green-500" />}
-        />
+          <StatCard
+            title="Confirmed"
+            value={dashboardData.confirmedReservationsCount}
+            icon={<CheckCircle2 className="size-5 text-green-500" />}
+          />
 
-        <StatCard
-          title="Cancelled"
-          value={dashboardData.cancelledReservationsCount}
-          icon={<AlertCircle className="size-5 text-red-500" />}
-        />
+          <StatCard
+            title="Cancelled"
+            value={dashboardData.cancelledReservationsCount}
+            icon={<AlertCircle className="size-5 text-red-500" />}
+          />
 
-        <StatCard
-          title="Paid Payments"
-          value={dashboardData.paidPaymentsCount}
-          icon={<CreditCard className="size-5 text-blue-500" />}
-        />
-      </div>
+          <StatCard
+            title="Paid Payments"
+            value={dashboardData.paidPaymentsCount}
+            icon={<CreditCard className="size-5 text-blue-500" />}
+          />
+        </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <section className="bg-white rounded-xl border border-red-100 shadow-sm overflow-hidden">
-            <div className="bg-red-50 px-4 sm:px-6 py-4 border-b border-red-100 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-red-700 font-semibold">
-                <AlertCircle className="size-5" />
-                <h2>Urgent Alerts</h2>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <div className="space-y-6 lg:col-span-8">
+            <section className="overflow-hidden rounded-2xl border border-red-100 bg-white shadow-sm">
+              <div className="flex items-center justify-between border-b border-red-100 bg-red-50 px-4 py-4 sm:px-6">
+                <div className="flex items-center gap-2 font-semibold text-red-700">
+                  <AlertCircle className="size-5" />
+                  <h2>Urgent Alerts</h2>
+                </div>
+
+                <span className="rounded-full bg-red-200 px-2.5 py-1 text-xs font-bold text-red-800">
+                  {dashboardData.overdueReservations.length} Overdue
+                </span>
               </div>
-              <span className="bg-red-200 text-red-800 text-xs px-2 py-1 rounded-full font-bold">
-                {dashboardData.overdueReservations.length} Overdue
-              </span>
+
+              <div className="p-4 sm:p-6">
+                {dashboardData.overdueReservations.length > 0 ? (
+                  <div className="divide-y divide-gray-100">
+                    {dashboardData.overdueReservations.map((res) => (
+                      <div
+                        key={res.id}
+                        className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-gray-900">{res.unitName}</p>
+                          <p className="font-mono text-xs text-gray-500">
+                            Overdue since {new Date(res.requestDate).toLocaleDateString()}
+                          </p>
+                        </div>
+
+                        <Link
+                          to="/admin/reservations"
+                          className="inline-flex items-center gap-1 text-sm font-semibold text-red-600 hover:underline"
+                        >
+                          Resolve <ArrowRight className="size-3" />
+                        </Link>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center gap-2 py-2 text-sm text-gray-500">
+                    <CheckCircle2 className="size-5 text-green-500" />
+                    No overdue items.
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <MiniListCard
+                title="Pending Reservations"
+                icon={<Clock className="size-4 text-orange-500" />}
+                viewAllTo="/admin/reservations"
+                items={dashboardData.pendingReservations}
+                emptyText="No pending reservations"
+                badgeText="Pending"
+                badgeClassName="bg-orange-100 text-orange-700"
+                valueRenderer={(res) => (
+                  <div className="min-w-0">
+                    <span className="block truncate text-sm font-medium text-gray-800">
+                      {res.unitName}
+                    </span>
+                    <span className="block text-xs text-gray-500">
+                      {new Date(res.requestDate).toLocaleDateString()}
+                    </span>
+                  </div>
+                )}
+              />
+
+              <MiniListCard
+                title="Pending Payments"
+                icon={<CreditCard className="size-4 text-blue-500" />}
+                viewAllTo="/admin/payments"
+                items={dashboardData.pendingPayments}
+                emptyText="No pending or partial payments"
+                badgeText="Review"
+                badgeClassName="bg-blue-100 text-blue-700"
+                valueRenderer={(pay) => (
+                  <div className="min-w-0">
+                    <span className="block text-sm font-medium text-gray-800">
+                      {formatCurrency(pay.amount)}
+                    </span>
+                    <span className="block text-xs text-gray-500 capitalize">
+                      {pay.status}
+                    </span>
+                  </div>
+                )}
+              />
             </div>
 
-            <div className="p-4 sm:p-6">
-              {dashboardData.overdueReservations.length > 0 ? (
-                <div className="divide-y divide-gray-100">
-                  {dashboardData.overdueReservations.map((res) => (
+            <section className="space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Health Metrics</h2>
+                <p className="mt-1 text-xs text-gray-500">
+                  Overall occupancy and revenue trends
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <TrendCard
+                  title="Occupancy Rate"
+                  value={`${dashboardData.occupancyRate.toFixed(1)}%`}
+                  icon={<Activity className="size-5 text-purple-500" />}
+                  data={dashboardData.occupancyTrend}
+                  lineDataKey="value"
+                  stroke="#7c3aed"
+                  formatter={(value) => [`${(value ?? 0).toFixed(1)}%`, 'Occupancy']}
+                />
+
+                <TrendCard
+                  title="Total Revenue"
+                  value={formatCurrency(dashboardData.totalRevenue)}
+                  icon={<TrendingUp className="size-5 text-green-500" />}
+                  data={dashboardData.revenueTrend}
+                  lineDataKey="value"
+                  stroke="#16a34a"
+                  formatter={(value) => [`₱${((value ?? 0) / 1000).toFixed(1)}k`, 'Revenue']}
+                />
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-white p-6 shadow-sm">
+              <div className="mb-5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-xl bg-amber-100 p-2.5 text-amber-600">
+                    <Star className="size-5" />
+                  </div>
+
+                  <div>
+                    <h2 className="text-base font-semibold text-gray-900">Reviews</h2>
+                    <p className="text-xs text-gray-500">Recent client feedback and ratings</p>
+                  </div>
+                </div>
+
+                <Link
+                  to="/admin/reviews"
+                  className="text-xs font-semibold text-amber-600 transition hover:text-amber-700"
+                >
+                  View All
+                </Link>
+              </div>
+
+              {dashboardData.recentReviews.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {dashboardData.recentReviews.map((review) => (
                     <div
-                      key={res.id}
-                      className="py-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2"
+                      key={review.review_id}
+                      className="rounded-xl border border-amber-100 bg-white p-4 shadow-sm"
                     >
-                      <div>
-                        <p className="font-medium text-gray-900 truncate">{res.unitName}</p>
-                        <p className="text-xs text-gray-500 font-mono">
-                          Overdue since {new Date(res.requestDate).toLocaleDateString()}
-                        </p>
+                      <div className="mb-2 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-gray-900">
+                            {review.unitName}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {review.created_at
+                              ? new Date(review.created_at).toLocaleDateString()
+                              : 'Recently submitted'}
+                          </p>
+                        </div>
+
+                        <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">
+                          {review.rating ? `${review.rating}/5` : '—'}
+                        </span>
                       </div>
 
-                      <Link
-                        to="/admin/reservations"
-                        className="text-sm text-red-600 font-semibold hover:underline flex items-center gap-1"
-                      >
-                        Resolve <ArrowRight className="size-3" />
-                      </Link>
+                      <p className="line-clamp-3 text-sm leading-relaxed text-gray-600">
+                        {review.comment || 'No written review provided.'}
+                      </p>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-2 text-gray-500 flex items-center justify-center gap-2 text-sm">
-                  <CheckCircle2 className="size-5 text-green-500" />
-                  No overdue items.
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-amber-100 bg-white p-4">
+                    <p className="text-sm leading-relaxed text-gray-700">
+                      Monitor client feedback, identify low-rated units, and stay updated
+                      with the latest reviews across your properties.
+                    </p>
+                  </div>
+
+                  <Link
+                    to="/admin/reviews"
+                    className="group inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-700"
+                  >
+                    Go to Reviews
+                    <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
+                  </Link>
                 </div>
               )}
-            </div>
-          </section>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <MiniListCard
-              title="Pending Reservations"
-              icon={<Clock className="size-4 text-orange-500" />}
-              viewAllTo="/admin/reservations"
-              items={dashboardData.pendingReservations}
-              emptyText="No pending reservations"
-              badgeText="Pending"
-              badgeClassName="bg-orange-100 text-orange-700"
-              valueRenderer={(res) => (
-                <span className="text-xs font-medium text-gray-700 truncate block">{res.unitName}</span>
-              )}
-            />
-
-            <MiniListCard
-              title="Pending Payments"
-              icon={<CreditCard className="size-4 text-blue-500" />}
-              viewAllTo="/admin/payments"
-              items={dashboardData.pendingPayments}
-              emptyText="No pending or partial payments"
-              badgeText="Review"
-              badgeClassName="bg-blue-100 text-blue-700"
-              valueRenderer={(pay) => (
-                <span className="text-xs font-medium text-gray-700">{formatCurrency(pay.amount)}</span>
-              )}
-            />
+            </section>
           </div>
 
-          <section className="space-y-4">
-            <h2 className="text-lg font-semibold text-gray-900">Health Metrics</h2>
-            <p className="text-xs text-gray-500 mb-2">Overall occupancy and revenue trends</p>
+          <div className="space-y-6 lg:col-span-4">
+            <section className="overflow-hidden rounded-2xl border border-violet-100 bg-white shadow-sm">
+              <div className="flex items-center justify-between border-b border-violet-100 bg-violet-50 px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="size-4 text-violet-700" />
+                  <h2 className="text-sm font-semibold text-violet-900">
+                    Customer Activity Watchlist
+                  </h2>
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <TrendCard
-                title="Occupancy Rate"
-                value={`${dashboardData.occupancyRate.toFixed(1)}%`}
-                icon={<Activity className="size-5 text-purple-500" />}
-                data={dashboardData.occupancyTrend}
-                lineDataKey="value"
-                stroke="#7c3aed"
-                formatter={(value) => [`${(value ?? 0).toFixed(1)}%`, 'Occupancy']}
-              />
+                <Link
+                  to="/admin/customers"
+                  className="text-xs font-semibold text-violet-600 transition hover:text-violet-700"
+                >
+                  View All
+                </Link>
+              </div>
 
-              <TrendCard
-                title="Total Revenue"
-                value={formatCurrency(dashboardData.totalRevenue)}
-                icon={<TrendingUp className="size-5 text-green-500" />}
-                data={dashboardData.revenueTrend}
-                lineDataKey="value"
-                stroke="#16a34a"
-                formatter={(value) => [`₱${((value ?? 0) / 1000).toFixed(1)}k`, 'Revenue']}
-              />
-            </div>
-          </section>
-        </div>
+              <div className="p-5">
+                {customerWatchlist.length > 0 ? (
+                  <div className="space-y-3">
+                    {customerWatchlist.map((customer) => (
+                      <Link
+                        key={customer.id}
+                        to={`/admin/customers?customer=${encodeURIComponent(
+                          customer.publicId || customer.id
+                        )}`}
+                        className="block rounded-xl border border-gray-100 bg-gray-50 p-4 transition hover:border-violet-200 hover:bg-white"
+                      >
+                        <div className="mb-2 flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-gray-900">
+                              {customer.name}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {customer.publicId || customer.id}
+                            </p>
+                          </div>
 
-        <div className="space-y-6">
-          <section className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="p-4 bg-indigo-50 border-b border-indigo-100 flex items-center gap-2 font-semibold text-indigo-900">
-              <MessageSquare className="size-4" />
-              <h2 className="text-sm">Recent Inquiries</h2>
-            </div>
+                          <span
+                            className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${getWatchlistBadgeClass(
+                              customer.reason
+                            )}`}
+                          >
+                            {customer.reason}
+                          </span>
+                        </div>
 
-            <div className="divide-y divide-gray-100">
-              {dashboardData.recentInquiries.length > 0 ? (
-                dashboardData.recentInquiries.map((inq) => (
-                  <div key={inq.id} className="p-4 hover:bg-gray-50 transition-colors">
-                    <p className="text-xs font-semibold text-gray-900 truncate">
-                      {inq.subject || 'General Inquiry'}
-                    </p>
-                    <p className="text-[11px] text-gray-500 line-clamp-1">{inq.message}</p>
-                    <Link
-                      to="/admin/inquiries"
-                      className="text-[10px] text-indigo-600 font-bold mt-2 inline-block"
-                    >
-                      REPLY
-                    </Link>
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-violet-600">
+                          Open Customer
+                          <ArrowRight className="size-3" />
+                        </span>
+                      </Link>
+                    ))}
                   </div>
-                ))
-              ) : (
-                <EmptyPanel text="No new inquiries" />
-              )}
-            </div>
-          </section>
+                ) : (
+                  <EmptyPanel text="No customer activity requiring attention" />
+                )}
+              </div>
+            </section>
 
-          <section className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-            <div className="flex items-center gap-2 mb-6 font-semibold text-gray-900">
-              <Award className="size-5 text-yellow-500" />
-              <h2 className="text-sm">Top Performing Units</h2>
-            </div>
+            <section className="rounded-2xl border border-indigo-100 bg-white shadow-sm">
+              <div className="flex items-center justify-between border-b border-indigo-100 bg-indigo-50 px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="size-4 text-indigo-700" />
+                  <h2 className="text-sm font-semibold text-indigo-900">Recent Inquiries</h2>
+                </div>
 
-            <div className="space-y-4">
-              {dashboardData.topUnits.length > 0 ? (
-                dashboardData.topUnits.map((unit, i) => (
-                  <div key={unit.id} className="flex items-center gap-3 group">
-                    <div className="relative">
-                      <img
-                        src={unit.images?.[0] || '/fallback-property.webp'}
-                        alt={unit.name}
-                        loading="lazy"
-                        decoding="async"
-                        className="size-10 object-cover rounded-lg border border-gray-100"
-                      />
-                      <div className="absolute -top-1 -left-1 size-4 bg-gray-900 text-white text-[8px] rounded-full flex items-center justify-center font-bold">
-                        {i + 1}
+                <Link
+                  to="/admin/inquiries"
+                  className="text-xs font-semibold text-indigo-600 transition hover:text-indigo-700"
+                >
+                  View All
+                </Link>
+              </div>
+
+              <div className="p-5">
+                {dashboardData.recentInquiries.length > 0 ? (
+                  <div className="space-y-3">
+                    {dashboardData.recentInquiries.map((inq) => (
+                      <div
+                        key={inq.id}
+                        className="rounded-xl border border-gray-100 bg-gray-50 p-4 transition hover:border-indigo-100 hover:bg-white"
+                      >
+                        <div className="mb-2 flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-gray-900">
+                              {inq.subject || 'General Inquiry'}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {inq.email || 'No email provided'}
+                            </p>
+                          </div>
+
+                          <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-[10px] font-bold uppercase text-indigo-700">
+                            Open
+                          </span>
+                        </div>
+
+                        <p className="line-clamp-3 text-sm leading-relaxed text-gray-600">
+                          {inq.message}
+                        </p>
+
+                        <Link
+                          to="/admin/inquiries"
+                          className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                        >
+                          Reply
+                          <ArrowRight className="size-3" />
+                        </Link>
                       </div>
-                    </div>
+                    ))}
+                  </div>
+                ) : (
+                  <EmptyPanel text="No new inquiries" />
+                )}
+              </div>
+            </section>
 
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-gray-900 truncate">{unit.name}</p>
-                      <p className="text-[10px] text-green-600 font-semibold">
-                        {formatCurrency(unit.revenue)}
+            <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <div className="mb-5 flex items-center gap-2 font-semibold text-gray-900">
+                <Award className="size-5 text-yellow-500" />
+                <h2 className="text-sm">Top Performing Units</h2>
+              </div>
+
+              <div className="space-y-4">
+                {dashboardData.topUnits.length > 0 ? (
+                  dashboardData.topUnits.map((unit, i) => (
+                    <div
+                      key={unit.id}
+                      className="group flex items-center gap-3 rounded-xl bg-gray-50 p-3 transition hover:bg-gray-100"
+                    >
+                      <div className="relative shrink-0">
+                        <img
+                          src={unit.images?.[0] || '/fallback-property.webp'}
+                          alt={unit.name}
+                          loading="lazy"
+                          decoding="async"
+                          className="size-12 rounded-xl border border-gray-100 object-cover"
+                        />
+                        <div className="absolute -left-1 -top-1 flex size-5 items-center justify-center rounded-full bg-gray-900 text-[9px] font-bold text-white">
+                          {i + 1}
+                        </div>
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-gray-900">
+                          {unit.name}
+                        </p>
+                        <p className="text-xs font-semibold text-green-600">
+                          {formatCurrency(unit.revenue)}
+                        </p>
+                      </div>
+
+                      <ArrowRight className="size-4 text-gray-300 transition-colors group-hover:text-blue-500" />
+                    </div>
+                  ))
+                ) : (
+                  <EmptyPanel text="No unit performance data yet" compact />
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-2xl bg-gray-900 p-6 text-white shadow-lg">
+              <h2 className="mb-4 text-sm font-semibold tracking-widest text-gray-400">
+                SYSTEM STATUS
+              </h2>
+
+              <div className="space-y-5">
+                <div>
+                  <p className="text-xs text-gray-400">Latest Admin Action</p>
+
+                  {dashboardData.latestActivity ? (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-sm font-medium text-white">
+                        {dashboardData.latestActivity.publicId || 'No public ID'}
+                      </p>
+                      <p className="text-sm font-medium text-white">
+                        {dashboardData.latestActivity.action}
+                      </p>
+                      <p className="text-[11px] text-gray-500">
+                        {new Date(dashboardData.latestActivity.timestamp).toLocaleString()}
                       </p>
                     </div>
+                  ) : (
+                    <p className="mt-2 text-sm text-gray-500">
+                      No recent admin activity found.
+                    </p>
+                  )}
+                </div>
 
-                    <ArrowRight className="size-3 text-gray-300 group-hover:text-blue-500 transition-colors" />
+                <div className="border-t border-gray-800 pt-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-xs text-gray-300">Database Connection</span>
+                    <span className="size-2 animate-pulse rounded-full bg-green-500" />
                   </div>
-                ))
-              ) : (
-                <EmptyPanel text="No unit performance data yet" />
-              )}
-            </div>
-          </section>
 
-          <section className="relative overflow-hidden rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 via-white to-white p-6 shadow-sm">
-  <div className="absolute top-0 right-0 h-24 w-24 bg-amber-100 rounded-full blur-2xl opacity-60" />
-
-  <div className="relative z-10">
-    <div className="flex items-center justify-between mb-4">
-      <div className="flex items-center gap-3">
-        <div className="rounded-xl bg-amber-100 p-2.5 text-amber-600">
-          <MessageSquare className="size-5" />
-        </div>
-
-        <div>
-          <h2 className="text-sm font-semibold text-gray-900">Reviews</h2>
-          <p className="text-[11px] text-gray-500">
-            Client feedback & ratings
-          </p>
+                  <Link
+                    to="/admin/audit"
+                    className="text-[11px] font-medium text-blue-400 hover:underline"
+                  >
+                    Open Audit Logs
+                  </Link>
+                </div>
+              </div>
+            </section>
+          </div>
         </div>
       </div>
-
-      <Link
-        to="/admin/reviews"
-        className="text-xs font-semibold text-amber-600 hover:text-amber-700 transition"
-      >
-        View All
-      </Link>
-    </div>
-
-    <div className="rounded-lg border border-amber-100 bg-white p-4 mb-4">
-      <p className="text-sm text-gray-700 leading-relaxed">
-        Monitor client feedback, identify low-rated units, and stay updated with
-        the latest reviews across your properties.
-      </p>
-    </div>
-
-    <Link
-      to="/admin/reviews"
-      className="group flex items-center justify-between rounded-lg bg-amber-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-700"
-    >
-      <span>Go to Reviews</span>
-      <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
-    </Link>
-  </div>
-</section>
-
-          <section className="rounded-xl bg-gray-900 p-8 text-white shadow-lg">
-            <h2 className="mb-4 text-sm font-semibold tracking-widest text-gray-400">
-              SYSTEM STATUS
-            </h2>
-
-  <div className="space-y-4">
-    <div>
-      <p className="text-xs text-gray-400">Latest Admin Action</p>
-
-      {dashboardData.latestActivity ? (
-        <>
-          <p className="text-sm font-medium">
-            {dashboardData.latestActivity.publicId || 'No public ID'}
-          </p>
-          <p className="text-sm font-medium">{dashboardData.latestActivity.action}</p>
-          <p className="text-[11px] text-gray-500">
-            {new Date(dashboardData.latestActivity.timestamp).toLocaleString()}
-          </p>
-        </>
-      ) : (
-        <p className="text-sm text-gray-500">No recent admin activity found.</p>
-      )}
-    </div>
-
-    <div className="border-t border-gray-800 pt-4">
-      <div className="mb-1 flex items-center justify-between">
-        <span className="text-xs">Database Connection</span>
-        <span className="size-2 rounded-full bg-green-500 animate-pulse" />
-      </div>
-
-      <Link to="/admin/audit" className="text-[11px] text-blue-400 hover:underline">
-        Open Audit Logs
-      </Link>
-    </div>
-  </div>
-</section>
-        </div>
-      </div>
-    </div>
     </div>
   );
 }

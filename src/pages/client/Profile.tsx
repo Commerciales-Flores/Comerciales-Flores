@@ -1,5 +1,6 @@
 import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import supabase from '../../supabaseClient';
 import {
   User as UserIcon,
   Mail,
@@ -81,11 +82,52 @@ export default function ClientProfile() {
 
   const [profileForm, setProfileForm] = useState(initialProfileForm);
   const [passwordForm, setPasswordForm] = useState(INITIAL_PASSWORD_FORM);
+  const [deletionStatus, setDeletionStatus] = useState<
+    'pending' | 'approved' | 'rejected' | 'completed' | null
+  >(null);
+  const [loadingDeletionStatus, setLoadingDeletionStatus] = useState(false);
 
-  useEffect(() => {
-    setProfileForm(initialProfileForm);
-  }, [initialProfileForm]);
+useEffect(() => {
+  setProfileForm(initialProfileForm);
+}, [initialProfileForm]);
 
+useEffect(() => {
+  let cancelled = false;
+
+  const loadDeletionStatus = async () => {
+    if (!user?.id) {
+      setDeletionStatus(null);
+      return;
+    }
+
+    setLoadingDeletionStatus(true);
+
+    const { data, error } = await supabase
+      .from('account_deletion_requests')
+      .select('status')
+      .eq('user_id', user.id)
+      .order('requested_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (cancelled) return;
+
+    if (error) {
+      console.error('Failed to load deletion request status:', error);
+      setDeletionStatus(null);
+    } else {
+      setDeletionStatus(data?.status ?? null);
+    }
+
+    setLoadingDeletionStatus(false);
+  };
+
+  void loadDeletionStatus();
+
+  return () => {
+    cancelled = true;
+  };
+}, [user?.id]);
   useEffect(() => {
     return () => {
       if (messageTimeoutRef.current) {
@@ -93,6 +135,8 @@ export default function ClientProfile() {
       }
     };
   }, []);
+
+  
 
   const showMessage = useCallback((type: 'success' | 'error', text: string) => {
     if (messageTimeoutRef.current) {
@@ -262,19 +306,45 @@ export default function ClientProfile() {
     [showMessage, updateProfile, uploadingAvatar]
   );
 
-  const handleDeleteAccount = useCallback(async () => {
-    try {
-      if (!user || deleting) return;
+const handleDeleteAccount = useCallback(async () => {
+  try {
+    if (!user || deleting || deletionStatus === 'pending') return;
 
-      setDeleting(true);
-      await deleteAccount(user.id);
-      await logout();
-      window.location.href = '/';
-    } catch {
-      showMessage('error', 'Failed to delete account.');
+    setDeleting(true);
+
+    const { error } = await supabase
+      .from('account_deletion_requests')
+      .insert({
+        user_id: user.id,
+        status: 'pending',
+      });
+
+    if (error) {
+      console.error('Failed to request deletion:', error);
+
+      showMessage(
+        'error',
+        error.code === '23505'
+          ? 'You already have a pending deletion request.'
+          : error.message || 'Failed to submit deletion request.'
+      );
       setDeleting(false);
+      return;
     }
-  }, [deleteAccount, deleting, logout, showMessage, user]);
+
+    setDeletionStatus('pending');
+    setShowDeleteConfirm(false);
+    showMessage(
+      'success',
+      'Your deletion request has been submitted for admin review.'
+    );
+    setDeleting(false);
+  } catch (err) {
+    console.error('Deletion request error:', err);
+    showMessage('error', 'Failed to submit deletion request.');
+    setDeleting(false);
+  }
+}, [user, deleting, deletionStatus, showMessage]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -429,16 +499,45 @@ export default function ClientProfile() {
                 Permanent Action
               </p>
               <p className="mt-3 text-sm leading-relaxed text-slate-500">
-                Deleting your account permanently removes your personal account access and related
-                records.
+                This will submit a request to permanently delete your account. Your request will be
+                reviewed by an administrator before it is approved.
               </p>
+
+              {deletionStatus === 'pending' && (
+                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-amber-700">
+                    Pending Review
+                  </p>
+                  <p className="mt-1 text-sm text-amber-800">
+                    Your deletion request has already been submitted and is awaiting admin review.
+                  </p>
+                </div>
+              )}
+
+              {deletionStatus === 'rejected' && (
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-700">
+                    Request Rejected
+                  </p>
+                  <p className="mt-1 text-sm text-slate-700">
+                    Your previous deletion request was rejected. You may submit a new request if needed.
+                  </p>
+                </div>
+              )}
 
               <button
                 type="button"
+                disabled={deleting || loadingDeletionStatus || deletionStatus === 'pending'}
                 onClick={() => setShowDeleteConfirm(true)}
-                className="mt-5 w-full rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 transition-all hover:bg-rose-100"
+                className={`mt-5 w-full rounded-2xl border px-4 py-3 text-sm font-semibold transition-all ${
+                  deletionStatus === 'pending'
+                    ? 'cursor-not-allowed border-amber-200 bg-amber-50 text-amber-700'
+                    : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                } disabled:opacity-70`}
               >
-                Delete My Account
+                {deletionStatus === 'pending'
+                  ? 'Deletion Request Pending'
+                  : 'Request Account Deletion'}
               </button>
             </section>
           </div>
@@ -579,7 +678,7 @@ export default function ClientProfile() {
                     <p className="mt-1 text-sm text-slate-500">
                       Update your password and protect your account access.
                     </p>
-                  </div>
+                  </div>      
                 </div>
 
                 <button
@@ -727,8 +826,8 @@ export default function ClientProfile() {
               >
                 <h3 className="text-lg font-bold text-gray-900">Delete Account</h3>
                 <p className="mt-2 text-sm leading-relaxed text-gray-500">
-                  This action is <span className="font-semibold text-red-600">permanent</span>. All
-                  reservations, payments, and account history will be permanently removed.
+                  This will submit a request to permanently delete your account. 
+                  Your request will be reviewed by an administrator before it is approved.
                 </p>
 
                 <div className="mt-6 flex gap-3">
@@ -747,7 +846,7 @@ export default function ClientProfile() {
                     onClick={handleDeleteAccount}
                     className="flex-1 rounded-2xl bg-red-600 py-3 text-sm font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
                   >
-                    {deleting ? 'Deleting...' : 'Yes, Delete'}
+                    {deleting ? 'Requesting...' : 'Yes, Delete'}
                   </button>
                 </div>
               </motion.div>

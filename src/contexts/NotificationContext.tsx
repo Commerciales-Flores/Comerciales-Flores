@@ -47,6 +47,11 @@ interface NotificationsDataContextType {
     title: string,
     message: string
   ) => Promise<void>;
+
+  sendDeletionStatusNotification: (params: {
+    userId: string;
+    status: 'approved' | 'rejected';
+  }) => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationsDataContextType | undefined>(
@@ -319,6 +324,30 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     [addNotification]
   );
 
+  const sendDeletionStatusNotification = useCallback(
+  async ({
+    userId,
+    status,
+  }: {
+    userId: string;
+    status: 'approved' | 'rejected';
+  }) => {
+    await addNotification({
+      userId,
+      title:
+        status === 'approved'
+          ? 'Account Deletion Approved'
+          : 'Account Deletion Rejected',
+      message:
+        status === 'approved'
+          ? 'Your account deletion request has been approved. Your account will be permanently removed.'
+          : 'Your account deletion request has been rejected. Please contact support for more details.',
+      type: 'system',
+    });
+  },
+  [addNotification]
+);
+
   const value = useMemo(
     () => ({
       notifications,
@@ -332,6 +361,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       sendInquiryResponseNotification,
       sendReviewReminderNotification,
       sendSystemNotification,
+      sendDeletionStatusNotification,
     }),
     [
       notifications,
@@ -345,6 +375,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       sendInquiryResponseNotification,
       sendReviewReminderNotification,
       sendSystemNotification,
+      sendDeletionStatusNotification,
     ]
   );
 

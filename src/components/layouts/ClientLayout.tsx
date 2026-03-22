@@ -146,8 +146,6 @@ const unreadMessages = useMemo(
       fullName
     )}&background=0D8ABC&color=fff&size=128`;
 
-    console.log("[ClientLayout] user:", user);
-
   if (!user) return <Navigate to="/login" replace />;
 
   return (

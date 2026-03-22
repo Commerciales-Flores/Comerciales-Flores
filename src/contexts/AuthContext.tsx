@@ -70,7 +70,10 @@ interface AuthContextType {
   changePassword: (newPassword: string) => Promise<boolean>;
   recoverPassword: (email: string) => Promise<boolean>;
   uploadProfilePicture: (file: File) => Promise<string | null>;
-  deleteAccount: (userId: string) => Promise<void>;
+  deleteAccount: (userId: string) => Promise<{
+    success: boolean;
+    reason?: string;
+  }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -467,6 +470,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             await supabase.auth.signOut();
             clearUserSession({ clearGreeting: true });
             setFormKey((k) => k + 1);
+            showIndicator(
+              `Your account is no longer active. Please contact the administrator.`,
+              'security'
+            );
             return;
           }
 
@@ -628,7 +635,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (!profile) {
           await supabase.auth.signOut();
-          return { success: false, error: 'invalid_login' };
+
+          return {
+            success: false,
+            error: 'account_inactive', // 👈 new error type
+          };
         }
 
         // Instant UI update
@@ -978,16 +989,74 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const deleteAccount = useCallback(
-    async (userId: string) => {
-      if (user?.id === userId) {
-        await logout('Account being deleted', {
-          clearGreeting: true,
-          redirectToLogin: true,
-        });
+  async (userId: string): Promise<{ success: boolean; reason?: string }> => {
+    try {
+      // 🔒 Only allow self-delete
+      if (user?.id !== userId) {
+        return {
+          success: false,
+          reason: 'You are not authorized to delete this account.',
+        };
       }
-    },
-    [logout, user]
-  );
+
+      // 🔍 Check active reservation
+      const { data: activeReservation, error: reservationError } = await supabase
+        .from('reservations')
+        .select('reservation_id')
+        .eq('user_id', userId)
+        .in('status', ['approved', 'confirmed'])
+        .limit(1)
+        .maybeSingle();
+
+      if (reservationError) {
+        console.error('Reservation check failed:', reservationError);
+        return { success: false, reason: 'Failed to validate account status.' };
+      }
+
+      if (activeReservation) {
+        return {
+          success: false,
+          reason:
+            'Account cannot be deleted because you have an active reservation or ongoing occupancy.',
+        };
+      }
+
+      // 🔍 Check recent login (optional but consistent)
+      const { data: userRow } = await supabase
+        .from('users')
+        .select('last_login')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (userRow?.last_login) {
+        const lastLogin = new Date(userRow.last_login);
+        const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+
+        if (Date.now() - lastLogin.getTime() < THIRTY_DAYS) {
+          return {
+            success: false,
+            reason:
+              'Account cannot be deleted because it has recent login activity.',
+          };
+        }
+      }
+
+      // 🚨 CRITICAL: delete auth user (this deletes public.users via cascade)
+      const { error: authError } = await supabase.auth.admin.deleteUser(userId);
+
+      if (authError) {
+        console.error('Auth deletion failed:', authError);
+        return { success: false, reason: 'Failed to delete account.' };
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Delete account error:', error);
+      return { success: false, reason: 'Unexpected error occurred.' };
+    }
+  },
+  [user]
+);
 
   return (
     <AuthContext.Provider

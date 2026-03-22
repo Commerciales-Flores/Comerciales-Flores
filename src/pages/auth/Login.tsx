@@ -161,11 +161,17 @@ export default function Login() {
         case 'busy':
           setError('Please wait a moment and try again.');
           break;
+        case 'account_inactive':
+          setError('Your account has been deactivated. Please contact the administrator for assistance.');
+          break;
         case 'invalid_login':
         default:
           setError('Invalid email or password.');
+          break;
       }
+      return;
     }
+
     showIndicator(
       `Login successful by ${normalizedEmail} at ${new Date().toLocaleTimeString()}`,
       'login'
