@@ -10,6 +10,7 @@ import { useUnits } from '../../contexts/UnitsContext';
 import type { PaymentCycle, PaymentMethod, Reservation } from '../../contexts/DataContext';
 import { calculateTotalAmount } from '../../utils/propertyHelpers';
 import { formatCurrency } from '../../utils/currency';
+import { formatDate } from '../../utils/date';
 
 interface AdminReservationFormProps {
   userId: string;
@@ -336,7 +337,7 @@ export default function AdminReservationForm({
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-left"
                 disabled={isSubmitting}
               >
-                {formState.startDate.toLocaleDateString()} - {formState.endDate.toLocaleDateString()}
+                {formatDate(formState.startDate)} - {formatDate(formState.endDate)}
               </button>
 
               {showCalendar && (
@@ -387,7 +388,7 @@ export default function AdminReservationForm({
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-left"
               disabled={isSubmitting}
             >
-              {formState.startDate.toLocaleDateString()} - {formState.endDate.toLocaleDateString()}
+              {formatDate(formState.startDate)} - {formatDate(formState.endDate)}
             </button>
 
             {showCalendar && (
@@ -451,7 +452,7 @@ export default function AdminReservationForm({
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-left"
                 disabled={isSubmitting}
               >
-                {formState.startDate.toLocaleDateString()}
+                {formatDate(formState.startDate)}
               </button>
 
               {showCalendar && (
@@ -495,7 +496,7 @@ export default function AdminReservationForm({
               <input
                 type="text"
                 readOnly
-                value={formState.endDate.toLocaleDateString()}
+                value={formatDate(formState.endDate)}
                 className="w-full cursor-not-allowed rounded-lg border border-gray-300 bg-gray-100 px-3 py-2"
               />
             </div>

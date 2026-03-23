@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { useReservations } from '../../contexts/ReservationsContext';
 import { useNotifications } from '../../contexts/NotificationContext';
+import { formatDate } from '../../utils/date';
 import {
   Search,
   Eye,
@@ -39,9 +40,9 @@ function enrichReservation(reservation: any, user: any) {
     userPublicId,
     fullName,
     requestDateMs: new Date(reservation.requestDate).getTime(),
-    startDateLabel: new Date(reservation.startDate).toLocaleDateString(),
-    endDateLabel: new Date(reservation.endDate).toLocaleDateString(),
-    requestDateLabel: new Date(reservation.requestDate).toLocaleDateString(),
+    startDateLabel: formatDate(reservation.startDate),
+    endDateLabel: formatDate(reservation.endDate),
+    requestDateLabel: formatDate(reservation.requestDate),
     paidPercent:
       reservation.totalAmount > 0
         ? `${((reservation.paidAmount / reservation.totalAmount) * 100).toFixed(0)}% paid`
@@ -74,7 +75,11 @@ function useDebouncedValue<T>(value: T, delay = 250) {
 export default function AdminReservations() {
   const { getUserById, updateReservation } = useData();
   const { fetchReservationsPage } = useReservations();
-  const { sendReservationNotification, sendVisitNotification } = useNotifications();
+  const {
+    sendReservationNotification,
+    sendVisitNotification,
+    sendReviewReminderNotification,
+  } = useNotifications();
 
   const [reservations, setReservations] = useState<any[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -279,6 +284,32 @@ const handleRequestReschedule = useCallback(
   [updateReservation, sendReservationNotification, reloadPage]
 );
 
+const handleComplete = useCallback(
+  async (reservation: EnrichedReservation) => {
+    await updateReservation(reservation.id, { status: 'completed' });
+
+    await sendReservationNotification({
+      userId: reservation.userId,
+      reservationPublicId: reservation.reservationPublicId,
+      action: 'completed',
+    });
+
+    await sendReviewReminderNotification({
+      userId: reservation.userId,
+      unitName: reservation.unitName,
+    });
+
+    setSelectedReservation(null);
+    await reloadPage();
+  },
+  [
+    updateReservation,
+    sendReservationNotification,
+    sendReviewReminderNotification,
+    reloadPage,
+  ]
+);
+
   const closeDetails = useCallback(() => setSelectedReservation(null), []);
   const openCreateModal = useCallback(() => setIsActionModalOpen(true), []);
   const closeCreateModal = useCallback(() => setIsActionModalOpen(false), []);
@@ -463,41 +494,54 @@ const handleRequestReschedule = useCallback(
                       </button>
 
                       {reservation.status === 'pending' && (
-                        <>
-                          {reservation.modeOfVisit === 'onsite' && (
-                            <>
-                              <button
-                                onClick={() => handleConfirmVisit(reservation)}
-                                className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg"
-                                title="Confirm Visit"
-                              >
-                                <Calendar className="size-4" />
-                              </button>
+  <>
+    {reservation.modeOfVisit === 'onsite' && (
+      <>
+        <button
+          onClick={() => handleConfirmVisit(reservation)}
+          className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg"
+          title="Confirm Visit"
+        >
+          <Calendar className="size-4" />
+        </button>
 
-                              <button
-                                onClick={() => handleRequestReschedule(reservation)}
-                                className="p-2 text-amber-600 hover:bg-amber-100 rounded-lg"
-                                title="Request Reschedule"
-                              >
-                                <Clock className="size-4" />
-                              </button>
-                            </>
-                          )}
-                          <button
-                            onClick={() => handleApprove(reservation)}
-                            className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl"
-                          >
-                            <CheckCircle className="size-5" />
-                          </button>
+        <button
+          onClick={() => handleRequestReschedule(reservation)}
+          className="p-2 text-amber-600 hover:bg-amber-100 rounded-lg"
+          title="Request Reschedule"
+        >
+          <Clock className="size-4" />
+        </button>
+      </>
+    )}
 
-                          <button
-                            onClick={() => handleReject(reservation)}
-                            className="p-2.5 bg-rose-50 text-rose-600 rounded-xl"
-                          >
-                            <XCircle className="size-5" />
-                          </button>
-                        </>
-                      )}
+    <button
+      onClick={() => handleApprove(reservation)}
+      className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"
+      title="Approve"
+    >
+      <CheckCircle className="size-4" />
+    </button>
+
+    <button
+      onClick={() => handleReject(reservation)}
+      className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg"
+      title="Reject"
+    >
+      <XCircle className="size-4" />
+    </button>
+  </>
+)}
+
+{reservation.status === 'confirmed' && (
+  <button
+    onClick={() => handleComplete(reservation)}
+    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+    title="Mark as Completed"
+  >
+    <CheckCircle className="size-4" />
+  </button>
+)}
                     </div>
                   </div>
                 </div>
@@ -514,11 +558,10 @@ const handleRequestReschedule = useCallback(
                           'User ID',
                           'Unit',
                           'Date Range',
-                          'Payment Progress',
                           'Amount',
                           'Visit Type',
                           'Visit Status',
-                          'Status',
+                          'Reservation Status',
                           'Actions',
                         ].map((header) => (
                         <th
@@ -537,16 +580,12 @@ const handleRequestReschedule = useCallback(
                         key={reservation.id}
                         className="hover:bg-blue-50/30 transition-colors"
                       >
-                        <td className="px-6 py-4 w-[180px]">
-                          <span className="inline-block whitespace-nowrap text-sm font-semibold text-gray-900">
+                        <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[220px]">
                             {reservation.reservationPublicId}
-                          </span>
                         </td>
 
-                        <td className="px-6 py-4 w-[160px]">
-                          <span className="inline-block whitespace-nowrap text-sm text-gray-600">
+                        <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[220px]">
                             {reservation.userPublicId || reservation.userId}
-                          </span>
                         </td>
 
                         <td className="px-6 py-4 w-[240px]">
@@ -565,39 +604,37 @@ const handleRequestReschedule = useCallback(
                           </div>
                         </td>
 
-                        <td className="px-6 py-4 w-[170px]">
-                          <div className="text-sm font-semibold text-emerald-600">
-                            {formatCurrency(reservation.paidAmount)}
-                          </div>
-                          <div className="text-xs text-gray-400">
-                            {reservation.paidPercent}
-                          </div>
-                        </td>
 
                         <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[150px]">
                           {formatCurrency(reservation.totalAmount)}
                         </td>
 
-                        <td className="px-6 py-4 w-[140px]">
-                          <div className="space-y-1">
-                            <span
-                              className={`px-2.5 py-1 text-[10px] font-bold rounded-full border ${
-                                reservation.modeOfVisit === 'onsite'
-                                  ? 'bg-blue-50 text-blue-700 border-blue-100'
-                                  : 'bg-gray-50 text-gray-600 border-gray-100'
-                              }`}
-                            >
-                              {reservation.modeOfVisit?.toUpperCase() || 'ONLINE'}
-                            </span>
+                        <td className="px-6 py-4 w-[180px] align-middle">
+  <div className="space-y-2">
+    <span
+      className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+        reservation.modeOfVisit === 'onsite'
+          ? 'border-blue-100 bg-blue-50 text-blue-700'
+          : 'border-gray-200 bg-gray-50 text-gray-600'
+      }`}
+    >
+      {reservation.modeOfVisit?.replace('_', ' ') || 'online'}
+    </span>
 
-                            {reservation.modeOfVisit === 'onsite' && reservation.appointmentDate && (
-                              <div className="text-[10px] text-gray-500">
-                                Pref: {new Date(reservation.appointmentDate).toLocaleDateString()}
-                                {reservation.appointmentTime && ` • ${reservation.appointmentTime}`}
-                              </div>
-                            )}
-                          </div>
-                        </td>
+    {reservation.modeOfVisit === 'onsite' && reservation.appointmentDate ? (
+      <div className="space-y-0.5">
+        <div className="text-[11px] font-medium text-gray-700">
+          {formatDate(reservation.appointmentDate)}
+        </div>
+        {reservation.appointmentTime && (
+          <div className="text-[11px] text-gray-500">{reservation.appointmentTime}</div>
+        )}
+      </div>
+    ) : (
+      <div className="text-[11px] text-gray-400">No schedule needed</div>
+    )}
+  </div>
+</td>
 
                         <td className="px-6 py-4 w-[160px]">
                           <span className="text-xs font-semibold text-indigo-600 uppercase">
@@ -627,44 +664,55 @@ const handleRequestReschedule = useCallback(
                               <Eye className="size-4" />
                             </button>
 
-                            {reservation.status === 'pending' && (
-                              <>
-                                {reservation.modeOfVisit === 'onsite' && (
-                                  <>
-                                    <button
-                                      onClick={() => handleConfirmVisit(reservation)}
-                                      className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg"
-                                      title="Confirm Visit"
-                                    >
-                                      <Calendar className="size-4" />
-                                    </button>
+                           {reservation.status === 'pending' && (
+  <>
+    {reservation.modeOfVisit === 'onsite' && (
+      <>
+        <button
+          onClick={() => handleConfirmVisit(reservation)}
+          className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg"
+          title="Confirm Visit"
+        >
+          <Calendar className="size-4" />
+        </button>
 
-                                    <button
-                                      onClick={() => handleRequestReschedule(reservation)}
-                                      className="p-2 text-amber-600 hover:bg-amber-100 rounded-lg"
-                                      title="Request Reschedule"
-                                    >
-                                      <Clock className="size-4" />
-                                    </button>
-                                  </>
-                                )}
-                                <button
-                                  onClick={() => handleApprove(reservation)}
-                                  className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"
-                                  title="Approve"
-                                >
-                                  <CheckCircle className="size-4" />
-                                </button>
+        <button
+          onClick={() => handleRequestReschedule(reservation)}
+          className="p-2 text-amber-600 hover:bg-amber-100 rounded-lg"
+          title="Request Reschedule"
+        >
+          <Clock className="size-4" />
+        </button>
+      </>
+    )}
 
-                                <button
-                                  onClick={() => handleReject(reservation)}
-                                  className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg"
-                                  title="Reject"
-                                >
-                                  <XCircle className="size-4" />
-                                </button>
-                              </>
-                            )}
+    <button
+      onClick={() => handleApprove(reservation)}
+      className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"
+      title="Approve"
+    >
+      <CheckCircle className="size-4" />
+    </button>
+
+    <button
+      onClick={() => handleReject(reservation)}
+      className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg"
+      title="Reject"
+    >
+      <XCircle className="size-4" />
+    </button>
+  </>
+)}
+
+{reservation.status === 'confirmed' && (
+  <button
+    onClick={() => handleComplete(reservation)}
+    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
+    title="Mark as Completed"
+  >
+    <CheckCircle className="size-4" />
+  </button>
+)}
                           </div>
                         </td>
                       </tr>
@@ -943,7 +991,7 @@ const handleRequestReschedule = useCallback(
         <span className="text-slate-500">Preferred Schedule</span>
         <span className="font-semibold text-slate-900 text-right">
           {selectedReservationData.appointmentDate
-            ? new Date(selectedReservationData.appointmentDate).toLocaleDateString()
+            ? formatDate(selectedReservationData.appointmentDate)
             : 'N/A'}
           {selectedReservationData.appointmentTime &&
             ` • ${selectedReservationData.appointmentTime}`}
@@ -961,7 +1009,7 @@ const handleRequestReschedule = useCallback(
         <div className="flex justify-between gap-4 text-sm">
           <span className="text-slate-500">Confirmed Schedule</span>
           <span className="font-semibold text-green-600 text-right">
-            {new Date(selectedReservationData.confirmedVisitDate).toLocaleDateString()}
+            {formatDate(selectedReservationData.confirmedVisitDate)}
             {selectedReservationData.confirmedVisitTime &&
               ` • ${selectedReservationData.confirmedVisitTime}`}
           </span>
@@ -997,40 +1045,49 @@ const handleRequestReschedule = useCallback(
 
               <div className="flex gap-2">
                 {selectedReservationData.status === 'pending' && (
-                  <>
-                    {selectedReservationData.modeOfVisit === 'onsite' && (
-                      <>
-                        <button
-                          onClick={() => handleConfirmVisit(selectedReservationData)}
-                          className="px-5 py-2.5 border border-indigo-200 text-indigo-600 rounded-xl hover:bg-indigo-50 font-semibold transition-all"
-                        >
-                          Confirm Visit
-                        </button>
+  <>
+    {selectedReservationData.modeOfVisit === 'onsite' && (
+      <>
+        <button
+          onClick={() => handleConfirmVisit(selectedReservationData)}
+          className="px-5 py-2.5 border border-indigo-200 text-indigo-600 rounded-xl hover:bg-indigo-50 font-semibold transition-all"
+        >
+          Confirm Visit
+        </button>
 
-                        <button
-                          onClick={() => handleRequestReschedule(selectedReservationData)}
-                          className="px-5 py-2.5 border border-amber-200 text-amber-600 rounded-xl hover:bg-amber-50 font-semibold transition-all"
-                        >
-                          Request Reschedule
-                        </button>
-                      </>
-                    )}
+        <button
+          onClick={() => handleRequestReschedule(selectedReservationData)}
+          className="px-5 py-2.5 border border-amber-200 text-amber-600 rounded-xl hover:bg-amber-50 font-semibold transition-all"
+        >
+          Request Reschedule
+        </button>
+      </>
+    )}
 
-                    <button
-                      onClick={() => handleReject(selectedReservationData)}
-                      className="px-5 py-2.5 border border-rose-200 text-rose-600 rounded-xl hover:bg-rose-50 font-semibold transition-all"
-                    >
-                      Reject
-                    </button>
+    <button
+      onClick={() => handleReject(selectedReservationData)}
+      className="px-5 py-2.5 border border-rose-200 text-rose-600 rounded-xl hover:bg-rose-50 font-semibold transition-all"
+    >
+      Reject
+    </button>
 
-                    <button
-                      onClick={() => handleApprove(selectedReservationData)}
-                      className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-semibold transition-all"
-                    >
-                      Approve
-                    </button>
-                  </>
-                )}
+    <button
+      onClick={() => handleApprove(selectedReservationData)}
+      className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-semibold transition-all"
+    >
+      Approve
+    </button>
+  </>
+)}
+
+{selectedReservationData.status === 'confirmed' && (
+  <button
+    onClick={() => handleComplete(selectedReservationData)}
+    className="px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-semibold transition-all"
+  >
+    Mark as Completed
+  </button>
+)}
               </div>
             </div>
           </div>

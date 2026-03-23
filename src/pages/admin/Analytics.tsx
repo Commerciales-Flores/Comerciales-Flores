@@ -30,6 +30,7 @@ import { useData, type UnitType } from '../../contexts/DataContext';
 import { formatCurrency } from '../../utils/currency';
 import { getUnitTypeLabel } from '../../utils/propertyHelpers';
 import EmptyState from '../../components/common/EmptyState';
+import { formatDate } from '../../utils/date';
 
 type Granularity = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
@@ -297,7 +298,7 @@ export default function AdminAnalytics() {
         .reduce((sum, p) => sum + p.amount, 0);
 
       return {
-        month: date.toLocaleDateString('en-US', { month: 'short' }),
+        month: formatDate(date).split(' ')[0], // Mar
         reservations: monthReservations,
         revenue: Number((monthRevenue / 1000).toFixed(1)),
       };
@@ -320,10 +321,7 @@ export default function AdminAnalytics() {
         .reduce((sum, p) => sum + p.amount, 0);
 
       return {
-        day: date.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-        }),
+        day: formatDate(date),
         reservations: dayReservations,
         revenue: Number((dayRevenue / 1000).toFixed(1)),
       };
@@ -351,13 +349,7 @@ export default function AdminAnalytics() {
         .reduce((sum, p) => sum + p.amount, 0);
 
       return {
-        week: `${start.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-        })} - ${end.toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-        })}`,
+        week: `${formatDate(start)} - ${formatDate(end)}`,
         reservations: weekReservations,
         revenue: Number((weekRevenue / 1000).toFixed(1)),
       };
@@ -935,7 +927,7 @@ export default function AdminAnalytics() {
                             </span>
                           </div>
                           <span className="text-xs font-bold text-gray-900">
-                            {entry.value.toLocaleString()} ({percent}%)
+                            {entry.value} ({percent}%)
                           </span>
                         </div>
                       );

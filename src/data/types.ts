@@ -117,6 +117,7 @@ paymentMethodSnapshot?: Record<string, any> | null;
 export interface LedgerEntry {
   id: string;
   userId: string | null;
+  publicId?: string;
   reservationId: string | null;
   paymentId: string | null;
   entryType:

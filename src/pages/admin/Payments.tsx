@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useData } from '../../contexts/DataContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { usePayments } from '../../contexts/PaymentsContext';
+import { formatDate } from '../../utils/date';
 import {
   CreditCard,
   CheckCircle,
@@ -203,7 +204,7 @@ export default function AdminPayments() {
         status: payment.status,
         date: payment.date,
         dateMs: new Date(payment.date).getTime(),
-        dateLabel: new Date(payment.date).toLocaleDateString(),
+        dateLabel: formatDate(payment.date),
         method: payment.method,
         notes: payment.notes,
         proofOfPayment: payment.proofOfPayment,
@@ -615,7 +616,7 @@ export default function AdminPayments() {
                   ].map((h) => (
                     <th
                       key={h}
-                      className="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-gray-400"
+                      className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
                     >
                       {h}
                     </th>
@@ -648,31 +649,19 @@ export default function AdminPayments() {
                 ) : (
                   paymentViews.map((payment) => (
                     <tr key={payment.id} className="transition-colors hover:bg-blue-50/30">
-                      <td className="w-[160px] px-6 py-4">
-                        <span className="inline-block whitespace-nowrap rounded-md bg-gray-50 px-2 py-1 font-mono text-xs text-gray-500">
+                      <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[220px]">
                           {payment.userPublicId}
-                        </span>
                       </td>
 
-                      <td className="w-[160px] px-6 py-4">
-                        <span className="inline-block whitespace-nowrap rounded-md bg-gray-50 px-2 py-1 font-mono text-xs text-gray-500">
+                      <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[220px]">
                           {payment.publicId ?? payment.id}
-                        </span>
                       </td>
 
-                      <td className="w-[170px] px-6 py-4">
-                        <span className="inline-block whitespace-nowrap rounded-md bg-gray-50 px-2 py-1 font-mono text-xs text-gray-500">
+                      <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[220px]">
                           {payment.reservationPublicId}
-                        </span>
                       </td>
 
                       <td className="w-[220px] px-6 py-4">
-                        <div className="mb-1 flex justify-between text-xs text-gray-500">
-                          <span>
-                            {formatCurrency(payment.reservationPaidAmount)} /{' '}
-                            {formatCurrency(payment.reservationTotalAmount)}
-                          </span>
-                        </div>
 
                         <div className="mt-3">
                           {/* Progress bar */}
@@ -695,7 +684,6 @@ export default function AdminPayments() {
                               {formatCurrency(payment.reservationPaidAmount)} /{' '}
                               {formatCurrency(payment.reservationTotalAmount)}
                             </span>
-                            <span>{Math.round(payment.progress)}%</span>
                           </div>
                         </div>
 
@@ -707,7 +695,7 @@ export default function AdminPayments() {
                         </div>
                       </td>
 
-                      <td className="w-[140px] px-6 py-4 text-sm text-gray-500">
+                      <td className="px-6 py-4 text-sm text-gray-500 w-[200px]">
                         {payment.dateLabel}
                       </td>
 

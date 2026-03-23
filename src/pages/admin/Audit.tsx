@@ -368,7 +368,13 @@ export default function AdminAudit() {
         if (cancelled) return;
 
         const mapped: AuditRow[] = result.data.map((log) => {
-          const timestampMs = new Date(log.timestamp).getTime();
+          const safeTimestamp = log.timestamp?.includes('T')
+            ? log.timestamp
+            : log.timestamp?.replace(' ', 'T');
+
+          const parsedDate = safeTimestamp ? new Date(safeTimestamp) : null;
+          const timestampMs = parsedDate?.getTime() ?? Number.NaN;
+
 
           const actorLabel = formatUserLabel(log.userId);
 
@@ -404,8 +410,16 @@ export default function AdminAudit() {
             details: log.notes ?? 'No additional details',
             timestampMs,
             formattedDate: Number.isNaN(timestampMs)
-              ? 'Invalid date'
-              : new Date(timestampMs).toLocaleString(),
+            ? 'Invalid date'
+            : parsedDate!.toLocaleString('en-PH', {
+                year: 'numeric',
+                month: 'short',
+                day: '2-digit',
+                hour: 'numeric',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true,
+              }),
           };
         });
 

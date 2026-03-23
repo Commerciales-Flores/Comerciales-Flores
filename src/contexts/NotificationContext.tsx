@@ -9,6 +9,9 @@ import {
 } from 'react';
 import supabase from '../supabaseClient';
 import type { Notification } from '../data/types';
+import { formatDate } from '../utils/date';
+import { formatCurrency } from '../utils/currency';
+
 
 interface NotificationsDataContextType {
   notifications: Notification[];
@@ -23,7 +26,7 @@ interface NotificationsDataContextType {
   sendReservationNotification: (params: {
     userId: string;
     reservationPublicId: string;
-    action: 'approved' | 'rejected';
+    action: 'approved' | 'rejected' | 'completed'
   }) => Promise<void>;
 
   sendPaymentNotification: (params: {
@@ -245,7 +248,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }: {
       userId: string;
       reservationPublicId: string;
-      action: 'approved' | 'rejected';
+      action: 'approved' | 'rejected' | 'completed'
     }): Promise<void> => {
       await addNotification({
         userId,
@@ -278,11 +281,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     confirmedVisitTime?: string | null;
   }): Promise<void> => {
     const confirmedSchedule =
-      confirmedVisitDate
-        ? `${new Date(confirmedVisitDate).toLocaleDateString()}${
-            confirmedVisitTime ? ` • ${confirmedVisitTime}` : ''
-          }`
-        : null;
+  confirmedVisitDate
+    ? `${formatDate(confirmedVisitDate)}${
+        confirmedVisitTime ? ` • ${confirmedVisitTime}` : ''
+      }`
+    : null;
 
     await addNotification({
       userId,
@@ -319,7 +322,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       await addNotification({
         userId,
         title: 'Payment Verified',
-        message: `Your payment ${paymentPublicId} amounting to ₱${amount.toLocaleString()} has been verified.`,
+        message: `Your payment ${paymentPublicId} amounting to ${formatCurrency(amount)} has been verified.`,
         type: 'payment',
       });
     },

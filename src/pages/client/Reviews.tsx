@@ -7,6 +7,7 @@ import { useReviews } from '../../contexts/ReviewsContext';
 import ReviewModal from '../../components/reviews/ReviewModal';
 import EmptyState from '../../components/common/EmptyState';
 import ReviewCard from '../../components/reviews/ReviewCard';
+import { formatDate } from '../../utils/date';
 
 export default function Review() {
   const { user } = useAuth();
@@ -199,8 +200,7 @@ export default function Review() {
 
                       <div className="mt-2 space-y-1 text-sm text-gray-500">
                         <p>
-                          Completed on{' '}
-                          {new Date(reservation.endDate).toLocaleDateString()}
+                          Completed on {formatDate(reservation.endDate)}
                         </p>
                         <p>{unit?.location || 'Location unavailable'}</p>
                       </div>

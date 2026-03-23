@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import type { UnitType } from '../../data/types';
 import supabase from '../../supabaseClient';
 import { useNotifications } from '../../contexts/NotificationContext';
+import { formatDateTime, formatDate } from '../../utils/date';
 import {
   Search,
   Eye,
@@ -120,11 +121,7 @@ function getPasswordStrengthLabel(score: number) {
 
 function formatLastLogin(value?: string | null) {
   if (!value) return 'No login yet';
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'No login yet';
-
-  return date.toLocaleString();
+  return formatDateTime(value);
 }
 
 function formatUnitTypeLabel(value?: UnitType | null) {
@@ -817,7 +814,7 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
                     ].map((h) => (
                       <th
                         key={h}
-                        className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500"
+                        className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
                       >
                         {h}
                       </th>
@@ -1225,7 +1222,7 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
                     <CustomerDetailItem
                       icon={<CalendarDays size={18} />}
                       label="Occupancy Since"
-                      value={new Date(customer.activeSince).toLocaleDateString()}
+                      value={formatDate(customer.activeSince)}
                     />
                   )}
 

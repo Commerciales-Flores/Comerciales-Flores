@@ -3,6 +3,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import type { Notification } from '../../contexts/DataContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import { formatDate, formatDateTime } from '../../utils/date';
+
 import {
   Bell,
   CheckCheck,
@@ -82,38 +84,12 @@ const defaultTypeColor = {
   light: 'bg-slate-50',
 };
 
-const fullDateFormatter = new Intl.DateTimeFormat('en-US', {
-  weekday: 'long',
-  month: 'long',
-  day: 'numeric',
-  year: 'numeric',
-});
-
-const shortDateFormatter = new Intl.DateTimeFormat(undefined, {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-});
-
 function getTimestamp(value?: string | null) {
   if (!value) return 0;
   const time = new Date(value).getTime();
   return Number.isNaN(time) ? 0 : time;
 }
 
-function formatShortDate(value?: string | null) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return shortDateFormatter.format(date);
-}
-
-function formatFullDate(value?: string | null) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return fullDateFormatter.format(date);
-}
 
 function startOfDay(date: Date) {
   const next = new Date(date);
@@ -206,7 +182,7 @@ const NotificationCard = React.memo(function NotificationCard({
           </h3>
 
           <span className="shrink-0 text-[11px] text-gray-400">
-            {formatShortDate(notification.date)}
+            {formatDate(notification.date)}
           </span>
         </div>
 
@@ -363,7 +339,7 @@ const QuickViewPanel = React.memo(function QuickViewPanel({
                     </p>
 
                     <p className="mt-1 text-xs text-gray-400">
-                      {formatFullDate(notification.date)}
+                      {formatDateTime(notification.date)}
                     </p>
                   </div>
                 </div>

@@ -14,23 +14,13 @@ import { useData } from '../../contexts/DataContext';
 import { formatCurrency } from '../../utils/currency';
 import { uiTypography } from '../../styles/uiTypography';
 
-const dateFormatter = new Intl.DateTimeFormat(undefined, {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-});
+import { formatDate, formatDateTime } from '../../utils/date';
 
 const SECTION_TITLE_CLASS = `${uiTypography.badgeLabel} text-gray-900`;
 const CARD_CLASS =
   'rounded-2xl border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md';
 const EMPTY_STATE_CLASS = `text-center py-6 ${uiTypography.helperText} text-gray-500`;
 
-function formatDate(value?: string | Date | null) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return dateFormatter.format(date);
-}
 
 function getTimestamp(value?: string | Date | null) {
   if (!value) return 0;
@@ -531,7 +521,7 @@ export default function ClientDashboard() {
             </p>
 
             <p className="mt-2 text-[11px] text-gray-500">
-              {new Date(notification.date).toLocaleString()}
+              {formatDateTime(notification.date)}
             </p>
           </div>
         ))}

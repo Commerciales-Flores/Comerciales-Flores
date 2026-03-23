@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import EmptyState from '../../components/common/EmptyState';
+import { formatDate } from '../../utils/date';
+
 
 const UNIT_TYPE_MAP: Record<UnitType, { icon: JSX.Element; label: string; color: string }> = {
   rental_space: {
@@ -1173,7 +1175,7 @@ const SlotManagerModal = React.memo(function SlotManagerModal({
                               {slot.occupiedByName && <p>Client: {slot.occupiedByName}</p>}
                               {slot.occupiedByPublicId && <p>ID: {slot.occupiedByPublicId}</p>}
                               {slot.occupiedSince && (
-                                <p>Since: {new Date(slot.occupiedSince).toLocaleDateString()}</p>
+                                <p>Since: {formatDate(slot.occupiedSince)}</p>
                               )}
                             </div>
                           )}

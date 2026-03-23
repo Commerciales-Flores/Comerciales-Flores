@@ -4,6 +4,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import EmptyState from '../../components/common/EmptyState'
+import { formatDate, formatDateTime } from '../../utils/date';
+
 import {
   Mail,
   Send,
@@ -15,19 +17,6 @@ import {
   MessageSquare,
 } from 'lucide-react';
 
-const dateFormatter = new Intl.DateTimeFormat(undefined, {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-});
-
-const dateTimeFormatter = new Intl.DateTimeFormat(undefined, {
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-});
 
 const statusStyles = {
   open: {
@@ -68,19 +57,6 @@ function getTimestamp(value?: string | null) {
   return Number.isNaN(time) ? 0 : time;
 }
 
-function formatDate(value?: string | null) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return dateFormatter.format(date);
-}
-
-function formatDateTime(value?: string | null) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return dateTimeFormatter.format(date);
-}
 
 function getInquiryStatusStyle(status?: string) {
   return statusStyles[status as keyof typeof statusStyles] ?? defaultStatusStyle;
@@ -187,6 +163,10 @@ const InquiryDetail = React.memo(function InquiryDetail({
 
       <div className="custom-scrollbar flex-1 space-y-6 overflow-y-auto bg-white p-6">
         <div className="flex flex-col items-end">
+          <span className="mb-2 text-[10px] font-bold uppercase text-blue-500">
+            Your Message
+          </span>
+
           <div className="max-w-[90%] rounded-2xl rounded-tr-none bg-blue-600 p-4 text-white shadow-sm">
             <p className="whitespace-pre-wrap text-sm">{inquiry.message}</p>
           </div>
@@ -197,21 +177,36 @@ const InquiryDetail = React.memo(function InquiryDetail({
         </div>
 
         {inquiry.response ? (
-          <div className="flex flex-col items-start">
-            <div className="max-w-[90%] rounded-2xl rounded-tl-none border border-gray-200 bg-gray-100 p-4 text-gray-800">
-              <p className="whitespace-pre-wrap text-sm">{inquiry.response}</p>
+          <>
+            <div className="flex flex-col items-start">
+              <span className="mb-2 text-[10px] font-bold uppercase text-gray-500">
+                Support Reply
+              </span>
+
+              <div className="max-w-[90%] rounded-2xl rounded-tl-none border border-gray-200 bg-gray-100 p-4 text-gray-800">
+                <p className="whitespace-pre-wrap text-sm">{inquiry.response}</p>
+              </div>
+
+              <span className="mt-2 text-[10px] text-gray-400">
+                Support Team • {formatDateTime(inquiry.responseDate)}
+              </span>
             </div>
 
-            <span className="mt-2 text-[10px] text-gray-400">
-              Support Team • {formatDateTime(inquiry.responseDate)}
-            </span>
-          </div>
+            <div className="mx-auto max-w-xl rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+              This ticket is now closed. Each ticket is for one concern only. If you still
+              need help, please submit a new message.
+            </div>
+          </>
         ) : (
           <div className="mx-auto flex max-w-sm items-center gap-3 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-amber-800">
-            <Clock className="size-5 shrink-0 animate-pulse" />
-            <p className="text-xs font-medium">
-              Sit tight. We&apos;re reviewing your inquiry.
-            </p>
+            <Clock className="size-5 shrink-0" />
+            <div>
+              <p className="text-xs font-semibold">Awaiting response</p>
+              <p className="text-[11px] text-amber-700">
+                Your message has been sent to the support team. This ticket will close once
+                a reply is sent.
+              </p>
+            </div>
           </div>
         )}
       </div>
@@ -313,6 +308,11 @@ const InquiryComposerModal = React.memo(function InquiryComposerModal({
                     className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Tell us more about your inquiry..."
                   />
+                </div>
+
+                <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+                  This ticket is for one concern only. Once our team responds, the ticket is considered
+                  closed. If you need more help afterward, please submit a new message.
                 </div>
 
                 <button

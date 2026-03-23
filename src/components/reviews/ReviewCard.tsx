@@ -1,4 +1,5 @@
 import { CalendarDays, MessageSquareQuote } from 'lucide-react';
+import { formatDate } from '../../utils/date';
 import StarRating from './StarRating';
 
 type ReviewCardProps = {
@@ -64,7 +65,7 @@ export default function ReviewCard({
       {createdAt && (
         <div className="mt-4 flex items-center gap-2 text-xs text-gray-400">
           <CalendarDays className="size-4" />
-          <span>Submitted on {new Date(createdAt).toLocaleDateString()}</span>
+          <span>Submitted on {formatDate(createdAt)}</span>
         </div>
       )}
     </div>

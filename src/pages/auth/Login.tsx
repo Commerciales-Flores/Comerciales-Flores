@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIndicator } from '../../contexts/IndicatorContext';
+import { formatTime } from '../../utils/date';
 import {
   Building2,
   AlertCircle,
@@ -173,7 +174,7 @@ export default function Login() {
     }
 
     showIndicator(
-      `Login successful by ${normalizedEmail} at ${new Date().toLocaleTimeString()}`,
+      `Login successful by ${normalizedEmail} at ${formatTime(new Date())}`,
       'login'
     );
   };

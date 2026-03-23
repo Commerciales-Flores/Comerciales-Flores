@@ -61,6 +61,11 @@ function normalizeSearchTerm(value: string) {
   return value.trim();
 }
 
+function clampMoney(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Number(value));
+}
+
 export function PaymentsProvider({ children }: { children: ReactNode }) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const { reservations, updateReservation } = useReservations();
@@ -162,97 +167,173 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const addPayment = useCallback(
-  async (
-    paymentData: Omit<Payment, 'id' | 'createdAt' | 'updatedAt' | 'date'>
-  ): Promise<string> => {
-    const paymentDate = new Date().toISOString();
+  const recalculateReservationPaidAmount = useCallback(
+    async (reservationId: string) => {
+      const reservation = reservations.find((r) => r.id === reservationId);
+      if (!reservation) return;
 
-    const { data, error } = await supabase
-      .from('payments')
-      .insert([
-        {
-          user_id: paymentData.userId,
-          reservation_id: paymentData.reservationId,
-          amount: paymentData.amount,
-          method: paymentData.method,
-          status: paymentData.status,
-          proofOfPayment: paymentData.proofOfPayment,
-          date: paymentDate,
-          notes: paymentData.notes,
-          payment_method_id: paymentData.paymentMethodId ?? null,
-          payment_method_snapshot: paymentData.paymentMethodSnapshot ?? null,
-        },
-      ])
-      .select(
-        'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot'
-      )
-      .single();
+      const { data, error } = await supabase
+        .from('payments')
+        .select('amount, status')
+        .eq('reservation_id', reservationId)
+        .eq('status', 'paid');
 
-    if (error) throw error;
+      if (error) throw error;
 
-    const newPayment = mapPaymentRow(data);
+      const totalPaid = clampMoney(
+        (data ?? []).reduce((sum, row) => sum + Number(row.amount || 0), 0)
+      );
 
-    if (newPayment.status === 'paid') {
-      await addLedgerEntry({
-        userId: newPayment.userId,
-        reservationId: newPayment.reservationId,
-        paymentId: newPayment.id,
-        entryType: 'payment',
-        amount: newPayment.amount,
-        method: newPayment.method,
-        status: 'verified',
-        referenceNo: null,
-        description: `Payment for reservation ${newPayment.publicId ?? newPayment.id}`,
-        notes: newPayment.notes ?? null,
-        recordedAt: newPayment.date,
-        createdAt: new Date().toISOString(),
-        createdBy: user?.id ?? null,
+      const safePaidAmount = Math.min(totalPaid, clampMoney(reservation.totalAmount));
+
+      await updateReservation(reservationId, {
+        paidAmount: safePaidAmount,
       });
+    },
+    [reservations, updateReservation]
+  );
 
-      const reservation = reservations.find((r) => r.id === newPayment.reservationId);
-      if (reservation) {
-        await updateReservation(reservation.id, {
-          paidAmount: reservation.paidAmount + newPayment.amount,
-        });
+  const addPayment = useCallback(
+    async (
+      paymentData: Omit<Payment, 'id' | 'createdAt' | 'updatedAt' | 'date'>
+    ): Promise<string> => {
+      const paymentDate = new Date().toISOString();
+
+      const reservation = reservations.find((r) => r.id === paymentData.reservationId);
+      if (!reservation) {
+        throw new Error('Reservation not found for this payment.');
       }
-    }
 
-    if (user?.id) {
-      try {
-        await addAuditLog({
-          userId: user.id,
-          action: 'PAYMENT_CREATED',
-          targetTable: 'payments',
-          targetId: newPayment.id,
-          targetPublicId: newPayment.publicId,
-          beforeValue: null,
-          afterValue: newPayment,
-          changedFields: Object.keys(newPayment),
-          notes: `Created payment ${newPayment.publicId ?? newPayment.id} for reservation ${newPayment.reservationId}`,
-        });
-      } catch (auditError) {
-        console.error('Failed to audit payment creation:', auditError);
+      const submittedAmount = clampMoney(Number(paymentData.amount));
+      const remaining = clampMoney(reservation.totalAmount - reservation.paidAmount);
+
+      if (submittedAmount <= 0) {
+        throw new Error('Payment amount must be greater than zero.');
       }
-    }
 
-    await refreshPayments();
-    return newPayment.id;
-  },
-  [addAuditLog, addLedgerEntry, refreshPayments, reservations, updateReservation, user?.id]
-);
+      if (submittedAmount > remaining) {
+        throw new Error('Payment amount cannot exceed the remaining balance.');
+      }
+
+      const { data, error } = await supabase
+        .from('payments')
+        .insert([
+          {
+            user_id: paymentData.userId,
+            reservation_id: paymentData.reservationId,
+            amount: submittedAmount,
+            method: paymentData.method,
+            status: paymentData.status,
+            proofOfPayment: paymentData.proofOfPayment,
+            date: paymentDate,
+            notes: paymentData.notes,
+            payment_method_id: paymentData.paymentMethodId ?? null,
+            payment_method_snapshot: paymentData.paymentMethodSnapshot ?? null,
+          },
+        ])
+        .select(
+          'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot'
+        )
+        .single();
+
+      if (error) throw error;
+
+      const newPayment = mapPaymentRow(data);
+
+      if (newPayment.status === 'paid') {
+        const refreshedReservation =
+          reservations.find((r) => r.id === newPayment.reservationId) ?? reservation;
+
+        const remainingAtApproval = clampMoney(
+          refreshedReservation.totalAmount - refreshedReservation.paidAmount
+        );
+
+        const approvedAmount = Math.min(clampMoney(newPayment.amount), remainingAtApproval);
+
+        if (approvedAmount <= 0) {
+          throw new Error('This reservation no longer has an outstanding balance.');
+        }
+
+        if (approvedAmount !== newPayment.amount) {
+          const { error: adjustError } = await supabase
+            .from('payments')
+            .update({ amount: approvedAmount })
+            .eq('payment_id', newPayment.id);
+
+          if (adjustError) throw adjustError;
+
+          newPayment.amount = approvedAmount;
+        }
+
+        await addLedgerEntry({
+          userId: newPayment.userId,
+          reservationId: newPayment.reservationId,
+          paymentId: newPayment.id,
+          entryType: 'payment',
+          amount: newPayment.amount,
+          method: newPayment.method,
+          status: 'verified',
+          referenceNo: null,
+          description: `Payment for reservation ${newPayment.publicId ?? newPayment.id}`,
+          notes: newPayment.notes ?? null,
+          recordedAt: newPayment.date,
+          createdAt: new Date().toISOString(),
+          createdBy: user?.id ?? null,
+        });
+
+        await recalculateReservationPaidAmount(newPayment.reservationId);
+      }
+
+      if (user?.id) {
+        try {
+          await addAuditLog({
+            userId: user.id,
+            action: 'PAYMENT_CREATED',
+            targetTable: 'payments',
+            targetId: newPayment.id,
+            targetPublicId: newPayment.publicId,
+            beforeValue: null,
+            afterValue: newPayment,
+            changedFields: Object.keys(newPayment),
+            notes: `Created payment ${newPayment.publicId ?? newPayment.id} for reservation ${newPayment.reservationId}`,
+          });
+        } catch (auditError) {
+          console.error('Failed to audit payment creation:', auditError);
+        }
+      }
+
+      await refreshPayments();
+      return newPayment.id;
+    },
+    [
+      addAuditLog,
+      addLedgerEntry,
+      recalculateReservationPaidAmount,
+      refreshPayments,
+      reservations,
+      user?.id,
+    ]
+  );
 
   const updatePayment = useCallback(
     async (id: string, paymentUpdate: Partial<Payment>): Promise<void> => {
       const existingPayment = payments.find((p) => p.id === id);
       if (!existingPayment) return;
 
+      const reservation = reservations.find((r) => r.id === existingPayment.reservationId);
+      if (!reservation) {
+        throw new Error('Reservation not found for this payment.');
+      }
+
+      const isApprovingNow =
+        existingPayment.status !== 'paid' && paymentUpdate.status === 'paid';
+
       if (
         existingPayment.status === 'paid' &&
         paymentUpdate.amount !== undefined &&
-        paymentUpdate.amount !== existingPayment.amount
+        Number(paymentUpdate.amount) !== Number(existingPayment.amount)
       ) {
-        throw new Error('Changing the amount of an already paid payment is not supported yet.');
+        throw new Error('Changing the amount of an already paid payment is not supported.');
       }
 
       if (
@@ -260,13 +341,32 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
         paymentUpdate.status !== undefined &&
         paymentUpdate.status !== 'paid'
       ) {
-        throw new Error('Reverting an already paid payment is not supported yet.');
+        throw new Error('Reverting an already paid payment is not supported.');
+      }
+
+      let sanitizedAmount =
+        paymentUpdate.amount !== undefined
+          ? clampMoney(Number(paymentUpdate.amount))
+          : clampMoney(Number(existingPayment.amount));
+
+      if (sanitizedAmount <= 0) {
+        throw new Error('Payment amount must be greater than zero.');
+      }
+
+      if (isApprovingNow) {
+        const remaining = clampMoney(reservation.totalAmount - reservation.paidAmount);
+
+        if (remaining <= 0) {
+          throw new Error('This reservation is already fully paid.');
+        }
+
+        sanitizedAmount = Math.min(sanitizedAmount, remaining);
       }
 
       const dbPayload: Record<string, unknown> = {};
 
       if (paymentUpdate.status !== undefined) dbPayload.status = paymentUpdate.status;
-      if (paymentUpdate.amount !== undefined) dbPayload.amount = paymentUpdate.amount;
+      if (paymentUpdate.amount !== undefined || isApprovingNow) dbPayload.amount = sanitizedAmount;
       if (paymentUpdate.method !== undefined) dbPayload.method = paymentUpdate.method;
       if (paymentUpdate.proofOfPayment !== undefined) {
         dbPayload.proofOfPayment = paymentUpdate.proofOfPayment;
@@ -275,24 +375,38 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
 
       if (Object.keys(dbPayload).length === 0) return;
 
-      const { error } = await supabase
+      const { data: updatedRow, error } = await supabase
         .from('payments')
         .update(dbPayload)
-        .eq('payment_id', id);
+        .eq('payment_id', id)
+        .select(
+          'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot'
+        )
+        .single();
 
       if (error) throw error;
 
-      const updatedPayment = buildAuditSnapshot(existingPayment, paymentUpdate);
-      const changedFields = getChangedFields(existingPayment, paymentUpdate);
+      const finalPayment = mapPaymentRow(updatedRow);
+      const updatedPaymentForAudit = buildAuditSnapshot(existingPayment, {
+        ...paymentUpdate,
+        amount:
+          paymentUpdate.amount !== undefined || isApprovingNow
+            ? sanitizedAmount
+            : existingPayment.amount,
+      });
+      const changedFields = getChangedFields(existingPayment, {
+        ...paymentUpdate,
+        amount:
+          paymentUpdate.amount !== undefined || isApprovingNow
+            ? sanitizedAmount
+            : existingPayment.amount,
+      });
 
       let action = 'PAYMENT_UPDATED';
 
-      if (existingPayment.status !== 'paid' && paymentUpdate.status === 'paid') {
+      if (isApprovingNow) {
         action = 'PAYMENT_APPROVED';
-      } else if (
-        paymentUpdate.status !== undefined &&
-        paymentUpdate.status === 'unpaid'
-      ) {
+      } else if (paymentUpdate.status !== undefined && paymentUpdate.status === 'unpaid') {
         action = 'PAYMENT_REJECTED';
       } else if (
         paymentUpdate.proofOfPayment !== undefined &&
@@ -301,36 +415,37 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
         action = 'PAYMENT_PROOF_UPLOADED';
       }
 
-      if (existingPayment.status !== 'paid' && paymentUpdate.status === 'paid') {
-        const finalAmount =
-          paymentUpdate.amount !== undefined ? paymentUpdate.amount : existingPayment.amount;
-        const finalMethod =
-          paymentUpdate.method !== undefined ? paymentUpdate.method : existingPayment.method;
-        const finalNotes =
-          paymentUpdate.notes !== undefined ? paymentUpdate.notes : existingPayment.notes;
+      if (isApprovingNow) {
+        const existingLedgerCheck = await supabase
+          .from('ledger')
+          .select('ledger_id')
+          .eq('payment_id', existingPayment.id)
+          .limit(1)
+          .maybeSingle();
 
-        await addLedgerEntry({
-          userId: existingPayment.userId,
-          reservationId: existingPayment.reservationId,
-          paymentId: existingPayment.id,
-          entryType: 'payment',
-          amount: finalAmount,
-          method: finalMethod,
-          status: 'verified',
-          referenceNo: null,
-          description: `Payment for reservation ${existingPayment.publicId ?? existingPayment.id}`,
-          notes: finalNotes ?? null,
-          recordedAt: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-          createdBy: user?.id ?? null,
-        });
+        if (existingLedgerCheck.error) {
+          throw existingLedgerCheck.error;
+        }
 
-        const reservation = reservations.find((r) => r.id === existingPayment.reservationId);
-        if (reservation) {
-          await updateReservation(reservation.id, {
-            paidAmount: reservation.paidAmount + finalAmount,
+        if (!existingLedgerCheck.data) {
+          await addLedgerEntry({
+            userId: finalPayment.userId,
+            reservationId: finalPayment.reservationId,
+            paymentId: finalPayment.id,
+            entryType: 'payment',
+            amount: finalPayment.amount,
+            method: finalPayment.method,
+            status: 'verified',
+            referenceNo: null,
+            description: `Payment for reservation ${finalPayment.publicId ?? finalPayment.id}`,
+            notes: finalPayment.notes ?? null,
+            recordedAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+            createdBy: user?.id ?? null,
           });
         }
+
+        await recalculateReservationPaidAmount(finalPayment.reservationId);
       }
 
       if (user?.id && changedFields.length > 0) {
@@ -340,8 +455,9 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
             action,
             targetTable: 'payments',
             targetId: id,
+            targetPublicId: existingPayment.publicId,
             beforeValue: existingPayment,
-            afterValue: updatedPayment,
+            afterValue: updatedPaymentForAudit,
             changedFields,
             notes:
               action === 'PAYMENT_APPROVED'
@@ -359,7 +475,15 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
 
       await refreshPayments();
     },
-    [addAuditLog, addLedgerEntry, payments, refreshPayments, reservations, updateReservation, user?.id]
+    [
+      addAuditLog,
+      addLedgerEntry,
+      payments,
+      recalculateReservationPaidAmount,
+      refreshPayments,
+      reservations,
+      user?.id,
+    ]
   );
 
   const getPaymentsByUserId = useCallback(

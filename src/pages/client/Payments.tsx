@@ -4,6 +4,7 @@ import { useData } from '../../contexts/DataContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import type { LedgerEntry } from '../../data/types';
 import { usePaymentMethods } from '../../contexts/PaymentMethodsContext';
+import { formatDate, formatDateTime } from '../../utils/date';
 import {
   CreditCard,
   CheckCircle2,
@@ -410,7 +411,7 @@ INVOICE
 ========================================
 
 INVOICE NO:      ${invoiceNumber}
-INVOICE DATE:    ${getSafeDate(invoiceDate).toLocaleDateString()}
+INVOICE DATE:    ${formatDate(invoiceDate)}
 
 ----------------------------------------
 CUSTOMER
@@ -424,7 +425,7 @@ PAYMENT
 Payment ID:      ${payment.id}
 Method:          ${formatPaymentMethod(ledgerEntry.method || payment.method)}
 Status:          ${String(ledgerEntry.status || payment.status || 'N/A').toUpperCase()}
-Submitted On:    ${getSafeDate(payment.date).toLocaleDateString()}
+Submitted On:    ${formatDate(payment.date)}
 Reference No:    ${ledgerEntry.referenceNo || 'N/A'}
 
 ----------------------------------------
@@ -432,7 +433,7 @@ LEDGER ENTRY
 ----------------------------------------
 Ledger ID:       ${ledgerEntry.id}
 Entry Type:      ${formatPaymentMethod(ledgerEntry.entryType)}
-Recorded Date:   ${getSafeDate(ledgerEntry.recordedAt).toLocaleDateString()}
+Recorded Date:   ${formatDate(ledgerEntry.recordedAt)}
 Amount:          ${formatCurrency(amount)}
 
 ----------------------------------------
@@ -481,7 +482,7 @@ Thank you for your payment.
 
       return {
         'Payment ID': payment.id,
-        'Payment Date': getSafeDate(payment.date).toLocaleDateString(),
+        'Payment Date': formatDate(payment.date),
         'Reservation ID': reservation?.publicId ?? payment.reservationId,
         'Unit Name': reservation?.unitName ?? 'N/A',
         'Unit Type': reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A',
@@ -816,7 +817,7 @@ Thank you for your payment.
                                 {formatCurrency(payment.amount)}
                               </h3>
                               <p className={uiTypography.cardSubtitle}>
-                                Paid on {getSafeDate(payment.date).toLocaleDateString()}
+                                Paid on {formatDate(payment.date)}
                               </p>
                             </div>
                           </div>
@@ -944,7 +945,7 @@ Thank you for your payment.
                               <div className="rounded-2xl border border-white bg-white p-4">
                                 <p className={uiTypography.infoBlockLabel}>Ledger Entry</p>
                                 <p className={`${uiTypography.infoBlockValue} text-slate-900`}>
-                                  {ledgerEntry.id}
+                                  {ledgerEntry.publicId || ledgerEntry.id}
                                 </p>
                                 <p className={uiTypography.helperText}>
                                   {formatPaymentMethod(ledgerEntry.entryType)} ·{' '}
@@ -958,7 +959,7 @@ Thank you for your payment.
                                   {ledgerEntry.referenceNo || 'N/A'}
                                 </p>
                                 <p className={uiTypography.helperText}>
-                                  Recorded {getSafeDate(ledgerEntry.recordedAt).toLocaleDateString()}
+                                  Recorded {formatDate(ledgerEntry.recordedAt)}
                                 </p>
                               </div>
                             </div>
@@ -1100,7 +1101,7 @@ Thank you for your payment.
                           Send payment to {selectedPaymentMethodConfig.displayName}
                         </h3>
 
-                        <div className="space-y-2 text-sm text-slate-600">
+                        <div className={`space-y-2 ${uiTypography.bodyText} text-slate-600`}>
                           {selectedPaymentMethodConfig.bankName && (
                             <p>Bank: {selectedPaymentMethodConfig.bankName}</p>
                           )}
@@ -1282,7 +1283,7 @@ Thank you for your payment.
                 alt="Proof of Payment Receipt"
                 className="max-h-[85vh] max-w-full rounded-2xl border border-white/10 object-contain shadow-2xl"
               />
-              <p className="mt-4 text-center text-sm font-light text-white/60">
+              <p className={`mt-4 text-center text-white/60 ${uiTypography.helperText}`}>
                 Click outside to close
               </p>
             </div>

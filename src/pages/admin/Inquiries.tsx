@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { useNotifications } from '../../contexts/NotificationContext';
+import { formatDate, formatDateTime } from '../../utils/date';
 import {
   Mail,
   Send,
@@ -320,7 +321,7 @@ export default function AdminInquiries() {
                 >
                   <div className="flex justify-between items-start mb-1 gap-3">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                      {new Date(inq.date).toLocaleDateString()}
+                      {formatDate(inq.date)}
                     </span>
                     <div
                       className={`shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
@@ -437,7 +438,7 @@ export default function AdminInquiries() {
                       </span>
                       <span className="flex items-center gap-1.5">
                         <Calendar className="size-3 md:size-4" />
-                        {new Date(inquiry.date).toLocaleString()}
+                        {formatDateTime(inquiry.date)}
                       </span>
                     </div>
                   </div>
@@ -475,7 +476,7 @@ export default function AdminInquiries() {
                     </div>
                     {inquiry.responseDate && (
                       <span className="text-[10px] text-gray-400 mt-2 italic">
-                        Sent on {new Date(inquiry.responseDate).toLocaleString()}
+                        Sent on {formatDateTime(inquiry.responseDate)}
                       </span>
                     )}
                   </div>

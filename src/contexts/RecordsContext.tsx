@@ -50,6 +50,7 @@ function mapLedgerRow(row: any): LedgerEntry {
   return {
     id: row.ledger_id,
     userId: row.user_id,
+    publicId: row.public_id,
     reservationId: row.reservation_id,
     paymentId: row.payment_id,
     entryType: row.entry_type,
@@ -96,6 +97,7 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
       .from('ledger')
       .select(`
         ledger_id,
+        public_id,
         user_id,
         reservation_id,
         payment_id,

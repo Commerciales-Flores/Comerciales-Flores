@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import { formatDate } from '../../utils/date';
 import {
   Clock,
   MapPin,
@@ -36,6 +37,26 @@ const STATUS_COLORS: Record<ReservationStatus, string> = {
   cancelled: 'bg-red-100 text-red-800 border-red-200',
   completed: 'bg-blue-100 text-blue-800 border-blue-200',
 };
+
+function formatReservationDuration(
+  duration: number,
+  durationType?: 'hours' | 'days' | 'months' | 'years'
+) {
+  if (!duration || duration <= 0) return '—';
+
+  switch (durationType) {
+    case 'hours':
+      return `${duration} hr${duration === 1 ? '' : 's'}`;
+    case 'days':
+      return `${duration} day${duration === 1 ? '' : 's'}`;
+    case 'months':
+      return `${duration} month${duration === 1 ? '' : 's'}`;
+    case 'years':
+      return `${duration} year${duration === 1 ? '' : 's'}`;
+    default:
+      return `${duration}`;
+  }
+}
 
 const STATUS_ICONS: Record<ReservationStatus, string> = {
   pending: '⏳',
@@ -338,28 +359,26 @@ const toggleDetails = useCallback(
                     ? (reservation.status as ReservationStatus)
                     : 'pending';
 
-                const durationLabel =
-                  reservation.unitType === 'rental_space'
-                    ? 'mos'
-                    : reservation.unitType === 'function_hall'
-                    ? 'days'
-                    : 'hrs';
+                const formattedDuration = formatReservationDuration(
+                  reservation.duration,
+                  reservation.durationType
+                );
 
                 return (
                   <motion.div
                     layout
                     key={reservation.id}
-                    className="bg-white rounded-2xl sm:rounded-3xl border border-gray-100 shadow-sm overflow-hidden"
+                    className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm sm:rounded-[22px]"
                   >
                     <div
-                      className={`p-5 sm:p-6 ${isMobile ? 'cursor-pointer' : ''}`}
+                      className={`p-4 sm:p-5 ${isMobile ? 'cursor-pointer' : ''}`}
                       onClick={() => toggleExpand(reservation.id)}
                     >
-                      <div className="flex justify-between items-start mb-4">
+                      <div className="mb-3 flex items-start justify-between">
                         <div className="flex-1 min-w-0">
-                          <div className="mb-2 flex items-start justify-between gap-3">
+                          <div className="mb-1.5 flex items-start justify-between gap-2.5">
                             <div className="min-w-0">
-                              <span className="text-[13px] font-semibold text-blue-600 sm:text-sm">
+                              <span className="text-xs font-semibold text-blue-600 sm:text-[13px]">
                                 {getUnitTypeLabel(reservation.unitType)}
                               </span>
 
@@ -383,7 +402,7 @@ const toggleDetails = useCallback(
                             {reservation.unitName}
                           </h3>
 
-                          <div className="flex items-center gap-1.5 text-gray-500 mt-1">
+                          <div className="mt-0.5 flex items-center gap-1.5 text-gray-500">
                             <MapPin className="size-4 text-blue-600" />
                             <span
                               className={`${uiTypography.bodyText} truncate text-[13px] sm:text-sm`}
@@ -396,14 +415,14 @@ const toggleDetails = useCallback(
                         {isMobile && (
                           <motion.div
                             animate={{ rotate: isCardExpanded ? 180 : 0 }}
-                            className="p-1 bg-gray-50 rounded-lg ml-2"
+                            className="ml-2 rounded-lg bg-gray-50 p-1"
                           >
                             <ChevronDown className="size-5 text-gray-400" />
                           </motion.div>
                         )}
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 bg-gray-50/80 p-3 rounded-xl border border-gray-100">
+                      <div className="grid grid-cols-3 gap-2 rounded-xl border border-gray-100 bg-gray-50/80 p-2.5">
                         <div>
                           <p
                             className={`${uiTypography.miniStatLabel} mb-1 text-gray-500 text-[10px]`}
@@ -413,7 +432,7 @@ const toggleDetails = useCallback(
                           <p
                             className={`${uiTypography.miniStatValue} text-gray-900 text-[13px] sm:text-sm`}
                           >
-                            {new Date(reservation.startDate).toLocaleDateString()}
+                            {formatDate(reservation.startDate)}
                           </p>
                         </div>
 
@@ -426,7 +445,7 @@ const toggleDetails = useCallback(
                           <p
                             className={`${uiTypography.miniStatValue} text-gray-900 text-[13px] sm:text-sm`}
                           >
-                            {new Date(reservation.endDate).toLocaleDateString()}
+                            {formatDate(reservation.endDate)}
                           </p>
                         </div>
 
@@ -439,7 +458,7 @@ const toggleDetails = useCallback(
                           <p
                             className={`${uiTypography.miniStatValue} text-gray-900 text-[13px] sm:text-sm`}
                           >
-                            {reservation.duration} {durationLabel}
+                            {formattedDuration}
                           </p>
                         </div>
                       </div>
@@ -453,21 +472,20 @@ const toggleDetails = useCallback(
       exit={{ height: 0, opacity: 0 }}
       transition={{ duration: 0.2 }}
     >
-      <div className="px-5 pb-5 sm:px-6 sm:pb-6 space-y-4">
-        <div className="border-t border-gray-100 pt-4">
+      <div className="space-y-3 px-4 pb-4 sm:px-5 sm:pb-5">
+        <div className="border-t border-gray-100 pt-3">
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               toggleDetails(reservation.id);
             }}
-            className="flex w-full items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-left transition hover:bg-gray-100"
-          >
+className="flex w-full items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-left transition hover:bg-gray-100"          >
             <div>
               <p className={`${uiTypography.miniStatLabel} text-gray-500`}>
                 Reservation Details
               </p>
-              <p className={`${uiTypography.helperText} mt-1 text-gray-400`}>
+              <p className={`${uiTypography.helperText} mt-0.5 text-[11px] text-gray-400`}>
                 View visit mode, payment method, purpose, notes, and more
               </p>
             </div>
@@ -475,7 +493,7 @@ const toggleDetails = useCallback(
             <motion.div
               animate={{ rotate: isDetailsExpanded ? 180 : 0 }}
               transition={{ duration: 0.2 }}
-              className="rounded-lg bg-white p-1.5 shadow-sm"
+              className="rounded-lg bg-white p-1 shadow-sm"
             >
               <ChevronDown className="size-4 text-gray-500" />
             </motion.div>
@@ -490,7 +508,7 @@ const toggleDetails = useCallback(
                 transition={{ duration: 0.2 }}
                 className="overflow-hidden"
               >
-                <div className="pt-4 space-y-2">
+                <div className="space-y-1.5 pt-3">
                   <div className="space-y-1 text-[13px] sm:text-sm">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2 text-gray-500">
@@ -591,7 +609,7 @@ const toggleDetails = useCallback(
                   </div>
 
                   {reservation.notes && (
-                    <div className="pt-2 border-t border-gray-100">
+                    <div className="border-t border-gray-100 pt-2">
                       <div className="flex items-start gap-2">
                         <Notebook className="size-4 text-blue-600 mt-0.5" />
                         <div>
@@ -619,7 +637,7 @@ const toggleDetails = useCallback(
                           </div>
                           <span className={`${uiTypography.infoBlockValue} text-gray-900 text-right`}>
                             {reservation.appointmentDate
-                              ? new Date(reservation.appointmentDate).toLocaleDateString()
+                              ? formatDate(reservation.appointmentDate)
                               : 'N/A'}
                             {reservation.appointmentTime && ` • ${reservation.appointmentTime}`}
                           </span>
@@ -642,7 +660,7 @@ const toggleDetails = useCallback(
                               <span className={uiTypography.miniStatLabel}>Confirmed Visit</span>
                             </div>
                             <span className={`${uiTypography.infoBlockValue} text-green-600 text-right`}>
-                              {new Date(reservation.confirmedVisitDate).toLocaleDateString()}
+                              {formatDate(reservation.confirmedVisitDate)}
                               {reservation.confirmedVisitTime && ` • ${reservation.confirmedVisitTime}`}
                             </span>
                           </div>
@@ -655,8 +673,8 @@ const toggleDetails = useCallback(
           </AnimatePresence>
         </div>
 
-        <div className="border-t border-gray-100 pt-4">
-          <div className="grid grid-cols-3 gap-2 mb-4">
+        <div className="border-t border-gray-100 pt-3">
+          <div className="mb-3 grid grid-cols-3 gap-2">
             <div className="text-center sm:text-left">
               <p
                 className={`${uiTypography.miniStatLabel} mb-0.5 text-gray-500 text-[10px]`}
@@ -700,7 +718,7 @@ const toggleDetails = useCallback(
           </div>
 
           {['approved', 'confirmed', 'completed'].includes(reservation.status) && (
-            <div className="mb-4">
+            <div className="mb-3">
               <div
                 className={`${uiTypography.helperText} flex justify-between text-gray-500 mb-1 text-[11px]`}
               >
@@ -737,9 +755,9 @@ const toggleDetails = useCallback(
           </div>
         )}
 
-        <div className="flex flex-col sm:flex-row justify-between items-center pt-2 gap-3">
+       <div className="flex flex-col items-start justify-between gap-2 pt-1 sm:flex-row sm:items-center">
           <span className={`${uiTypography.helperText} text-gray-400 text-[11px]`}>
-            Requested {new Date(reservation.requestDate).toLocaleDateString()}
+            Requested {formatDate(reservation.requestDate)}
           </span>
 
           {reservation.status === 'pending' && (

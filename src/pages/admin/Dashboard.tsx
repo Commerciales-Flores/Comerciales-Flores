@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { useReviews } from '../../contexts/ReviewsContext';
 import { useUsers } from '../../contexts/UsersContext';
+import { formatDate, formatDateTime, formatMonth } from '../../utils/date';
 import {
   AlertCircle,
   TrendingUp,
@@ -303,7 +304,7 @@ export default function AdminDashboard() {
       date.setMonth(date.getMonth() - (5 - i));
 
       const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      const monthLabel = date.toLocaleDateString('en-US', { month: 'short' });
+      const monthLabel = formatMonth(date);
 
       const monthReservations = reservations.filter((r) => r.requestDate.startsWith(yearMonth));
       const monthRevenue = paidPayments
@@ -508,7 +509,7 @@ export default function AdminDashboard() {
                         <div className="min-w-0">
                           <p className="truncate font-medium text-gray-900">{res.unitName}</p>
                           <p className="font-mono text-xs text-gray-500">
-                            Overdue since {new Date(res.requestDate).toLocaleDateString()}
+                            Overdue since {formatDate(res.requestDate)}
                           </p>
                         </div>
 
@@ -545,7 +546,7 @@ export default function AdminDashboard() {
           {res.unitName}
         </span>
         <span className="block text-xs text-gray-500">
-          {new Date(res.requestDate).toLocaleDateString()}
+          {formatDate(res.requestDate)}
         </span>
       </div>
     )}
@@ -587,7 +588,7 @@ export default function AdminDashboard() {
           </span>
           <span className="block text-xs text-gray-500">
             {res.appointmentDate
-              ? new Date(res.appointmentDate).toLocaleDateString()
+              ? formatDate(res.appointmentDate)
               : 'No preferred date'}
             {res.appointmentTime ? ` • ${res.appointmentTime}` : ''}
           </span>
@@ -663,7 +664,7 @@ export default function AdminDashboard() {
                           </p>
                           <p className="text-xs text-gray-500">
                             {review.created_at
-                              ? new Date(review.created_at).toLocaleDateString()
+                              ? formatDate(review.created_at)
                               : 'Recently submitted'}
                           </p>
                         </div>
@@ -881,7 +882,7 @@ export default function AdminDashboard() {
                         {dashboardData.latestActivity.action}
                       </p>
                       <p className="text-[11px] text-gray-500">
-                        {new Date(dashboardData.latestActivity.timestamp).toLocaleString()}
+                        {formatDateTime(dashboardData.latestActivity.timestamp)}
                       </p>
                     </div>
                   ) : (

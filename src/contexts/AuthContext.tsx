@@ -10,6 +10,7 @@ import type { ReactNode } from 'react';
 import { useIndicator } from './IndicatorContext';
 import supabase from '../supabaseClient';
 import { Building2 } from 'lucide-react';
+import { formatTime } from '../utils/date';
 
 // --- TYPES ---
 interface User {
@@ -130,12 +131,7 @@ const normalizePhone = (value: string) => {
   return raw;
 };
 
-const getFormattedTime = () =>
-  new Date().toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+const getFormattedTime = () => formatTime(new Date());
 
 const mapProfileToUser = (data: any): User => ({
   id: data.user_id,
