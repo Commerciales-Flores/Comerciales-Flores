@@ -76,6 +76,48 @@ const PRICE_RANGE_OPTIONS: { value: PriceRange; label: string }[] = [
 const FALLBACK_IMAGE =
   "https://placehold.co/1200x800/e5e7eb/6b7280?text=No+Image";
 
+  const BLOCKING_STATUSES = ["approved", "confirmed"] as const;
+
+function isBlockingReservation(status?: string | null) {
+  return BLOCKING_STATUSES.includes((status ?? "") as (typeof BLOCKING_STATUSES)[number]);
+}
+
+function formatAvailabilityDate(dateLike?: string | Date | null) {
+  if (!dateLike) return "";
+  const date = typeof dateLike === "string" ? new Date(dateLike) : dateLike;
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function rangesOverlap(
+  startA?: string | Date | null,
+  endA?: string | Date | null,
+  startB?: string | Date | null,
+  endB?: string | Date | null
+) {
+  if (!startA || !endA || !startB || !endB) return false;
+
+  const aStart = new Date(startA).getTime();
+  const aEnd = new Date(endA).getTime();
+  const bStart = new Date(startB).getTime();
+  const bEnd = new Date(endB).getTime();
+
+  if (
+    Number.isNaN(aStart) ||
+    Number.isNaN(aEnd) ||
+    Number.isNaN(bStart) ||
+    Number.isNaN(bEnd)
+  ) {
+    return false;
+  }
+
+  return aStart <= bEnd && aEnd >= bStart;
+}
+
 function getTomorrow() {
   const d = new Date();
   d.setDate(d.getDate() + 1);
@@ -207,7 +249,7 @@ export default function ClientUnits() {
     buildInitialReservationForm("rental_space")
   );
 
-  const hasUnits = useMemo(() => units.some((u) => u.available), [units]);
+  const hasUnits = useMemo(() => units.length > 0, [units]);
 
   const locations = useMemo(() => {
     return [
@@ -238,13 +280,200 @@ export default function ClientUnits() {
     if (!selectedUnitData || selectedUnitData.type !== "parking_slot") return [];
     return parkingSlots.filter((slot) => slot.unitId === selectedUnitData.id);
   }, [parkingSlots, selectedUnitData]);
+  
+    const unitAvailabilityMap = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        status: "available" | "occupied" | "partial";
+        badgeText: string;
+        badgeTone:
+          | "green"
+          | "red"
+          | "amber"
+          | "gray";
+        reserveDisabled: boolean;
+        reserveLabel: string;
+        nextAvailableText?: string;
+      }
+    >();
 
+    for (const unit of units) {
+      if (unit.type === "parking_slot") {
+        const slots = parkingSlots.filter((slot) => slot.unitId === unit.id);
+        const activeSlots = slots.filter((slot) => slot.status === "active");
+        const occupiedActiveSlots = activeSlots.filter((slot) => slot.isOccupied);
+        const availableActiveSlots = activeSlots.filter((slot) => !slot.isOccupied);
+
+        if (activeSlots.length === 0) {
+          map.set(unit.id, {
+            status: "occupied",
+            badgeText: "No active slots",
+            badgeTone: "gray",
+            reserveDisabled: true,
+            reserveLabel: "Unavailable",
+          });
+          continue;
+        }
+
+        if (availableActiveSlots.length === 0) {
+          map.set(unit.id, {
+            status: "occupied",
+            badgeText: "Fully occupied",
+            badgeTone: "red",
+            reserveDisabled: true,
+            reserveLabel: "No Slots Left",
+          });
+          continue;
+        }
+
+        if (availableActiveSlots.length < activeSlots.length) {
+          map.set(unit.id, {
+            status: "partial",
+            badgeText: `${availableActiveSlots.length} of ${activeSlots.length} slots available`,
+            badgeTone: "amber",
+            reserveDisabled: false,
+            reserveLabel: "Reserve Now",
+          });
+          continue;
+        }
+
+        map.set(unit.id, {
+          status: "available",
+          badgeText: `${availableActiveSlots.length} slots available`,
+          badgeTone: "green",
+          reserveDisabled: false,
+          reserveLabel: "Reserve Now",
+        });
+
+        continue;
+      }
+
+      const blockingReservations = reservations
+        .filter(
+          (r) =>
+            r.unitId === unit.id &&
+            r.unitType === unit.type &&
+            isBlockingReservation(r.status)
+        )
+        .sort(
+          (a, b) =>
+            new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+        );
+
+      if (unit.type === "rental_space") {
+        const activeRental = blockingReservations.find((r) => {
+          const now = Date.now();
+          const start = new Date(r.startDate).getTime();
+          const end = new Date(r.endDate).getTime();
+
+          return !Number.isNaN(start) && !Number.isNaN(end) && start <= now && end >= now;
+        });
+
+        if (activeRental) {
+          map.set(unit.id, {
+            status: "occupied",
+            badgeText: "Occupied",
+            badgeTone: "red",
+            reserveDisabled: true,
+            reserveLabel: "Occupied",
+            nextAvailableText: activeRental.endDate
+              ? `Until ${formatAvailabilityDate(activeRental.endDate)}`
+              : undefined,
+          });
+          continue;
+        }
+
+        const upcomingRental = blockingReservations.find((r) => {
+          const start = new Date(r.startDate).getTime();
+          return !Number.isNaN(start) && start > Date.now();
+        });
+
+        if (upcomingRental) {
+          map.set(unit.id, {
+            status: "partial",
+            badgeText: "Available soon",
+            badgeTone: "amber",
+            reserveDisabled: false,
+            reserveLabel: "Reserve Now",
+            nextAvailableText: `Reserved ${formatAvailabilityDate(
+              upcomingRental.startDate
+            )} - ${formatAvailabilityDate(upcomingRental.endDate)}`,
+          });
+          continue;
+        }
+
+        map.set(unit.id, {
+          status: "available",
+          badgeText: "Available",
+          badgeTone: "green",
+          reserveDisabled: false,
+          reserveLabel: "Reserve Now",
+        });
+
+        continue;
+      }
+
+      if (unit.type === "function_hall") {
+        const now = Date.now();
+
+        const activeOrUpcoming = blockingReservations.find((r) => {
+          const end = new Date(r.endDate).getTime();
+          return !Number.isNaN(end) && end >= now;
+        });
+
+        if (activeOrUpcoming) {
+          const startText = formatAvailabilityDate(activeOrUpcoming.startDate);
+          const endText = formatAvailabilityDate(activeOrUpcoming.endDate);
+
+          const isActiveNow = rangesOverlap(
+            activeOrUpcoming.startDate,
+            activeOrUpcoming.endDate,
+            new Date(),
+            new Date()
+          );
+
+          map.set(unit.id, {
+            status: isActiveNow ? "occupied" : "partial",
+            badgeText: isActiveNow ? "Reserved now" : "Reserved on selected dates",
+            badgeTone: isActiveNow ? "red" : "amber",
+            reserveDisabled: false,
+            reserveLabel: "Check Dates",
+            nextAvailableText:
+              startText && endText ? `${startText} - ${endText}` : undefined,
+          });
+          continue;
+        }
+
+        map.set(unit.id, {
+          status: "available",
+          badgeText: "Available",
+          badgeTone: "green",
+          reserveDisabled: false,
+          reserveLabel: "Reserve Now",
+        });
+
+        continue;
+      }
+
+      map.set(unit.id, {
+        status: "available",
+        badgeText: "Available",
+        badgeTone: "green",
+        reserveDisabled: false,
+        reserveLabel: "Reserve Now",
+      });
+    }
+
+    return map;
+  }, [units, parkingSlots, reservations]);
+  
   const safeCurrentImageIndex = useMemo(() => {
     if (selectedUnitImages.length === 0) return 0;
     return Math.min(currentImageIndex, selectedUnitImages.length - 1);
   }, [currentImageIndex, selectedUnitImages]);
 
-  const filteredUnits = useMemo(() => {
+    const filteredUnits = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
 
     return units.filter((unit) => {
@@ -273,13 +502,7 @@ export default function ClientUnits() {
           break;
       }
 
-      return (
-        unit.available &&
-        matchesSearch &&
-        matchesType &&
-        matchesLocation &&
-        matchesPrice
-      );
+      return matchesSearch && matchesType && matchesLocation && matchesPrice;
     });
   }, [units, searchTerm, filterType, filterLocation, priceRange]);
 
@@ -350,10 +573,13 @@ export default function ClientUnits() {
     reservationForm.modeOfVisit === "onsite" &&
     reservationForm.paymentIntent === "pay_later";
 
-  const handleReserveNow = useCallback(
+    const handleReserveNow = useCallback(
     (unitId: string) => {
       const unit = units.find((u) => u.id === unitId);
       if (!unit) return;
+
+      const availability = unitAvailabilityMap.get(unitId);
+      if (availability?.reserveDisabled) return;
 
       setSelectedUnitId(unitId);
       setCurrentImageIndex(0);
@@ -363,7 +589,7 @@ export default function ClientUnits() {
       setIsSlotPanelOpen(false);
       setShowReservationModal(true);
     },
-    [units]
+    [units, unitAvailabilityMap]
   );
 
   const handleCloseReservationModal = useCallback(() => {
@@ -410,6 +636,45 @@ export default function ClientUnits() {
       e.preventDefault();
 
       if (!selectedUnitData || !user) return;
+
+            const blockingReservations = reservations.filter(
+        (r) =>
+          r.unitId === selectedUnitData.id &&
+          r.unitType === selectedUnitData.type &&
+          isBlockingReservation(r.status)
+      );
+
+      if (selectedUnitData.type === "rental_space") {
+        const hasRentalConflict = blockingReservations.some((r) =>
+          rangesOverlap(
+            reservationForm.startDate,
+            reservationForm.endDate,
+            r.startDate,
+            r.endDate
+          )
+        );
+
+        if (hasRentalConflict) {
+          alert("This rental space is occupied for the selected lease period.");
+          return;
+        }
+      }
+
+      if (selectedUnitData.type === "function_hall") {
+        const hasFunctionHallConflict = blockingReservations.some((r) =>
+          rangesOverlap(
+            reservationForm.startDate,
+            reservationForm.endDate,
+            r.startDate,
+            r.endDate
+          )
+        );
+
+        if (hasFunctionHallConflict) {
+          alert("This function hall is already reserved for the selected date(s).");
+          return;
+        }
+      }
 
       if (
         reservationForm.modeOfVisit === "onsite" &&
@@ -553,6 +818,24 @@ export default function ClientUnits() {
     ]
   );
 
+    const getAvailabilityBadgeClass = useCallback(
+    (tone: "green" | "red" | "amber" | "gray") => {
+      switch (tone) {
+        case "green":
+          return "bg-green-50 text-green-700 border-green-200";
+        case "red":
+          return "bg-red-50 text-red-700 border-red-200";
+        case "amber":
+          return "bg-amber-50 text-amber-700 border-amber-200";
+        case "gray":
+          return "bg-gray-100 text-gray-700 border-gray-200";
+        default:
+          return "bg-gray-100 text-gray-700 border-gray-200";
+      }
+    },
+    []
+  );
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
@@ -651,6 +934,14 @@ export default function ClientUnits() {
             unitReviews.length
           : 0;
 
+            const availability = unitAvailabilityMap.get(unit.id) ?? {
+              status: "available",
+              badgeText: "Available",
+              badgeTone: "green" as const,
+              reserveDisabled: false,
+              reserveLabel: "Reserve Now",
+            };
+
       return (
       <div
         key={unit.id}
@@ -706,31 +997,52 @@ export default function ClientUnits() {
             </div>
           </div>
 
-          <div className="mt-3 flex min-h-[44px] items-end justify-between">
-            <div>
-              <div className="text-base font-bold text-blue-600">
-                {formatCurrency(unit.price)}
-              </div>
-              <div className="text-xs text-gray-500">
-                {getPriceLabel(unit.type)}
-              </div>
+                    <div className="mt-3 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${getAvailabilityBadgeClass(
+                  availability.badgeTone
+                )}`}
+              >
+                {availability.badgeText}
+              </span>
+
+              {unit.capacity ? (
+                <span className="text-xs font-medium text-gray-600">
+                  {unit.capacity} pax
+                </span>
+              ) : null}
             </div>
 
-            {unit.capacity ? (
-              <span className="text-xs font-medium text-gray-600">
-                {unit.capacity} pax
-              </span>
+            {availability.nextAvailableText ? (
+              <p className="text-xs text-gray-500">{availability.nextAvailableText}</p>
             ) : (
-              <span className="select-none text-xs text-transparent">000 pax</span>
+              <div className="min-h-[16px]" />
             )}
+
+            <div className="flex min-h-[44px] items-end justify-between">
+              <div>
+                <div className="text-base font-bold text-blue-600">
+                  {formatCurrency(unit.price)}
+                </div>
+                <div className="text-xs text-gray-500">
+                  {getPriceLabel(unit.type)}
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="mt-auto pt-4">
             <button
               onClick={() => handleReserveNow(unit.id)}
-              className="w-full rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+              disabled={availability.reserveDisabled}
+              className={`w-full rounded-lg py-2.5 text-sm font-semibold text-white transition ${
+                availability.reserveDisabled
+                  ? "cursor-not-allowed bg-gray-300"
+                  : "bg-blue-600 hover:bg-blue-700"
+              }`}
             >
-              Reserve Now
+              {availability.reserveLabel}
             </button>
           </div>
         </div>
@@ -746,7 +1058,7 @@ export default function ClientUnits() {
       <EmptyState
         icon={<House className="size-10 text-blue-500" />}
         title="No units found"
-        description="Try adjusting your search or filters to see available units."
+        description="Try adjusting your search or filters to browse units and view their current availability."
       />
     </motion.div>
   )}

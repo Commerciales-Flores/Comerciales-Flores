@@ -141,6 +141,10 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
         vehicleType: row.details?.vehicleType,
         plateNumber: row.details?.plateNumber,
         durationType: row.details?.durationType,
+        confirmedVisitDate: row.confirmed_visit_date,
+        confirmedVisitTime: row.confirmed_visit_time,
+        visitStatus: row.visit_status ?? 'requested',
+        
       };
     },
     [getLedgerTotalsByReservationId]
@@ -170,6 +174,9 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
         mode_of_visit,
         appointment_date,
         appointment_time,
+        confirmed_visit_date,
+        confirmed_visit_time,
+        visit_status,
         details
         `
       )
@@ -225,6 +232,9 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
           mode_of_visit,
           appointment_date,
           appointment_time,
+          confirmed_visit_date,
+          confirmed_visit_time,
+          visit_status,
           details
           `,
           { count: 'exact' }
@@ -387,6 +397,15 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
       }
       if (reservationUpdate.modeOfVisit !== undefined) {
         dbPayload.mode_of_visit = reservationUpdate.modeOfVisit;
+      }
+      if (reservationUpdate.confirmedVisitDate !== undefined) {
+        dbPayload.confirmed_visit_date = reservationUpdate.confirmedVisitDate;
+      }
+      if (reservationUpdate.confirmedVisitTime !== undefined) {
+        dbPayload.confirmed_visit_time = reservationUpdate.confirmedVisitTime;
+      }
+      if (reservationUpdate.visitStatus !== undefined) {
+        dbPayload.visit_status = reservationUpdate.visitStatus;
       }
 
       const detailsPatch = buildReservationDetails(reservationUpdate);

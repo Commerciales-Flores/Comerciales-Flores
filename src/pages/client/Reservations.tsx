@@ -609,6 +609,46 @@ const toggleDetails = useCallback(
                       </div>
                     </div>
                   )}
+
+                  {reservation.modeOfVisit === 'onsite' && (
+                      <>
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 text-gray-500">
+                            <Clock className="size-4 text-blue-600" />
+                            <span className={uiTypography.miniStatLabel}>Preferred Visit</span>
+                          </div>
+                          <span className={`${uiTypography.infoBlockValue} text-gray-900 text-right`}>
+                            {reservation.appointmentDate
+                              ? new Date(reservation.appointmentDate).toLocaleDateString()
+                              : 'N/A'}
+                            {reservation.appointmentTime && ` • ${reservation.appointmentTime}`}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 text-gray-500">
+                            <Notebook className="size-4 text-indigo-600" />
+                            <span className={uiTypography.miniStatLabel}>Visit Status</span>
+                          </div>
+                          <span className={`${uiTypography.infoBlockValue} uppercase text-indigo-600 text-right`}>
+                            {reservation.visitStatus || 'requested'}
+                          </span>
+                        </div>
+
+                        {reservation.confirmedVisitDate && (
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 text-gray-500">
+                              <Clock className="size-4 text-green-600" />
+                              <span className={uiTypography.miniStatLabel}>Confirmed Visit</span>
+                            </div>
+                            <span className={`${uiTypography.infoBlockValue} text-green-600 text-right`}>
+                              {new Date(reservation.confirmedVisitDate).toLocaleDateString()}
+                              {reservation.confirmedVisitTime && ` • ${reservation.confirmedVisitTime}`}
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    )}
                 </div>
               </motion.div>
             )}

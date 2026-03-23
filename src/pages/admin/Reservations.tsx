@@ -74,7 +74,7 @@ function useDebouncedValue<T>(value: T, delay = 250) {
 export default function AdminReservations() {
   const { getUserById, updateReservation } = useData();
   const { fetchReservationsPage } = useReservations();
-  const { sendReservationNotification } = useNotifications();
+  const { sendReservationNotification, sendVisitNotification } = useNotifications();
 
   const [reservations, setReservations] = useState<any[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -91,6 +91,7 @@ export default function AdminReservations() {
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   const [pageInput, setPageInput] = useState('1');
+  
 
 useEffect(() => {
   setPageInput(String(page));
@@ -205,6 +206,46 @@ const handlePageInputKeyDown = useCallback(
     setReservations(result.data);
     setTotalCount(result.count);
   }, [fetchReservationsPage, page, pageSize, filterStatus, debouncedSearch]);
+
+  const handleConfirmVisit = useCallback(
+  async (reservation: EnrichedReservation) => {
+    await updateReservation(reservation.id, {
+      confirmedVisitDate: reservation.appointmentDate,
+      confirmedVisitTime: reservation.appointmentTime,
+      visitStatus: 'confirmed',
+    });
+
+    await sendVisitNotification({
+      userId: reservation.userId,
+      reservationPublicId: reservation.reservationPublicId,
+      action: 'confirmed',
+      confirmedVisitDate: reservation.appointmentDate,
+      confirmedVisitTime: reservation.appointmentTime,
+    });
+
+    setSelectedReservation(null);
+    await reloadPage();
+  },
+  [updateReservation, sendVisitNotification, reloadPage]
+);
+
+const handleRequestReschedule = useCallback(
+  async (reservation: EnrichedReservation) => {
+    await updateReservation(reservation.id, {
+      visitStatus: 'reschedule_requested',
+    });
+
+    await sendVisitNotification({
+      userId: reservation.userId,
+      reservationPublicId: reservation.reservationPublicId,
+      action: 'reschedule_requested',
+    });
+
+    setSelectedReservation(null);
+    await reloadPage();
+  },
+  [updateReservation, sendVisitNotification, reloadPage]
+);
 
   const handleApprove = useCallback(
   async (reservation: EnrichedReservation) => {
@@ -423,6 +464,25 @@ const handlePageInputKeyDown = useCallback(
 
                       {reservation.status === 'pending' && (
                         <>
+                          {reservation.modeOfVisit === 'onsite' && (
+                            <>
+                              <button
+                                onClick={() => handleConfirmVisit(reservation)}
+                                className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg"
+                                title="Confirm Visit"
+                              >
+                                <Calendar className="size-4" />
+                              </button>
+
+                              <button
+                                onClick={() => handleRequestReschedule(reservation)}
+                                className="p-2 text-amber-600 hover:bg-amber-100 rounded-lg"
+                                title="Request Reschedule"
+                              >
+                                <Clock className="size-4" />
+                              </button>
+                            </>
+                          )}
                           <button
                             onClick={() => handleApprove(reservation)}
                             className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl"
@@ -450,16 +510,17 @@ const handlePageInputKeyDown = useCallback(
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
                       {[
-                        'Reservation ID',
-                        'User ID',
-                        'Unit',
-                        'Date Range',
-                        'Payment Progress',
-                        'Amount',
-                        'Visit Type',
-                        'Status',
-                        'Actions',
-                      ].map((header) => (
+                          'Reservation ID',
+                          'User ID',
+                          'Unit',
+                          'Date Range',
+                          'Payment Progress',
+                          'Amount',
+                          'Visit Type',
+                          'Visit Status',
+                          'Status',
+                          'Actions',
+                        ].map((header) => (
                         <th
                           key={header}
                           className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
@@ -518,14 +579,31 @@ const handlePageInputKeyDown = useCallback(
                         </td>
 
                         <td className="px-6 py-4 w-[140px]">
-                          <span
-                            className={`px-2.5 py-1 text-[10px] font-bold rounded-full border ${
-                              reservation.modeOfVisit === 'onsite'
-                                ? 'bg-blue-50 text-blue-700 border-blue-100'
-                                : 'bg-gray-50 text-gray-600 border-gray-100'
-                            }`}
-                          >
-                            {reservation.modeOfVisit?.toUpperCase() || 'ONLINE'}
+                          <div className="space-y-1">
+                            <span
+                              className={`px-2.5 py-1 text-[10px] font-bold rounded-full border ${
+                                reservation.modeOfVisit === 'onsite'
+                                  ? 'bg-blue-50 text-blue-700 border-blue-100'
+                                  : 'bg-gray-50 text-gray-600 border-gray-100'
+                              }`}
+                            >
+                              {reservation.modeOfVisit?.toUpperCase() || 'ONLINE'}
+                            </span>
+
+                            {reservation.modeOfVisit === 'onsite' && reservation.appointmentDate && (
+                              <div className="text-[10px] text-gray-500">
+                                Pref: {new Date(reservation.appointmentDate).toLocaleDateString()}
+                                {reservation.appointmentTime && ` • ${reservation.appointmentTime}`}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4 w-[160px]">
+                          <span className="text-xs font-semibold text-indigo-600 uppercase">
+                            {reservation.modeOfVisit === 'onsite'
+                              ? reservation.visitStatus || 'requested'
+                              : 'not applicable'}
                           </span>
                         </td>
 
@@ -551,6 +629,25 @@ const handlePageInputKeyDown = useCallback(
 
                             {reservation.status === 'pending' && (
                               <>
+                                {reservation.modeOfVisit === 'onsite' && (
+                                  <>
+                                    <button
+                                      onClick={() => handleConfirmVisit(reservation)}
+                                      className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg"
+                                      title="Confirm Visit"
+                                    >
+                                      <Calendar className="size-4" />
+                                    </button>
+
+                                    <button
+                                      onClick={() => handleRequestReschedule(reservation)}
+                                      className="p-2 text-amber-600 hover:bg-amber-100 rounded-lg"
+                                      title="Request Reschedule"
+                                    >
+                                      <Clock className="size-4" />
+                                    </button>
+                                  </>
+                                )}
                                 <button
                                   onClick={() => handleApprove(reservation)}
                                   className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"
@@ -835,6 +932,46 @@ const handlePageInputKeyDown = useCallback(
                 </div>
               </div>
 
+              {selectedReservationData.modeOfVisit === 'onsite' && (
+  <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-5">
+    <h4 className="text-[11px] font-semibold text-blue-600 uppercase tracking-wide mb-3 flex items-center gap-2">
+      <Calendar className="size-4" />
+      Onsite Visit Request
+    </h4>
+
+    <div className="space-y-3">
+      <div className="flex justify-between gap-4 text-sm">
+        <span className="text-slate-500">Preferred Schedule</span>
+        <span className="font-semibold text-slate-900 text-right">
+          {selectedReservationData.appointmentDate
+            ? new Date(selectedReservationData.appointmentDate).toLocaleDateString()
+            : 'N/A'}
+          {selectedReservationData.appointmentTime &&
+            ` • ${selectedReservationData.appointmentTime}`}
+        </span>
+      </div>
+
+      <div className="flex justify-between gap-4 text-sm">
+        <span className="text-slate-500">Visit Status</span>
+        <span className="font-semibold text-indigo-600 text-right uppercase">
+          {selectedReservationData.visitStatus || 'requested'}
+        </span>
+      </div>
+
+      {selectedReservationData.confirmedVisitDate && (
+        <div className="flex justify-between gap-4 text-sm">
+          <span className="text-slate-500">Confirmed Schedule</span>
+          <span className="font-semibold text-green-600 text-right">
+            {new Date(selectedReservationData.confirmedVisitDate).toLocaleDateString()}
+            {selectedReservationData.confirmedVisitTime &&
+              ` • ${selectedReservationData.confirmedVisitTime}`}
+          </span>
+        </div>
+      )}
+    </div>
+  </div>
+)}
+
               {selectedReservationData.notes && (
                 <div>
                   <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-3 ml-1">
@@ -863,6 +1000,24 @@ const handlePageInputKeyDown = useCallback(
               <div className="flex gap-2">
                 {selectedReservationData.status === 'pending' && (
                   <>
+                    {selectedReservationData.modeOfVisit === 'onsite' && (
+                      <>
+                        <button
+                          onClick={() => handleConfirmVisit(selectedReservationData)}
+                          className="px-5 py-2.5 border border-indigo-200 text-indigo-600 rounded-xl hover:bg-indigo-50 font-semibold transition-all"
+                        >
+                          Confirm Visit
+                        </button>
+
+                        <button
+                          onClick={() => handleRequestReschedule(selectedReservationData)}
+                          className="px-5 py-2.5 border border-amber-200 text-amber-600 rounded-xl hover:bg-amber-50 font-semibold transition-all"
+                        >
+                          Request Reschedule
+                        </button>
+                      </>
+                    )}
+
                     <button
                       onClick={() => handleReject(selectedReservationData)}
                       className="px-5 py-2.5 border border-rose-200 text-rose-600 rounded-xl hover:bg-rose-50 font-semibold transition-all"
@@ -872,7 +1027,7 @@ const handlePageInputKeyDown = useCallback(
 
                     <button
                       onClick={() => handleApprove(selectedReservationData)}
-                      className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-semibold shadow-lg shadow-emerald-600/20 transition-all"
+                      className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-semibold transition-all"
                     >
                       Approve
                     </button>

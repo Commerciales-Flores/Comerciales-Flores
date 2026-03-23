@@ -90,6 +90,10 @@ export interface Reservation {
   slotId?: string;
   slotName?: string;
   location?: string;
+
+  confirmedVisitDate?: string | null;
+  confirmedVisitTime?: string | null;
+  visitStatus?: 'requested' | 'confirmed' | 'reschedule_requested' | 'completed' | 'declined';
 }
 
 export interface Payment {

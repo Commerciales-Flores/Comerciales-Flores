@@ -14,6 +14,7 @@ import {
   Clock,
   ShieldAlert,
   Star,
+  Calendar,
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { Link } from 'react-router-dom';
@@ -254,6 +255,14 @@ export default function AdminDashboard() {
     };
   }, [fetchUsersPage]);
 
+  const pendingVisitRequests = reservations
+  .filter(
+    (r) =>
+      r.modeOfVisit === 'onsite' &&
+      (r.visitStatus ?? 'requested') === 'requested'
+  )
+  .slice(0, 4);
+
   const dashboardData = useMemo(() => {
     const now = new Date();
     const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
@@ -374,6 +383,7 @@ export default function AdminDashboard() {
     return {
       overdueReservations,
       pendingReservations: pendingReservationsAll.slice(0, 3),
+      pendingVisitRequests,
       pendingPayments: pendingPayments.slice(0, 3),
       recentInquiries,
       recentReviews,
@@ -521,46 +531,71 @@ export default function AdminDashboard() {
             </section>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <MiniListCard
-                title="Pending Reservations"
-                icon={<Clock className="size-4 text-orange-500" />}
-                viewAllTo="/admin/reservations"
-                items={dashboardData.pendingReservations}
-                emptyText="No pending reservations"
-                badgeText="Pending"
-                badgeClassName="bg-orange-100 text-orange-700"
-                valueRenderer={(res) => (
-                  <div className="min-w-0">
-                    <span className="block truncate text-sm font-medium text-gray-800">
-                      {res.unitName}
-                    </span>
-                    <span className="block text-xs text-gray-500">
-                      {new Date(res.requestDate).toLocaleDateString()}
-                    </span>
-                  </div>
-                )}
-              />
+  <MiniListCard
+    title="Pending Reservations"
+    icon={<Clock className="size-4 text-orange-500" />}
+    viewAllTo="/admin/reservations"
+    items={dashboardData.pendingReservations}
+    emptyText="No pending reservations"
+    badgeText="Pending"
+    badgeClassName="bg-orange-100 text-orange-700"
+    valueRenderer={(res) => (
+      <div className="min-w-0">
+        <span className="block truncate text-sm font-medium text-gray-800">
+          {res.unitName}
+        </span>
+        <span className="block text-xs text-gray-500">
+          {new Date(res.requestDate).toLocaleDateString()}
+        </span>
+      </div>
+    )}
+  />
 
-              <MiniListCard
-                title="Pending Payments"
-                icon={<CreditCard className="size-4 text-blue-500" />}
-                viewAllTo="/admin/payments"
-                items={dashboardData.pendingPayments}
-                emptyText="No pending or partial payments"
-                badgeText="Review"
-                badgeClassName="bg-blue-100 text-blue-700"
-                valueRenderer={(pay) => (
-                  <div className="min-w-0">
-                    <span className="block text-sm font-medium text-gray-800">
-                      {formatCurrency(pay.amount)}
-                    </span>
-                    <span className="block text-xs text-gray-500 capitalize">
-                      {pay.status}
-                    </span>
-                  </div>
-                )}
-              />
-            </div>
+  <MiniListCard
+    title="Pending Payments"
+    icon={<CreditCard className="size-4 text-blue-500" />}
+    viewAllTo="/admin/payments"
+    items={dashboardData.pendingPayments}
+    emptyText="No pending or partial payments"
+    badgeText="Review"
+    badgeClassName="bg-blue-100 text-blue-700"
+    valueRenderer={(pay) => (
+      <div className="min-w-0">
+        <span className="block text-sm font-medium text-gray-800">
+          {formatCurrency(pay.amount)}
+        </span>
+        <span className="block text-xs text-gray-500 capitalize">
+          {pay.status}
+        </span>
+      </div>
+    )}
+  />
+
+  <div className="md:col-span-2">
+    <MiniListCard
+      title="Pending Visit Requests"
+      icon={<Calendar className="size-4 text-indigo-500" />}
+      viewAllTo="/admin/reservations"
+      items={dashboardData.pendingVisitRequests}
+      emptyText="No pending visit requests"
+      badgeText="Visit"
+      badgeClassName="bg-indigo-100 text-indigo-700"
+      valueRenderer={(res) => (
+        <div className="min-w-0">
+          <span className="block truncate text-sm font-medium text-gray-800">
+            {res.unitName}
+          </span>
+          <span className="block text-xs text-gray-500">
+            {res.appointmentDate
+              ? new Date(res.appointmentDate).toLocaleDateString()
+              : 'No preferred date'}
+            {res.appointmentTime ? ` • ${res.appointmentTime}` : ''}
+          </span>
+        </div>
+      )}
+    />
+  </div>
+</div>
 
             <section className="space-y-4">
               <div>

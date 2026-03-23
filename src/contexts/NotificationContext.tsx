@@ -52,6 +52,13 @@ interface NotificationsDataContextType {
     userId: string;
     status: 'approved' | 'rejected';
   }) => Promise<void>;
+  sendVisitNotification: (params: {
+  userId: string;
+  reservationPublicId: string;
+  action: 'confirmed' | 'reschedule_requested' | 'declined';
+  confirmedVisitDate?: string | null;
+  confirmedVisitTime?: string | null;
+}) => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationsDataContextType | undefined>(
@@ -256,6 +263,49 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     [addNotification]
   );
 
+  const sendVisitNotification = useCallback(
+  async ({
+    userId,
+    reservationPublicId,
+    action,
+    confirmedVisitDate,
+    confirmedVisitTime,
+  }: {
+    userId: string;
+    reservationPublicId: string;
+    action: 'confirmed' | 'reschedule_requested' | 'declined';
+    confirmedVisitDate?: string | null;
+    confirmedVisitTime?: string | null;
+  }): Promise<void> => {
+    const confirmedSchedule =
+      confirmedVisitDate
+        ? `${new Date(confirmedVisitDate).toLocaleDateString()}${
+            confirmedVisitTime ? ` • ${confirmedVisitTime}` : ''
+          }`
+        : null;
+
+    await addNotification({
+      userId,
+      title:
+        action === 'confirmed'
+          ? 'Visit Confirmed'
+          : action === 'reschedule_requested'
+          ? 'Visit Reschedule Requested'
+          : 'Visit Declined',
+      message:
+        action === 'confirmed'
+          ? `Your onsite visit for reservation ${reservationPublicId} has been confirmed${
+              confirmedSchedule ? ` on ${confirmedSchedule}` : '.'
+            }`
+          : action === 'reschedule_requested'
+          ? `Your onsite visit for reservation ${reservationPublicId} needs to be rescheduled. Please wait for the updated schedule.`
+          : `Your onsite visit for reservation ${reservationPublicId} has been declined.`,
+      type: 'system',
+    });
+  },
+  [addNotification]
+);
+
   const sendPaymentNotification = useCallback(
     async ({
       userId,
@@ -361,6 +411,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       sendInquiryResponseNotification,
       sendReviewReminderNotification,
       sendSystemNotification,
+      sendVisitNotification,
       sendDeletionStatusNotification,
     }),
     [
@@ -375,6 +426,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       sendInquiryResponseNotification,
       sendReviewReminderNotification,
       sendSystemNotification,
+      sendVisitNotification,
       sendDeletionStatusNotification,
     ]
   );
