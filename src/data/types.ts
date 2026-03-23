@@ -109,6 +109,9 @@ export interface Payment {
   notes?: string;
   createdAt?: string;
   updatedAt?: string;
+
+  paymentMethodId?: string | null;
+paymentMethodSnapshot?: Record<string, any> | null;
 }
 
 export interface LedgerEntry {
@@ -142,6 +145,7 @@ export interface AuditLog {
   action: string;
   targetTable: string;
   targetId: string;
+  targetPublicId?: string;
   beforeValue?: unknown | null;
   afterValue?: unknown | null;
   changedFields?: string[] | Record<string, unknown> | null;

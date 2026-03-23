@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import { useData } from "../../contexts/DataContext";
@@ -8,6 +8,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useNotifications } from "../../contexts/NotificationContext";
 import { useUnits } from '../../contexts/UnitsContext';    
 import { useReviews } from '../../contexts/ReviewsContext';
+import { usePaymentMethods, type PaymentMethodCode } from '../../contexts/PaymentMethodsContext';
 import type { Reservation } from '../../data/types';
 import {
   Search,
@@ -36,13 +37,7 @@ type DurationType = "hours" | "days" | "months" | "years";
 type PriceRange = "all" | "0-1000" | "1001-5000" | "5001-10000" | "10001+";
 type VisitMode = "online" | "onsite";
 type PaymentIntent = "pay_onsite" | "pay_later";
-type PaymentMethod =
-  | "gcash"
-  | "cash"
-  | "cheque"
-  | "paymaya"
-  | "bank_transfer"
-  | "credit_card";
+type PaymentMethod = PaymentMethodCode;
 type PaymentCycle = "monthly" | "quarterly" | "full";
 
 interface ReservationForm {
@@ -154,7 +149,10 @@ function computeEndFromForm(start: Date, duration: number, type: DurationType) {
   return end;
 }
 
-function buildInitialReservationForm(unitType: UnitType): ReservationForm {
+function buildInitialReservationForm(
+  unitType: UnitType,
+  defaultPaymentMethod: PaymentMethod = 'gcash'
+): ReservationForm {
   const startDate = getTomorrow();
 
   if (unitType === "parking_slot") {
@@ -167,7 +165,7 @@ function buildInitialReservationForm(unitType: UnitType): ReservationForm {
       durationType: "months",
       modeOfVisit: "online",
       paymentIntent: "pay_later",
-      paymentMethod: "gcash",
+      paymentMethod: defaultPaymentMethod,
       paymentCycle: "monthly",
       notes: "",
       slotId: "",
@@ -189,7 +187,7 @@ function buildInitialReservationForm(unitType: UnitType): ReservationForm {
       durationType: "days",
       modeOfVisit: "online",
       paymentIntent: "pay_later",
-      paymentMethod: "gcash",
+      paymentMethod: defaultPaymentMethod,
       paymentCycle: "full",
       notes: "",
       slotId: "",
@@ -212,7 +210,7 @@ function buildInitialReservationForm(unitType: UnitType): ReservationForm {
     durationType: "years",
     modeOfVisit: "online",
     paymentIntent: "pay_later",
-    paymentMethod: "gcash",
+    paymentMethod: defaultPaymentMethod,
     paymentCycle: "monthly",
     notes: "",
     slotId: "",
@@ -245,9 +243,21 @@ export default function ClientUnits() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [reservationSuccess, setReservationSuccess] = useState(false);
 
+  const { activePaymentMethods } = usePaymentMethods();
+  const defaultPaymentMethod = useMemo<PaymentMethod>(() => {
+    return (activePaymentMethods[0]?.methodCode ?? 'gcash') as PaymentMethod;
+  }, [activePaymentMethods]);
+
   const [reservationForm, setReservationForm] = useState<ReservationForm>(
-    buildInitialReservationForm("rental_space")
+    buildInitialReservationForm('rental_space', 'gcash')
   );
+
+  useEffect(() => {
+  setReservationForm((prev) => {
+      if (prev.paymentMethod) return prev;
+      return { ...prev, paymentMethod: defaultPaymentMethod };
+    });
+  }, [defaultPaymentMethod]);
 
   const hasUnits = useMemo(() => units.length > 0, [units]);
 
@@ -573,6 +583,9 @@ export default function ClientUnits() {
     reservationForm.modeOfVisit === "onsite" &&
     reservationForm.paymentIntent === "pay_later";
 
+const hasActivePaymentMethods = activePaymentMethods.length > 0;
+const showPaymentMethodEmptyState = !hidePaymentSection && !hasActivePaymentMethods;
+
     const handleReserveNow = useCallback(
     (unitId: string) => {
       const unit = units.find((u) => u.id === unitId);
@@ -583,7 +596,7 @@ export default function ClientUnits() {
 
       setSelectedUnitId(unitId);
       setCurrentImageIndex(0);
-      setReservationForm(buildInitialReservationForm(unit.type));
+      setReservationForm(buildInitialReservationForm(unit.type, defaultPaymentMethod));
       setShowCalendar(false);
       setReservationSuccess(false);
       setIsSlotPanelOpen(false);
@@ -658,6 +671,10 @@ export default function ClientUnits() {
           alert("This rental space is occupied for the selected lease period.");
           return;
         }
+      }
+      if (!hidePaymentSection && !hasActivePaymentMethods) {
+        alert("No payment methods are currently available. Please try again later.");
+        return;
       }
 
       if (selectedUnitData.type === "function_hall") {
@@ -815,6 +832,7 @@ export default function ClientUnits() {
       addReservation,
       sendSystemNotification,
       hidePaymentSection,
+      hasActivePaymentMethods,
     ]
   );
 
@@ -1140,7 +1158,7 @@ export default function ClientUnits() {
         )}
 
         {showReservationModal && selectedUnitData && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-black/40 p-4 backdrop-blur-sm">
+<div className="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-black/40 p-4">
             <div className="my-8 max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
               <div className="flex items-start justify-between border-b border-gray-100 px-6 py-5">
                 <div>
@@ -1838,23 +1856,29 @@ export default function ClientUnits() {
                           <label className="mb-2 block text-sm text-gray-700">
                             Payment Method
                           </label>
-                          <select
-                            value={reservationForm.paymentMethod}
-                            onChange={(e) =>
-                              setReservationForm((prev) => ({
-                                ...prev,
-                                paymentMethod: e.target.value as PaymentMethod,
-                              }))
-                            }
-                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                          >
-                            <option value="gcash">GCash</option>
-                            <option value="cash">Cash</option>
-                            <option value="cheque">Cheque</option>
-                            <option value="paymaya">PayMaya</option>
-                            <option value="bank_transfer">Bank Transfer</option>
-                            <option value="credit_card">Credit/Debit Card</option>
-                          </select>
+
+                          {hasActivePaymentMethods ? (
+                            <select
+                              value={reservationForm.paymentMethod}
+                              onChange={(e) =>
+                                setReservationForm((prev) => ({
+                                  ...prev,
+                                  paymentMethod: e.target.value as PaymentMethod,
+                                }))
+                              }
+                              className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                            >
+                              {activePaymentMethods.map((method) => (
+                                <option key={method.id} value={method.methodCode}>
+                                  {method.displayName}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-4 text-sm text-gray-500">
+                              No payment methods are available right now.
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -1893,9 +1917,10 @@ export default function ClientUnits() {
                       <button
                         type="submit"
                         disabled={
-                          reservationForm.modeOfVisit === "onsite" &&
-                          (!reservationForm.appointmentDate ||
-                            !reservationForm.appointmentTime)
+                          (reservationForm.modeOfVisit === "onsite" &&
+                            (!reservationForm.appointmentDate ||
+                              !reservationForm.appointmentTime)) ||
+                          showPaymentMethodEmptyState
                         }
                         className="w-full rounded-xl bg-blue-600 px-4 py-3 font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                       >

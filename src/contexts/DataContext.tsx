@@ -78,7 +78,9 @@ interface DataContextType {
   uploadUnitImage: (file: File) => Promise<string | null>;
 
   addLedgerEntry: (entry: Omit<LedgerEntry, 'id'>) => Promise<string>;
-  addAuditLog: (log: Omit<AuditLog, 'id' | 'timestamp'>) => Promise<string>;
+  addAuditLog: (
+    log: Omit<AuditLog, 'id' | 'timestamp'> & { targetPublicId?: string }
+  ) => Promise<string>;
 
   addInquiry: (inquiry: Omit<Inquiry, 'id' | 'date' | 'status'>) => Promise<string>;
   updateInquiry: (id: string, inquiry: Partial<Inquiry>) => Promise<void>;

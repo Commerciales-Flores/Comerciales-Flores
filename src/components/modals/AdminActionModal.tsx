@@ -595,8 +595,8 @@ export default function AdminActionModal({
   }, []);
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] p-0 sm:p-4 transition-all duration-300">
-          <div className="bg-white w-full sm:max-w-4xl h-[92vh] sm:h-auto sm:max-h-[92vh] rounded-t-[2rem] sm:rounded-[2rem] overflow-hidden shadow-2xl border border-slate-200/60 animate-in fade-in zoom-in-95 slide-in-from-bottom duration-300 flex flex-col">
+    <div className="fixed inset-0 bg-slate-900/60 flex items-end sm:items-center justify-center z-[100] p-0 sm:p-4 transition-all duration-300">
+          <div className="bg-white w-full sm:max-w-4xl h-[92vh] sm:h-auto sm:max-h-[92vh] rounded-t-[2rem] sm:rounded-[2rem] overflow-hidden shadow-xl border border-slate-200/60 animate-in fade-in zoom-in-95 slide-in-from-bottom duration-300 flex flex-col">
             <div className="bg-slate-900 p-6 flex justify-between items-center">
           <div className="min-w-0">
             <h2 className="text-xl font-bold text-white tracking-tight">

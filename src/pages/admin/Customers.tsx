@@ -679,7 +679,7 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
             onClick={() => setShowAddModal(true)}
             className="hidden cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-100 transition-all active:scale-95 hover:bg-blue-700 lg:flex"
           >
-            <Plus className="size-5" /> Add Customer
+            <Plus className="size-5" /> <span className="hidden font-medium sm:inline">Add Customer</span>
           </button>
         </div>
 
@@ -1035,8 +1035,8 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
         </button>
 
         {restrictionModal && (
-          <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-            <div className="animate-in zoom-in-95 fade-in-0 w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl duration-200">
+          <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/40 p-4">
+            <div className="animate-in zoom-in-95 fade-in-0 w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl duration-200">
               <div className="flex flex-col items-center gap-4 text-center">
                 <div className="flex size-14 items-center justify-center rounded-full bg-amber-50 text-amber-500">
                   <AlertTriangle size={32} />
@@ -1065,8 +1065,8 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
         )}
 
         {confirmTarget && !confirmTarget.deactivationBlocked && (confirmTarget.is_active ?? true) && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-            <div className="animate-in zoom-in-95 fade-in-0 w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl duration-200">
+          <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4">
+            <div className="animate-in zoom-in-95 fade-in-0 w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl duration-200">
               <div className="flex flex-col items-center gap-4 text-center">
                 <div className="flex size-14 items-center justify-center rounded-full bg-red-50 text-red-500">
                   <AlertTriangle size={32} />
@@ -1100,9 +1100,8 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
         )}
 
         {customer && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
-            <div className="animate-in zoom-in-95 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-[2.5rem] bg-white shadow-2xl duration-200">
-              <div className="relative flex h-28 shrink-0 items-end bg-gradient-to-br from-blue-600 to-blue-800 px-8 pb-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
+<div className="animate-in zoom-in-95 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-[2.5rem] bg-white shadow-xl duration-200">              <div className="relative flex h-28 shrink-0 items-end bg-gradient-to-br from-blue-600 to-blue-800 px-8 pb-4">
                 <button
                   onClick={closeCustomerModal}
                   className="absolute right-5 top-5 rounded-full bg-white/10 p-2 text-white transition-all hover:bg-white/20"
@@ -1313,9 +1312,8 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
         )}
 
         {showAddModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm transition-all duration-300">
-            <div className="animate-in zoom-in-95 fade-in-0 w-full max-w-lg overflow-hidden rounded-[2rem] border border-slate-200/60 bg-white shadow-2xl duration-300">
-              <div className="flex items-center justify-between bg-slate-900 p-6">
+<div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 transition-all duration-300">            
+<div className="animate-in zoom-in-95 fade-in-0 w-full max-w-lg overflow-hidden rounded-[2rem] border border-slate-200/60 bg-white shadow-xl duration-300">              <div className="flex items-center justify-between bg-slate-900 p-6">
                 <div>
                   <h2 className="text-xl font-bold tracking-tight text-white">
                     Add New Customer

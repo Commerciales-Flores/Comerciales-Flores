@@ -25,7 +25,9 @@ interface RecordsContextType {
   businessSlots: BusinessSlot[];
 
   addLedgerEntry: (entry: Omit<LedgerEntry, 'id'>) => Promise<string>;
-  addAuditLog: (log: Omit<AuditLog, 'id' | 'timestamp'>) => Promise<string>;
+  addAuditLog: (
+    log: Omit<AuditLog, 'id' | 'timestamp'> & { targetPublicId?: string }
+  ) => Promise<string>;
 
   addBusinessSlot: (slot: Omit<BusinessSlot, 'id'>) => void;
   updateBusinessSlot: (id: string, slot: Partial<BusinessSlot>) => void;
@@ -71,6 +73,7 @@ function mapAuditRow(row: any): AuditLog {
     action: row.action,
     targetTable: row.target_table,
     targetId: row.target_id,
+    targetPublicId: row.target_public_id,
     beforeValue: row.before_value,
     afterValue: row.after_value,
     changedFields: row.changed_fields,
@@ -127,6 +130,7 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
         action,
         target_table,
         target_id,
+        target_public_id,
         before_value,
         after_value,
         changed_fields,
@@ -159,7 +163,7 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
     let query = supabase
       .from('audit_log')
       .select(
-        'audit_id, public_id, user_id, action, target_table, target_id, before_value, after_value, changed_fields, timestamp, notes',
+        'audit_id, public_id, user_id, action, target_table, target_id, target_public_id, before_value, after_value, changed_fields, timestamp, notes',
         { count: 'exact' }
       )
       .order('timestamp', { ascending: false });
@@ -230,32 +234,33 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
   };
 
   const addAuditLog = async (
-    log: Omit<AuditLog, 'id' | 'timestamp'>
-  ): Promise<string> => {
-    const { data, error } = await supabase
-      .from('audit_log')
-      .insert([
-        {
-          user_id: log.userId,
-          action: log.action,
-          target_table: log.targetTable,
-          target_id: log.targetId,
-          before_value: log.beforeValue,
-          after_value: log.afterValue,
-          changed_fields: log.changedFields,
-          timestamp: new Date().toISOString(),
-          notes: log.notes,
-        },
-      ])
-      .select()
-      .single();
+  log: Omit<AuditLog, 'id' | 'timestamp'> & { targetPublicId?: string }
+): Promise<string> => {
+  const { data, error } = await supabase
+    .from('audit_log')
+    .insert([
+      {
+        user_id: log.userId,
+        action: log.action,
+        target_table: log.targetTable,
+        target_id: log.targetId, // always UUID
+        target_public_id: log.targetPublicId ?? null, // always text
+        before_value: log.beforeValue,
+        after_value: log.afterValue,
+        changed_fields: log.changedFields,
+        timestamp: new Date().toISOString(),
+        notes: log.notes,
+      },
+    ])
+    .select()
+    .single();
 
-    if (error) throw error;
+  if (error) throw error;
 
-    const newLog = mapAuditRow(data);
-    setAuditLogs((prev) => [newLog, ...prev]);
-    return newLog.id;
-  };
+  const newLog = mapAuditRow(data);
+  setAuditLogs((prev) => [newLog, ...prev]);
+  return newLog.id;
+};
 
   /* ---------- BUSINESS SLOTS ---------- */
 

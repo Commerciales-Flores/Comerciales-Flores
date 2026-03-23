@@ -290,7 +290,7 @@ function MobileFilterMenu({
 }
 
 export default function AdminAudit() {
-  const { getUserById } = useData();
+  const { getUserById, getUnitById } = useData();
   const { fetchAuditLogsPage } = useRecords();
 
   const [rows, setRows] = useState<AuditRow[]>([]);
@@ -378,11 +378,20 @@ export default function AdminAudit() {
             ['LOGIN', 'LOGOUT', 'SESSION_EXPIRED'].includes(log.action) &&
             log.userId === log.targetId;
 
+          const isUnitTarget = log.targetTable === 'units';
+
+          const unitTarget =
+            isUnitTarget && log.targetId  
+              ? getUnitById(log.targetId)
+              : undefined;
+
           const targetLabel = isSelfAuthEvent
             ? 'Own account'
             : isUserTarget
               ? formatUserLabel(log.targetId)
-              : log.targetId || '—';
+              : isUnitTarget
+                ? log.targetPublicId || unitTarget?.propertyId || log.targetId || '—'
+                : log.targetPublicId || log.targetId || '—';
 
           return {
             id: log.id,
@@ -423,6 +432,7 @@ export default function AdminAudit() {
   }, [
     fetchAuditLogsPage,
     formatUserLabel,
+    getUnitById,
     debouncedSearchTerm,
     selectedAction,
     selectedModule,
@@ -531,7 +541,7 @@ export default function AdminAudit() {
                           key={header}
                           className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
                         >
-                          {header}
+                          {header}  
                         </th>
                       )
                     )}

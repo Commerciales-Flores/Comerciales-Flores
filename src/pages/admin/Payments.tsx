@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useData } from '../../contexts/DataContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { usePayments } from '../../contexts/PaymentsContext';
@@ -16,6 +17,7 @@ import {
   CalendarDays,
   BadgeDollarSign,
   ImageIcon,
+  Settings2,
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import Papa from 'papaparse';
@@ -98,6 +100,8 @@ export default function AdminPayments() {
 
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
+
+  const navigate = useNavigate();
 
   const debouncedSearch = useDebouncedValue(searchTerm, 250);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -332,24 +336,34 @@ export default function AdminPayments() {
   return (
     <div className="min-h-screen bg-gray-50">
   <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
-      <div className="hidden lg:flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Payment Management
-          </h1>
-          <p className="text-sm text-gray-500">
-            Verify and manage customer payments
-          </p>
-        </div>
+      <div className="hidden items-center justify-between lg:flex">
+  <div>
+    <h1 className="text-2xl font-bold text-gray-900">
+      Payment Management
+    </h1>
+    <p className="text-sm text-gray-500">
+      Verify and manage customer payments
+    </p>
+  </div>
 
-        <button
-          onClick={() => setIsActionModalOpen(true)}
-          className="hidden lg:flex items-center justify-center cursor-pointer gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md shadow-blue-100 transition-all text-sm font-bold active:scale-95"
-                  >
-          <Plus className="size-5" />
-          Create Payment
-        </button>
-      </div>
+  <div className="flex items-center gap-3">
+    <button
+      onClick={() => navigate('/admin/payment-methods')}
+      className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50"
+    >
+      <Settings2 className="size-4.5" />
+      Manage Methods
+    </button>
+
+    <button
+      onClick={() => setIsActionModalOpen(true)}
+      className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-100 transition-all hover:bg-blue-700 active:scale-95"
+    >
+      <Plus className="size-5" />
+      <span className="hidden font-medium sm:inline">Create Payments</span>
+    </button>
+  </div>
+</div>
 
       {!loading && !hasNoPayments && (
         <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">

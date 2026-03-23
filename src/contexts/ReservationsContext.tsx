@@ -366,6 +366,7 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
           action: 'CREATE',
           targetTable: 'reservations',
           targetId: newReservation.id,
+          targetPublicId: newReservation.publicId,
           beforeValue: null,
           afterValue: newReservation,
           changedFields: Object.keys(newReservation),

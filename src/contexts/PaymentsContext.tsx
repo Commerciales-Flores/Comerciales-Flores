@@ -52,6 +52,8 @@ function mapPaymentRow(row: any): Payment {
     notes: row.notes,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    paymentMethodId: row.payment_method_id ?? null,
+    paymentMethodSnapshot: row.payment_method_snapshot ?? null,
   };
 }
 
@@ -69,7 +71,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
     const { data, error } = await supabase
       .from('payments')
       .select(
-        'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at'
+        'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot'
       )
       .order('created_at', { ascending: false });
 
@@ -103,7 +105,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       let query = supabase
         .from('payments')
         .select(
-          'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at',
+          'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot',
           { count: 'exact' }
         )
         .order('date', { ascending: false });
@@ -161,81 +163,84 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addPayment = useCallback(
-    async (
-      paymentData: Omit<Payment, 'id' | 'createdAt' | 'updatedAt' | 'date'>
-    ): Promise<string> => {
-      const paymentDate = new Date().toISOString();
+  async (
+    paymentData: Omit<Payment, 'id' | 'createdAt' | 'updatedAt' | 'date'>
+  ): Promise<string> => {
+    const paymentDate = new Date().toISOString();
 
-      const { data, error } = await supabase
-        .from('payments')
-        .insert([
-          {
-            user_id: paymentData.userId,
-            reservation_id: paymentData.reservationId,
-            amount: paymentData.amount,
-            method: paymentData.method,
-            status: paymentData.status,
-            proofOfPayment: paymentData.proofOfPayment,
-            date: paymentDate,
-            notes: paymentData.notes,
-          },
-        ])
-        .select(
-          'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at'
-        )
-        .single();
+    const { data, error } = await supabase
+      .from('payments')
+      .insert([
+        {
+          user_id: paymentData.userId,
+          reservation_id: paymentData.reservationId,
+          amount: paymentData.amount,
+          method: paymentData.method,
+          status: paymentData.status,
+          proofOfPayment: paymentData.proofOfPayment,
+          date: paymentDate,
+          notes: paymentData.notes,
+          payment_method_id: paymentData.paymentMethodId ?? null,
+          payment_method_snapshot: paymentData.paymentMethodSnapshot ?? null,
+        },
+      ])
+      .select(
+        'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot'
+      )
+      .single();
 
-      if (error) throw error;
+    if (error) throw error;
 
-      const newPayment = mapPaymentRow(data);
+    const newPayment = mapPaymentRow(data);
 
-      if (newPayment.status === 'paid') {
-        await addLedgerEntry({
-          userId: newPayment.userId,
-          reservationId: newPayment.reservationId,
-          paymentId: newPayment.id,
-          entryType: 'payment',
-          amount: newPayment.amount,
-          method: newPayment.method,
-          status: 'verified',
-          referenceNo: null,
-          description: `Payment for reservation ${newPayment.publicId ?? newPayment.id}`,
-          notes: newPayment.notes ?? null,
-          recordedAt: newPayment.date,
-          createdAt: new Date().toISOString(),
-          createdBy: user?.id ?? null,
+    if (newPayment.status === 'paid') {
+      await addLedgerEntry({
+        userId: newPayment.userId,
+        reservationId: newPayment.reservationId,
+        paymentId: newPayment.id,
+        entryType: 'payment',
+        amount: newPayment.amount,
+        method: newPayment.method,
+        status: 'verified',
+        referenceNo: null,
+        description: `Payment for reservation ${newPayment.publicId ?? newPayment.id}`,
+        notes: newPayment.notes ?? null,
+        recordedAt: newPayment.date,
+        createdAt: new Date().toISOString(),
+        createdBy: user?.id ?? null,
+      });
+
+      const reservation = reservations.find((r) => r.id === newPayment.reservationId);
+      if (reservation) {
+        await updateReservation(reservation.id, {
+          paidAmount: reservation.paidAmount + newPayment.amount,
         });
-
-        const reservation = reservations.find((r) => r.id === newPayment.reservationId);
-        if (reservation) {
-          await updateReservation(reservation.id, {
-            paidAmount: reservation.paidAmount + newPayment.amount,
-          });
-        }
       }
+    }
 
-      if (user?.id) {
-        try {
-          await addAuditLog({
-            userId: user.id,
-            action: 'PAYMENT_CREATED',
-            targetTable: 'payments',
-            targetId: newPayment.id,
-            beforeValue: null,
-            afterValue: newPayment,
-            changedFields: Object.keys(newPayment),
-            notes: `Created payment ${newPayment.publicId ?? newPayment.id} for reservation ${newPayment.reservationId}`,
-          });
-        } catch (auditError) {
-          console.error('Failed to audit payment creation:', auditError);
-        }
+    if (user?.id) {
+      try {
+        await addAuditLog({
+          userId: user.id,
+          action: 'PAYMENT_CREATED',
+          targetTable: 'payments',
+          targetId: newPayment.id,
+          targetPublicId: newPayment.publicId,
+          beforeValue: null,
+          afterValue: newPayment,
+          changedFields: Object.keys(newPayment),
+          notes: `Created payment ${newPayment.publicId ?? newPayment.id} for reservation ${newPayment.reservationId}`,
+        });
+      } catch (auditError) {
+        console.error('Failed to audit payment creation:', auditError);
       }
+    }
 
-      await refreshPayments();
-      return newPayment.id;
-    },
-    [addAuditLog, addLedgerEntry, refreshPayments, reservations, updateReservation, user?.id]
-  );
+    await refreshPayments();
+    return newPayment.id;
+  },
+  [addAuditLog, addLedgerEntry, refreshPayments, reservations, updateReservation, user?.id]
+);
 
   const updatePayment = useCallback(
     async (id: string, paymentUpdate: Partial<Payment>): Promise<void> => {

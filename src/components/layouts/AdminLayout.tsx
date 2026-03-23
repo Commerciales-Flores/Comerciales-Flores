@@ -32,7 +32,8 @@ export default function AdminLayout() {
 
   const navRef = useRef<HTMLDivElement>(null);
 
-  const isHiddenAdminRoute = location.pathname === '/admin/reviews';
+  const hiddenAdminRoutes = ['/admin/reviews', '/admin/payment-methods'];
+  const isHiddenAdminRoute = hiddenAdminRoutes.includes(location.pathname);
 
   const navItems = useMemo(
     () => [
@@ -53,7 +54,8 @@ export default function AdminLayout() {
   const validPaths = useMemo(
     () => [
       ...navItems.map((item) => item.to),
-      '/admin/reviews', // ✅ allow hidden route
+      '/admin/reviews',
+      '/admin/payment-methods',
     ],
     [navItems]
   );

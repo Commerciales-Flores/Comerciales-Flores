@@ -505,7 +505,7 @@ export default function AdminAnalytics() {
 
         <button
           onClick={handlePrint}
-          className="flex items-center gap-2 rounded-xl bg-blue-600 p-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 active:scale-95 sm:px-4 sm:py-2"
+          className="hidden lg:flex items-center justify-center cursor-pointer gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md shadow-blue-100 transition-all text-sm font-bold active:scale-95"
           title="Print Report"
         >
           <Printer className="size-5" />

@@ -298,7 +298,7 @@ const handleRequestReschedule = useCallback(
           className="hidden lg:flex items-center justify-center cursor-pointer gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md shadow-blue-100 transition-all text-sm font-bold active:scale-95"
         >
           <Plus className="size-5" />
-          Create Reservation
+          <span className="hidden font-medium sm:inline">Create Reservation</span>
         </button>
       </div>
 
@@ -725,11 +725,11 @@ const handleRequestReschedule = useCallback(
 
       {isFilterPanelOpen && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center lg:hidden">
-          <div
-            className="absolute inset-0 bg-gray-900/40 backdrop-blur-md"
+          <button
+            className="absolute inset-0 bg-gray-900/40"
             onClick={closeFilterPanel}
           />
-          <div className="relative w-full bg-white rounded-t-3xl shadow-2xl p-6 animate-in slide-in-from-bottom duration-300">
+          <div className="relative w-full rounded-t-3xl bg-white p-6 shadow-xl animate-in slide-in-from-bottom duration-300">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-bold text-gray-900">Filter by Status</h3>
               <button onClick={closeFilterPanel} className="p-2 bg-gray-100 rounded-full">
@@ -760,9 +760,8 @@ const handleRequestReschedule = useCallback(
       )}
 
       {selectedReservationData && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 transition-all duration-300">
-          <div className="bg-white w-full max-w-4xl max-h-[92vh] rounded-[2rem] shadow-2xl border border-slate-200/60 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-300">
-            <div className="bg-slate-900 p-6 flex justify-between items-center">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 transition-all duration-300">
+<div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-[2rem] border border-slate-200/60 bg-white shadow-xl animate-in fade-in zoom-in-95 duration-300">            <div className="bg-slate-900 p-6 flex justify-between items-center">
               <div>
                 <h2 className="text-xl font-bold text-white tracking-tight">
                   Reservation Dossier
@@ -985,8 +984,7 @@ const handleRequestReschedule = useCallback(
               )}
             </div>
 
-            <div className="border-t border-slate-200 bg-white/95 backdrop-blur px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div className="flex items-center gap-3">
+<div className="flex flex-col gap-4 border-t border-slate-200 bg-white px-6 py-4 sm:flex-row sm:items-center sm:justify-between">              <div className="flex items-center gap-3">
                 <span className="text-sm text-slate-500">Current Status</span>
                 <span
                   className={`px-3 py-1 text-[11px] font-bold rounded-full border uppercase tracking-wide ${

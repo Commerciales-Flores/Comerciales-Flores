@@ -348,10 +348,11 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
               action: 'CREATE',
               targetTable: 'units',
               targetId: newUnitId,
+              targetPublicId: publicId,
               beforeValue: null,
               afterValue: createdUnit,
               changedFields: Object.keys(createdUnit),
-              notes: `Created unit ${createdUnit.name} (${publicId})`,
+              notes: `Created unit ${createdUnit.name}`,
             });
           } catch (auditError) {
             console.error('Failed to audit unit creation:', auditError);
@@ -436,10 +437,11 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
               action: 'UPDATE',
               targetTable: 'units',
               targetId: id,
+              targetPublicId: existingUnit.propertyId,
               beforeValue: existingUnit,
               afterValue: updatedUnit,
               changedFields,
-              notes: `Updated unit ${existingUnit.name} (${existingUnit.propertyId})`,
+              notes: `Updated unit ${existingUnit.name}`,
             });
           } catch (auditError) {
             console.error('Failed to audit unit update:', auditError);
@@ -486,10 +488,11 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
               action: 'DELETE',
               targetTable: 'units',
               targetId: id,
+              targetPublicId: existingUnit.propertyId,
               beforeValue: existingUnit,
               afterValue: undefined,
               changedFields: Object.keys(existingUnit),
-              notes: `Deleted unit ${existingUnit.name} (${existingUnit.propertyId})`,
+              notes: `Deleted unit ${existingUnit.name}`,
             });
           } catch (auditError) {
             console.error('Failed to audit unit deletion:', auditError);

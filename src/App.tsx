@@ -6,6 +6,7 @@ import { NotificationProvider } from './contexts/NotificationContext';
 import { IndicatorProvider } from './contexts/IndicatorContext';
 import { ReviewsProvider } from './contexts/ReviewsContext';
 import SessionWarningModal from './components/auth/SessionWarningModal';
+import { PaymentMethodsProvider } from './contexts/PaymentMethodsContext';
 import { Building2 } from 'lucide-react';
 
 // Public Pages
@@ -32,6 +33,7 @@ const AdminAudit = lazy(() => import('./pages/admin/Audit'));
 const AdminBusinessSlots = lazy(() => import('./pages/admin/BusinessSlots'));
 const AdminReservations = lazy(() => import('./pages/admin/Reservations'));
 const AdminPayments = lazy(() => import('./pages/admin/Payments'));
+const AdminPaymentMethods = lazy(() => import('./pages/admin/AdminPaymentMethods'));
 const AdminReview = lazy(() => import('./pages/admin/Reviews'));
 const AdminInquiries = lazy(() => import('./pages/admin/Inquiries'));
 const AdminContent = lazy(() => import('./pages/admin/Content'));
@@ -172,6 +174,7 @@ function AppRoutes() {
             <Route path="business-slots" element={<AdminBusinessSlots />} />
             <Route path="reservations" element={<AdminReservations />} />
             <Route path="payments" element={<AdminPayments />} />
+            <Route path="payment-methods" element={<AdminPaymentMethods />} />
             <Route path="reviews" element={<AdminReview />} />
             <Route path="inquiries" element={<AdminInquiries />} />
             <Route path="content" element={<AdminContent />} />
@@ -204,7 +207,9 @@ export default function App() {
           <DataProvider>
             <NotificationProvider>
               <ReviewsProvider>
-                <AppRoutes />
+                <PaymentMethodsProvider>
+                  <AppRoutes />
+                </PaymentMethodsProvider>
               </ReviewsProvider>
             </NotificationProvider>
           </DataProvider>

@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import type { LedgerEntry } from '../../data/types';
+import { usePaymentMethods } from '../../contexts/PaymentMethodsContext';
 import {
   CreditCard,
   CheckCircle2,
@@ -40,12 +41,12 @@ const PAYMENT_STATUS_ICONS = {
   partial: Clock3,
 } as const;
 
-const INITIAL_PAYMENT_FORM = {
+const buildInitialPaymentForm = (defaultMethod = 'gcash') => ({
   amount: '',
-  method: 'gcash',
+  method: defaultMethod,
   proofOfPayment: '',
   notes: '',
-};
+});
 
 const UNIT_TYPE_COLORS: Record<string, string> = {
   rental_space: 'text-indigo-600',
@@ -95,7 +96,17 @@ export default function ClientPayments() {
   const [searchQuery, setSearchQuery] = useState('');
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [paymentForm, setPaymentForm] = useState(INITIAL_PAYMENT_FORM);
+  const [paymentForm, setPaymentForm] = useState(buildInitialPaymentForm());
+
+  const { activePaymentMethods, getPaymentMethodByCode } = usePaymentMethods();
+
+  const defaultPaymentMethod = useMemo(() => {
+    return activePaymentMethods[0]?.methodCode ?? 'gcash';
+  }, [activePaymentMethods]);
+
+  const selectedPaymentMethodConfig = useMemo(() => {
+    return getPaymentMethodByCode(paymentForm.method) ?? null;
+  }, [getPaymentMethodByCode, paymentForm.method]);
 
   const fullName = useMemo(
     () => `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim(),
@@ -243,11 +254,11 @@ export default function ClientPayments() {
   const resetPaymentModalState = useCallback(() => {
     setShowPaymentModal(false);
     setSelectedReservation(null);
-    setPaymentForm(INITIAL_PAYMENT_FORM);
+    setPaymentForm(buildInitialPaymentForm(defaultPaymentMethod));
     setPaymentSuccess(false);
     setIsSubmitting(false);
     clearProofPreview();
-  }, [clearProofPreview]);
+  }, [clearProofPreview, defaultPaymentMethod]);
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -272,12 +283,12 @@ export default function ClientPayments() {
 
   const handleRemoveImage = useCallback(() => {
     clearProofPreview();
-  }, [clearProofPreview]);
+  }, [clearProofPreview, defaultPaymentMethod]);
 
   const handleMakePayment = useCallback(
     (reservationId: string) => {
       setSelectedReservation(reservationId);
-      setPaymentForm(INITIAL_PAYMENT_FORM);
+      setPaymentForm(buildInitialPaymentForm(defaultPaymentMethod));
       setPaymentSuccess(false);
       setIsSubmitting(false);
       clearProofPreview();
@@ -322,6 +333,20 @@ export default function ClientPayments() {
             userId: user.id,
             amount,
             method: paymentForm.method as any,
+            paymentMethodId: selectedPaymentMethodConfig?.id ?? null,
+            paymentMethodSnapshot: selectedPaymentMethodConfig
+              ? {
+                  method_code: selectedPaymentMethodConfig.methodCode,
+                  display_name: selectedPaymentMethodConfig.displayName,
+                  account_name: selectedPaymentMethodConfig.accountName,
+                  account_number: selectedPaymentMethodConfig.accountNumber,
+                  mobile_number: selectedPaymentMethodConfig.mobileNumber,
+                  bank_name: selectedPaymentMethodConfig.bankName,
+                  branch_name: selectedPaymentMethodConfig.branchName,
+                  qr_image_path: selectedPaymentMethodConfig.qrImagePath,
+                  instructions: selectedPaymentMethodConfig.instructions,
+                }
+              : null,
             status: 'unpaid',
             proofOfPayment: proofPreviewUrl || '',
             notes: paymentForm.notes,
@@ -354,6 +379,7 @@ export default function ClientPayments() {
       paymentForm.method,
       paymentForm.notes,
       addPayment,
+      selectedPaymentMethodConfig,
       proofPreviewUrl,
       sendSystemNotification,
       resetPaymentModalState,
@@ -1062,13 +1088,53 @@ Thank you for your payment.
                         }
                         className={`w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
                       >
-                        <option value="gcash">GCash</option>
-                        <option value="cash">Cash</option>
-                        <option value="cheque">Cheque</option>
-                        <option value="paymaya">PayMaya</option>
-                        <option value="bank_transfer">Bank Transfer</option>
-                        <option value="credit_card">Credit / Debit Card</option>
+                        {activePaymentMethods.map((method) => (
+                          <option key={method.id} value={method.methodCode}>
+                            {method.displayName}
+                          </option>
+                        ))}
                       </select>
+                      {selectedPaymentMethodConfig && (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <h3 className={`${uiTypography.formLabel} mb-2 ml-0`}>
+                          Send payment to {selectedPaymentMethodConfig.displayName}
+                        </h3>
+
+                        <div className="space-y-2 text-sm text-slate-600">
+                          {selectedPaymentMethodConfig.bankName && (
+                            <p>Bank: {selectedPaymentMethodConfig.bankName}</p>
+                          )}
+                          {selectedPaymentMethodConfig.branchName && (
+                            <p>Branch: {selectedPaymentMethodConfig.branchName}</p>
+                          )}
+                          {selectedPaymentMethodConfig.accountName && (
+                            <p>Account Name: {selectedPaymentMethodConfig.accountName}</p>
+                          )}
+                          {selectedPaymentMethodConfig.accountNumber && (
+                            <p>Account Number: {selectedPaymentMethodConfig.accountNumber}</p>
+                          )}
+                          {selectedPaymentMethodConfig.mobileNumber && (
+                            <p>Mobile Number: {selectedPaymentMethodConfig.mobileNumber}</p>
+                          )}
+                        </div>
+
+                        {selectedPaymentMethodConfig.qrImageUrl && (
+                          <img
+                            src={selectedPaymentMethodConfig.qrImageUrl}
+                            alt={`${selectedPaymentMethodConfig.displayName} QR`}
+                            className="mt-4 h-56 w-56 rounded-xl border border-slate-200 bg-white object-contain"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        )}
+
+                        {selectedPaymentMethodConfig.instructions && (
+                          <div className="mt-4 rounded-xl bg-white p-3 text-sm text-slate-600">
+                            {selectedPaymentMethodConfig.instructions}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     </div>
 
                     <div>
