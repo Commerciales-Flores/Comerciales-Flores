@@ -59,7 +59,7 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
     <>
       {/* Backdrop: Visible only on mobile, or can be enabled for both */}
       <div 
-        className={`fixed inset-0 bg-black/20 backdrop-blur-sm z-40 transition-opacity duration-300 md:hidden
+        className={`fixed inset-0 bg-black/20  z-40 transition-opacity duration-300 md:hidden
           ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={handleClose}
       />

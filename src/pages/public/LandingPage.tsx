@@ -166,7 +166,7 @@ export default function LandingPage() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={() => setIsMenuOpen(false)}
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] md:hidden"
+          className="fixed inset-0 bg-slate-900/60  z-[60] md:hidden"
         />
 
         {/* Sliding Panel */}

@@ -5,6 +5,7 @@ export type ReservationStatus =
   | 'confirmed'
   | 'completed'
   | 'cancelled'
+  | 'overdue'
   | 'rejected';
 
 export type PaymentStatus = 'unpaid' | 'partial' | 'paid';
@@ -19,6 +20,10 @@ export type PaymentMethod =
 
 export type PaymentCycle = 'monthly' | 'quarterly' | 'full';
 export type InquiryStatus = 'open' | 'responded' | 'resolved';
+export type OverdueReason =
+  | 'reservation_ended_with_balance'
+  | 'rental_ended_with_balance'
+  | 'manual_admin_flag';
 
 export type ParkingSlotStatus = 'active' | 'inactive' | 'maintenance';
 
@@ -99,6 +104,10 @@ export interface Reservation {
   confirmedVisitDate?: string | null;
   confirmedVisitTime?: string | null;
   visitStatus?: 'requested' | 'confirmed' | 'reschedule_requested' | 'completed' | 'declined';
+
+  overdueAt?: string | null;
+  overdueReason?: OverdueReason | null;
+  lastOverdueNotificationAt?: string | null;
 }
 
 export interface Payment {

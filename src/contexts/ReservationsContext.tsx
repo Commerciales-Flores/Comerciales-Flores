@@ -16,7 +16,7 @@ import { getChangedFields, buildAuditSnapshot } from '../utils/auditHelpers';
 type ReservationsPageFilters = {
   page?: number;
   pageSize?: number;
-  status?: 'all' | 'pending' | 'confirmed' | 'cancelled';
+  status?: 'all' | 'pending' | 'confirmed' | 'overdue' | 'completed' | 'cancelled' | 'rejected';
   searchTerm?: string;
 };
 
@@ -58,6 +58,27 @@ function buildReservationDetails(reservation: Partial<Reservation>) {
   );
 }
 
+function getRemainingBalance(reservation: Reservation) {
+  return Math.max(0, Number(reservation.totalAmount || 0) - Number(reservation.paidAmount || 0));
+}
+
+function isFullyPaid(reservation: Reservation) {
+  return getRemainingBalance(reservation) <= 0;
+}
+
+function hasReservationEnded(reservation: Reservation) {
+  if (!reservation.endDate) return false;
+  return new Date(reservation.endDate).getTime() < Date.now();
+}
+
+function isOverdueReservation(reservation: Reservation) {
+  return (
+    reservation.status === 'confirmed' &&
+    hasReservationEnded(reservation) &&
+    !isFullyPaid(reservation)
+  );
+}
+
 export function ReservationsProvider({ children }: { children: ReactNode }) {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const { addAuditLog, ledgers } = useRecords();
@@ -65,9 +86,18 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
 
   const getLedgerTotalsByReservationId = useCallback(
     (reservationId: string) => {
+      console.log('looking for reservationId:', reservationId);
+    console.log(
+      'matching ledger reservationIds:',
+      ledgers.map((entry) => ({
+        ledgerId: entry.id,
+        reservationId: entry.reservationId,
+      }))
+    );
       const entries = ledgers.filter(
         (entry) => entry.reservationId === reservationId
       );
+      console.log('matched entries:', entries);
 
       let paid = 0;
       let refunds = 0;
@@ -112,47 +142,64 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
   );
 
   const mapReservationRow = useCallback(
-    (row: any): Reservation => {
-      const totals = getLedgerTotalsByReservationId(row.reservation_id);
+  (row: any): Reservation => {
+    const totals = getLedgerTotalsByReservationId(row.reservation_id);
 
-      return {
-        id: row.reservation_id,
-        publicId: row.public_id,
-        userId: row.user_id,
-        unitId: row.unit_id,
-        unitName: row.title,
-        unitType: row.unit_type,
-        startDate: row.start_date,
-        endDate: row.end_date,
-        duration: row.duration,
-        totalAmount: Number(row.total_amount),
-        status: row.status as ReservationStatus,
-        notes: row.notes,
-        paidAmount: totals.netPaid,
-        requestDate: row.created_at,
-        paymentMethod: row.payment_method,
-        paymentIntent: row.payment_intent,
-        modeOfVisit: row.mode_of_visit,
-        appointmentDate: row.appointment_date,
-        appointmentTime: row.appointment_time,
-        paymentCycle: row.details?.paymentCycle,
-        businessType: row.details?.businessType,
-        eventPurpose: row.details?.eventPurpose,
-        attendees: row.details?.attendees,
-        slotId: row.details?.slotId,
-        slotName: row.details?.slotName,
-        vehicleType: row.details?.vehicleType,
-        plateNumber: row.details?.plateNumber,
-        durationType: row.details?.durationType,
-        confirmedVisitDate: row.confirmed_visit_date,
-        confirmedVisitTime: row.confirmed_visit_time,
-        visitStatus: row.visit_status ?? 'requested',
-        minimumPaymentPercentSnapshot: row.minimum_payment_percent_snapshot ?? null,
-        
-      };
-    },
-    [getLedgerTotalsByReservationId]
-  );
+    const persistedPaidAmount = Number(row.paid_amount ?? 0);
+    const derivedPaidAmount = Number(totals.netPaid ?? 0);
+
+    // Prefer DB value, fall back to ledger-derived value only if needed
+    const finalPaidAmount =
+      persistedPaidAmount > 0 ? persistedPaidAmount : derivedPaidAmount;
+
+    let computedStatus = row.status as ReservationStatus;
+
+    const baseReservation: Reservation = {
+      id: row.reservation_id,
+      publicId: row.public_id,
+      userId: row.user_id,
+      unitId: row.unit_id,
+      unitName: row.title,
+      unitType: row.unit_type,
+      startDate: row.start_date,
+      endDate: row.end_date,
+      duration: row.duration,
+      totalAmount: Number(row.total_amount),
+      status: computedStatus,
+      notes: row.notes,
+      paidAmount: finalPaidAmount,
+      requestDate: row.created_at,
+      paymentMethod: row.payment_method,
+      paymentIntent: row.payment_intent,
+      modeOfVisit: row.mode_of_visit,
+      appointmentDate: row.appointment_date,
+      appointmentTime: row.appointment_time,
+      paymentCycle: row.details?.paymentCycle,
+      businessType: row.details?.businessType,
+      eventPurpose: row.details?.eventPurpose,
+      attendees: row.details?.attendees,
+      slotId: row.details?.slotId,
+      slotName: row.details?.slotName,
+      vehicleType: row.details?.vehicleType,
+      plateNumber: row.details?.plateNumber,
+      durationType: row.details?.durationType,
+      confirmedVisitDate: row.confirmed_visit_date,
+      confirmedVisitTime: row.confirmed_visit_time,
+      visitStatus: row.visit_status ?? 'requested',
+      minimumPaymentPercentSnapshot: row.minimum_payment_percent_snapshot ?? null,
+    };
+
+    if (isOverdueReservation(baseReservation)) {
+      computedStatus = 'overdue';
+    }
+
+    return {
+      ...baseReservation,
+      status: computedStatus,
+    };
+  },
+  [getLedgerTotalsByReservationId]
+);
 
   const refreshReservations = useCallback(async () => {
     const { data, error } = await supabase
@@ -202,7 +249,7 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refreshReservations();
-  }, [refreshReservations]);
+  }, [refreshReservations, ledgers]);
 
   const fetchReservationsPage = useCallback(
     async ({

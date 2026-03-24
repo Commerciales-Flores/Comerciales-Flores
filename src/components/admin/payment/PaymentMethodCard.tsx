@@ -120,9 +120,19 @@ export default function PaymentMethodCard({
           <button
             type="button"
             onClick={() => onToggleActive(method)}
-            className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
+            className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-all
+              ${
+                method.isActive
+                  ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
+                  : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
+              }
+            `}
           >
-            {method.isActive ? <ToggleRight className="size-4" /> : <ToggleLeft className="size-4" />}
+            {method.isActive ? (
+              <ToggleRight className="size-4" />
+            ) : (
+              <ToggleLeft className="size-4" />
+            )}
             {method.isActive ? 'Deactivate' : 'Activate'}
           </button>
 

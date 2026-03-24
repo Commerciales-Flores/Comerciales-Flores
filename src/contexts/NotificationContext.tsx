@@ -35,6 +35,12 @@ interface NotificationsDataContextType {
     amount: number;
   }) => Promise<void>;
 
+  sendOverdueReservationNotification: (params: {
+    userId: string;
+    reservationPublicId: string;
+    remainingBalance: number;
+  }) => Promise<void>;
+
   sendInquiryResponseNotification: (params: {
     userId: string;
     subject: string;
@@ -135,6 +141,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     };
   }, [fetchNotifications]);
 
+  
   const addNotification = useCallback(
     async (
       notification: Omit<Notification, 'id' | 'date' | 'read'>
@@ -170,6 +177,32 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     },
     []
   );
+
+  const sendPaymentReminderNotification = useCallback(
+  async ({
+    userId,
+    reservationPublicId,
+    remainingBalance,
+    endDate,
+  }: {
+    userId: string;
+    reservationPublicId: string;
+    remainingBalance: number;
+    endDate: string;
+  }): Promise<void> => {
+    await addNotification({
+      userId,
+      title: 'Payment Reminder',
+      message: `Your reservation ${reservationPublicId} will end on ${formatDate(
+        endDate
+      )} and still has an outstanding balance of ${formatCurrency(
+        remainingBalance
+      )}. Please settle your payment before the end date.`,
+      type: 'payment',
+    });
+  },
+  [addNotification]
+);
 
   const markNotificationRead = useCallback(
     async (id: string): Promise<void> => {
@@ -240,31 +273,35 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     [notifications]
   );
 
-  const sendReservationNotification = useCallback(
-    async ({
+ const sendReservationNotification = useCallback(
+  async ({
+    userId,
+    reservationPublicId,
+    action,
+  }: {
+    userId: string;
+    reservationPublicId: string;
+    action: 'approved' | 'rejected' | 'completed';
+  }): Promise<void> => {
+    await addNotification({
       userId,
-      reservationPublicId,
-      action,
-    }: {
-      userId: string;
-      reservationPublicId: string;
-      action: 'approved' | 'rejected' | 'completed'
-    }): Promise<void> => {
-      await addNotification({
-        userId,
-        title:
-          action === 'approved'
-            ? 'Reservation Approved'
-            : 'Reservation Rejected',
-        message:
-          action === 'approved'
-            ? `Your reservation ${reservationPublicId} has been approved.`
-            : `Your reservation ${reservationPublicId} has been rejected.`,
-        type: 'reservation',
-      });
-    },
-    [addNotification]
-  );
+      title:
+        action === 'approved'
+          ? 'Reservation Approved'
+          : action === 'completed'
+          ? 'Reservation Completed'
+          : 'Reservation Rejected',
+      message:
+        action === 'approved'
+          ? `Your reservation ${reservationPublicId} has been approved. You may proceed to payments.`
+          : action === 'completed'
+          ? `Your reservation ${reservationPublicId} has been completed. Thank you for choosing us.`
+          : `Your reservation ${reservationPublicId} has been rejected.`,
+      type: 'reservation',
+    });
+  },
+  [addNotification]
+);
 
   const sendVisitNotification = useCallback(
   async ({
@@ -328,6 +365,28 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     },
     [addNotification]
   );
+
+  const sendOverdueReservationNotification = useCallback(
+  async ({
+    userId,
+    reservationPublicId,
+    remainingBalance,
+  }: {
+    userId: string;
+    reservationPublicId: string;
+    remainingBalance: number;
+  }): Promise<void> => {
+    await addNotification({
+      userId,
+      title: 'Outstanding Balance Reminder',
+      message: `Your reservation ${reservationPublicId} has already ended but still has an outstanding balance of ${formatCurrency(
+        remainingBalance
+      )}. Please settle your payment as soon as possible to avoid further actions.`,
+      type: 'payment',
+    });
+  },
+  [addNotification]
+);
 
   const sendInquiryResponseNotification = useCallback(
     async ({
@@ -411,8 +470,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       getNotificationsByUserId,
       sendReservationNotification,
       sendPaymentNotification,
+      sendPaymentReminderNotification,
       sendInquiryResponseNotification,
       sendReviewReminderNotification,
+      sendOverdueReservationNotification,
       sendSystemNotification,
       sendVisitNotification,
       sendDeletionStatusNotification,
@@ -426,8 +487,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       getNotificationsByUserId,
       sendReservationNotification,
       sendPaymentNotification,
+      sendPaymentReminderNotification,
       sendInquiryResponseNotification,
       sendReviewReminderNotification,
+      sendOverdueReservationNotification,
       sendSystemNotification,
       sendVisitNotification,
       sendDeletionStatusNotification,

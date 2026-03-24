@@ -1,10 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useData } from '../../contexts/DataContext';
+import { useReservations } from '../../contexts/ReservationsContext';
+import { usePayments } from '../../contexts/PaymentsContext';
+import { useRecords } from '../../contexts/RecordsContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import type { LedgerEntry } from '../../data/types';
 import { usePaymentMethods } from '../../contexts/PaymentMethodsContext';
 import { formatDate, formatDateTime } from '../../utils/date';
+import supabase from '../../supabaseClient';
 import {
   CreditCard,
   CheckCircle2,
@@ -62,6 +65,68 @@ function formatPaymentMethod(method?: string | null) {
     .replaceAll('_', ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
+function sanitizeFilenamePart(value?: string | null, fallback = 'file') {
+  const cleaned = String(value || '')
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '') // remove invalid filename chars
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^\.+|\.+$/g, '')
+    .slice(0, 60);
+
+  return cleaned || fallback;
+}
+
+function resolveProofImageSrc(value?: string | null) {
+  if (!value) return '';
+
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('data:image/')
+  ) {
+    return trimmed;
+  }
+
+  const { data } = supabase.storage.from('payment_proofs').getPublicUrl(trimmed);
+  return data.publicUrl || '';
+}
+
+function formatFileDate(value?: string | Date | null) {
+  const date = getSafeDate(value);
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function resolveImageSrc(value?: string | null) {
+  if (!value) return '';
+
+  const trimmed = value.trim();
+
+  if (!trimmed) return '';
+
+  if (
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('data:image/') ||
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://')
+  ) {
+    return trimmed;
+  }
+
+  if (trimmed.startsWith('/')) {
+    return trimmed;
+  }
+
+  return trimmed;
+}
+
 
 function getSafeDate(value?: string | Date | null) {
   if (!value) return new Date(0);
@@ -79,14 +144,33 @@ function getReservationProgress(totalAmount?: number, paidAmount?: number) {
   return clampPercentage((Number(paidAmount || 0) / Number(totalAmount)) * 100);
 }
 
+function getMinimumFirstPaymentAmount(
+  reservation:
+    | {
+        totalAmount?: number | null;
+        minimumPaymentPercentSnapshot?: number | null;
+      }
+    | null
+    | undefined
+) {
+  if (!reservation) return 0;
+
+  const percent = Number(reservation.minimumPaymentPercentSnapshot || 0);
+  const total = Number(reservation.totalAmount || 0);
+
+  if (!percent || !total) return 0;
+  return (total * percent) / 100;
+}
+
+function getMinimumSubsequentPaymentAmount(paidAmount?: number | null) {
+  return Number(paidAmount || 0) > 0 ? 500 : 0;
+}
+
 export default function ClientPayments() {
   const { user } = useAuth();
-  const {
-    getReservationsByUserId,
-    getPaymentsByUserId,
-    getLedgerByUserId,
-    addPayment,
-  } = useData();
+  const { getReservationsByUserId } = useReservations();
+  const { getPaymentsByUserId, addPayment, uploadPaymentProof } = usePayments();
+  const { ledgers } = useRecords();
   const { sendSystemNotification } = useNotifications();
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
@@ -124,10 +208,11 @@ export default function ClientPayments() {
     [getPaymentsByUserId, user?.id]
   );
 
-  const userLedger = useMemo(
-    () => getLedgerByUserId(user?.id || ''),
-    [getLedgerByUserId, user?.id]
-  );
+  const userLedger = useMemo(() => {
+    return ledgers.filter(
+      (entry) => entry.userId === user?.id && entry.reservationId
+    );
+  }, [ledgers, user?.id]);
 
   const reservationMap = useMemo(() => {
     return new Map(userReservations.map((reservation) => [reservation.id, reservation]));
@@ -145,15 +230,98 @@ export default function ClientPayments() {
     return map;
   }, [userLedger]);
 
+  const ledgerTotalsByReservationId = useMemo(() => {
+  const map = new Map<
+    string,
+    {
+      paid: number;
+      refunds: number;
+      discounts: number;
+      penalties: number;
+      adjustments: number;
+      netPaid: number;
+    }
+  >();
+
+  userLedger.forEach((entry) => {
+    if (!entry.reservationId) return;
+
+    const current = map.get(entry.reservationId) ?? {
+      paid: 0,
+      refunds: 0,
+      discounts: 0,
+      penalties: 0,
+      adjustments: 0,
+      netPaid: 0,
+    };
+
+    const amount = Number(entry.amount || 0);
+
+    switch (entry.entryType) {
+      case 'payment':
+      case 'deposit':
+      case 'balance':
+        current.paid += amount;
+        break;
+      case 'refund':
+        current.refunds += amount;
+        break;
+      case 'discount':
+        current.discounts += amount;
+        break;
+      case 'penalty':
+        current.penalties += amount;
+        break;
+      case 'adjustment':
+        current.adjustments += amount;
+        break;
+    }
+
+    current.netPaid =
+      current.paid -
+      current.refunds -
+      current.discounts +
+      current.penalties +
+      current.adjustments;
+
+    map.set(entry.reservationId, current);
+  });
+
+  return map;
+}, [userLedger]);
+
+const getReservationPaidFromLedger = useCallback(
+  (reservationId?: string | null) => {
+    if (!reservationId) return 0;
+    return Number(ledgerTotalsByReservationId.get(reservationId)?.netPaid || 0);
+  },
+  [ledgerTotalsByReservationId]
+);
+
+const getReservationRemainingFromLedger = useCallback(
+  (reservation?: { id: string; totalAmount?: number | null } | null) => {
+    if (!reservation) return 0;
+
+    const total = Number(reservation.totalAmount || 0);
+    const paid = getReservationPaidFromLedger(reservation.id);
+
+    return Math.max(0, total - paid);
+  },
+  [getReservationPaidFromLedger]
+);
+
   const hasPayments = userPayments.length > 0;
 
   const eligibleReservations = useMemo(() => {
-    return userReservations.filter(
-      (reservation) =>
-        ['approved', 'confirmed', 'completed'].includes(reservation.status) &&
-        reservation.paidAmount < reservation.totalAmount
+  return userReservations.filter((reservation) => {
+    const paid = getReservationPaidFromLedger(reservation.id);
+
+    return (
+      ['approved', 'confirmed', 'completed'].includes(reservation.status) &&
+      paid < Number(reservation.totalAmount || 0)
     );
-  }, [userReservations]);
+  });
+}, [userReservations, getReservationPaidFromLedger]); 
 
   const filteredPayments = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -163,6 +331,7 @@ export default function ClientPayments() {
 
       const reservation = reservationMap.get(payment.reservationId);
       const ledgerEntry = ledgerByPaymentId.get(payment.id);
+
 
       return (
         payment.id.toLowerCase().includes(query) ||
@@ -185,10 +354,11 @@ export default function ClientPayments() {
 
   const paymentOverview = useMemo(() => {
   const totalPaid = userLedger
-    .filter((e) =>
-      ['payment', 'deposit', 'balance'].includes(e.entryType)
-    )
-    .reduce((sum, e) => sum + e.amount, 0);
+  .filter((e) => e.reservationId) // ensure linked
+  .filter((e) =>
+    ['payment', 'deposit', 'balance'].includes(e.entryType)
+  )
+  .reduce((sum, e) => sum + e.amount, 0);
 
   const refunds = userLedger
     .filter((e) => e.entryType === 'refund')
@@ -210,7 +380,7 @@ export default function ClientPayments() {
   );
 
   const totalPaidAcrossReservations = userReservations.reduce(
-    (sum, r) => sum + Number(r.paidAmount || 0),
+  (sum, r) => sum + getReservationPaidFromLedger(r.id),
     0
   );
 
@@ -240,9 +410,9 @@ export default function ClientPayments() {
 
   const outstandingTotal = useMemo(() => {
     return eligibleReservations.reduce((sum, reservation) => {
-      return sum + (reservation.totalAmount - reservation.paidAmount);
+      return sum + getReservationRemainingFromLedger(reservation);
     }, 0);
-  }, [eligibleReservations]);
+  }, [eligibleReservations, getReservationRemainingFromLedger]);
 
   const clearProofPreview = useCallback(() => {
     setProofFile(null);
@@ -295,7 +465,7 @@ export default function ClientPayments() {
       clearProofPreview();
       setShowPaymentModal(true);
     },
-    [clearProofPreview]
+    [clearProofPreview, defaultPaymentMethod]
   );
 
   const selectedReservationData = useMemo(() => {
@@ -304,88 +474,114 @@ export default function ClientPayments() {
   }, [selectedReservation, reservationMap]);
 
   const selectedReservationBalance = useMemo(() => {
-    if (!selectedReservationData) return 0;
-    return selectedReservationData.totalAmount - selectedReservationData.paidAmount;
+  if (!selectedReservationData) return 0;
+  return getReservationRemainingFromLedger(selectedReservationData);
+}, [selectedReservationData, getReservationRemainingFromLedger]);
+
+  const selectedReservationMinimumFirstPayment = useMemo(() => {
+    return getMinimumFirstPaymentAmount(selectedReservationData);
   }, [selectedReservationData]);
 
-  const handlePaymentSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
+  const selectedReservationMinimumSubsequentPayment = useMemo(() => {
+  if (!selectedReservationData) return 0;
 
-      if (!selectedReservation || !user || isSubmitting) return;
-
-      const reservation = reservationMap.get(selectedReservation);
-      if (!reservation) return;
-
-      const amount = parseFloat(paymentForm.amount);
-      const balance = reservation.totalAmount - reservation.paidAmount;
-
-      if (Number.isNaN(amount) || amount <= 0 || amount > balance) {
-        alert('Please enter a valid payment amount.');
-        return;
-      }
-
-      try {
-        setIsSubmitting(true);
-
-        await Promise.resolve(
-          addPayment({
-            reservationId: selectedReservation,
-            userId: user.id,
-            amount,
-            method: paymentForm.method as any,
-            paymentMethodId: selectedPaymentMethodConfig?.id ?? null,
-            paymentMethodSnapshot: selectedPaymentMethodConfig
-              ? {
-                  method_code: selectedPaymentMethodConfig.methodCode,
-                  display_name: selectedPaymentMethodConfig.displayName,
-                  account_name: selectedPaymentMethodConfig.accountName,
-                  account_number: selectedPaymentMethodConfig.accountNumber,
-                  mobile_number: selectedPaymentMethodConfig.mobileNumber,
-                  bank_name: selectedPaymentMethodConfig.bankName,
-                  branch_name: selectedPaymentMethodConfig.branchName,
-                  qr_image_path: selectedPaymentMethodConfig.qrImagePath,
-                  instructions: selectedPaymentMethodConfig.instructions,
-                }
-              : null,
-            status: 'unpaid',
-            proofOfPayment: proofPreviewUrl || '',
-            notes: paymentForm.notes,
-          })
-        );
-
-        sendSystemNotification(
-          user.id,
-          'Payment Submitted',
-          `Your payment of ${formatCurrency(amount)} for ${reservation.unitName} is pending verification.`
-        );
-
-        setPaymentSuccess(true);
-
-        setTimeout(() => {
-          resetPaymentModalState();
-        }, 1800);
-      } catch (error) {
-        console.error('Failed to submit payment:', error);
-        alert('Failed to submit payment. Please try again.');
-        setIsSubmitting(false);
-      }
-    },
-    [
-      selectedReservation,
-      user,
-      isSubmitting,
-      reservationMap,
-      paymentForm.amount,
-      paymentForm.method,
-      paymentForm.notes,
-      addPayment,
-      selectedPaymentMethodConfig,
-      proofPreviewUrl,
-      sendSystemNotification,
-      resetPaymentModalState,
-    ]
+  return getMinimumSubsequentPaymentAmount(
+    getReservationPaidFromLedger(selectedReservationData.id)
   );
+}, [selectedReservationData, getReservationPaidFromLedger]);
+
+  const handlePaymentSubmit = useCallback(
+  async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!selectedReservation || !user || isSubmitting) return;
+
+    const reservation = reservationMap.get(selectedReservation);
+    if (!reservation) return;
+
+    const amount = parseFloat(paymentForm.amount);
+    const balance = getReservationRemainingFromLedger(reservation);
+
+    if (Number.isNaN(amount) || amount <= 0 || amount > balance) {
+      alert('Please enter a valid payment amount.');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+
+      let uploadedProofPath = '';
+
+      if (proofFile) {
+        const uploaded = await uploadPaymentProof(proofFile);
+
+        if (!uploaded) {
+          throw new Error('Failed to upload proof of payment.');
+        }
+
+        uploadedProofPath = uploaded;
+      }
+
+      await Promise.resolve(
+        addPayment({
+          reservationId: selectedReservation,
+          userId: user.id,
+          amount,
+          method: paymentForm.method as any,
+          paymentMethodId: selectedPaymentMethodConfig?.id ?? null,
+          paymentMethodSnapshot: selectedPaymentMethodConfig
+            ? {
+                method_code: selectedPaymentMethodConfig.methodCode,
+                display_name: selectedPaymentMethodConfig.displayName,
+                account_name: selectedPaymentMethodConfig.accountName,
+                account_number: selectedPaymentMethodConfig.accountNumber,
+                mobile_number: selectedPaymentMethodConfig.mobileNumber,
+                bank_name: selectedPaymentMethodConfig.bankName,
+                branch_name: selectedPaymentMethodConfig.branchName,
+                qr_image_path: selectedPaymentMethodConfig.qrImagePath,
+                instructions: selectedPaymentMethodConfig.instructions,
+              }
+            : null,
+          status: 'unpaid',
+          proofOfPayment: uploadedProofPath,
+          notes: paymentForm.notes,
+        })
+      );
+
+      sendSystemNotification(
+        user.id,
+        'Payment Submitted',
+        `Your payment of ${formatCurrency(amount)} for ${reservation.unitName} is pending verification.`
+      );
+
+      setPaymentSuccess(true);
+
+      setTimeout(() => {
+        resetPaymentModalState();
+      }, 1800);
+    } catch (error) {
+      console.error('Failed to submit payment:', error);
+      alert('Failed to submit payment. Please try again.');
+      setIsSubmitting(false);
+    }
+  },
+  [
+    selectedReservation,
+    user,
+    isSubmitting,
+    reservationMap,
+    paymentForm.amount,
+    paymentForm.method,
+    paymentForm.notes,
+    addPayment,
+    uploadPaymentProof,
+    selectedPaymentMethodConfig,
+    proofFile,
+    sendSystemNotification,
+    resetPaymentModalState,
+    getReservationRemainingFromLedger,
+  ]
+);
 
   const handleDownloadInvoice = useCallback(
     (payment: any) => {
@@ -402,8 +598,11 @@ export default function ClientPayments() {
       const invoiceNumber = ledgerEntry.id || payment.id;
       const invoiceDate = ledgerEntry.recordedAt || payment.date;
       const amount = Number(ledgerEntry.amount ?? payment.amount) || 0;
-      const remaining =
-        Number(reservation?.totalAmount || 0) - Number(reservation?.paidAmount || 0);
+      const paidToDate = getReservationPaidFromLedger(payment.reservationId);
+        const remaining = Math.max(
+          0,
+          Number(reservation?.totalAmount || 0) - paidToDate
+        );
 
       const invoiceContent = `
 ========================================
@@ -443,7 +642,7 @@ Reservation ID:  ${reservation?.publicId ?? reservation?.id ?? 'N/A'}
 Unit:            ${reservation?.unitName ?? 'N/A'}
 Unit Type:       ${reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A'}
 Total Bill:      ${formatCurrency(reservation?.totalAmount || 0)}
-Paid To Date:    ${formatCurrency(reservation?.paidAmount || 0)}
+Paid To Date:    ${formatCurrency(paidToDate)}
 Remaining:       ${formatCurrency(remaining)}
 
 ----------------------------------------
@@ -466,7 +665,19 @@ Thank you for your payment.
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `Invoice-${invoiceNumber}.txt`;
+      const reservationLabel = sanitizeFilenamePart(
+        reservation?.publicId || reservation?.unitName || 'reservation'
+      );
+
+      const invoiceLabel = sanitizeFilenamePart(
+        ledgerEntry?.publicId ||
+          `pay-${String(payment.id).replace(/-/g, '').slice(-6).toUpperCase()}`,
+        'invoice'
+      );
+
+      const invoiceDateLabel = formatFileDate(invoiceDate);
+
+      link.download = `Invoice-${reservationLabel}-${invoiceLabel}-${invoiceDateLabel}.txt`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -504,7 +715,10 @@ Thank you for your payment.
 
     const link = document.createElement('a');
     link.href = url;
-    link.download = `payment_history_${fullName.replace(/\s+/g, '_') || 'export'}.csv`;
+    const customerLabel = sanitizeFilenamePart(fullName || user?.email || 'customer');
+    const exportDateLabel = formatFileDate(new Date());
+
+    link.download = `payment-history-${customerLabel}-${exportDateLabel}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -541,7 +755,7 @@ Thank you for your payment.
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
         <header>
           <h1 className={uiTypography.pageTitle}>Payments</h1>
           <p className={uiTypography.pageDescription}>
@@ -637,10 +851,11 @@ Thank you for your payment.
 
             <div className="grid gap-4 p-5 sm:p-6 xl:grid-cols-2">
               {eligibleReservations.map((reservation) => {
-                const balance = reservation.totalAmount - reservation.paidAmount;
+                const paid = getReservationPaidFromLedger(reservation.id);
+                const balance = Math.max(0, Number(reservation.totalAmount || 0) - paid);
                 const progress = getReservationProgress(
-                  reservation.totalAmount,
-                  reservation.paidAmount
+                  Number(reservation.totalAmount || 0),
+                  paid
                 );
 
                 return (
@@ -667,7 +882,7 @@ Thank you for your payment.
 
                       <button
                         onClick={() => handleMakePayment(reservation.id)}
-                        className={`inline-flex shrink-0 items-center gap-2 rounded-xl bg-gradient-to-r from-slate-900 to-slate-700 px-4 py-2.5 text-white transition hover:opacity-95 ${uiTypography.buttonText}`}
+                        className={`inline-flex shrink-0 items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-green-500 px-4 py-2.5 text-white transition hover:opacity-95 ${uiTypography.buttonText}`}
                       >
                         <Plus className="size-4" />
                         Pay
@@ -703,7 +918,7 @@ Thank you for your payment.
                       <div className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
                         <p className={`${uiTypography.infoBlockLabel} text-slate-400`}>Paid</p>
                         <p className={`${uiTypography.infoBlockValue} text-emerald-600`}>
-                          {formatCurrency(reservation.paidAmount)}
+                          {formatCurrency(paid)}
                         </p>
                       </div>
 
@@ -765,14 +980,21 @@ Thank you for your payment.
                 {filteredPayments.map((payment) => {
                   const reservation = reservationMap.get(payment.reservationId);
                   const ledgerEntry = ledgerByPaymentId.get(payment.id);
+                  const paidFromLedger = getReservationPaidFromLedger(payment.reservationId);
+                  const remaining = Math.max(
+                    0,
+                    Number(reservation?.totalAmount || 0) - paidFromLedger
+                  );
+
                   const progress = getReservationProgress(
-                    reservation?.totalAmount || 0,
-                    reservation?.paidAmount || 0
+                    Number(reservation?.totalAmount || 0),
+                    paidFromLedger
                   );
                   const StatusIcon =
                     PAYMENT_STATUS_ICONS[
                       payment.status as keyof typeof PAYMENT_STATUS_ICONS
                     ];
+                  const proofSrc = resolveProofImageSrc(payment.proofOfPayment);
 
                   return (
                     <div
@@ -843,138 +1065,156 @@ Thank you for your payment.
                       </div>
 
                       <div className="p-5 sm:p-6">
-                        <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <h4 className={`${uiTypography.sectionTitle} truncate`}>
-                                {reservation?.unitName ?? 'Unknown Unit'}
-                              </h4>
-                              <p className={`${uiTypography.badgeLabel} mt-1 text-slate-400`}>
-                                {reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A'}
-                              </p>
-                            </div>
+  <div className="grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
+    <div className="min-w-0">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h4 className="truncate text-lg font-semibold tracking-tight text-slate-900">
+            {reservation?.unitName ?? 'Unknown Unit'}
+          </h4>
+          <p className="mt-1 text-sm text-slate-500">
+            {reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A'}
+          </p>
+        </div>
 
-                            <div className="flex items-center gap-2">
-                              {payment.proofOfPayment && (
-                                <button
-                                  onClick={() => setViewingImage(payment.proofOfPayment || null)}
-                                  className={`inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-700 transition hover:bg-slate-50 ${uiTypography.buttonText}`}
-                                >
-                                  <Eye className="size-3.5" />
-                                  Proof
-                                </button>
-                              )}
+        <div className="flex items-center gap-2">
+          {proofSrc ? (
+            <button
+              type="button"
+              onClick={() => setViewingImage(proofSrc)}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              <Eye className="size-4" />
+              Proof
+            </button>
+          ) : (
+            <span className="text-sm text-slate-400">Proof unavailable</span>
+          )}
 
-                              <button
-                                type="button"
-                                onClick={() => handleDownloadInvoice(payment)}
-                                className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 transition ${uiTypography.buttonText} ${
-                                  ledgerEntry
-                                    ? 'bg-slate-900 text-white hover:bg-slate-800'
-                                    : 'cursor-not-allowed bg-slate-200 text-slate-500'
-                                }`}
-                              >
-                                <FileDown className="size-3.5" />
-                                Invoice
-                              </button>
-                            </div>
-                          </div>
+          <button
+            type="button"
+            onClick={() => handleDownloadInvoice(payment)}
+            className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition ${
+              ledgerEntry
+                ? 'bg-slate-900 text-white hover:bg-slate-800'
+                : 'cursor-not-allowed bg-slate-200 text-slate-500'
+            }`}
+          >
+            <FileDown className="size-4" />
+            Invoice
+          </button>
+        </div>
+      </div>
 
-                          <div className="mt-4 rounded-2xl border border-white bg-white p-4">
-                            <div className="mb-2 flex items-center justify-between">
-                              <p className={`${uiTypography.miniStatLabel} text-slate-400`}>
-                                Reservation Payment Progress
-                              </p>
-                              <div className={`inline-flex items-center gap-1 ${uiTypography.miniStatValue} text-slate-700`}>
-                                {progress.toFixed(0)}%
-                                <ArrowUpRight className="size-4 text-slate-400" />
-                              </div>
-                            </div>
+      <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+            Reservation Payment Progress
+          </p>
+          <div className="inline-flex items-center gap-1 text-sm font-semibold text-slate-700">
+            {progress.toFixed(0)}%
+            <ArrowUpRight className="size-4 text-slate-400" />
+          </div>
+        </div>
 
-                            <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
-                              <div
-                                className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-sky-500 transition-all duration-500"
-                                style={{ width: `${progress}%` }}
-                              />
-                            </div>
-                          </div>
+        <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-sky-500 transition-all duration-500"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
 
-                          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                            <div className="rounded-2xl border border-white bg-white px-3 py-3">
-                              <span className={`block ${uiTypography.infoBlockLabel}`}>
-                                Reservation ID
-                              </span>
-                              <span className={`block ${uiTypography.infoBlockValue}`}>
-                                {reservation?.publicId ?? reservation?.id ?? 'N/A'}
-                              </span>
-                            </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+              Total Bill
+            </p>
+            <p className="mt-1 text-base font-semibold text-slate-900">
+              {formatCurrency(reservation?.totalAmount || 0)}
+            </p>
+          </div>
 
-                            <div className="rounded-2xl border border-white bg-white px-3 py-3">
-                              <span className={`block ${uiTypography.infoBlockLabel}`}>
-                                Total Bill
-                              </span>
-                              <span className={`block ${uiTypography.infoBlockValue}`}>
-                                {formatCurrency(reservation?.totalAmount || 0)}
-                              </span>
-                            </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+              Paid To Date
+            </p>
+            <p className="mt-1 text-base font-semibold text-emerald-600">
+              {formatCurrency(paidFromLedger)}
+            </p>
+          </div>
 
-                            <div className="rounded-2xl border border-white bg-white px-3 py-3">
-                              <span className={`block ${uiTypography.infoBlockLabel}`}>
-                                Paid To Date
-                              </span>
-                              <span className={`block ${uiTypography.infoBlockValue} text-emerald-600`}>
-                                {formatCurrency(reservation?.paidAmount || 0)}
-                              </span>
-                            </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+              Remaining
+            </p>
+            <p className="mt-1 text-base font-semibold text-rose-600">
+              {formatCurrency(remaining)}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
 
-                            <div className="rounded-2xl border border-white bg-white px-3 py-3">
-                              <span className={`block ${uiTypography.infoBlockLabel}`}>
-                                Remaining
-                              </span>
-                              <span className={`block ${uiTypography.infoBlockValue} text-rose-600`}>
-                                {formatCurrency(
-                                  Number(reservation?.totalAmount || 0) -
-                                    Number(reservation?.paidAmount || 0)
-                                )}
-                              </span>
-                            </div>
-                          </div>
+    <div className="rounded-[24px] border border-slate-200 bg-white p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+        Payment Details
+      </p>
 
-                          {ledgerEntry && (
-                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                              <div className="rounded-2xl border border-white bg-white p-4">
-                                <p className={uiTypography.infoBlockLabel}>Ledger Entry</p>
-                                <p className={`${uiTypography.infoBlockValue} text-slate-900`}>
-                                  {ledgerEntry.publicId || ledgerEntry.id}
-                                </p>
-                                <p className={uiTypography.helperText}>
-                                  {formatPaymentMethod(ledgerEntry.entryType)} ·{' '}
-                                  {formatPaymentMethod(ledgerEntry.status)}
-                                </p>
-                              </div>
+      <div className="mt-4 space-y-3 text-sm">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-slate-500">Reservation ID</span>
+          <span className="font-medium text-slate-900">
+            {reservation?.publicId ?? reservation?.id ?? 'N/A'}
+          </span>
+        </div>
 
-                              <div className="rounded-2xl border border-white bg-white p-4">
-                                <p className={uiTypography.infoBlockLabel}>Reference No</p>
-                                <p className={`${uiTypography.infoBlockValue} text-slate-900`}>
-                                  {ledgerEntry.referenceNo || 'N/A'}
-                                </p>
-                                <p className={uiTypography.helperText}>
-                                  Recorded {formatDate(ledgerEntry.recordedAt)}
-                                </p>
-                              </div>
-                            </div>
-                          )}
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-slate-500">Payment Method</span>
+          <span className="font-medium text-slate-900">
+            {formatPaymentMethod(payment.method)}
+          </span>
+        </div>
 
-                          {payment.notes && (
-                            <div className="mt-4 rounded-2xl border border-white bg-white p-4">
-                              <p className={uiTypography.infoBlockLabel}>Notes</p>
-                              <p className={`${uiTypography.bodyText} mt-2 text-slate-600`}>
-                                {payment.notes}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-slate-500">Status</span>
+          <span className="font-medium text-slate-900">
+            {String(payment.status)}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-slate-500">Ledger Entry</span>
+          <span className="font-medium text-slate-900">
+            {ledgerEntry?.publicId || ledgerEntry?.id || 'N/A'}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-slate-500">Reference No</span>
+          <span className="font-medium text-slate-900">
+            {ledgerEntry?.referenceNo || 'N/A'}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-slate-500">Recorded</span>
+          <span className="font-medium text-slate-900">
+            {ledgerEntry ? formatDate(ledgerEntry.recordedAt) : 'Not yet posted'}
+          </span>
+        </div>
+      </div>
+
+      {payment.notes && (
+        <div className="mt-4 rounded-2xl bg-slate-50 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+            Notes
+          </p>
+          <p className="mt-2 text-sm leading-6 text-slate-600">{payment.notes}</p>
+        </div>
+      )}
+    </div>
+  </div>
+</div>
                     </div>
                   );
                 })}
@@ -1008,14 +1248,20 @@ Thank you for your payment.
 
         {showPaymentModal && selectedReservation && (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 shadow-lg"
             onClick={resetPaymentModalState}
           >
             <div
-              className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl"
+              className={`flex max-h-[92vh] w-full flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl ${
+                paymentSuccess ? 'max-w-sm' : 'max-w-lg'
+              }`}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="border-b border-slate-100 bg-white px-6 py-5">
+              <div
+                className={`border-b border-slate-100 bg-white ${
+                  paymentSuccess ? 'px-5 py-4' : 'px-6 py-5'
+                }`}
+              >
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className={uiTypography.modalTitle}>Make Payment</h2>
@@ -1034,12 +1280,16 @@ Thank you for your payment.
               </div>
 
               {paymentSuccess ? (
-                <div className="p-10 text-center">
-                  <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-[28px] bg-emerald-50 text-emerald-500">
-                    <CheckCircle2 className="size-10" />
+                <div className="px-5 py-6 text-center">
+                  <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-500">
+                    <CheckCircle2 className="size-7" />
                   </div>
-                  <h3 className={uiTypography.cardTitle}>Payment Submitted</h3>
-                  <p className={uiTypography.modalBody}>
+
+                  <h3 className="text-base font-bold text-slate-900">
+                    Payment Submitted
+                  </h3>
+
+                  <p className="mt-1 text-sm text-slate-600">
                     Your payment is now pending admin verification.
                   </p>
                 </div>
@@ -1050,6 +1300,40 @@ Thank you for your payment.
                   className="space-y-5 overflow-y-auto p-6"
                 >
                   <div className="grid gap-5">
+                    {selectedReservationData && (
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500">Remaining Balance</span>
+                            <span className="font-semibold text-slate-900">
+                              {formatCurrency(selectedReservationBalance)}
+                            </span>
+                          </div>
+
+                          {getReservationPaidFromLedger(selectedReservationData.id) <= 0 &&
+                            selectedReservationMinimumFirstPayment > 0 && (
+                              <div className="mt-2 flex items-center justify-between">
+                                <span className="text-slate-500">
+                                  Minimum First Payment
+                                  {selectedReservationData.minimumPaymentPercentSnapshot
+                                    ? ` (${selectedReservationData.minimumPaymentPercentSnapshot}%)`
+                                    : ''}
+                                </span>
+                                <span className="font-semibold text-slate-900">
+                                  {formatCurrency(selectedReservationMinimumFirstPayment)}
+                                </span>
+                              </div>
+                            )}
+
+                          {getReservationPaidFromLedger(selectedReservationData.id) > 0 && (
+                            <div className="mt-2 flex items-center justify-between">
+                              <span className="text-slate-500">Minimum Subsequent Payment</span>
+                              <span className="font-semibold text-slate-900">
+                                {formatCurrency(selectedReservationMinimumSubsequentPayment)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     <div>
                       <label className={`${uiTypography.formLabel} mb-2 ml-0`}>
                         Payment Amount (₱)
@@ -1120,14 +1404,27 @@ Thank you for your payment.
                         </div>
 
                         {selectedPaymentMethodConfig.qrImageUrl && (
-                          <img
-                            src={selectedPaymentMethodConfig.qrImageUrl}
-                            alt={`${selectedPaymentMethodConfig.displayName} QR`}
-                            className="mt-4 h-56 w-56 rounded-xl border border-slate-200 bg-white object-contain"
-                            loading="lazy"
-                            decoding="async"
-                          />
-                        )}
+  <div className="mt-4">
+    <button
+      type="button"
+      onClick={() => setViewingImage(selectedPaymentMethodConfig.qrImageUrl || null)}
+      className="group relative block rounded-xl border border-slate-200 bg-white p-2 transition hover:border-sky-300 hover:shadow-sm"
+      title="Click to enlarge QR code"
+    >
+      <img
+        src={selectedPaymentMethodConfig.qrImageUrl}
+        alt={`${selectedPaymentMethodConfig.displayName} QR`}
+        className="h-56 w-56 rounded-lg object-contain"
+        loading="lazy"
+        decoding="async"
+      />
+
+      <div className="absolute inset-x-2 bottom-2 rounded-lg bg-slate-900/70 px-3 py-1.5 text-center text-xs font-medium text-white opacity-0 transition group-hover:opacity-100">
+        Click to enlarge
+      </div>
+    </button>
+  </div>
+)}
 
                         {selectedPaymentMethodConfig.instructions && (
                           <div className="mt-4 rounded-xl bg-white p-3 text-sm text-slate-600">
@@ -1279,7 +1576,7 @@ Thank you for your payment.
               onClick={(e) => e.stopPropagation()}
             >
               <img
-                src={viewingImage}
+                src={viewingImage || ''}
                 alt="Proof of Payment Receipt"
                 className="max-h-[85vh] max-w-full rounded-2xl border border-white/10 object-contain shadow-2xl"
               />

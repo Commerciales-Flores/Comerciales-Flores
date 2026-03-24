@@ -246,7 +246,7 @@ export function PaymentMethodsProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <PaymentMethodsContext.Provider value={value}>
+    <PaymentMethodsContext.Provider value={value}>  
       {children}
     </PaymentMethodsContext.Provider>
   );

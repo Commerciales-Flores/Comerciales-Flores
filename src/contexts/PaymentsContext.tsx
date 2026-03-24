@@ -34,6 +34,14 @@ interface PaymentsContextType {
     data: Payment[];
     count: number;
   }>;
+  issueRefund: (params: {
+    reservationId: string;
+    paymentId?: string | null;
+    amount: number;
+    method?: PaymentMethod | null;
+    notes?: string | null;
+    referenceNo?: string | null;
+  }) => Promise<void>;
 }
 
 const PaymentsContext = createContext<PaymentsContextType | undefined>(undefined);
@@ -76,15 +84,15 @@ function getMinimumPaymentPercent(reservation: {
   return Math.max(0, value);
 }
 
-function getMinimumRequiredAmount(reservation: {
+function getMinimumRequiredAmount(params: {
   totalAmount: number;
   paidAmount: number;
   minimumPaymentPercentSnapshot?: number | null;
 }) {
-  const totalAmount = clampMoney(reservation.totalAmount);
-  const paidAmount = clampMoney(reservation.paidAmount);
+  const totalAmount = clampMoney(params.totalAmount);
+  const paidAmount = clampMoney(params.paidAmount);
   const remaining = clampMoney(totalAmount - paidAmount);
-  const minimumPercent = getMinimumPaymentPercent(reservation);
+  const minimumPercent = getMinimumPaymentPercent(params);
 
   if (minimumPercent <= 0) {
     return {
@@ -105,7 +113,7 @@ function getMinimumRequiredAmount(reservation: {
   };
 }
 
-function validateMinimumFirstPayment(reservation: {
+function validateMinimumFirstPayment(params: {
   totalAmount: number;
   paidAmount: number;
   minimumPaymentPercentSnapshot?: number | null;
@@ -113,26 +121,26 @@ function validateMinimumFirstPayment(reservation: {
   return (amount: number) => {
     const submittedAmount = clampMoney(amount);
     const { minimumPercent, minimumRequired, isFirstPayment } =
-      getMinimumRequiredAmount(reservation);
+      getMinimumRequiredAmount(params);
 
     if (!isFirstPayment || minimumPercent <= 0) return;
 
     if (submittedAmount < minimumRequired) {
       throw new Error(
-        `First payment must be at least ${minimumPercent}% of the total amount (${minimumRequired.toFixed(2)}).`
+        `First payment must be at least ${minimumPercent}% of the total amount (₱${minimumRequired.toFixed(2)}).`
       );
     }
   };
 }
 
-function validateMinimumSubsequentPayment(reservation: {
+function validateMinimumSubsequentPayment(params: {
   totalAmount: number;
   paidAmount: number;
 }) {
   return (amount: number) => {
     const submittedAmount = clampMoney(amount);
-    const paidAmount = clampMoney(reservation.paidAmount);
-    const remaining = clampMoney(reservation.totalAmount - paidAmount);
+    const paidAmount = clampMoney(params.paidAmount);
+    const remaining = clampMoney(params.totalAmount - paidAmount);
     const isFirstPayment = paidAmount <= 0;
 
     if (isFirstPayment) return;
@@ -150,7 +158,7 @@ function validateMinimumSubsequentPayment(reservation: {
 
 export function PaymentsProvider({ children }: { children: ReactNode }) {
   const [payments, setPayments] = useState<Payment[]>([]);
-  const { reservations, updateReservation } = useReservations();
+  const { reservations, refreshReservations } = useReservations();
   const { addAuditLog, addLedgerEntry } = useRecords();
   const { user } = useAuth();
 
@@ -237,42 +245,80 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
 
       const { error: uploadError } = await supabase.storage
         .from('payment_proofs')
-        .upload(filePath, file);
+        .upload(filePath, file, {
+          upsert: false,
+        });
 
       if (uploadError) throw uploadError;
 
-      const { data } = supabase.storage.from('payment_proofs').getPublicUrl(filePath);
-      return data.publicUrl;
+      return filePath;
     } catch (error) {
       console.error('Error uploading proof:', error);
       return null;
     }
   }, []);
 
-  const recalculateReservationPaidAmount = useCallback(
-    async (reservationId: string) => {
-      const reservation = reservations.find((r) => r.id === reservationId);
-      if (!reservation) return;
-
-      const { data, error } = await supabase
-        .from('payments')
-        .select('amount, status')
-        .eq('reservation_id', reservationId)
-        .eq('status', 'paid');
+  const getReservationLedgerNetPaid = useCallback(
+    async (reservationId: string): Promise<number> => {
+      const { data: ledgerRows, error } = await supabase
+        .from('ledger')
+        .select('entry_type, amount')
+        .eq('reservation_id', reservationId);
 
       if (error) throw error;
 
-      const totalPaid = clampMoney(
-        (data ?? []).reduce((sum, row) => sum + Number(row.amount || 0), 0)
-      );
+      let paid = 0;
+      let refunds = 0;
+      let discounts = 0;
+      let penalties = 0;
+      let adjustments = 0;
 
-      const safePaidAmount = Math.min(totalPaid, clampMoney(reservation.totalAmount));
+      for (const row of ledgerRows ?? []) {
+        const amount = Number(row.amount ?? 0);
 
-      await updateReservation(reservationId, {
-        paidAmount: safePaidAmount,
-      });
+        switch (row.entry_type) {
+          case 'payment':
+          case 'deposit':
+          case 'balance':
+            paid += amount;
+            break;
+          case 'refund':
+            refunds += amount;
+            break;
+          case 'discount':
+            discounts += amount;
+            break;
+          case 'penalty':
+            penalties += amount;
+            break;
+          case 'adjustment':
+            adjustments += amount;
+            break;
+        }
+      }
+
+      return Math.max(0, paid - refunds - discounts + penalties + adjustments);
     },
-    [reservations, updateReservation]
+    []
+  );
+
+  const recalculateReservationPaidAmount = useCallback(
+    async (reservationId: string) => {
+      const netPaid = await getReservationLedgerNetPaid(reservationId);
+
+      const { error: reservationUpdateError } = await supabase
+        .from('reservations')
+        .update({
+          paid_amount: netPaid,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('reservation_id', reservationId);
+
+      if (reservationUpdateError) throw reservationUpdateError;
+
+      await refreshReservations();
+    },
+    [getReservationLedgerNetPaid, refreshReservations]
   );
 
   const addPayment = useCallback(
@@ -286,11 +332,20 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
         throw new Error('Reservation not found for this payment.');
       }
 
+      const ledgerPaid = await getReservationLedgerNetPaid(reservation.id);
       const submittedAmount = clampMoney(Number(paymentData.amount));
-      const remaining = clampMoney(reservation.totalAmount - reservation.paidAmount);
-      const enforceMinimumFirstPayment = validateMinimumFirstPayment(reservation);
-      const enforceMinimumSubsequentPayment =
-        validateMinimumSubsequentPayment(reservation);
+      const remaining = clampMoney(Number(reservation.totalAmount) - ledgerPaid);
+
+      const enforceMinimumFirstPayment = validateMinimumFirstPayment({
+        totalAmount: Number(reservation.totalAmount),
+        paidAmount: ledgerPaid,
+        minimumPaymentPercentSnapshot: reservation.minimumPaymentPercentSnapshot,
+      });
+
+      const enforceMinimumSubsequentPayment = validateMinimumSubsequentPayment({
+        totalAmount: Number(reservation.totalAmount),
+        paidAmount: ledgerPaid,
+      });
 
       if (submittedAmount <= 0) {
         throw new Error('Payment amount must be greater than zero.');
@@ -329,11 +384,9 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       const newPayment = mapPaymentRow(data);
 
       if (newPayment.status === 'paid') {
-        const refreshedReservation =
-          reservations.find((r) => r.id === newPayment.reservationId) ?? reservation;
-
+        const refreshedLedgerPaid = await getReservationLedgerNetPaid(newPayment.reservationId);
         const remainingAtApproval = clampMoney(
-          refreshedReservation.totalAmount - refreshedReservation.paidAmount
+          Number(reservation.totalAmount) - refreshedLedgerPaid
         );
 
         const approvedAmount = Math.min(clampMoney(newPayment.amount), remainingAtApproval);
@@ -396,6 +449,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
     [
       addAuditLog,
       addLedgerEntry,
+      getReservationLedgerNetPaid,
       recalculateReservationPaidAmount,
       refreshPayments,
       reservations,
@@ -442,9 +496,18 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       }
 
       const nextStatus = paymentUpdate.status ?? existingPayment.status;
-      const enforceMinimumFirstPayment = validateMinimumFirstPayment(reservation);
-      const enforceMinimumSubsequentPayment =
-        validateMinimumSubsequentPayment(reservation);
+      const ledgerPaid = await getReservationLedgerNetPaid(reservation.id);
+
+      const enforceMinimumFirstPayment = validateMinimumFirstPayment({
+        totalAmount: Number(reservation.totalAmount),
+        paidAmount: ledgerPaid,
+        minimumPaymentPercentSnapshot: reservation.minimumPaymentPercentSnapshot,
+      });
+
+      const enforceMinimumSubsequentPayment = validateMinimumSubsequentPayment({
+        totalAmount: Number(reservation.totalAmount),
+        paidAmount: ledgerPaid,
+      });
 
       if (nextStatus === 'paid') {
         const isAlreadyCountedAsPaid = existingPayment.status === 'paid';
@@ -456,7 +519,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       }
 
       if (isApprovingNow) {
-        const remaining = clampMoney(reservation.totalAmount - reservation.paidAmount);
+        const remaining = clampMoney(Number(reservation.totalAmount) - ledgerPaid);
 
         if (remaining <= 0) {
           throw new Error('This reservation is already fully paid.');
@@ -465,21 +528,41 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
         sanitizedAmount = Math.min(sanitizedAmount, remaining);
       }
 
-      const dbPayload: Record<string, unknown> = {};
+      const updatePayload: Record<string, any> = {
+        updated_at: new Date().toISOString(),
+      };
 
-      if (paymentUpdate.status !== undefined) dbPayload.status = paymentUpdate.status;
-      if (paymentUpdate.amount !== undefined || isApprovingNow) dbPayload.amount = sanitizedAmount;
-      if (paymentUpdate.method !== undefined) dbPayload.method = paymentUpdate.method;
-      if (paymentUpdate.proofOfPayment !== undefined) {
-        dbPayload.proofOfPayment = paymentUpdate.proofOfPayment;
+      if (paymentUpdate.amount !== undefined || isApprovingNow) {
+        updatePayload.amount = sanitizedAmount;
       }
-      if (paymentUpdate.notes !== undefined) dbPayload.notes = paymentUpdate.notes;
 
-      if (Object.keys(dbPayload).length === 0) return;
+      if (paymentUpdate.method !== undefined) {
+        updatePayload.method = paymentUpdate.method;
+      }
 
-      const { data: updatedRow, error } = await supabase
+      if (paymentUpdate.status !== undefined) {
+        updatePayload.status = paymentUpdate.status;
+      }
+
+      if (paymentUpdate.proofOfPayment !== undefined) {
+        updatePayload.proofOfPayment = paymentUpdate.proofOfPayment;
+      }
+
+      if (paymentUpdate.notes !== undefined) {
+        updatePayload.notes = paymentUpdate.notes;
+      }
+
+      if (paymentUpdate.paymentMethodId !== undefined) {
+        updatePayload.payment_method_id = paymentUpdate.paymentMethodId;
+      }
+
+      if (paymentUpdate.paymentMethodSnapshot !== undefined) {
+        updatePayload.payment_method_snapshot = paymentUpdate.paymentMethodSnapshot;
+      }
+
+      const { data, error } = await supabase
         .from('payments')
-        .update(dbPayload)
+        .update(updatePayload)
         .eq('payment_id', id)
         .select(
           'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot'
@@ -488,7 +571,8 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
 
-      const finalPayment = mapPaymentRow(updatedRow);
+      const finalPayment = mapPaymentRow(data);
+
       const updatedPaymentForAudit = buildAuditSnapshot(existingPayment, {
         ...paymentUpdate,
         amount:
@@ -496,6 +580,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
             ? sanitizedAmount
             : existingPayment.amount,
       });
+
       const changedFields = getChangedFields(existingPayment, {
         ...paymentUpdate,
         amount:
@@ -580,6 +665,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
     [
       addAuditLog,
       addLedgerEntry,
+      getReservationLedgerNetPaid,
       payments,
       recalculateReservationPaidAmount,
       refreshPayments,
@@ -587,6 +673,91 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       user?.id,
     ]
   );
+
+  const issueRefund = useCallback(
+  async ({
+    reservationId,
+    paymentId = null,
+    amount,
+    method = null,
+    notes = null,
+    referenceNo = null,
+  }: {
+    reservationId: string;
+    paymentId?: string | null;
+    amount: number;
+    method?: PaymentMethod | null;
+    notes?: string | null;
+    referenceNo?: string | null;
+  }) => {
+    const refundAmount = clampMoney(Number(amount));
+
+    if (refundAmount <= 0) {
+      throw new Error('Refund amount must be greater than zero.');
+    }
+
+    const reservation = reservations.find((r) => r.id === reservationId);
+    if (!reservation) {
+      throw new Error('Reservation not found.');
+    }
+
+    const netPaid = await getReservationLedgerNetPaid(reservationId);
+
+    if (netPaid <= 0) {
+      throw new Error('No refundable balance available.');
+    }
+
+    if (refundAmount > netPaid) {
+      throw new Error(
+        `Refund cannot exceed ₱${netPaid.toFixed(2)}.`
+      );
+    }
+
+    let linkedPayment: Payment | undefined;
+
+    if (paymentId) {
+      linkedPayment = payments.find((p) => p.id === paymentId);
+
+      if (!linkedPayment) {
+        throw new Error('Linked payment not found.');
+      }
+
+      if (linkedPayment.status !== 'paid') {
+        throw new Error('Only approved payments can be refunded.');
+      }
+    }
+
+    await addLedgerEntry({
+      userId: reservation.userId,
+      reservationId,
+      paymentId: paymentId ?? null,
+      entryType: 'refund',
+      amount: refundAmount,
+      method: method ?? linkedPayment?.method ?? null,
+      status: 'verified',
+      referenceNo,
+      description: linkedPayment
+        ? `Refund for payment ${linkedPayment.publicId ?? linkedPayment.id}`
+        : `Refund for reservation ${reservation.publicId ?? reservation.id}`,
+      notes,
+      recordedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      createdBy: user?.id ?? null,
+    });
+
+    await recalculateReservationPaidAmount(reservationId);
+    await refreshPayments();
+  },
+  [
+    addLedgerEntry,
+    getReservationLedgerNetPaid,
+    payments,
+    recalculateReservationPaidAmount,
+    refreshPayments,
+    reservations,
+    user?.id,
+  ]
+);
 
   const getPaymentsByUserId = useCallback(
     (userId: string) => payments.filter((p) => p.userId === userId),
@@ -602,6 +773,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       refreshPayments,
       getPaymentsByUserId,
       fetchPaymentsPage,
+      issueRefund,
     }),
     [
       payments,
@@ -611,6 +783,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       refreshPayments,
       getPaymentsByUserId,
       fetchPaymentsPage,
+      issueRefund,
     ]
   );
 

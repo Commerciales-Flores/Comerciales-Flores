@@ -145,7 +145,7 @@ export default function ReviewModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={handleClose}
-            className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm"
+            className="fixed inset-0 z-[100] bg-black/40 "
           />
 
           <div className="fixed inset-0 z-[110] flex items-end justify-center p-0 sm:items-center sm:p-4">

@@ -34,7 +34,7 @@ export default function SessionWarningModal({
     <div
       className={`fixed inset-0 z-[110] flex items-center justify-center p-4 transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] ${
         visible
-          ? 'bg-slate-950/50 backdrop-blur-sm'
+          ? 'bg-slate-950/50 '
           : 'bg-slate-950/0 backdrop-blur-0 pointer-events-none'
       }`}
     >

@@ -283,7 +283,7 @@ export default function Login() {
                     <img
                       src={previousUser.profilePictureUrl}
                       alt={previousUser.name}
-                      className="size-24 rounded-full object-cover border-4 border-white/10 shadow-lg"
+                      className="size-40 rounded-full object-cover border-4 border-white/10 shadow-lg"
                     />
                   ) : (
                     <User className="size-24 text-blue-400" strokeWidth={1} />
@@ -293,7 +293,7 @@ export default function Login() {
                 <Lock className="size-24 text-blue-400" strokeWidth={1.5} />
               )}
 
-              <div className="mt-8 text-center space-y-2">
+              <div className="mt-3 text-center space-y-2">
                 <h2 className="text-3xl font-bold tracking-tight text-white animate-in slide-in-from-bottom-2 duration-700 delay-150">
                   {previousUser ? `Welcome Back, ${previousUser.name}` : 'Welcome'}
                 </h2>
@@ -489,7 +489,7 @@ export default function Login() {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 bg-slate-900/60  flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-[2rem] shadow-2xl max-w-md w-full p-10 animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center mb-8">
               <h2 className="text-2xl font-bold text-slate-900 tracking-tight">

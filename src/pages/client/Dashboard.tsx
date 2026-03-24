@@ -500,7 +500,7 @@ export default function ClientDashboard() {
     <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">
       ALERTS
     </p>
-    <h2 className="mt-1 text-base font-semibold text-white">
+    <h2 className="mt-1 text-sm font-semibold text-white">
       Notifications & Updates
     </h2>
     <p className="mt-1 text-xs text-gray-400">
@@ -516,7 +516,7 @@ export default function ClientDashboard() {
             key={notification.id}
             className="rounded-2xl border border-gray-800 bg-white/5 p-3"
           >
-            <p className="text-sm leading-relaxed text-white">
+            <p className="text-[12px] leading-relaxed text-white">
               {notification.message}
             </p>
 
@@ -528,7 +528,7 @@ export default function ClientDashboard() {
       </div>
     ) : (
       <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-700 bg-white/5 py-8 text-center">
-        <p className="text-sm font-medium text-gray-300">
+        <p className="text-[12px] font-medium text-gray-300">
           You're all caught up 🎉
         </p>
         <p className="mt-1 text-xs text-gray-500">

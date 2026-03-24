@@ -1034,7 +1034,7 @@ const getParkingSlotState = useCallback(
         setTimeout(() => {
           setShowReservationModal(false);
           setReservationSuccess(false);
-        }, 2000);
+        }, 7000);
       } catch (error) {
         const message =
           error instanceof Error
@@ -1387,19 +1387,29 @@ const getParkingSlotState = useCallback(
         )}
 
         {showReservationModal && selectedUnitData && (
-<div className="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-black/40 p-4">
-            <div className="my-8 max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
-              <div className="flex items-start justify-between border-b border-gray-100 px-6 py-5">
+          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-black/40 p-4">
+                      <div
+            className={`my-8 max-h-[90vh] w-full overflow-y-auto rounded-3xl bg-white shadow-2xl ${
+              reservationSuccess ? 'max-w-md' : 'max-w-5xl'
+            }`}
+          >
+                        <div
+            className={`flex items-start justify-between border-b border-gray-100 ${
+              reservationSuccess ? 'px-5 py-4' : 'px-6 py-5'
+            }`}
+          >
                 <div>
-                  <div className="mb-1 text-sm font-medium text-blue-600">
-                    {getUnitTypeLabel(selectedUnitData.type)}
-                  </div>
-                  <h2 className="text-xl font-bold text-gray-900">
-                    {selectedUnitData.name}
-                  </h2>
-                  <div className="mt-1 text-sm text-gray-500">
-                    📍 {selectedUnitData.location}
-                  </div>
+                  <div className={`mb-1 ${reservationSuccess ? 'text-xs' : 'text-sm'} font-medium text-blue-600`}>
+                  {getUnitTypeLabel(selectedUnitData.type)}
+                </div>
+
+                <h2 className={`${reservationSuccess ? 'text-lg' : 'text-xl'} font-bold text-gray-900`}>
+                  {selectedUnitData.name}
+                </h2>
+
+                <div className={`mt-1 ${reservationSuccess ? 'text-xs' : 'text-sm'} text-gray-500`}>
+                  📍 {selectedUnitData.location}
+                </div>
                 </div>
 
                 <button
@@ -1412,73 +1422,70 @@ const getParkingSlotState = useCallback(
               </div>
 
               {reservationSuccess ? (
-                <div className="p-6">
-                  <div className="mx-auto max-w-2xl rounded-3xl border border-green-200 bg-gradient-to-br from-green-50 to-white p-8 text-center shadow-sm">
-                    <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-full bg-green-100">
-                      <CheckCircle2 className="size-8 text-green-600" />
-                    </div>
+  <div className="flex justify-center p-4 sm:p-5">
+    <div className="w-full max-w-md rounded-3xl border border-green-200 bg-gradient-to-br from-green-50 to-white p-5 text-center shadow-sm">
+      <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-green-100">
+        <CheckCircle2 className="size-6 text-green-600" />
+      </div>
 
-                    <h3 className="mb-2 text-2xl font-bold text-gray-900">
-                      Reservation Request Submitted
-                    </h3>
+      <h3 className="text-base font-bold text-gray-900">
+        Reservation Request Submitted
+      </h3>
 
-                    <p className="mb-6 text-sm text-gray-600">
-                      Your reservation for <strong>{selectedUnitData.name}</strong> has
-                      been received and is now pending admin approval.
-                    </p>
+      <p className="mt-1 text-sm text-gray-600">
+        Your reservation for <strong>{selectedUnitData.name}</strong> is now pending admin approval.
+      </p>
 
-                    <div className="mb-6 grid gap-3 text-left sm:grid-cols-2">
-                      <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-                        <div className="mb-1 flex items-center gap-2 text-xs uppercase tracking-wide text-gray-500">
-                          <CalendarDays className="size-4" />
-                          Schedule
-                        </div>
-                        <p className="text-sm font-semibold text-gray-900">
-                          {formatDate(reservationForm.startDate)} – {formatDate(reservationForm.endDate)}
-                        </p>
-                      </div>
+      <div className="mt-4 space-y-2 text-left">
+        <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            Schedule
+          </p>
+          <p className="mt-1 text-sm font-semibold text-gray-900">
+            {formatDate(reservationForm.startDate)} – {formatDate(reservationForm.endDate)}
+          </p>
+        </div>
 
-                      <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-                        <div className="mb-1 flex items-center gap-2 text-xs uppercase tracking-wide text-gray-500">
-                          <Clock3 className="size-4" />
-                          Visit Mode
-                        </div>
-                        <p className="text-sm font-semibold text-gray-900">
-                          {reservationForm.modeOfVisit === "onsite"
-                            ? "On-site Visit"
-                            : "Online / Digital Process"}
-                        </p>
-                      </div>
+        <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+            Visit Mode
+          </p>
+          <p className="mt-1 text-sm font-semibold text-gray-900">
+            {reservationForm.modeOfVisit === 'onsite'
+              ? 'On-site Visit'
+              : 'Online / Digital Process'}
+          </p>
+        </div>
 
-                      <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-                        <div className="mb-1 flex items-center gap-2 text-xs uppercase tracking-wide text-gray-500">
-                          <MapPin className="size-4" />
-                          Location
-                        </div>
-                        <p className="text-sm font-semibold text-gray-900">
-                          {selectedUnitData.location}
-                        </p>
-                      </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              Location
+            </p>
+            <p className="mt-1 text-sm font-semibold text-gray-900">
+              {selectedUnitData.location}
+            </p>
+          </div>
 
-                      <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
-                        <div className="mb-1 flex items-center gap-2 text-xs uppercase tracking-wide text-gray-500">
-                          <Wallet className="size-4" />
-                          Estimated Total
-                        </div>
-                        <p className="text-sm font-semibold text-gray-900">
-                          {hidePaymentSection
-                            ? "No payment for viewing"
-                            : formatCurrency(estimatedTotal)}
-                        </p>
-                      </div>
-                    </div>
+          <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              Estimated Total
+            </p>
+            <p className="mt-1 text-sm font-semibold text-gray-900">
+              {hidePaymentSection
+                ? 'No payment for viewing'
+                : formatCurrency(estimatedTotal)}
+            </p>
+          </div>
+        </div>
+      </div>
 
-                    <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
-                      We’ll notify you once your request has been reviewed.
-                    </div>
-                  </div>
-                </div>
-              ) : (
+      <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm text-blue-700">
+        We’ll notify you once your request has been reviewed.
+      </div>
+    </div>
+  </div>
+) : (
                 <div className="p-6">
                   <div className="grid gap-6 md:grid-cols-2">
                     <div>
@@ -2230,7 +2237,7 @@ const getParkingSlotState = useCallback(
 
         {isSlotPanelOpen && (
           <div
-            className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-100/80 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-100/80 p-4 "
             onClick={() => setIsSlotPanelOpen(false)}
           >
             <div

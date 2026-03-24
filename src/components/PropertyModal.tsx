@@ -63,7 +63,7 @@ export default function UnitModal({ Unit, onClose }: Props) {
       aria-labelledby="unit-modal-title"
     >
       <div
-        className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/30 "
         onClick={onClose}
         aria-hidden="true"
       />

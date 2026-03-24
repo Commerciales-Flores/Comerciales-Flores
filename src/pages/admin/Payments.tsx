@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useData } from '../../contexts/DataContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { usePayments } from '../../contexts/PaymentsContext';
+import { useRecords } from '../../contexts/RecordsContext';
 import { formatDate } from '../../utils/date';
+
 import {
   CreditCard,
   CheckCircle,
@@ -40,7 +42,7 @@ type PaymentView = {
   date: string;
   dateMs: number;
   dateLabel: string;
-  method: string;
+  method: Payment['method'];
   notes?: string;
   proofOfPayment?: string;
   userId: string;
@@ -86,9 +88,10 @@ function getStatusLabel(status: PaymentFilterStatus | PaymentView['status']) {
 export default function AdminPayments() {
   const { reservations, getUserById } = useData();
   const { sendPaymentNotification } = useNotifications();
-  const { fetchPaymentsPage, updatePayment } = usePayments();
+  const { fetchPaymentsPage, updatePayment, issueRefund } = usePayments();
 
   const [payments, setPayments] = useState<Payment[]>([]);
+  
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
@@ -101,13 +104,18 @@ export default function AdminPayments() {
 
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
+  const { ledgers } = useRecords();
 
   const navigate = useNavigate();
 
   const debouncedSearch = useDebouncedValue(searchTerm, 250);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
   const [pageInput, setPageInput] = useState('1');
-  
+
+  const [refundPayment, setRefundPayment] = useState<PaymentView | null>(null);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundNotes, setRefundNotes] = useState('');
+    
 
   useEffect(() => {
     setPageInput(String(page));
@@ -174,6 +182,41 @@ export default function AdminPayments() {
     };
   }, [fetchPaymentsPage, page, pageSize, filterStatus, debouncedSearch]);
 
+
+  const ledgerTotalsByReservationId = useMemo(() => {
+  const map = new Map<string, number>();
+
+  ledgers.forEach((entry) => {
+    if (!entry.reservationId) return;
+
+    const amount = Number(entry.amount || 0);
+    const current = map.get(entry.reservationId) ?? 0;
+
+    switch (entry.entryType) {
+      case 'payment':
+      case 'deposit':
+      case 'balance':
+        map.set(entry.reservationId, current + amount);
+        break;
+      case 'refund':
+        map.set(entry.reservationId, current - amount);
+        break;
+      case 'discount':
+        map.set(entry.reservationId, current - amount);
+        break;
+      case 'penalty':
+      case 'adjustment':
+        map.set(entry.reservationId, current + amount);
+        break;
+      default:
+        break;
+    }
+  });
+
+  return map;
+}, [ledgers]);
+  
+
   const paymentViews = useMemo<PaymentView[]>(() => {
     const reservationMap = new Map(reservations.map((r) => [r.id, r]));
 
@@ -187,11 +230,15 @@ export default function AdminPayments() {
         ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email
         : 'Unknown User';
 
-      const reservationPaidAmount = reservation?.paidAmount ?? 0;
-      const reservationTotalAmount = reservation?.totalAmount ?? 0;
+      const reservationTotalAmount = Number(reservation?.totalAmount || 0);
+
+      const paidFromLedger = Number(
+        ledgerTotalsByReservationId.get(payment.reservationId) || 0
+      );
+
       const progress =
         reservationTotalAmount > 0
-          ? Math.min((reservationPaidAmount / reservationTotalAmount) * 100, 100)
+          ? Math.min((paidFromLedger / reservationTotalAmount) * 100, 100)
           : 0;
       const derivedStatus = getReservationPaymentStatus(progress);
 
@@ -213,7 +260,7 @@ export default function AdminPayments() {
         userFullName,
         unitName: reservation?.unitName ?? 'Not Found',
         reservationTotalAmount,
-        reservationPaidAmount,
+        reservationPaidAmount: paidFromLedger,
         progress,
         derivedStatus,
         searchableText: [
@@ -311,6 +358,41 @@ export default function AdminPayments() {
     },
     [updatePayment, fetchPaymentsPage, page, pageSize, filterStatus, debouncedSearch]
   );
+  const openRefundModal = useCallback((payment: PaymentView) => {
+    setRefundPayment(payment);
+    setRefundAmount('');
+    setRefundNotes('');
+  }, []);
+
+  const handleRefund = async () => {
+  if (!refundPayment) return;
+
+  try {
+    await issueRefund({
+      reservationId: refundPayment.reservationId,
+      paymentId: refundPayment.id,
+      amount: Number(refundAmount),
+      method: refundPayment.method,
+      notes: refundNotes,
+    });
+
+    setRefundPayment(null);
+    setRefundAmount('');
+    setRefundNotes('');
+
+    const result = await fetchPaymentsPage({
+      page,
+      pageSize,
+      status: filterStatus,
+      searchTerm: debouncedSearch,
+    });
+
+    setPayments(result.data);
+    setTotalCount(result.count);
+  } catch (err) {
+    alert(err instanceof Error ? err.message : 'Refund failed');
+  }
+};
 
   const handleExportCSV = useCallback(() => {
     if (paymentViews.length === 0) {
@@ -585,6 +667,14 @@ export default function AdminPayments() {
                     </button>
                   </>
                 )}
+                {payment.status === 'paid' && (
+                  <button
+                    onClick={() => openRefundModal(payment)}
+                    className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-amber-50 px-3 py-2 text-sm font-medium text-amber-600 transition hover:bg-amber-100"
+                  >
+                    Refund
+                  </button>
+                )}
               </div>
             </div>
           ))
@@ -763,6 +853,15 @@ export default function AdminPayments() {
                               </button>
                             </>
                           )}
+                          {payment.status === 'paid' && (
+                          <button
+                            onClick={() => openRefundModal(payment)}
+                            className="rounded-lg p-2 text-amber-600 hover:bg-amber-50"
+                            title="Refund"
+                          >
+                            💸
+                          </button>
+                        )}
                         </div>
                       </td>
                     </tr>
@@ -829,7 +928,7 @@ export default function AdminPayments() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 "
           >
             <motion.div
               initial={{ opacity: 0, y: 20, scale: 0.98 }}
@@ -949,6 +1048,95 @@ export default function AdminPayments() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+  {refundPayment && (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={() => setRefundPayment(null)}
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 20, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 20, scale: 0.98 }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-3xl bg-white shadow-2xl"
+      >
+        <div className="flex items-start justify-between border-b border-gray-200 px-6 py-5">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">Issue Refund</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Payment:{' '}
+              <span className="font-medium text-gray-700">
+                {refundPayment.publicId ?? refundPayment.id}
+              </span>
+            </p>
+          </div>
+
+          <button
+            onClick={() => setRefundPayment(null)}
+            className="rounded-full p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4 p-6">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Refund Amount
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={refundAmount}
+              onChange={(e) => setRefundAmount(e.target.value)}
+              className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-100"
+              placeholder="Enter refund amount"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Reason / Notes
+            </label>
+            <textarea
+              value={refundNotes}
+              onChange={(e) => setRefundNotes(e.target.value)}
+              rows={4}
+              className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-100"
+              placeholder="Enter refund reason"
+            />
+          </div>
+
+          <div className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            This will create a refund ledger entry and reduce the reservation’s paid amount.
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={() => setRefundPayment(null)}
+              className="flex-1 rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+
+            <button
+              onClick={handleRefund}
+              className="flex-1 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-700"
+            >
+              Confirm Refund
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  )}
+</AnimatePresence>
 
       <AnimatePresence>
         {proofImageUrl && (

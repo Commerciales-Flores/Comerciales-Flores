@@ -248,7 +248,7 @@ const FilterBottomSheet = React.memo(function FilterBottomSheet({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm md:hidden"
+            className="fixed inset-0 z-[60] bg-black/40  md:hidden"
           />
           <motion.div
             initial={{ y: '100%' }}
@@ -304,7 +304,7 @@ const QuickViewPanel = React.memo(function QuickViewPanel({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-black/40 backdrop-blur-md"
+            className="absolute inset-0 bg-gray-800/40 shadow-lg"
           />
 
           <motion.div

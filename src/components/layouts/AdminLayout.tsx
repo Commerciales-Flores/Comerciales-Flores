@@ -238,7 +238,7 @@ export default function AdminLayout() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={closeMobileNav}
-                className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm"
+                className="absolute inset-0 bg-gray-900/40 "
               />
 
               <motion.div

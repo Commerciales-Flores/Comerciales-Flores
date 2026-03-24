@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
+import { useReservations } from '../../contexts/ReservationsContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatDate } from '../../utils/date';
 import {
@@ -12,6 +13,7 @@ import {
   Filter,
   ChevronDown,
   Notebook,
+  User,
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { getUnitTypeLabel } from '../../utils/propertyHelpers';
@@ -130,7 +132,7 @@ function ReservationFilterBottomSheet({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm md:hidden"
+            className="fixed inset-0 z-[60] bg-black/40  md:hidden"
           />
 
           <motion.div
@@ -188,7 +190,8 @@ function ReservationFilterBottomSheet({
 
 export default function ClientReservations() {
   const { user } = useAuth();
-  const { getReservationsByUserId, units, deleteReservation } = useData();
+  const { units } = useData();
+const { getReservationsByUserId, deleteReservation } = useReservations();
   
 const [expandedDetailsId, setExpandedDetailsId] = useState<string | null>(null);
 
@@ -403,7 +406,7 @@ const toggleDetails = useCallback(
                           </h3>
 
                           <div className="mt-0.5 flex items-center gap-1.5 text-gray-500">
-                            <MapPin className="size-4 text-blue-600" />
+                            <MapPin className="size-4 text-red-600" />
                             <span
                               className={`${uiTypography.bodyText} truncate text-[13px] sm:text-sm`}
                             >
@@ -472,8 +475,8 @@ const toggleDetails = useCallback(
       exit={{ height: 0, opacity: 0 }}
       transition={{ duration: 0.2 }}
     >
-      <div className="space-y-3 px-4 pb-4 sm:px-5 sm:pb-5">
-        <div className="border-t border-gray-100 pt-3">
+      <div className="space-y-2 px-4 pb-4 sm:px-5 sm:pb-5">
+        <div className="border-t border-gray-100 pt-2">
           <button
             type="button"
             onClick={(e) => {
@@ -579,7 +582,7 @@ className="flex w-full items-center justify-between rounded-xl border border-gra
                         {reservation.attendees && (
                           <div className="flex items-center justify-between gap-3">
                             <div className="flex items-center gap-2 text-gray-500">
-                              <Notebook className="size-4 text-pink-600" />
+                              <User className="size-4 text-violet-600" />
                               <span className={uiTypography.miniStatLabel}>Attendees</span>
                             </div>
                             <span

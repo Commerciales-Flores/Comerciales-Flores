@@ -226,7 +226,7 @@ export default function AllUnits() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsFilterPanelOpen(false)}
-              className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm md:hidden"
+              className="fixed inset-0 z-[60] bg-slate-900/40  md:hidden"
             />
 
             <motion.div

@@ -25,6 +25,7 @@ interface RecordsContextType {
   businessSlots: BusinessSlot[];
 
   addLedgerEntry: (entry: Omit<LedgerEntry, 'id'>) => Promise<string>;
+  
   addAuditLog: (
     log: Omit<AuditLog, 'id' | 'timestamp'> & { targetPublicId?: string }
   ) => Promise<string>;
@@ -206,8 +207,10 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
   const addLedgerEntry = async (
     entry: Omit<LedgerEntry, 'id'>
   ): Promise<string> => {
+    console.log('ledger insert reservation_id:', entry.reservationId);
     const { data, error } = await supabase
       .from('ledger')
+      
       .insert([
         {
           user_id: entry.userId,
@@ -216,7 +219,7 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
           entry_type: entry.entryType,
           amount: entry.amount,
           method: entry.method,
-          status: entry.status,
+          status: entry.status, 
           reference_no: entry.referenceNo,
           description: entry.description,
           notes: entry.notes,

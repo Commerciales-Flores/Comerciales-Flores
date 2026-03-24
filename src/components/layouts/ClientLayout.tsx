@@ -263,7 +263,7 @@ const unreadMessages = useMemo(
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={() => setMobileNavOpen(false)}
-        className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm"
+        className="absolute inset-0 bg-gray-900/40 "
       />
 
       {/* Drawer Content */}

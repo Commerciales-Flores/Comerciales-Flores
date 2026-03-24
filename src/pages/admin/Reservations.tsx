@@ -26,19 +26,28 @@ import AdminActionModal from '../../components/modals/AdminActionModal';
 import { motion } from 'framer-motion';
 import EmptyState from '../../components/common/EmptyState';
 
-type ReservationFilterStatus = 'all' | 'pending' | 'confirmed' | 'cancelled';
+type ReservationFilterStatus =
+  | 'all'
+  | 'pending'
+  | 'confirmed'
+  | 'overdue'
+  | 'completed'
+  | 'cancelled'
+  | 'rejected';
 
-function enrichReservation(reservation: any, user: any) {
+function enrichReservation(reservation: any, user: any, unit?: any) {
   const reservationPublicId = reservation.publicId ?? reservation.id;
   const userPublicId = user?.publicId ?? user?.id ?? '';
-  const fullName = `${user?.first_name ?? ''} ${user?.last_name ?? ''}`.trim();
+  const fullName = `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim();
 
   return {
     ...reservation,
     linkedUser: user ?? null,
+    linkedUnit: unit ?? null,
     reservationPublicId,
     userPublicId,
     fullName,
+    location: reservation.location ?? unit?.location ?? 'Not Specified',
     requestDateMs: new Date(reservation.requestDate).getTime(),
     startDateLabel: formatDate(reservation.startDate),
     endDateLabel: formatDate(reservation.endDate),
@@ -56,10 +65,34 @@ const statusColors: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700 border-amber-200',
   approved: 'bg-emerald-100 text-emerald-700 border-emerald-200',
   confirmed: 'bg-green-100 text-green-700 border-green-200',
+  overdue: 'bg-orange-100 text-orange-700 border-orange-200',
   completed: 'bg-blue-100 text-blue-700 border-blue-200',
   cancelled: 'bg-rose-100 text-rose-700 border-rose-200',
   rejected: 'bg-red-100 text-red-700 border-red-200',
 };
+
+function getRemainingBalance(reservation: {
+  totalAmount?: number | null;
+  paidAmount?: number | null;
+}) {
+  return Math.max(
+    Number(reservation.totalAmount || 0) - Number(reservation.paidAmount || 0),
+    0
+  );
+}
+
+function isFullyPaid(reservation: {
+  totalAmount?: number | null;
+  paidAmount?: number | null;
+}) {
+  return getRemainingBalance(reservation) <= 0;
+}
+
+function hasRecordedPayment(reservation: {
+  paidAmount?: number | null;
+}) {
+  return Number(reservation.paidAmount || 0) > 0;
+}
 
 function useDebouncedValue<T>(value: T, delay = 250) {
   const [debounced, setDebounced] = useState(value);
@@ -73,12 +106,12 @@ function useDebouncedValue<T>(value: T, delay = 250) {
 }
 
 export default function AdminReservations() {
-  const { getUserById, updateReservation } = useData();
+  const { getUserById, updateReservation, getUnitById } = useData();
   const { fetchReservationsPage } = useReservations();
   const {
     sendReservationNotification,
     sendVisitNotification,
-    sendReviewReminderNotification,
+    sendOverdueReservationNotification,
   } = useNotifications();
 
   const [reservations, setReservations] = useState<any[]>([]);
@@ -165,11 +198,12 @@ const handlePageInputKeyDown = useCallback(
   }, [fetchReservationsPage, page, pageSize, filterStatus, debouncedSearch]);
 
   const enrichedReservations = useMemo<EnrichedReservation[]>(() => {
-    return reservations.map((reservation) => {
-      const user = getUserById(reservation.userId);
-      return enrichReservation(reservation, user);
-    });
-  }, [reservations, getUserById]);
+  return reservations.map((reservation) => {
+    const user = getUserById(reservation.userId);
+    const unit = getUnitById(reservation.unitId);
+    return enrichReservation(reservation, user, unit);
+  });
+}, [reservations, getUserById, getUnitById]);
 
   const reservationCounts = useMemo(() => {
     return enrichedReservations.reduce(
@@ -294,20 +328,21 @@ const handleComplete = useCallback(
       action: 'completed',
     });
 
-    await sendReviewReminderNotification({
-      userId: reservation.userId,
-      unitName: reservation.unitName,
-    });
-
     setSelectedReservation(null);
     await reloadPage();
   },
-  [
-    updateReservation,
-    sendReservationNotification,
-    sendReviewReminderNotification,
-    reloadPage,
-  ]
+  [updateReservation, sendReservationNotification, reloadPage]
+);
+
+const handleSendOverdueNotice = useCallback(
+  async (reservation: EnrichedReservation) => {
+    await sendOverdueReservationNotification({
+      userId: reservation.userId,
+      reservationPublicId: reservation.reservationPublicId,
+      remainingBalance: getRemainingBalance(reservation),
+    });
+  },
+  [sendOverdueReservationNotification]
 );
 
   const closeDetails = useCallback(() => setSelectedReservation(null), []);
@@ -371,7 +406,7 @@ const handleComplete = useCallback(
             </div>
 
             <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-              {(['all', 'pending', 'confirmed', 'cancelled'] as const).map((status) => (
+              {(['all', 'pending', 'confirmed', 'overdue', 'completed', 'cancelled', 'rejected'] as const).map((status) => (
                 <button
                   key={status}
                   onClick={() => setFilterStatus(status)}
@@ -533,11 +568,25 @@ const handleComplete = useCallback(
   </>
 )}
 
-{reservation.status === 'confirmed' && (
+              {reservation.status === 'confirmed' && (
   <button
-    onClick={() => handleComplete(reservation)}
-    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
-    title="Mark as Completed"
+    onClick={() => {
+      if (!isFullyPaid(reservation)) return;
+      handleComplete(reservation);
+    }}
+    disabled={!isFullyPaid(reservation)}
+    className={`p-2 rounded-lg ${
+      isFullyPaid(reservation)
+        ? 'text-blue-600 hover:bg-blue-50'
+        : 'cursor-not-allowed text-gray-300'
+    }`}
+    title={
+      isFullyPaid(reservation)
+        ? 'Mark as Completed'
+        : `Cannot mark as completed until fully paid. Remaining: ${formatCurrency(
+            getRemainingBalance(reservation)
+          )}`
+    }
   >
     <CheckCircle className="size-4" />
   </button>
@@ -597,17 +646,39 @@ const handleComplete = useCallback(
                           </div>
                         </td>
 
-                        <td className="px-6 py-4 text-sm text-gray-500 w-[200px]">
+                        <td className="px-6 py-4 text-xs text-gray-500 w-[200px]">
                           <div>{reservation.startDateLabel}</div>
-                          <div className="text-xs text-gray-400">
+                          <div className="text-xs text-gray-500">
                             to {reservation.endDateLabel}
                           </div>
                         </td>
 
 
-                        <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[150px]">
-                          {formatCurrency(reservation.totalAmount)}
-                        </td>
+                        <td className="px-6 py-4 w-[180px]">
+                        <div className="flex flex-col gap-1">
+                          {/* Price */}
+                          <span className="text-sm font-semibold text-gray-900">
+                            {formatCurrency(reservation.totalAmount)}
+                          </span>
+
+                          {/* Payment Status Badge */}
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full w-fit ${
+                              isFullyPaid(reservation)
+                                ? 'bg-green-100 text-green-700'
+                                : hasRecordedPayment(reservation)
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-gray-100 text-gray-500'
+                            }`}
+                          >
+                            {isFullyPaid(reservation)
+                              ? 'Paid'
+                              : hasRecordedPayment(reservation)
+                              ? 'Partial'
+                              : 'Unpaid'}
+                          </span>
+                        </div>
+                      </td>
 
                         <td className="px-6 py-4 w-[180px] align-middle">
   <div className="space-y-2">
@@ -615,7 +686,7 @@ const handleComplete = useCallback(
       className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
         reservation.modeOfVisit === 'onsite'
           ? 'border-blue-100 bg-blue-50 text-blue-700'
-          : 'border-gray-200 bg-gray-50 text-gray-600'
+          : 'border-green-200 bg-green-400 text-white'
       }`}
     >
       {reservation.modeOfVisit?.replace('_', ' ') || 'online'}
@@ -696,7 +767,7 @@ const handleComplete = useCallback(
 
     <button
       onClick={() => handleReject(reservation)}
-      className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg"
+      className="p-2 text-rose-600 hover:bg-red-50 rounded-lg"
       title="Reject"
     >
       <XCircle className="size-4" />
@@ -706,14 +777,27 @@ const handleComplete = useCallback(
 
 {reservation.status === 'confirmed' && (
   <button
-    onClick={() => handleComplete(reservation)}
-    className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg"
-    title="Mark as Completed"
+    onClick={() => {
+      if (!isFullyPaid(reservation)) return;
+      handleComplete(reservation);
+    }}
+    disabled={!isFullyPaid(reservation)}
+    className={`p-2 rounded-lg ${
+      isFullyPaid(reservation)
+        ? 'text-blue-600 hover:bg-blue-50'
+        : 'cursor-not-allowed text-gray-300'
+    }`}
+    title={
+      isFullyPaid(reservation)
+        ? 'Mark as Completed'
+        : `Cannot mark as completed until fully paid. Remaining: ${formatCurrency(
+            getRemainingBalance(reservation)
+          )}`
+    }
   >
     <CheckCircle className="size-4" />
   </button>
-)}
-                          </div>
+)}                       </div>
                         </td>
                       </tr>
                     ))}
@@ -786,7 +870,7 @@ const handleComplete = useCallback(
             </div>
 
             <div className="grid grid-cols-1 gap-3">
-              {(['all', 'pending', 'confirmed', 'cancelled'] as const).map((status) => (
+              {(['all', 'pending', 'confirmed', 'overdue', 'completed', 'cancelled', 'rejected'] as const).map((status) => (
                 <button
                   key={status}
                   onClick={() => {
@@ -844,11 +928,7 @@ const handleComplete = useCallback(
                   <DetailItem
                     icon={<User className="size-4" />}
                     label="Customer"
-                    value={
-                      selectedReservationData.linkedUser
-                        ? `${selectedReservationData.linkedUser.first_name} ${selectedReservationData.linkedUser.last_name}`
-                        : 'Unknown'
-                    }
+                    value={selectedReservationData.fullName || 'Unknown'}
                     subValue={`ID: ${selectedReservationData.userPublicId || selectedReservationData.userId}`}
                   />
 
@@ -980,44 +1060,44 @@ const handleComplete = useCallback(
               </div>
 
               {selectedReservationData.modeOfVisit === 'onsite' && (
-  <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-5">
-    <h4 className="text-[11px] font-semibold text-blue-600 uppercase tracking-wide mb-3 flex items-center gap-2">
-      <Calendar className="size-4" />
-      Onsite Visit Request
-    </h4>
+              <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-5">
+                <h4 className="text-[11px] font-semibold text-blue-600 uppercase tracking-wide mb-3 flex items-center gap-2">
+                  <Calendar className="size-4" />
+                  Onsite Visit Request
+                </h4>
 
-    <div className="space-y-3">
-      <div className="flex justify-between gap-4 text-sm">
-        <span className="text-slate-500">Preferred Schedule</span>
-        <span className="font-semibold text-slate-900 text-right">
-          {selectedReservationData.appointmentDate
-            ? formatDate(selectedReservationData.appointmentDate)
-            : 'N/A'}
-          {selectedReservationData.appointmentTime &&
-            ` • ${selectedReservationData.appointmentTime}`}
-        </span>
-      </div>
+                <div className="space-y-3">
+                  <div className="flex justify-between gap-4 text-sm">
+                    <span className="text-slate-500">Preferred Schedule</span>
+                    <span className="font-semibold text-slate-900 text-right">
+                      {selectedReservationData.appointmentDate
+                        ? formatDate(selectedReservationData.appointmentDate)
+                        : 'N/A'}
+                      {selectedReservationData.appointmentTime &&
+                        ` • ${selectedReservationData.appointmentTime}`}
+                    </span>
+                  </div>
 
-      <div className="flex justify-between gap-4 text-sm">
-        <span className="text-slate-500">Visit Status</span>
-        <span className="font-semibold text-indigo-600 text-right uppercase">
-          {selectedReservationData.visitStatus || 'requested'}
-        </span>
-      </div>
+                  <div className="flex justify-between gap-4 text-sm">
+                    <span className="text-slate-500">Visit Status</span>
+                    <span className="font-semibold text-indigo-600 text-right uppercase">
+                      {selectedReservationData.visitStatus || 'requested'}
+                    </span>
+                  </div>
 
-      {selectedReservationData.confirmedVisitDate && (
-        <div className="flex justify-between gap-4 text-sm">
-          <span className="text-slate-500">Confirmed Schedule</span>
-          <span className="font-semibold text-green-600 text-right">
-            {formatDate(selectedReservationData.confirmedVisitDate)}
-            {selectedReservationData.confirmedVisitTime &&
-              ` • ${selectedReservationData.confirmedVisitTime}`}
-          </span>
-        </div>
-      )}
-    </div>
-  </div>
-)}
+                  {selectedReservationData.confirmedVisitDate && (
+                    <div className="flex justify-between gap-4 text-sm">
+                      <span className="text-slate-500">Confirmed Schedule</span>
+                      <span className="font-semibold text-green-600 text-right">
+                        {formatDate(selectedReservationData.confirmedVisitDate)}
+                        {selectedReservationData.confirmedVisitTime &&
+                          ` • ${selectedReservationData.confirmedVisitTime}`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
               {selectedReservationData.notes && (
                 <div>
@@ -1029,69 +1109,116 @@ const handleComplete = useCallback(
                     “{selectedReservationData.notes}”
                   </div>
                 </div>
-              )}
-            </div>
-
-<div className="flex flex-col gap-4 border-t border-slate-200 bg-white px-6 py-4 sm:flex-row sm:items-center sm:justify-between">              <div className="flex items-center gap-3">
-                <span className="text-sm text-slate-500">Current Status</span>
-                <span
-                  className={`px-3 py-1 text-[11px] font-bold rounded-full border uppercase tracking-wide ${
-                    statusColors[selectedReservationData.status as keyof typeof statusColors]
-                  }`}
-                >
-                  {selectedReservationData.status}
-                </span>
+                )}
               </div>
 
-              <div className="flex gap-2">
-                {selectedReservationData.status === 'pending' && (
-  <>
-    {selectedReservationData.modeOfVisit === 'onsite' && (
-      <>
-        <button
-          onClick={() => handleConfirmVisit(selectedReservationData)}
-          className="px-5 py-2.5 border border-indigo-200 text-indigo-600 rounded-xl hover:bg-indigo-50 font-semibold transition-all"
+            <div className="border-t border-slate-200 bg-white px-6 py-4">
+  <div className="flex flex-col gap-4">
+    <div className="flex items-center gap-3">
+      <span className="text-sm text-slate-500">Current Status</span>
+      <span
+        className={`px-3 py-1 text-[11px] font-bold rounded-full border uppercase tracking-wide ${
+          statusColors[selectedReservationData.status as keyof typeof statusColors]
+        }`}
+      >
+        {selectedReservationData.status}
+      </span>
+    </div>
+
+    {selectedReservationData.status === 'confirmed' && (
+      <div className="flex items-center justify-between gap-4">
+        <div
+          className={`max-w-[70%] rounded-xl px-4 py-3 text-sm ${
+            isFullyPaid(selectedReservationData)
+              ? 'border border-blue-200 bg-blue-50 text-blue-800'
+              : 'border border-amber-200 bg-amber-50 text-amber-800'
+          }`}
         >
-          Confirm Visit
-        </button>
+          {isFullyPaid(selectedReservationData)
+            ? 'This reservation is fully paid and ready to be marked as completed.'
+            : `This reservation still has an outstanding balance of ${formatCurrency(
+                getRemainingBalance(selectedReservationData)
+              )}.`}
+        </div>
 
         <button
-          onClick={() => handleRequestReschedule(selectedReservationData)}
-          className="px-5 py-2.5 border border-amber-200 text-amber-600 rounded-xl hover:bg-amber-50 font-semibold transition-all"
+          onClick={() => {
+            if (!isFullyPaid(selectedReservationData)) return;
+            handleComplete(selectedReservationData);
+          }}
+          disabled={!isFullyPaid(selectedReservationData)}
+          title={
+            isFullyPaid(selectedReservationData)
+              ? 'Mark as Completed'
+              : `Cannot mark as completed until fully paid. Remaining: ${formatCurrency(
+                  getRemainingBalance(selectedReservationData)
+                )}`
+          }
+          className={`shrink-0 px-5 py-2.5 rounded-xl font-semibold transition-all ${
+            isFullyPaid(selectedReservationData)
+              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              : 'cursor-not-allowed bg-gray-200 text-gray-400'
+          }`}
         >
-          Request Reschedule
+          Mark as Completed
         </button>
-      </>
+      </div>
     )}
 
-    <button
-      onClick={() => handleReject(selectedReservationData)}
-      className="px-5 py-2.5 border border-rose-200 text-rose-600 rounded-xl hover:bg-rose-50 font-semibold transition-all"
-    >
-      Reject
-    </button>
+    {(selectedReservationData.status === 'pending' ||
+      selectedReservationData.status === 'overdue') && (
+      <div className="flex gap-2">
+        {selectedReservationData.status === 'pending' && (
+          <>
+            {selectedReservationData.modeOfVisit === 'onsite' && (
+              <>
+                <button
+                  onClick={() => handleConfirmVisit(selectedReservationData)}
+                  className="px-5 py-2.5 border border-indigo-200 text-indigo-600 rounded-xl hover:bg-indigo-50 font-semibold transition-all"
+                >
+                  Confirm Visit
+                </button>
 
-    <button
-      onClick={() => handleApprove(selectedReservationData)}
-      className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-semibold transition-all"
-    >
-      Approve
-    </button>
-  </>
-)}
+                <button
+                  onClick={() => handleRequestReschedule(selectedReservationData)}
+                  className="px-5 py-2.5 border border-amber-200 text-amber-600 rounded-xl hover:bg-amber-50 font-semibold transition-all"
+                >
+                  Request Reschedule
+                </button>
+              </>
+            )}
 
-{selectedReservationData.status === 'confirmed' && (
-  <button
-    onClick={() => handleComplete(selectedReservationData)}
-    className="px-5 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-semibold transition-all"
-  >
-    Mark as Completed
-  </button>
-)}
-              </div>
+            <button
+              onClick={() => handleReject(selectedReservationData)}
+              className="px-5 py-2.5 border border-rose-200 text-rose-600 rounded-xl hover:bg-rose-500 hover:text-white font-semibold transition-all"
+            >
+              Reject
+            </button>
+
+            <button
+              onClick={() => handleApprove(selectedReservationData)}
+              className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-semibold transition-all"
+            >
+              Approve
+            </button>
+          </>
+        )}
+
+        {selectedReservationData.status === 'overdue' && (
+          <button
+            onClick={() => handleSendOverdueNotice(selectedReservationData)}
+            className="px-5 py-2.5 rounded-xl font-semibold border border-orange-200 text-orange-600 hover:bg-orange-50 transition-all"
+          >
+            Send Overdue Notice
+          </button>
+        )}
+      </div>
+    )}
+  </div>
+</div>
             </div>
           </div>
-        </div>
+        
       )}
 
       <button
