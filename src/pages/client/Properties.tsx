@@ -11,6 +11,7 @@ import { useReviews } from '../../contexts/ReviewsContext';
 import { usePaymentMethods, type PaymentMethodCode } from '../../contexts/PaymentMethodsContext';
 import type { Reservation } from '../../data/types';
 import { formatDate } from '../../utils/date';
+import supabase from "../../supabaseClient";
 
 import {
   Search,
@@ -60,6 +61,7 @@ interface ReservationForm {
   businessType: string;
   appointmentDate?: Date;
   appointmentTime?: string;
+  agreedToPolicies: boolean;
 }
 
 const PRICE_RANGE_OPTIONS: { value: PriceRange; label: string }[] = [
@@ -168,6 +170,7 @@ function buildInitialReservationForm(
       businessType: "",
       appointmentDate: undefined,
       appointmentTime: "",
+      agreedToPolicies: false,
     };
   }
 
@@ -190,6 +193,7 @@ function buildInitialReservationForm(
       businessType: "",
       appointmentDate: undefined,
       appointmentTime: "",
+      agreedToPolicies: false,
     };
   }
 
@@ -213,6 +217,7 @@ function buildInitialReservationForm(
     businessType: "",
     appointmentDate: undefined,
     appointmentTime: "",
+    agreedToPolicies: false,
   };
 }
 
@@ -874,6 +879,10 @@ const getParkingSlotState = useCallback(
         alert("No payment methods are currently available. Please try again later.");
         return;
       }
+      if (!reservationForm.agreedToPolicies) {
+        alert("Please agree to the policies before submitting your reservation.");
+        return;
+      }
 
       if (selectedUnitData.type === "function_hall") {
       if (reservationForm.duration <= 0) {
@@ -1513,6 +1522,16 @@ const getParkingSlotState = useCallback(
                             {getPriceLabel(selectedUnitData.type)}
                           </span>
                         </div>
+                        {selectedUnitData.minimumPaymentPercent && (
+                          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                            Minimum initial payment:{" "}
+                            <strong>{selectedUnitData.minimumPaymentPercent}%</strong> of total amount.
+                          </div>
+                        )}
+
+                        <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                          Subsequent payments must be at least ₱500.
+                        </div>
                       </div>
 
                       <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
@@ -2127,6 +2146,51 @@ const getParkingSlotState = useCallback(
                         />
                       </div>
 
+                      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <p className="mb-2 text-sm font-semibold text-amber-900">Policies / Agreement</p>
+
+              <div className="max-h-32 overflow-y-auto rounded-xl border border-amber-100 bg-white p-3 text-sm leading-relaxed text-gray-700">
+                {selectedUnitData.policies?.trim() || "No policies provided for this unit."}
+              </div>
+
+            {selectedUnitData.contractFilePath ? (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const { data } = supabase.storage
+                      .from("unit_contracts")
+                      .getPublicUrl(selectedUnitData.contractFilePath!);
+
+                    if (data?.publicUrl) {
+                      window.open(data.publicUrl, "_blank", "noopener,noreferrer");
+                    }
+                  }}
+                  className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
+                >
+                  View Contract PDF
+                </button>
+              </div>
+            ) : null}
+
+            <label className="mt-3 flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={reservationForm.agreedToPolicies}
+                onChange={(e) =>
+                  setReservationForm((prev) => ({
+                    ...prev,
+                    agreedToPolicies: e.target.checked,
+                  }))
+                }
+                className="mt-1 size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-sm text-gray-700">
+                I have read and agree to the policies and terms for this unit.
+              </span>
+            </label>
+          </div>
+
                       <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
                         <p className="mb-1 text-sm text-gray-600">Estimated Total</p>
                         <div className="text-lg font-bold text-gray-900">
@@ -2145,6 +2209,7 @@ const getParkingSlotState = useCallback(
                         type="submit"
                         disabled={
                           isSubmitting ||
+                          !reservationForm.agreedToPolicies ||
                           (reservationForm.modeOfVisit === "onsite" &&
                             (!reservationForm.appointmentDate || !reservationForm.appointmentTime)) ||
                           showPaymentMethodEmptyState ||

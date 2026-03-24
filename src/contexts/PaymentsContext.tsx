@@ -66,6 +66,88 @@ function clampMoney(value: number) {
   return Math.max(0, Number(value));
 }
 
+const MIN_SUBSEQUENT_PAYMENT_AMOUNT = 500;
+
+function getMinimumPaymentPercent(reservation: {
+  minimumPaymentPercentSnapshot?: number | null;
+}) {
+  const value = Number(reservation.minimumPaymentPercentSnapshot ?? 0);
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, value);
+}
+
+function getMinimumRequiredAmount(reservation: {
+  totalAmount: number;
+  paidAmount: number;
+  minimumPaymentPercentSnapshot?: number | null;
+}) {
+  const totalAmount = clampMoney(reservation.totalAmount);
+  const paidAmount = clampMoney(reservation.paidAmount);
+  const remaining = clampMoney(totalAmount - paidAmount);
+  const minimumPercent = getMinimumPaymentPercent(reservation);
+
+  if (minimumPercent <= 0) {
+    return {
+      minimumPercent: 0,
+      minimumRequired: 0,
+      remaining,
+      isFirstPayment: paidAmount <= 0,
+    };
+  }
+
+  const rawMinimum = clampMoney((totalAmount * minimumPercent) / 100);
+
+  return {
+    minimumPercent,
+    minimumRequired: Math.min(rawMinimum, remaining),
+    remaining,
+    isFirstPayment: paidAmount <= 0,
+  };
+}
+
+function validateMinimumFirstPayment(reservation: {
+  totalAmount: number;
+  paidAmount: number;
+  minimumPaymentPercentSnapshot?: number | null;
+}) {
+  return (amount: number) => {
+    const submittedAmount = clampMoney(amount);
+    const { minimumPercent, minimumRequired, isFirstPayment } =
+      getMinimumRequiredAmount(reservation);
+
+    if (!isFirstPayment || minimumPercent <= 0) return;
+
+    if (submittedAmount < minimumRequired) {
+      throw new Error(
+        `First payment must be at least ${minimumPercent}% of the total amount (${minimumRequired.toFixed(2)}).`
+      );
+    }
+  };
+}
+
+function validateMinimumSubsequentPayment(reservation: {
+  totalAmount: number;
+  paidAmount: number;
+}) {
+  return (amount: number) => {
+    const submittedAmount = clampMoney(amount);
+    const paidAmount = clampMoney(reservation.paidAmount);
+    const remaining = clampMoney(reservation.totalAmount - paidAmount);
+    const isFirstPayment = paidAmount <= 0;
+
+    if (isFirstPayment) return;
+    if (remaining <= 0) return;
+
+    const minimumRequired = Math.min(MIN_SUBSEQUENT_PAYMENT_AMOUNT, remaining);
+
+    if (submittedAmount < minimumRequired) {
+      throw new Error(
+        `Subsequent payments must be at least ₱${minimumRequired.toFixed(2)}.`
+      );
+    }
+  };
+}
+
 export function PaymentsProvider({ children }: { children: ReactNode }) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const { reservations, updateReservation } = useReservations();
@@ -206,6 +288,9 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
 
       const submittedAmount = clampMoney(Number(paymentData.amount));
       const remaining = clampMoney(reservation.totalAmount - reservation.paidAmount);
+      const enforceMinimumFirstPayment = validateMinimumFirstPayment(reservation);
+      const enforceMinimumSubsequentPayment =
+        validateMinimumSubsequentPayment(reservation);
 
       if (submittedAmount <= 0) {
         throw new Error('Payment amount must be greater than zero.');
@@ -214,6 +299,9 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       if (submittedAmount > remaining) {
         throw new Error('Payment amount cannot exceed the remaining balance.');
       }
+
+      enforceMinimumFirstPayment(submittedAmount);
+      enforceMinimumSubsequentPayment(submittedAmount);
 
       const { data, error } = await supabase
         .from('payments')
@@ -351,6 +439,20 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
 
       if (sanitizedAmount <= 0) {
         throw new Error('Payment amount must be greater than zero.');
+      }
+
+      const nextStatus = paymentUpdate.status ?? existingPayment.status;
+      const enforceMinimumFirstPayment = validateMinimumFirstPayment(reservation);
+      const enforceMinimumSubsequentPayment =
+        validateMinimumSubsequentPayment(reservation);
+
+      if (nextStatus === 'paid') {
+        const isAlreadyCountedAsPaid = existingPayment.status === 'paid';
+
+        if (!isAlreadyCountedAsPaid) {
+          enforceMinimumFirstPayment(sanitizedAmount);
+          enforceMinimumSubsequentPayment(sanitizedAmount);
+        }
       }
 
       if (isApprovingNow) {

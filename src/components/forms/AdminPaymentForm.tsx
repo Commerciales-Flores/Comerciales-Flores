@@ -31,6 +31,26 @@ export default function AdminPaymentForm({
     ? Math.max(Number(reservation.totalAmount || 0) - Number(reservation.paidAmount || 0), 0)
     : 0;
 
+    const minimumPercent = Number(
+  reservation?.minimumPaymentPercentSnapshot ?? 0
+);
+
+const isFirstPayment = Number(reservation?.paidAmount || 0) <= 0;
+
+const minimumFirstPayment = minimumPercent
+  ? (Number(reservation?.totalAmount || 0) * minimumPercent) / 100
+  : 0;
+
+const MIN_SUBSEQUENT_PAYMENT = 500;
+
+const minimumSubsequentPayment = Math.min(
+  MIN_SUBSEQUENT_PAYMENT,
+  balance
+);
+
+const effectiveMinimum = isFirstPayment
+  ? minimumFirstPayment
+  : minimumSubsequentPayment;
   const [formState, setFormState] = useState<{
     amount: string;
     method: PaymentMethod;
@@ -60,7 +80,8 @@ export default function AdminPaymentForm({
     !formState.amount ||
     Number.isNaN(enteredAmount) ||
     enteredAmount <= 0 ||
-    enteredAmount > balance;
+    enteredAmount > balance ||
+    enteredAmount < effectiveMinimum;;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.[0]) return;
@@ -200,7 +221,7 @@ export default function AdminPaymentForm({
                     setFormState({ ...formState, amount: e.target.value })
                   }
                   max={balance}
-                  min="0.01"
+                  min={effectiveMinimum}
                   step="0.01"
                   placeholder="0.00"
                   disabled={isSubmitting}
@@ -214,7 +235,13 @@ export default function AdminPaymentForm({
                     : 'text-slate-400'
                 }`}
               >
-                Maximum allowed: {formatCurrency(balance)}
+                {isFirstPayment && minimumPercent > 0 && (
+                  <>Minimum first payment: {formatCurrency(minimumFirstPayment)} ({minimumPercent}%) • </>
+                )}
+                {!isFirstPayment && (
+                  <>Minimum payment: {formatCurrency(minimumSubsequentPayment)} • </>
+                )}
+                Maximum: {formatCurrency(balance)}
               </p>
             </div>
 

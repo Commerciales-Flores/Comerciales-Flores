@@ -23,7 +23,10 @@ type ReservationsPageFilters = {
 interface ReservationsContextType {
   reservations: Reservation[];
   addReservation: (
-    reservation: Omit<Reservation, 'id' | 'requestDate' | 'status' | 'paidAmount'>
+    reservation: Omit<
+      Reservation,
+      'id' | 'requestDate' | 'status' | 'paidAmount' | 'minimumPaymentPercentSnapshot'
+    >
   ) => Promise<string>;
   updateReservation: (id: string, reservation: Partial<Reservation>) => Promise<void>;
   deleteReservation: (id: string) => Promise<void>;
@@ -144,6 +147,7 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
         confirmedVisitDate: row.confirmed_visit_date,
         confirmedVisitTime: row.confirmed_visit_time,
         visitStatus: row.visit_status ?? 'requested',
+        minimumPaymentPercentSnapshot: row.minimum_payment_percent_snapshot ?? null,
         
       };
     },
@@ -177,7 +181,8 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
         confirmed_visit_date,
         confirmed_visit_time,
         visit_status,
-        details
+        details,
+        minimum_payment_percent_snapshot,
         `
       )
       .order('created_at', { ascending: false });
@@ -235,7 +240,8 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
           confirmed_visit_date,
           confirmed_visit_time,
           visit_status,
-          details
+          details,
+          minimum_payment_percent_snapshot
           `,
           { count: 'exact' }
         )
@@ -308,6 +314,21 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
           }
         }
 
+        // 🔥 Fetch unit minimum payment %
+      const { data: unitRow, error: unitError } = await supabase
+        .from('units')
+        .select('minimum_payment_percent')
+        .eq('unit_id', reservationData.unitId)
+        .single();
+
+      if (unitError) {
+        console.error('Failed to fetch unit minimum payment:', unitError);
+        throw new Error('Unable to determine minimum payment requirement.');
+      }
+
+      const minimumPaymentPercentSnapshot =
+        unitRow?.minimum_payment_percent ?? null;
+
       const { data, error } = await supabase
         .from('reservations')
         .insert([
@@ -328,6 +349,7 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
             appointment_time: reservationData.appointmentTime ?? null,
             notes: reservationData.notes ?? null,
             details: cleanDetails,
+            minimum_payment_percent_snapshot: minimumPaymentPercentSnapshot,
           },
         ])
         .select()
@@ -356,6 +378,7 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
         appointmentDate: data.appointment_date,
         appointmentTime: data.appointment_time,
         ...cleanDetails,
+        minimumPaymentPercentSnapshot: minimumPaymentPercentSnapshot,
       };
 
       setReservations((prev) => [newReservation, ...prev]);
@@ -378,7 +401,7 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
 
       return newReservation.id;
     },
-    [addAuditLog, user?.id]
+    [addAuditLog, user] //[addAuditLog, user?.id]
   );
 
   const updateReservation = useCallback(

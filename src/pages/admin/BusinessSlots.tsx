@@ -55,6 +55,9 @@ const INITIAL_FORM_STATE = {
   features: '',
   propertyId: '',
   location: '',
+  minimumPaymentPercent: '',
+  contractFilePath: '',
+  contractFileName: '',
 };
 
 const INITIAL_SLOT_FORM = {
@@ -104,6 +107,9 @@ type UnitRecord = {
   features: string[];
   propertyId?: string | null;
   location?: string | null;
+  minimumPaymentPercent?: number | null;
+  contractFilePath?: string | null;
+  contractFileName?: string | null;
 };
 
 const SLOT_STATUS_STYLES: Record<
@@ -282,8 +288,12 @@ type UnitFormModalProps = {
       features: string[];
       propertyId: string;
       location: string;
+      minimumPaymentPercent?: number | null;
+      contractFilePath?: string | null;
+      contractFileName?: string | null;
     };
   }) => Promise<void>;
+  uploadUnitContract: (file: File) => Promise<{ path: string; name: string } | null>;
   uploadUnitImage: (file: File) => Promise<string | null | undefined>;
   onOpenLightbox: (src: string) => void;
 };
@@ -296,6 +306,7 @@ const UnitFormModal = React.memo(function UnitFormModal({
   onClose,
   onSave,
   uploadUnitImage,
+  uploadUnitContract,
   onOpenLightbox,
 }: UnitFormModalProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -348,6 +359,13 @@ const UnitFormModal = React.memo(function UnitFormModal({
         features: editingUnit.features.join(', '),
         propertyId: editingUnit.propertyId || '',
         location: editingUnit.location || defaultLocation,
+        minimumPaymentPercent:
+        editingUnit.minimumPaymentPercent !== null &&
+        editingUnit.minimumPaymentPercent !== undefined
+          ? String(editingUnit.minimumPaymentPercent)
+      : '',
+       contractFilePath: editingUnit.contractFilePath || '',
+      contractFileName: editingUnit.contractFileName || '',
       });
     } else {
       setImagePreviews([]);
@@ -478,6 +496,32 @@ const UnitFormModal = React.memo(function UnitFormModal({
     [uploadUnitImage]
   );
 
+  const contractInputRef = useRef<HTMLInputElement | null>(null);
+  const [isUploadingContract, setIsUploadingContract] = useState(false);
+
+  const handleContractUpload = useCallback(async (file: File) => {
+  if (!file) return;
+
+  setIsUploadingContract(true);
+
+  try {
+    const result = await uploadUnitContract(file);
+
+    if (!result) return;
+
+    setUnitForm((prev) => ({
+      ...prev,
+      contractFilePath: result.path,
+      contractFileName: result.name,
+    }));
+  } catch (err) {
+    console.error('Contract upload failed', err);
+    alert('Contract upload failed.');
+  } finally {
+    setIsUploadingContract(false);
+  }
+}, [uploadUnitContract]);
+
   const handleClose = useCallback(() => {
     if (isSubmitting || isUploadingImages) return;
     onClose();
@@ -496,6 +540,10 @@ const UnitFormModal = React.memo(function UnitFormModal({
           unitForm.type === 'function_hall' && unitForm.capacity
             ? parseInt(unitForm.capacity, 10)
             : undefined;
+        const parsedMinimumPaymentPercent =
+        unitForm.minimumPaymentPercent === ''
+          ? null
+          : parseInt(unitForm.minimumPaymentPercent, 10);
 
         await onSave({
           unitId: editingUnit?.id,
@@ -510,7 +558,14 @@ const UnitFormModal = React.memo(function UnitFormModal({
             available: unitForm.available,
             features: parseCommaSeparated(unitForm.features),
             propertyId: unitForm.propertyId,
+            contractFilePath: unitForm.contractFilePath || null,
+            contractFileName: unitForm.contractFileName || null,
             location: unitForm.location || defaultLocation,
+            minimumPaymentPercent:
+            parsedMinimumPaymentPercent !== null &&
+            Number.isFinite(parsedMinimumPaymentPercent)
+              ? parsedMinimumPaymentPercent
+              : null,
           },
         });
 
@@ -646,6 +701,36 @@ const UnitFormModal = React.memo(function UnitFormModal({
               </p>
             </div>
 
+            <div className="space-y-1.5">
+              <label
+                htmlFor="minimumPaymentPercent"
+                className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400"
+              >
+                Minimum First Payment
+              </label>
+              <select
+                id="minimumPaymentPercent"
+                value={unitForm.minimumPaymentPercent}
+                onChange={(e) => updateFormField('minimumPaymentPercent', e.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+              >
+                <option value="">No minimum</option>
+                <option value="10">10%</option>
+                <option value="20">20%</option>
+                <option value="30">30%</option>
+                <option value="40">40%</option>
+                <option value="50">50%</option>
+                <option value="60">60%</option>
+                <option value="70">70%</option>
+                <option value="80">80%</option>
+                <option value="90">90%</option>
+                <option value="100">100%</option>
+              </select>
+              <p className="ml-1 text-[11px] text-slate-400">
+                Required minimum for the first payment only. Later payments use the global system rule (₱500).
+              </p>
+            </div>
+
             {unitForm.type === 'function_hall' && (
               <div className="space-y-1.5">
                 <label
@@ -777,6 +862,70 @@ const UnitFormModal = React.memo(function UnitFormModal({
               placeholder="Enter terms and policies..."
               className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
             />
+
+            <div className="space-y-1.5">
+  <label className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400">
+    Contract (PDF)
+  </label>
+
+  <input
+    ref={contractInputRef}
+    type="file"
+    accept="application/pdf"
+    onChange={(e) => {
+      const file = e.target.files?.[0];
+      if (file) handleContractUpload(file);
+    }}
+    className="hidden"
+  />
+
+  {unitForm.contractFilePath ? (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+        <div className="text-sm font-medium text-slate-700 truncate">
+          📄 {unitForm.contractFileName}
+        </div>
+
+        <button
+          type="button"
+          onClick={() =>
+            setUnitForm((prev) => ({
+              ...prev,
+              contractFilePath: '',
+              contractFileName: '',
+            }))
+          }
+          className="text-red-500 hover:text-red-600 text-xs font-semibold"
+        >
+          Remove
+        </button>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => contractInputRef.current?.click()}
+        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 transition-all hover:bg-slate-50"
+      >
+        Replace Contract
+      </button>
+    </div>
+  ) : (
+    <button
+      type="button"
+      onClick={() => contractInputRef.current?.click()}
+      disabled={isUploadingContract}
+      className="flex h-20 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 text-slate-500 transition-all hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-60"
+    >
+      <span className="text-sm font-semibold">
+        {isUploadingContract ? 'Uploading...' : 'Upload Contract PDF'}
+      </span>
+    </button>
+  )}
+
+  <p className="ml-1 text-[11px] text-slate-400">
+    Optional. Upload a formal contract (PDF format only).
+  </p>
+</div>
           </div>
 
           {unitForm.type === 'parking_slot' && (
@@ -1740,6 +1889,7 @@ export default function AdminUnitManagement() {
     updateUnit,
     deleteUnit,
     uploadUnitImage,
+    uploadUnitContract,
     locationOptions,
     defaultLocation,
     parkingSlots = [],
@@ -1847,6 +1997,9 @@ export default function AdminUnitManagement() {
         features: string[];
         propertyId: string;
         location: string;
+        minimumPaymentPercent?: number | null;
+        contractFilePath?: string | null;
+        contractFileName?: string | null;
       };
     }) => {
       if (unitId) {
@@ -2144,6 +2297,7 @@ export default function AdminUnitManagement() {
           onClose={closeUnitModal}
           onSave={handleSaveUnit}
           uploadUnitImage={uploadUnitImage}
+          uploadUnitContract={uploadUnitContract}
           onOpenLightbox={openLightbox}
         />
 

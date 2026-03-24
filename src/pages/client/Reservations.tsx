@@ -751,7 +751,7 @@ className="flex w-full items-center justify-between rounded-xl border border-gra
           <div
             className={`rounded-2xl border border-yellow-200 bg-yellow-50 p-4 ${uiTypography.bodyText} text-[13px] sm:text-sm text-yellow-800`}
           >
-            Approved! Please go to Payments to complete your transaction.
+            Approved! Please go to Payments to complete your transaction. Minimum payment rules will be shown there before submission.
           </div>
         )}
 

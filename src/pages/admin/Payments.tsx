@@ -255,25 +255,34 @@ export default function AdminPayments() {
 
   const handleVerify = useCallback(
   async (payment: PaymentView) => {
-    await updatePayment(payment.id, { status: 'paid' });
+    try {
+      await updatePayment(payment.id, { status: 'paid' });
 
-    await sendPaymentNotification({
-      userId: payment.userId,
-      paymentPublicId: payment.publicId || payment.id,
-      amount: payment.amount,
-    });
+      await sendPaymentNotification({
+        userId: payment.userId,
+        paymentPublicId: payment.publicId || payment.id,
+        amount: payment.amount,
+      });
 
-    setSelectedPayment(null);
+      setSelectedPayment(null);
 
-    const result = await fetchPaymentsPage({
-      page,
-      pageSize,
-      status: filterStatus,
-      searchTerm: debouncedSearch,
-    });
+      const result = await fetchPaymentsPage({
+        page,
+        pageSize,
+        status: filterStatus,
+        searchTerm: debouncedSearch,
+      });
 
-    setPayments(result.data);
-    setTotalCount(result.count);
+      setPayments(result.data);
+      setTotalCount(result.count);
+    } catch (error) {
+      console.error('Failed to verify payment:', error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Failed to verify payment. Please review the payment rules and try again.'
+      );
+    }
   },
   [
     updatePayment,

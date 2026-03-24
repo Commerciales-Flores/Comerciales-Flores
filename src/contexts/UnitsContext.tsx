@@ -67,6 +67,7 @@ interface UnitsContextType {
   updateUnit: (id: string, unit: Partial<Unit>) => Promise<void>;
   deleteUnit: (id: string) => Promise<void>;
   uploadUnitImage: (file: File) => Promise<string | null>;
+  uploadUnitContract: (file: File) => Promise<{ path: string; name: string } | null>;
   getUnitById: (id: string) => Unit | undefined;
   refreshUnits: () => Promise<void>;
   getParkingSlotById: (slotId: string) => ParkingSlot | undefined;
@@ -124,7 +125,19 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
   try {
     const { data: baseUnits, error: baseError } = await supabase
       .from('units')
-      .select('unit_id, public_id, unit_type, title, is_available, price, location, images');
+      .select(`
+        unit_id,
+        public_id,
+        unit_type,
+        title,
+        is_available,
+        price,
+        location,
+        images,
+        minimum_payment_percent,
+        contract_file_path,
+        contract_file_name
+      `);
 
     if (baseError) throw baseError;
 
@@ -207,6 +220,9 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         features: Array.isArray(specific?.features) ? specific.features : [],
         location: base.location || DEFAULT_LOCATION,
         property: null,
+        minimumPaymentPercent: base.minimum_payment_percent ?? null,
+        contractFilePath: base.contract_file_path ?? null,
+        contractFileName: base.contract_file_name ?? null,
       };
     });
 
@@ -267,6 +283,31 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const uploadUnitContract = useCallback(
+  async (file: File): Promise<{ path: string; name: string } | null> => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+      const filePath = `contracts/${fileName}`;
+
+      const { error } = await supabase.storage
+        .from('unit_contracts')
+        .upload(filePath, file);
+
+      if (error) throw error;
+
+      return {
+        path: filePath,
+        name: file.name,
+      };
+    } catch (error) {
+      console.error('Error uploading contract:', error);
+      return null;
+    }
+  },
+  []
+);
+
   const addUnit = useCallback(
     async (
       unitData: Omit<Unit, 'id' | 'property' | 'images'> & { images?: string[] }
@@ -293,6 +334,9 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
             price: unitData.price,
             location: safeLocation,
             images: imagePaths,
+            minimum_payment_percent: unitData.minimumPaymentPercent ?? null,
+            contract_file_path: unitData.contractFilePath ?? null,
+            contract_file_name: unitData.contractFileName ?? null,
           },
         ]);
 
@@ -339,6 +383,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
           features: unitData.features,
           location: safeLocation,
           property: null,
+          minimumPaymentPercent: unitData.minimumPaymentPercent ?? null,
         };
 
         if (user?.id) {
@@ -376,12 +421,21 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
 
         if (unitUpdate.name !== undefined) basePayload.title = unitUpdate.name;
         if (unitUpdate.available !== undefined) basePayload.is_available = unitUpdate.available;
-        if (unitUpdate.price !== undefined) basePayload.price = unitUpdate.price;
+        if (unitUpdate.minimumPaymentPercent !== undefined) {
+          basePayload.minimum_payment_percent = unitUpdate.minimumPaymentPercent;
+        }
         if (unitUpdate.location !== undefined) {
           basePayload.location = getSafeLocation(unitUpdate.location);
         }
         if (unitUpdate.imagePaths !== undefined) {
           basePayload.images = unitUpdate.imagePaths;
+        }
+        if (unitUpdate.contractFilePath !== undefined) {
+          basePayload.contract_file_path = unitUpdate.contractFilePath;
+        }
+
+        if (unitUpdate.contractFileName !== undefined) {
+          basePayload.contract_file_name = unitUpdate.contractFileName;
         }
 
         if (Object.keys(basePayload).length > 0) {
@@ -667,6 +721,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
       updateUnit,
       deleteUnit,
       uploadUnitImage,
+      uploadUnitContract,
       getUnitById,
       refreshUnits,
       getParkingSlotsByUnit,
@@ -683,6 +738,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
       updateUnit,
       deleteUnit,
       uploadUnitImage,
+      uploadUnitContract,
       getUnitById,
       refreshUnits,
       getParkingSlotById,

@@ -37,6 +37,7 @@ type ReservationLike = {
   unitName?: string | null;
   totalAmount?: number | null;
   paidAmount?: number | null;
+  minimumPaymentPercentSnapshot?: number | null;
 };
 
 type UnitLike = {
@@ -381,11 +382,24 @@ const FillFormStep = memo(function FillFormStep({
           selectedReservation &&
           isPaymentEligibleStatus(selectedReservation.status) &&
           remaining > 0 && (
+            <>
+            <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800">
+        {Number(selectedReservation.paidAmount || 0) <= 0 &&
+        selectedReservation.minimumPaymentPercentSnapshot ? (
+          <>
+            First payment must be at least{' '}
+            {selectedReservation.minimumPaymentPercentSnapshot}% of total.
+          </>
+        ) : (
+          <>Subsequent payments must be at least ₱500.</>
+        )}
+      </div>
             <AdminPaymentForm
               userId={selectedUser.id}
               reservationId={selectedTargetId}
               onComplete={onComplete}
             />
+            </>
           )}
 
         {actionType === 'payment' &&

@@ -58,6 +58,9 @@ export interface Unit {
     title: string;
     address: string;
   } | null;
+  minimumPaymentPercent?: number | null;
+  contractFilePath?: string | null;
+  contractFileName?: string | null;
 }
 
 export interface Reservation {
@@ -90,6 +93,8 @@ export interface Reservation {
   slotId?: string;
   slotName?: string;
   location?: string;
+
+  minimumPaymentPercentSnapshot?: number | null;
 
   confirmedVisitDate?: string | null;
   confirmedVisitTime?: string | null;
