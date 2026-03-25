@@ -229,7 +229,7 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
         confirmed_visit_time,
         visit_status,
         details,
-        minimum_payment_percent_snapshot,
+        minimum_payment_percent_snapshot
         `
       )
       .order('created_at', { ascending: false });

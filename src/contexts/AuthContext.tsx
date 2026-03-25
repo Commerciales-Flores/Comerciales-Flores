@@ -54,10 +54,24 @@ interface AuthContextType {
   showSessionWarning: boolean;
   sessionCountdown: number;
   extendSession: () => void;
-  login: (
-    email: string,
-    password: string
-  ) => Promise<{ success: boolean; error?: string }>;
+login: (
+  email: string,
+  password: string,
+  options?: {
+    rememberDevice?: boolean;
+  }
+) => Promise<{
+  success: boolean;
+  error?:
+    | 'busy'
+    | 'invalid_login'
+    | 'account_inactive'
+    | 'rate_limited'
+    | 'locked'
+    | 'unverified_device'
+    | 'device_check_failed';
+  retryAfterSeconds?: number;
+}>;
   loginWithGoogle: () => Promise<void>;
   loginWithFacebook: () => Promise<void>;
   register: (
@@ -133,6 +147,18 @@ const normalizePhone = (value: string) => {
 
 const getFormattedTime = () => formatTime(new Date());
 
+const getDeviceFingerprint = (): string => {
+  const storageKey = 'device_fingerprint';
+  let fingerprint = localStorage.getItem(storageKey);
+
+  if (!fingerprint) {
+    fingerprint = crypto.randomUUID();
+    localStorage.setItem(storageKey, fingerprint);
+  }
+
+  return fingerprint;
+};
+
 const mapProfileToUser = (data: any): User => ({
   id: data.user_id,
   publicId: data.public_id ?? undefined,
@@ -177,6 +203,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const expiryLogoutRef = useRef(false);
   const oauthAuditPendingRef = useRef<string | null>(null);
   const activeUserIdRef = useRef<string | null>(null);
+  const pendingDeviceVerificationRef = useRef(false); 
 
   const warningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const logoutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -302,15 +329,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         ]);
 
-        if (error) {
-          console.error('Failed to write auth audit log:', error);
+        if (import.meta.env.DEV && error) {
+          console.warn('Failed to write auth audit log:', error);
         }
       } catch (error) {
-        console.error('Unexpected auth audit log error:', error);
+        if (import.meta.env.DEV) {
+          console.warn('Unexpected auth audit log error:', error);
+        }
       }
     },
     []
   );
+
+  const addFailedLoginAuditLog = useCallback(
+  async ({
+    email,
+    reason,
+  }: {
+    email: string;
+    reason: string;
+  }) => {
+    try {
+      const { error } = await supabase.from('audit_log').insert([
+        {
+          user_id: null,
+          action: 'LOGIN_FAILED',
+          target_table: 'users',
+          target_id: null,
+          changed_fields: ['email'],
+          timestamp: new Date().toISOString(),
+          notes: `Failed login attempt for ${email}: ${reason}`,
+        },
+      ]);
+
+      if (import.meta.env.DEV && error) {
+        console.warn('Failed to write failed-login audit log:', error);
+      }
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.warn('Unexpected failed-login audit log error:', error);
+      }
+    }
+  },
+  []
+);
 
   const touchLastLogin = useCallback(async (userId: string) => {
     try {
@@ -411,7 +473,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           clearUserSession({ clearGreeting: true });
           return;
         }
-
+        pendingDeviceVerificationRef.current = false;
         persistUserSession(profile);
       } catch (error) {
         console.error('Session init failed:', error);
@@ -457,6 +519,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           if (!session?.user) return;
 
+          // 🚫 Prevent premature session persistence during device check
+          if (pendingDeviceVerificationRef.current) return;
+
           // If same user already in memory, skip expensive resync
           if (activeUserIdRef.current === session.user.id) return;
 
@@ -472,7 +537,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             );
             return;
           }
-
+          pendingDeviceVerificationRef.current = false;
           persistUserSession(profile);
 
           const providerLabel = getAuthProviderLabel(session.user);
@@ -603,64 +668,221 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, clearSessionTimers, sessionResetKey]);
 
   // --- AUTH ACTIONS ---
-  const login = useCallback(
-    async (
-      email: string,
-      password: string
-    ): Promise<{ success: boolean; error?: string }> => {
-      if (authActionPending) {
-        return { success: false, error: 'busy' };
+ const login = useCallback(
+  async (
+    email: string,
+    password: string,
+    options?: { rememberDevice?: boolean }
+  ): Promise<{
+    success: boolean;
+    error?:
+      | 'busy'
+      | 'invalid_login'
+      | 'account_inactive'
+      | 'rate_limited'
+      | 'locked'
+      | 'unverified_device'
+      | 'device_check_failed';
+    retryAfterSeconds?: number;
+  }> => {
+    if (authActionPending) {
+      return { success: false, error: 'busy' };
+    }
+
+    setAuthActionPending(true);
+
+    try {
+      const normalizedEmail = normalizeEmail(email);
+
+      const { data: lockData, error: lockError } = await supabase.rpc('check_login_lock', {
+        p_email: normalizedEmail,
+      });
+
+      if (!lockError && Array.isArray(lockData) && lockData[0]?.is_locked) {
+        pendingDeviceVerificationRef.current = false;
+        return {
+          success: false,
+          error: 'locked',
+          retryAfterSeconds: lockData[0]?.retry_after_seconds ?? 60,
+        };
       }
+      pendingDeviceVerificationRef.current = true;
 
-      setAuthActionPending(true);
+const { data, error } = await supabase.auth.signInWithPassword({
+  email: normalizedEmail,
+  password,
+});
 
-      try {
-        const normalizedEmail = normalizeEmail(email);
+if (error || !data.user) {
+  pendingDeviceVerificationRef.current = false;
 
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: normalizedEmail,
-          password,
+  const message = error?.message?.toLowerCase() ?? '';
+  const isRateLimited =
+    message.includes('rate limit') ||
+    message.includes('too many requests') ||
+    message.includes('over_email_send_rate_limit') ||
+    (error as any)?.status === 429;
+
+  const failureReason = isRateLimited ? 'rate_limited' : 'invalid_credentials';
+
+  const { data: failureData } = await supabase.rpc('record_login_failure', {
+    p_email: normalizedEmail,
+    p_reason: failureReason,
+  });
+
+  const retryAfter =
+    Array.isArray(failureData) && failureData[0]?.retry_after_seconds
+      ? failureData[0].retry_after_seconds
+      : isRateLimited
+        ? 60
+        : undefined;
+
+  return {
+    success: false,
+    error: retryAfter ? 'locked' : isRateLimited ? 'rate_limited' : 'invalid_login',
+    retryAfterSeconds: retryAfter,
+  };
+}
+
+      pendingDeviceVerificationRef.current = true;
+
+      const profile = await fetchOrCreateUserProfile(data.user);
+
+      if (!profile) {
+        pendingDeviceVerificationRef.current = false;
+        await supabase.auth.signOut();
+
+        await supabase.rpc('record_login_failure', {
+          p_email: normalizedEmail,
+          p_reason: 'account_inactive',
         });
 
-        if (error || !data.user) {
-          console.error('Login failed:', error?.message);
-          return { success: false, error: 'invalid_login' };
-        }
-
-        const profile = await fetchOrCreateUserProfile(data.user);
-
-        if (!profile) {
-          await supabase.auth.signOut();
-
-          return {
-            success: false,
-            error: 'account_inactive', // 👈 new error type
-          };
-        }
-
-        // Instant UI update
-        persistUserSession(profile);
-
-        // Non-blocking writes
-        void touchLastLogin(data.user.id);
-        void addAuthAuditLog({
-          userId: data.user.id,
-          action: 'LOGIN',
-          changedFields: ['last_login'],
-          notes: 'User login via email/password',
-        });
-
-        return { success: true };
-      } catch (err) {
-        console.error('Unexpected login error:', err);
-        return { success: false, error: 'invalid_login' };
-      } finally {
-        setAuthActionPending(false);
+        return {
+          success: false,
+          error: 'account_inactive',
+        };
       }
+
+      await supabase.rpc('clear_login_failures', {
+        p_email: normalizedEmail,
+        p_user_id: data.user.id,
+      });
+
+      const fingerprint = getDeviceFingerprint();
+
+      const accessToken = data.session?.access_token;
+
+      if (!accessToken) {
+        pendingDeviceVerificationRef.current = false;
+        await supabase.auth.signOut();
+
+        return {
+          success: false,
+          error: 'device_check_failed',
+        };
+      }
+
+      if (import.meta.env.DEV) {
+  console.log('Device check auth debug', {
+    hasAccessToken: Boolean(accessToken),
+    accessTokenPreview: accessToken?.slice(0, 20),
+    url: `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-device-and-send-verification`,
+  });
+}
+
+const response = await fetch(
+  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-device-and-send-verification`,
+  {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${accessToken}`,
     },
-    [authActionPending, addAuthAuditLog, fetchOrCreateUserProfile, persistUserSession, touchLastLogin]
-  );
+    body: JSON.stringify({
+      deviceFingerprint: fingerprint,
+      userAgent: navigator.userAgent,
+      rememberDevice: Boolean(options?.rememberDevice),
+    }),
+  }
+);
 
+console.log('Device check HTTP status:', response.status);
+console.log('Device check response ok:', response.ok);
+
+
+let deviceCheck: any = null;
+let deviceCheckError: any = null;
+
+try {
+  deviceCheck = await response.json();
+  console.log('Device check payload:', JSON.stringify(deviceCheck, null, 2));
+} catch (error) {
+  deviceCheckError = error;
+}
+
+if (!response.ok) {
+  pendingDeviceVerificationRef.current = false;
+  await supabase.auth.signOut();
+
+  if (import.meta.env.DEV) {
+    console.error('Device verification HTTP failure:', {
+      status: response.status,
+      deviceCheck,
+      deviceCheckError,
+    });
+  }
+
+  return {
+    success: false,
+    error: 'device_check_failed',
+  };
+}
+
+if (!deviceCheck?.trusted) {
+  pendingDeviceVerificationRef.current = false;
+  await supabase.auth.signOut();
+
+  return {
+    success: false,
+    error: 'unverified_device',
+  };
+}
+      pendingDeviceVerificationRef.current = false;
+      persistUserSession(profile);
+
+      void touchLastLogin(data.user.id);
+      void addAuthAuditLog({
+        userId: data.user.id,
+        action: 'LOGIN',
+        changedFields: ['last_login'],
+        notes: 'User login via email/password',
+      });
+
+      void supabase.functions.invoke('record-login-context', {
+        body: { email: normalizedEmail },
+      });
+
+      return { success: true };
+    } catch (err) {
+      pendingDeviceVerificationRef.current = false;
+      if (import.meta.env.DEV) {
+        console.warn('Unexpected login issue:', err);
+      }
+
+      return { success: false, error: 'invalid_login' };
+    } finally {
+      setAuthActionPending(false);
+    }
+  },
+  [
+    authActionPending,
+    addAuthAuditLog,
+    fetchOrCreateUserProfile,
+    persistUserSession,
+    touchLastLogin,
+  ]
+);
   const loginWithGoogle = useCallback(async () => {
     if (authActionPending) return;
 
@@ -922,13 +1144,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (error) {
-        console.error('Password recovery failed:', error.message);
         return false;
       }
 
       return true;
-    } catch (err) {
-      console.error('Unexpected password recovery error:', err);
+    } catch {
       return false;
     } finally {
       setAuthActionPending(false);

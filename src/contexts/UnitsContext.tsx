@@ -111,6 +111,21 @@ function mapParkingSlotRow(row: any): ParkingSlot {
   };
 }
 
+async function removeStorageFile(bucket: string, path?: string | null) {
+  if (!path) return;
+
+  const { error } = await supabase.storage.from(bucket).remove([path]);
+  if (error) {
+    throw error;
+  }
+}
+
+function getPublicContractUrl(path?: string | null) {
+  if (!path) return '';
+  const { data } = supabase.storage.from('unit_contracts').getPublicUrl(path);
+  return data.publicUrl;
+}
+
 export function UnitsProvider({ children }: { children: ReactNode }) {
   const [units, setUnits] = useState<Unit[]>([]);
   const [parkingSlots, setParkingSlots] = useState<ParkingSlot[]>([]);
@@ -286,13 +301,17 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
   const uploadUnitContract = useCallback(
   async (file: File): Promise<{ path: string; name: string } | null> => {
     try {
-      const fileExt = file.name.split('.').pop();
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'pdf';
       const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
       const filePath = `contracts/${fileName}`;
 
       const { error } = await supabase.storage
         .from('unit_contracts')
-        .upload(filePath, file);
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: file.type || 'application/pdf',
+        });
 
       if (error) throw error;
 
@@ -384,6 +403,8 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
           location: safeLocation,
           property: null,
           minimumPaymentPercent: unitData.minimumPaymentPercent ?? null,
+          contractFilePath: unitData.contractFilePath ?? null,
+          contractFileName: unitData.contractFileName ?? null,
         };
 
         if (user?.id) {
@@ -417,6 +438,17 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         const existingUnit = units.find((unit) => unit.id === id);
         if (!existingUnit) return;
 
+        const oldContractPath = existingUnit.contractFilePath ?? null;
+        const nextContractPath =
+          unitUpdate.contractFilePath !== undefined
+            ? unitUpdate.contractFilePath ?? null
+            : oldContractPath;
+
+        const shouldDeletePreviousContract =
+          unitUpdate.contractFilePath !== undefined &&
+          oldContractPath &&
+          oldContractPath !== nextContractPath;
+
         const basePayload: Record<string, unknown> = {};
 
         if (unitUpdate.name !== undefined) basePayload.title = unitUpdate.name;
@@ -441,6 +473,14 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         if (Object.keys(basePayload).length > 0) {
           const { error } = await supabase.from('units').update(basePayload).eq('unit_id', id);
           if (error) throw error;
+        }
+
+        if (shouldDeletePreviousContract) {
+          try {
+            await removeStorageFile('unit_contracts', oldContractPath);
+          } catch (storageError) {
+            console.error('Failed to remove previous contract file:', storageError);
+          }
         }
 
         const specificPayload: Record<string, unknown> = {};
@@ -515,6 +555,8 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         const existingUnit = units.find((unit) => unit.id === id);
         if (!existingUnit) return;
 
+        const contractPathToDelete = existingUnit.contractFilePath ?? null; 
+
         if (existingUnit.type === 'parking_slot') {
           const { error: slotDeleteError } = await supabase
             .from('parking_slots')
@@ -531,6 +573,14 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
 
         const { error: baseError } = await supabase.from('units').delete().eq('unit_id', id);
         if (baseError) throw baseError;
+
+        if (contractPathToDelete) {
+          try {
+            await removeStorageFile('unit_contracts', contractPathToDelete);
+          } catch (storageError) {
+            console.error('Failed to remove contract file during unit deletion:', storageError);
+          }
+        }
 
         setUnits((prev) => prev.filter((unit) => unit.id !== id));
         setParkingSlots((prev) => prev.filter((slot) => slot.unitId !== id));

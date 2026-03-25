@@ -1387,12 +1387,13 @@ const getParkingSlotState = useCallback(
         )}
 
         {showReservationModal && selectedUnitData && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-black/40 p-4">
-                      <div
-            className={`my-8 max-h-[90vh] w-full overflow-y-auto rounded-3xl bg-white shadow-2xl ${
-              reservationSuccess ? 'max-w-md' : 'max-w-5xl'
-            }`}
-          >
+          <div className="fixed inset-0 z-50 bg-black/40 p-4 sm:p-6">
+            <div className="flex h-full items-center justify-center">
+              <div
+                className={`flex max-h-[92vh] w-full flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ${
+                  reservationSuccess ? 'max-w-md' : 'max-w-5xl'
+                }`}
+              >
                         <div
             className={`flex items-start justify-between border-b border-gray-100 ${
               reservationSuccess ? 'px-5 py-4' : 'px-6 py-5'
@@ -1421,8 +1422,9 @@ const getParkingSlotState = useCallback(
                 </button>
               </div>
 
-              {reservationSuccess ? (
-  <div className="flex justify-center p-4 sm:p-5">
+              <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] px-1 scroll-smooth">
+  {reservationSuccess ? (
+    <div className="flex justify-center p-4 sm:p-5">
     <div className="w-full max-w-md rounded-3xl border border-green-200 bg-gradient-to-br from-green-50 to-white p-5 text-center shadow-sm">
       <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-green-100">
         <CheckCircle2 className="size-6 text-green-600" />
@@ -1480,13 +1482,13 @@ const getParkingSlotState = useCallback(
         </div>
       </div>
 
-      <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm text-blue-700">
-        We’ll notify you once your request has been reviewed.
+        <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm text-blue-700">
+          We’ll notify you once your request has been reviewed.
+        </div>
       </div>
     </div>
-  </div>
-) : (
-                <div className="p-6">
+  ) : (
+                <div className="p-6 sm:p-7">
                   <div className="grid gap-6 md:grid-cols-2">
                     <div>
                       <div className="relative mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-gray-100">
@@ -1552,7 +1554,7 @@ const getParkingSlotState = useCallback(
                       </div>
                     </div>
 
-                    <form onSubmit={handleReservationSubmit} className="space-y-4">
+                    <form onSubmit={handleReservationSubmit} className="space-y-4 pb-1">
                       <div className="space-y-4 rounded-2xl border border-gray-200 p-4">
                         <div>
                           <label className="mb-1 block text-sm font-medium text-gray-700">
@@ -2154,49 +2156,50 @@ const getParkingSlotState = useCallback(
                       </div>
 
                       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <p className="mb-2 text-sm font-semibold text-amber-900">Policies / Agreement</p>
+                        <p className="mb-2 text-sm font-semibold text-amber-900">Policies / Agreement</p>
 
-              <div className="max-h-32 overflow-y-auto rounded-xl border border-amber-100 bg-white p-3 text-sm leading-relaxed text-gray-700">
-                {selectedUnitData.policies?.trim() || "No policies provided for this unit."}
-              </div>
+                        <div className="max-h-32 overflow-y-auto rounded-xl border border-amber-100 bg-white p-3 text-sm leading-relaxed text-gray-700">
+                          {selectedUnitData.policies?.trim() || "No policies provided for this unit."}
+                        </div>
 
-            {selectedUnitData.contractFilePath ? (
-              <div className="mt-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const { data } = supabase.storage
-                      .from("unit_contracts")
-                      .getPublicUrl(selectedUnitData.contractFilePath!);
+                      {selectedUnitData.contractFilePath ? (
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const { data } = supabase.storage
+                                .from("unit_contracts")
+                                .getPublicUrl(selectedUnitData.contractFilePath!);
 
-                    if (data?.publicUrl) {
-                      window.open(data.publicUrl, "_blank", "noopener,noreferrer");
-                    }
-                  }}
-                  className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
-                >
-                  View Contract PDF
-                </button>
-              </div>
-            ) : null}
+                              if (data?.publicUrl) {
+                                window.open(data.publicUrl, "_blank", "noopener,noreferrer");
+                              }
+                            }}
+                            className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
+                          >
+                            View Contract PDF
+                          </button>
+                        </div>
+                      ) : null}
 
-            <label className="mt-3 flex items-start gap-3">
-              <input
-                type="checkbox"
-                checked={reservationForm.agreedToPolicies}
-                onChange={(e) =>
-                  setReservationForm((prev) => ({
-                    ...prev,
-                    agreedToPolicies: e.target.checked,
-                  }))
-                }
-                className="mt-1 size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              <span className="text-sm text-gray-700">
-                I have read and agree to the policies and terms for this unit.
-              </span>
-            </label>
-          </div>
+                      <label className="mt-3 flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={reservationForm.agreedToPolicies}
+                          onChange={(e) =>
+                            setReservationForm((prev) => ({
+                              ...prev,
+                              agreedToPolicies: e.target.checked,
+                            }))
+                          }
+                          className="mt-1 size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="text-sm text-gray-700">
+                          I have read and agree to the policies and terms for this unit.
+                        </span>
+                      </label>
+                      </div>
+                
 
                       <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
                         <p className="mb-1 text-sm text-gray-600">Estimated Total</p>
@@ -2232,6 +2235,8 @@ const getParkingSlotState = useCallback(
                 </div>
               )}
             </div>
+          </div>
+          </div>
           </div>
         )}
 

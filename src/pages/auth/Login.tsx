@@ -59,12 +59,16 @@ export default function Login() {
   const location = useLocation();
   const { showIndicator } = useIndicator();
 
+  const [rememberDevice, setRememberDevice] = useState(true);
+
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [loginCooldown, setLoginCooldown] = useState(0);
 
   const emailRef = useRef<HTMLInputElement>(null);
   const passRef = useRef<HTMLInputElement>(null);
+  const cooldownTimerRef = useRef<number | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [recoveryEmail, setRecoveryEmail] = useState('');
@@ -78,6 +82,7 @@ export default function Login() {
     typeof location.state?.email === 'string' ? location.state.email : '';
 
   const normalizedEmail = formData.email.trim().toLowerCase();
+  const LOGIN_COOLDOWN_KEY = 'loginCooldownUntil';
 
   const [previousUser, setPreviousUser] = useState<{
     name: string;
@@ -114,12 +119,67 @@ export default function Login() {
   }, [user, loading, navigate]);
 
   useEffect(() => {
-    if (!user) {
-      setFormData({ email: '', password: '' });
-      setShowPassword(false);
-      setError('');
+  if (!user) {
+    setFormData({ email: '', password: '' });
+    setShowPassword(false);
+    setError('');
+  }
+}, [user, formKey]);
+
+useEffect(() => {
+  const raw = sessionStorage.getItem(LOGIN_COOLDOWN_KEY);
+  if (!raw) return;
+
+  const until = Number(raw);
+  if (!Number.isFinite(until)) {
+    sessionStorage.removeItem(LOGIN_COOLDOWN_KEY);
+    return;
+  }
+
+  const remaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+
+  if (remaining > 0) {
+    setLoginCooldown(remaining);
+    setError(`Too many sign-in attempts. Please wait ${remaining} seconds before trying again.`);
+  } else {
+    sessionStorage.removeItem(LOGIN_COOLDOWN_KEY);
+  }
+}, [formKey]);
+
+useEffect(() => {
+  if (loginCooldown <= 0) {
+    sessionStorage.removeItem(LOGIN_COOLDOWN_KEY);
+    return;
+  }
+
+  cooldownTimerRef.current = window.setInterval(() => {
+    setLoginCooldown((prev) => {
+      if (prev <= 1) {
+        if (cooldownTimerRef.current) {
+          window.clearInterval(cooldownTimerRef.current);
+          cooldownTimerRef.current = null;
+        }
+        sessionStorage.removeItem(LOGIN_COOLDOWN_KEY);
+        return 0;
+      }
+
+      return prev - 1;
+    });
+  }, 1000);
+
+  return () => {
+    if (cooldownTimerRef.current) {
+      window.clearInterval(cooldownTimerRef.current);
+      cooldownTimerRef.current = null;
     }
-  }, [user, formKey]);
+  };
+}, [loginCooldown]);
+
+useEffect(() => {
+  if (loginCooldown === 0 && error.startsWith('Too many sign-in attempts')) {
+    setError('');
+  }
+}, [loginCooldown, error]);
 
   useEffect(() => {
     const syncAutofill = () => {
@@ -150,34 +210,71 @@ export default function Login() {
   }, [formKey]);
 
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (authActionPending) return;
+  e.preventDefault();
+  if (authActionPending || loginCooldown > 0) return;
 
-    setError('');
+  setError('');
 
-    const result = await login(formData.email.trim(), formData.password);
+  const result = await login(formData.email.trim(), formData.password, { rememberDevice });
 
-    if (!result.success) {
-      switch (result.error) {
-        case 'busy':
-          setError('Please wait a moment and try again.');
-          break;
-        case 'account_inactive':
-          setError('Your account has been deactivated. Please contact the administrator for assistance.');
-          break;
-        case 'invalid_login':
-        default:
-          setError('Invalid email or password.');
-          break;
+  if (!result.success) {
+    switch (result.error) {
+      case 'busy':
+        setError('Please wait a moment and try again.');
+        break;
+
+      case 'account_inactive':
+        setError(
+          'Your account has been deactivated. Please contact the administrator for assistance.'
+        );
+        break;
+
+      case 'locked':
+      case 'rate_limited': {
+        const retryAfter = result.retryAfterSeconds ?? 60;
+        const cooldownUntil = Date.now() + retryAfter * 1000;
+        sessionStorage.setItem(LOGIN_COOLDOWN_KEY, String(cooldownUntil));
+        setLoginCooldown(retryAfter);
+        setError(
+          `Too many sign-in attempts. Please wait ${retryAfter} seconds before trying again.`
+        );
+        break;
       }
-      return;
+
+      case 'invalid_login':
+        setError('Invalid email or password.');
+        break;
+
+      case 'unverified_device':
+        showIndicator(
+          `Verification required for ${normalizedEmail} at ${formatTime(new Date())}`,
+          'security'
+        );
+        setError(
+          'This device is not recognized. Please check your email to verify this login.'
+        );
+        break;
+
+      case 'device_check_failed':
+        setError('We couldn’t verify your device right now. Please try again.');
+        break;
+
+      default:
+        setError('Something went wrong. Please try again.');
+        break;
     }
 
-    showIndicator(
-      `Login successful by ${normalizedEmail} at ${formatTime(new Date())}`,
-      'login'
-    );
-  };
+    return;
+  }
+
+  sessionStorage.removeItem(LOGIN_COOLDOWN_KEY);
+  setLoginCooldown(0);
+
+  showIndicator(
+    `Login successful by ${normalizedEmail} at ${formatTime(new Date())}`,
+    'login'
+  );
+};
 
   const handleRecoverPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -194,7 +291,6 @@ export default function Login() {
         msg: 'If an account exists for that email, a recovery link has been sent.',
       });
     } catch (err) {
-      console.error('Recovery flow failed:', err);
       setRecoveryStatus({
         type: 'success',
         msg: 'If an account exists for that email, a recovery link has been sent.',
@@ -401,6 +497,8 @@ export default function Login() {
                         className="w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
                         placeholder="••••••••"
                       />
+
+                      
                       <button
                         type="button"
                         onClick={() => setShowPassword((prev) => !prev)}
@@ -414,7 +512,16 @@ export default function Login() {
                       </button>
                     </div>
 
-                    <div className="text-right">
+                    <div className="flex items-center justify-between">
+                      <label className="flex items-center gap-2 text-xs text-slate-600">
+                        <input
+                          type="checkbox"
+                          checked={rememberDevice}
+                          onChange={(e) => setRememberDevice(e.target.checked)}
+                        />
+                        Trust this device
+                      </label>
+
                       <button
                         type="button"
                         onClick={openRecoveryModal}
@@ -427,10 +534,14 @@ export default function Login() {
 
                   <button
                     type="submit"
-                    disabled={authActionPending}
+                    disabled={authActionPending || loginCooldown > 0}
                     className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/10 disabled:opacity-50 mt-2 active:scale-[0.98]"
                   >
-                    {authActionPending ? 'Signing in...' : 'Sign In'}
+                    {authActionPending
+                      ? 'Signing in...'
+                      : loginCooldown > 0
+                        ? `Try again in ${loginCooldown}s`
+                        : 'Sign In'}
                   </button>
                 </form>
               </>

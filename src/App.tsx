@@ -15,6 +15,7 @@ const Login = lazy(() => import('./pages/auth/Login'));
 const Register = lazy(() => import('./pages/auth/Register'));
 const ResetPassword = lazy(() => import('./pages/auth/ResetPassword'));
 const AllProperties = lazy(() => import('./pages/public/AllProperties'));
+const VerifyDevice = lazy(() => import('./pages/auth/VerifyDevice'));
 
 // Client Pages
 const ClientDashboard = lazy(() => import('./pages/client/Dashboard'));
@@ -126,6 +127,7 @@ function AppRoutes() {
             }
           />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/verify-device" element={<VerifyDevice />} />
           <Route path="/spaces" element={<AllProperties />} />
 
           {/* --- Error Pages --- */}

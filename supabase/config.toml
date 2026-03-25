@@ -416,3 +416,9 @@ entrypoint = "./functions/send-payment-reminders/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/send-payment-reminders/*.html" ]
+
+[functions.check-device-and-send-verification]
+verify_jwt = false
+
+[functions.verify-device]
+verify_jwt = false

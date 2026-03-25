@@ -923,7 +923,7 @@ const UnitFormModal = React.memo(function UnitFormModal({
   )}
 
   <p className="ml-1 text-[11px] text-slate-400">
-    Optional. Upload a formal contract (PDF format only).
+    Optional: Upload a contract (PDF only). Replaces the current contract.
   </p>
 </div>
           </div>

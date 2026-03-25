@@ -1,5 +1,6 @@
 import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import DeviceManagement from '../../components/security/DeviceManagement';
 import supabase from '../../supabaseClient';
 import {
   User as UserIcon,
@@ -807,6 +808,7 @@ const handleDeleteAccount = useCallback(async () => {
                 )}
               </AnimatePresence>
             </section>
+            <DeviceManagement />
           </div>
         </div>
 
