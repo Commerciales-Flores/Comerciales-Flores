@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIndicator } from '../../contexts/IndicatorContext';
 import { formatTime } from '../../utils/date';
+import supabase from '../../supabaseClient';
 import {
   Building2,
   AlertCircle,
@@ -75,6 +76,13 @@ export default function Login() {
   const [recoveryStatus, setRecoveryStatus] = useState({ type: '', msg: '' });
   const [recoveryLoading, setRecoveryLoading] = useState(false);
 
+  const [pendingApproval, setPendingApproval] = useState<{
+    loginRequestId: string;
+    expiresAt?: string;
+  } | null>(null);
+
+  const [approvalMessage, setApprovalMessage] = useState('');
+
   const registerMessage =
     typeof location.state?.message === 'string' ? location.state.message : '';
 
@@ -125,6 +133,73 @@ export default function Login() {
     setError('');
   }
 }, [user, formKey]);
+
+useEffect(() => {
+  if (!pendingApproval?.loginRequestId) return;
+
+  const deviceFingerprint = localStorage.getItem('device_fingerprint');
+  if (!deviceFingerprint) return;
+
+  let cancelled = false;
+
+  const completeApprovedLogin = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('complete-device-login', {
+        body: {
+          loginRequestId: pendingApproval.loginRequestId,
+          deviceFingerprint,
+        },
+      });
+
+      if (cancelled) return;
+
+      if (error) {
+        console.error('Complete login error:', error);
+        return;
+      }
+
+      if (data?.approved && data?.completed) {
+        setApprovalMessage('Sign-in approved. Finishing login...');
+        setPendingApproval(null);
+        window.location.reload();
+      }
+    } catch (err) {
+      if (!cancelled) console.error('Complete login failed:', err);
+    }
+  };
+
+  const channel = supabase
+    .channel(`login-approval-${pendingApproval.loginRequestId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'pending_login_verifications',
+        filter: `login_request_id=eq.${pendingApproval.loginRequestId}`,
+      },
+      async (payload) => {
+        const nextRow = payload.new as {
+          approved_at?: string | null;
+          approval_completed_at?: string | null;
+        };
+
+        if (!nextRow?.approved_at || nextRow?.approval_completed_at) return;
+
+        await completeApprovedLogin();
+      }
+    )
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        console.log('Realtime approval listener subscribed');
+      }
+    });
+
+  return () => {
+    cancelled = true;
+    void supabase.removeChannel(channel);
+  };
+}, [pendingApproval]);
 
 useEffect(() => {
   const raw = sessionStorage.getItem(LOGIN_COOLDOWN_KEY);
@@ -246,12 +321,23 @@ useEffect(() => {
         break;
 
       case 'unverified_device':
-        showIndicator(
-          `Verification required for ${normalizedEmail} at ${formatTime(new Date())}`,
-          'security'
+        if ((result as any).loginRequestId) {
+        setPendingApproval({
+          loginRequestId: (result as any).loginRequestId,
+          expiresAt: (result as any).expiresAt,
+        });
+
+        setApprovalMessage(
+          'Check your email to approve this sign-in. You can approve it from your phone and this browser will continue automatically.'
         );
+      }
+
+      showIndicator(
+        `Verification required for ${normalizedEmail} at ${formatTime(new Date())}`,
+        'security'
+      );
         setError(
-          'This device is not recognized. Please check your email to verify this login.'
+          ''
         );
         break;
 
@@ -425,6 +511,13 @@ useEffect(() => {
                   </div>
                 )}
 
+                {pendingApproval && (
+                  <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                    <p className="font-semibold">Approval required</p>
+                    <p className="mt-1">{approvalMessage}</p>
+                  </div>
+                )}
+
                 <form
                   onSubmit={handleLogin}
                   className="space-y-5 max-w-md mx-auto w-full"
@@ -534,7 +627,7 @@ useEffect(() => {
 
                   <button
                     type="submit"
-                    disabled={authActionPending || loginCooldown > 0}
+                    disabled={authActionPending || loginCooldown > 0 || !!pendingApproval}
                     className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/10 disabled:opacity-50 mt-2 active:scale-[0.98]"
                   >
                     {authActionPending
@@ -548,6 +641,8 @@ useEffect(() => {
             )}
 
             {!registerMessage && (
+
+              
               <div className="mt-8 max-w-md mx-auto w-full">
                 <div className="relative flex items-center justify-center mb-6">
                   <div className="w-full border-t border-slate-100" />
@@ -579,6 +674,7 @@ useEffect(() => {
             )}
 
             {!registerMessage && (
+              
               <div className="mt-12 text-center space-y-3">
                 <p className="text-slate-500 text-sm font-medium">
                   Don&apos;t have an account?{' '}

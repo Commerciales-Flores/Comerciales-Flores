@@ -17,7 +17,6 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const token = String(body?.token ?? '').trim();
-    const rememberDevice = Boolean(body?.rememberDevice);
 
     console.log('VERIFY TOKEN PRESENT:', Boolean(token));
     console.log('REMEMBER DEVICE:', rememberDevice);
@@ -36,7 +35,6 @@ Deno.serve(async (req) => {
       .from('pending_login_verifications')
       .select('*')
       .eq('token', token)
-      .is('verified_at', null)
       .maybeSingle();
 
     console.log('VERIFICATION ERROR:', verificationError?.message ?? null);
@@ -63,6 +61,8 @@ Deno.serve(async (req) => {
       );
     }
 
+    const rememberDevice = Boolean(verification.remember_device);
+
     if (new Date(verification.expires_at).getTime() < Date.now()) {
       return new Response(
         JSON.stringify({ success: false, error: 'Verification link expired' }),
@@ -73,12 +73,30 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (verification.approved_at) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          approved: true,
+          message: 'Sign-in already approved. Return to your original browser to continue.',
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
+    const nowIso = new Date().toISOString();
+
     const { error: markVerifiedError } = await adminClient
-      .from('pending_login_verifications')
-      .update({
-        verified_at: new Date().toISOString(),
-      })
-      .eq('verification_id', verification.verification_id);
+    .from('pending_login_verifications')
+    .update({
+      verified_at: nowIso,
+      approved_at: nowIso,
+    })
+    .eq('verification_id', verification.verification_id)
+    .is('approved_at', null);
 
     console.log('MARK VERIFIED ERROR:', markVerifiedError?.message ?? null);
 
@@ -92,50 +110,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (rememberDevice) {
-      const forwardedFor = req.headers.get('x-forwarded-for');
-      const ipAddress = forwardedFor?.split(',')[0]?.trim() ?? null;
-
-      const { error: trustError } = await adminClient
-        .from('trusted_devices')
-        .upsert(
-          {
-            user_id: verification.user_id,
-            device_fingerprint: verification.device_fingerprint,
-            user_agent: verification.user_agent,
-            device_name: verification.device_name,
-            is_trusted: true,
-            last_ip: ipAddress,
-            last_seen_at: new Date().toISOString(),
-          },
-          {
-            onConflict: 'user_id,device_fingerprint',
-          }
-        );
-
-      console.log('TRUST UPSERT ERROR:', trustError?.message ?? null);
-
-      if (trustError) {
-        return new Response(
-          JSON.stringify({ success: false, error: trustError.message }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
-      }
-    }
 
     const { error: auditError } = await adminClient.from('audit_log').insert({
       user_id: verification.user_id,
-      action: 'DEVICE_VERIFIED',
+      action: 'LOGIN_APPROVED',
       target_table: 'users',
       target_id: verification.user_id,
       changed_fields: ['device_fingerprint'],
       timestamp: new Date().toISOString(),
       notes: rememberDevice
-        ? 'New device verified and trusted'
-        : 'Device verified (not trusted)',
+        ? 'Login approved from verification link; original browser may be trusted after completion'
+        : 'Login approved from verification link',
     });
 
     console.log('AUDIT ERROR:', auditError?.message ?? null);
@@ -143,7 +128,8 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Device verified successfully',
+        approved: true,
+        message: 'Sign-in approved. Return to your original browser to continue.',
       }),
       {
         status: 200,

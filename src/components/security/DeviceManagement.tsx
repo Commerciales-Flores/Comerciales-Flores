@@ -18,6 +18,7 @@ type TrustedDevice = {
   last_ip: string | null;
   last_seen_at: string;
   created_at: string;
+  location_label?: string | null;
 };
 
 function isMobileDevice(userAgent?: string | null) {
@@ -270,7 +271,7 @@ export default function DeviceManagement() {
                           {getReadableDeviceType(device)}
                         </p>
 
-                        <div className="mt-3 grid grid-cols-1 gap-6 text-sm text-slate-500 sm:grid-cols-3">
+                        <div className="mt-3 grid grid-cols-1 gap-6 text-sm text-slate-500 sm:grid-cols-2 xl:grid-cols-4">
                           <div className="rounded-xl bg-white px-3 py-2">
                             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                               Last Seen
@@ -292,6 +293,20 @@ export default function DeviceManagement() {
                             <p className="mt-1 font-medium text-slate-700">
                               {formatDateOnly(device.created_at)}
                             </p>
+                          </div>
+
+                          <div className="rounded-xl bg-white px-3 py-2">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                              Location
+                            </p>
+                            <div className="mt-1 flex flex-col leading-tight text-slate-700">
+                              <span className="font-medium">
+                                {device.location_label || 'Unknown'}
+                              </span>
+                              <span className="text-xs text-slate-500">
+                                Approximate
+                              </span>
+                            </div>
                           </div>
 
                           <div className="rounded-xl bg-white px-3 py-2">
