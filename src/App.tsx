@@ -153,7 +153,6 @@ function AppRoutes() {
             <Route path="payments" element={<ClientPayments />} />
             <Route path="reviews" element={<ClientReview />} />
             <Route path="notifications" element={<ClientNotifications />} />
-            <Route path="messages" element={<ClientMessages />} />
             <Route path="profile" element={<ClientProfile />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>
