@@ -19,7 +19,6 @@ Deno.serve(async (req) => {
     const token = String(body?.token ?? '').trim();
 
     console.log('VERIFY TOKEN PRESENT:', Boolean(token));
-    console.log('REMEMBER DEVICE:', rememberDevice);
 
     if (!token) {
       return new Response(
@@ -62,6 +61,7 @@ Deno.serve(async (req) => {
     }
 
     const rememberDevice = Boolean(verification.remember_device);
+    console.log('REMEMBER DEVICE:', rememberDevice);
 
     if (new Date(verification.expires_at).getTime() < Date.now()) {
       return new Response(
@@ -90,13 +90,13 @@ Deno.serve(async (req) => {
     const nowIso = new Date().toISOString();
 
     const { error: markVerifiedError } = await adminClient
-    .from('pending_login_verifications')
-    .update({
-      verified_at: nowIso,
-      approved_at: nowIso,
-    })
-    .eq('verification_id', verification.verification_id)
-    .is('approved_at', null);
+      .from('pending_login_verifications')
+      .update({
+        verified_at: nowIso,
+        approved_at: nowIso,
+      })
+      .eq('verification_id', verification.verification_id)
+      .is('approved_at', null);
 
     console.log('MARK VERIFIED ERROR:', markVerifiedError?.message ?? null);
 
@@ -110,16 +110,61 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (rememberDevice) {
+      const { error: trustError } = await adminClient
+        .from('trusted_devices')
+        .upsert(
+          {
+            user_id: verification.user_id,
+            device_fingerprint: verification.device_fingerprint,
+            user_agent: verification.user_agent ?? null,
+            device_name: verification.device_name ?? null,
+            is_trusted: true,
+            last_seen_at: nowIso,
+            created_at: nowIso,
+            last_ip: verification.ip_address ?? null,
+            location_label: verification.location_label ?? null,
+            location_city: verification.location_city ?? null,
+            location_region: verification.location_region ?? null,
+            location_country: verification.location_country ?? null,
+            location_checked_at: nowIso,
+            country_change_detected: false,
+            city_change_detected: false,
+            suspicious_login: false,
+            suspicious_reason: null,
+            last_location_alert_at: null,
+            country_changed_at: null,
+            city_changed_at: null,
+          },
+          {
+            onConflict: 'user_id,device_fingerprint',
+          }
+        );
+
+      console.log('TRUST DEVICE ERROR:', trustError?.message ?? null);
+
+      if (trustError) {
+        return new Response(
+          JSON.stringify({ success: false, error: trustError.message }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        );
+      }
+    }
 
     const { error: auditError } = await adminClient.from('audit_log').insert({
       user_id: verification.user_id,
       action: 'LOGIN_APPROVED',
-      target_table: 'users',
-      target_id: verification.user_id,
-      changed_fields: ['device_fingerprint'],
-      timestamp: new Date().toISOString(),
+      target_table: rememberDevice ? 'trusted_devices' : 'users',
+      target_id: rememberDevice ? verification.device_fingerprint : verification.user_id,
+      changed_fields: rememberDevice
+        ? ['device_fingerprint', 'is_trusted']
+        : ['device_fingerprint'],
+      timestamp: nowIso,
       notes: rememberDevice
-        ? 'Login approved from verification link; original browser may be trusted after completion'
+        ? 'Login approved from verification link and device trusted immediately'
         : 'Login approved from verification link',
     });
 
@@ -129,7 +174,10 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         approved: true,
-        message: 'Sign-in approved. Return to your original browser to continue.',
+        trusted: rememberDevice,
+        message: rememberDevice
+          ? 'Sign-in approved and this browser is now trusted. Return to your original browser to continue.'
+          : 'Sign-in approved. Return to your original browser to continue.',
       }),
       {
         status: 200,
@@ -137,7 +185,10 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error) {
-    console.log('VERIFY DEVICE CATCH:', error instanceof Error ? error.message : String(error));
+    console.log(
+      'VERIFY DEVICE CATCH:',
+      error instanceof Error ? error.message : String(error)
+    );
 
     return new Response(
       JSON.stringify({

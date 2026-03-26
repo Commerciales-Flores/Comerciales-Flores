@@ -121,49 +121,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (verification.remember_device) {
-      const { error: trustError } = await adminClient
-        .from('trusted_devices')
-        .upsert(
-          {
-            user_id: verification.user_id,
-            device_fingerprint: verification.device_fingerprint,
-            user_agent: verification.user_agent,
-            device_name: verification.device_name,
-            is_trusted: true,
-            last_ip: verification.ip_address ?? null,
-            last_seen_at: new Date().toISOString(),
-            location_label: verification.location_label ?? null,
-            location_city: verification.location_city ?? null,
-            location_region: verification.location_region ?? null,
-            location_country: verification.location_country ?? null,
-            location_checked_at: new Date().toISOString(),
-          },
-          {
-            onConflict: 'user_id,device_fingerprint',
-          }
-        );
-
-      if (trustError) {
-        return new Response(
-          JSON.stringify({ success: false, error: trustError.message }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
-      }
-    }
-
     const nowIso = new Date().toISOString();
 
     const { error: completeError } = await adminClient
-  .from('pending_login_verifications')
-  .update({
-    approval_completed_at: nowIso,
-  })
-  .eq('verification_id', verification.verification_id)
-  .is('approval_completed_at', null);
+      .from('pending_login_verifications')
+      .update({
+        approval_completed_at: nowIso,
+      })
+      .eq('verification_id', verification.verification_id)
+      .is('approval_completed_at', null);
 
     if (completeError) {
       return new Response(
@@ -183,7 +149,7 @@ Deno.serve(async (req) => {
       changed_fields: ['device_fingerprint'],
       timestamp: nowIso,
       notes: verification.remember_device
-        ? 'Approved login completed on original browser and browser trusted'
+        ? 'Approved login completed on original browser; device was already trusted during email approval'
         : 'Approved login completed on original browser',
     });
 

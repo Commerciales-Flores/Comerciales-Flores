@@ -206,7 +206,7 @@ export default function Register() {
         email: cleanedEmail,
         password: formData.password,
         ...(cleanedContactNumber ? { contactNumber: cleanedContactNumber } : {}),
-        ...(cleanedAddress ? { address: cleanedAddress } : {}),
+        address: cleanedAddress || '',
       });
 
       if (!result.success) {

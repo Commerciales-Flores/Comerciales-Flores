@@ -1038,72 +1038,101 @@ if (!deviceCheck?.trusted) {
   );
 
   const updateProfile = useCallback(
-    async (userData: Partial<User>): Promise<boolean> => {
-      if (!user || authActionPending) return false;
+  async (userData: Partial<User>): Promise<boolean> => {
+    if (!user || authActionPending) return false;
 
-      setAuthActionPending(true);
+    setAuthActionPending(true);
 
-      try {
-        const dbPayload: Record<string, unknown> = {};
+    try {
+      const dbPayload: Record<string, unknown> = {};
 
-        if (userData.firstName !== undefined) {
-          dbPayload.first_name = normalizeName(userData.firstName);
+      if (userData.firstName !== undefined) {
+        dbPayload.first_name = normalizeName(userData.firstName);
+      }
+
+      if (userData.lastName !== undefined) {
+        dbPayload.last_name = normalizeName(userData.lastName);
+      }
+
+      if (userData.phone !== undefined) {
+        dbPayload.phone = normalizePhone(userData.phone);
+      }
+
+      if (userData.address !== undefined) {
+        dbPayload.address = normalizeAddress(userData.address);
+      }
+
+      if (userData.profilePictureUrl !== undefined) {
+        dbPayload.profile_picture_url = userData.profilePictureUrl;
+      }
+
+      const nextEmail =
+        userData.email !== undefined ? normalizeEmail(userData.email) : user.email;
+      const currentEmail = normalizeEmail(user.email);
+
+      const isEmailChanged =
+        userData.email !== undefined && nextEmail !== currentEmail;
+
+      if (isEmailChanged) {
+        const { error: authEmailError } = await supabase.auth.updateUser({
+          email: nextEmail,
+        });
+
+        if (authEmailError) {
+          console.error('Email update failed:', authEmailError.message);
+          return false;
         }
 
-        if (userData.lastName !== undefined) {
-          dbPayload.last_name = normalizeName(userData.lastName);
-        }
+        showIndicator(
+          'A confirmation link has been sent to your new email address. Please verify it before the change takes effect.',
+          'security'
+        );
+      }
 
-        if (userData.phone !== undefined) {
-          dbPayload.phone = normalizePhone(userData.phone);
-        }
-
-        if (userData.address !== undefined) {
-          dbPayload.address = normalizeAddress(userData.address);
-        }
-
-        if (userData.profilePictureUrl !== undefined) {
-          dbPayload.profile_picture_url = userData.profilePictureUrl;
-        }
-
-        const { error } = await supabase
+      if (Object.keys(dbPayload).length > 0) {
+        const { error: profileError } = await supabase
           .from('users')
           .update(dbPayload)
           .eq('user_id', user.id);
 
-        if (error) {
-          console.error('Profile update failed:', error.message);
+        if (profileError) {
+          console.error('Profile update failed:', profileError.message);
           return false;
         }
-
-        const updatedUser: User = {
-          ...user,
-          ...userData,
-          ...(userData.firstName !== undefined
-            ? { firstName: normalizeName(userData.firstName) }
-            : {}),
-          ...(userData.lastName !== undefined
-            ? { lastName: normalizeName(userData.lastName) }
-            : {}),
-          ...(userData.phone !== undefined
-            ? { phone: normalizePhone(userData.phone) }
-            : {}),
-          ...(userData.address !== undefined
-            ? { address: normalizeAddress(userData.address) }
-            : {}),
-        };
-
-        persistUserSession(updatedUser);
-        return true;
-      } catch (err) {
-        console.error('Unexpected profile update error:', err);
-        return false;
-      } finally {
-        setAuthActionPending(false);
       }
-    },
-    [authActionPending, persistUserSession, user]
-  );
+
+      const updatedUser: User = {
+        ...user,
+        ...(userData.firstName !== undefined
+          ? { firstName: normalizeName(userData.firstName) }
+          : {}),
+        ...(userData.lastName !== undefined
+          ? { lastName: normalizeName(userData.lastName) }
+          : {}),
+        ...(userData.phone !== undefined
+          ? { phone: normalizePhone(userData.phone) }
+          : {}),
+        ...(userData.address !== undefined
+          ? { address: normalizeAddress(userData.address) }
+          : {}),
+        ...(userData.profilePictureUrl !== undefined
+          ? { profilePictureUrl: userData.profilePictureUrl }
+          : {}),
+        // keep local UI value so the form reflects what user entered
+        ...(isEmailChanged ? { email: nextEmail } : {}),
+      };
+
+      persistUserSession(updatedUser);
+      return true;
+    } catch (err) {
+      console.error('Unexpected profile update error:', err);
+      return false;
+    } finally {
+      setAuthActionPending(false);
+    }
+  },
+  [authActionPending, persistUserSession, showIndicator, user]
+);
 
   const changePassword = useCallback(
     async (newPassword: string): Promise<boolean> => {

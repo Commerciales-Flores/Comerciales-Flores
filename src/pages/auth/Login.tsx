@@ -168,6 +168,15 @@ useEffect(() => {
     }
   };
 
+  // 🔥 1. Run immediately (IMPORTANT)
+  completeApprovedLogin();
+
+  // 🔁 2. Poll every 3 seconds (fallback)
+  const interval = setInterval(() => {
+    completeApprovedLogin();
+  }, 3000);
+
+  // ⚡ 3. Keep realtime (fast path)
   const channel = supabase
     .channel(`login-approval-${pendingApproval.loginRequestId}`)
     .on(
@@ -189,14 +198,11 @@ useEffect(() => {
         await completeApprovedLogin();
       }
     )
-    .subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        console.log('Realtime approval listener subscribed');
-      }
-    });
+    .subscribe();
 
   return () => {
     cancelled = true;
+    clearInterval(interval);
     void supabase.removeChannel(channel);
   };
 }, [pendingApproval]);
