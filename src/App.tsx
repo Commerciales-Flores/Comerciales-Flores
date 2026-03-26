@@ -25,7 +25,7 @@ const ClientPayments = lazy(() => import('./pages/client/Payments'));
 const ClientReview = lazy(() => import('./pages/client/Reviews'));
 const ClientNotifications = lazy(() => import('./pages/client/Notifications'));
 const ClientProfile = lazy(() => import('./pages/client/Profile'));
-const ClientMessages = lazy(() => import('./pages/client/Messages'));
+const ClientMessages = lazy(() => import('./pages/client/messages'));
 
 // Admin Pages
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
