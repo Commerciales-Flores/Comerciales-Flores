@@ -665,7 +665,7 @@ Deno.serve(async (req) => {
 
     await adminClient.from('audit_log').insert({
       user_id: user.id,
-      action: 'DEVICE_VERIFICATION_SENT',
+      action: 'DEVICE_VERIFICATION',
       target_table: 'users',
       target_id: user.id,
       changed_fields: ['device_fingerprint'],
