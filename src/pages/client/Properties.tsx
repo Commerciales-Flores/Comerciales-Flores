@@ -122,6 +122,11 @@ function getDateInputValue(date?: Date) {
   return `${year}-${month}-${day}`;
 }
 
+function isVideoUrl(url?: string | null) {
+  if (!url) return false;
+  return /\.(mp4|webm|mov|m4v|ogg)$/i.test(url);
+}
+
 function computeEndFromForm(start: Date, duration: number, type: DurationType) {
   const end = new Date(start);
 
@@ -239,6 +244,7 @@ export default function ClientUnits() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [reservationSuccess, setReservationSuccess] = useState(false);
+  const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
 
   const [functionHallConflictMessage, setFunctionHallConflictMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -258,6 +264,10 @@ export default function ClientUnits() {
       return { ...prev, paymentMethod: defaultPaymentMethod };
     });
   }, [defaultPaymentMethod]);
+
+  useEffect(() => {
+    setCurrentImageIndex(0);
+  }, [selectedUnitId]);
 
   const hasUnits = useMemo(() => units.length > 0, [units]);
 
@@ -281,9 +291,12 @@ export default function ClientUnits() {
     return units.find((u) => u.id === selectedUnitId) ?? null;
   }, [selectedUnitId, units]);
 
-  const selectedUnitImages = useMemo(() => {
+  const selectedUnitMedia = useMemo(() => {
     const images = selectedUnitData?.images?.filter(Boolean) ?? [];
-    return images.length > 0 ? images : [FALLBACK_IMAGE];
+    const videos = selectedUnitData?.videos?.filter(Boolean) ?? [];
+
+    const media = [...images, ...videos];
+    return media.length > 0 ? media : [FALLBACK_IMAGE];
   }, [selectedUnitData]);
 
   const unitParkingSlots = useMemo(() => {
@@ -574,10 +587,10 @@ map.set(unit.id, {
   return map;
 }, [units, parkingSlots, reservations, user?.id]);
   
-  const safeCurrentImageIndex = useMemo(() => {
-    if (selectedUnitImages.length === 0) return 0;
-    return Math.min(currentImageIndex, selectedUnitImages.length - 1);
-  }, [currentImageIndex, selectedUnitImages]);
+  const safeCurrentMediaIndex = useMemo(() => {
+  if (selectedUnitMedia.length === 0) return 0;
+  return Math.min(currentImageIndex, selectedUnitMedia.length - 1);
+}, [currentImageIndex, selectedUnitMedia]);
 
     const filteredUnits = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -806,16 +819,16 @@ const getParkingSlotState = useCallback(
   }, []);
 
   const nextImage = useCallback(() => {
-    if (!selectedUnitImages.length) return;
-    setCurrentImageIndex((prev) => (prev + 1) % selectedUnitImages.length);
-  }, [selectedUnitImages]);
+    if (!selectedUnitMedia.length) return;
+    setCurrentImageIndex((prev) => (prev + 1) % selectedUnitMedia.length);
+  }, [selectedUnitMedia]);
 
   const prevImage = useCallback(() => {
-    if (!selectedUnitImages.length) return;
+    if (!selectedUnitMedia.length) return;
     setCurrentImageIndex(
-      (prev) => (prev - 1 + selectedUnitImages.length) % selectedUnitImages.length
+      (prev) => (prev - 1 + selectedUnitMedia.length) % selectedUnitMedia.length
     );
-  }, [selectedUnitImages]);
+  }, [selectedUnitMedia]);
 
   const handleModeChange = useCallback((mode: VisitMode) => {
     setReservationForm((prev) => ({
@@ -1194,11 +1207,39 @@ const getParkingSlotState = useCallback(
         className="group flex h-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all duration-300 ease-out
                   hover:-translate-y-1 hover:shadow-xl hover:border-blue-200"
       >
-        <img
-          src={unit.images?.[0] || FALLBACK_IMAGE}
-          alt={unit.name}
-          className="h-44 w-full object-cover"
-        />
+        <div
+          className="relative h-44 w-full overflow-hidden bg-gray-100"
+          onMouseEnter={() => setHoveredCardId(unit.id)}
+          onMouseLeave={() => setHoveredCardId((prev) => (prev === unit.id ? null : prev))}
+        >
+          {unit.videos?.[0] ? (
+            <video
+              src={unit.videos[0]}
+              muted
+              playsInline
+              preload="metadata"
+              autoPlay={hoveredCardId === unit.id}
+              loop={hoveredCardId === unit.id}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <img
+              src={unit.images?.[0] || FALLBACK_IMAGE}
+              alt={unit.name}
+              className="h-full w-full object-cover"
+              loading="lazy"
+              decoding="async"
+            />
+          )}
+
+          {unit.videos?.length ? (
+            <span className="absolute right-3 top-3 rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-semibold text-white">
+              {hoveredCardId === unit.id
+                ? "Playing"
+                : `${unit.videos.length} video${unit.videos.length > 1 ? "s" : ""}`}
+            </span>
+          ) : null}
+        </div>
 
         <div className="flex flex-1 flex-col p-4">
           <span className="mb-1 text-xs font-medium text-blue-600">
@@ -1492,13 +1533,29 @@ const getParkingSlotState = useCallback(
                   <div className="grid gap-6 md:grid-cols-2">
                     <div>
                       <div className="relative mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-gray-100">
-                        <img
-                          src={selectedUnitImages[safeCurrentImageIndex]}
-                          alt={selectedUnitData.name}
-                          className="h-56 w-full object-cover"
-                        />
+                        {isVideoUrl(selectedUnitMedia[safeCurrentMediaIndex]) ? (
+                          <video
+                            src={selectedUnitMedia[safeCurrentMediaIndex]}
+                            controls
+                            preload="metadata"
+                            playsInline
+                            className="h-56 w-full object-cover"
+                          />
+                        ) : (
+                          <img
+                            src={selectedUnitMedia[safeCurrentMediaIndex]}
+                            alt={selectedUnitData.name}
+                            className="h-56 w-full object-cover"
+                          />
+                        )}
 
-                        {selectedUnitImages.length > 1 && (
+                        {isVideoUrl(selectedUnitMedia[safeCurrentMediaIndex]) && (
+                          <span className="absolute right-3 top-3 z-10 rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-semibold text-white">
+                            Video
+                          </span>
+                        )}
+
+                        {selectedUnitMedia.length > 1 && (
                           <>
                             <button
                               onClick={prevImage}
@@ -1518,6 +1575,44 @@ const getParkingSlotState = useCallback(
                           </>
                         )}
                       </div>
+
+                      {selectedUnitMedia.length > 1 && (
+                        <div className="mb-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                          {selectedUnitMedia.map((media, index) => (
+                            <button
+                              key={`${media}-${index}`}
+                              type="button"
+                              onClick={() => setCurrentImageIndex(index)}
+                              className={`overflow-hidden rounded-xl border ${
+                                index === safeCurrentMediaIndex
+                                  ? "border-blue-500 ring-2 ring-blue-200"
+                                  : "border-gray-200"
+                              }`}
+                            >
+                              {isVideoUrl(media) ? (
+                                <div className="relative h-16 w-20 bg-gray-100">
+                                  <video
+                                    src={media}
+                                    muted
+                                    playsInline
+                                    preload="metadata"
+                                    className="h-full w-full object-cover"
+                                  />
+                                  <div className="absolute inset-x-0 bottom-0 bg-black/60 px-1 py-0.5 text-[10px] font-medium text-white">
+                                    Video
+                                  </div>
+                                </div>
+                              ) : (
+                                <img
+                                  src={media}
+                                  alt={`Media ${index + 1}`}
+                                  className="h-16 w-20 object-cover"
+                                />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
 
                       <p className="mb-4 text-sm leading-relaxed text-gray-600">
                         {selectedUnitData.description}

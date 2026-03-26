@@ -53,6 +53,8 @@ export interface Unit {
   price: number;
   images: string[];      // public URLs for rendering
   imagePaths: string[];
+  videos?: string[];
+  videoPaths?: string[];
   policies: string;
   capacity?: number;
   available: boolean;

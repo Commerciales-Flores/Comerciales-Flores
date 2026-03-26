@@ -22,6 +22,11 @@ import {
   getUnitTypeLabel,
 } from "../../utils/propertyHelpers";
 
+function isVideoUrl(url?: string | null) {
+  if (!url) return false;
+  return /\.(mp4|webm|mov|m4v|ogg)$/i.test(url);
+}
+
 
 export default function LandingPage() {
   const { units, contentSettings, addInquiry } = useData();
@@ -574,17 +579,33 @@ export default function LandingPage() {
               <div className="relative bg-slate-50 rounded-2xl md:rounded-[2rem] overflow-hidden border border-slate-100 mx-1">
                 <div className="grid md:grid-cols-2">
                   <div className="relative h-[200px] sm:h-[250px] md:h-[500px] overflow-hidden">
-                    <motion.img
-                      whileHover={{ scale: 1.05 }}
-                      src={Unit.images?.[0] || "/fallback-property.webp"}
-                      alt={Unit.name}
-                      loading="lazy"
-                      decoding="async"
-                      className="w-full h-full object-cover"
-                    />
+                    {Unit.videos?.[0] ? (
+                      <motion.video
+                        whileHover={{ scale: 1.02 }}
+                        src={Unit.videos[0]}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <motion.img
+                        whileHover={{ scale: 1.05 }}
+                        src={Unit.images?.[0] || "/fallback-property.webp"}
+                        alt={Unit.name}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-full object-cover"
+                      />
+                    )}
                     <div className="absolute top-4 left-4 px-3 py-1 bg-white/90 backdrop-blur-md rounded-full text-[10px] md:text-xs font-bold text-blue-600 shadow-sm">
                       {getUnitTypeLabel(Unit.type)}
                     </div>
+                    {Unit.videos?.length ? (
+                      <div className="absolute top-4 right-4 px-3 py-1 bg-black/70 backdrop-blur-md rounded-full text-[10px] md:text-xs font-bold text-white shadow-sm">
+                        {Unit.videos.length} video{Unit.videos.length > 1 ? "s" : ""}
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="p-6 md:p-10 lg:p-12 flex flex-col justify-center">

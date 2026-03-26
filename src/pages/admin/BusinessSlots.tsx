@@ -49,6 +49,7 @@ const INITIAL_FORM_STATE = {
   description: '',
   price: '',
   images: '',
+  videos: '',
   policies: '',
   capacity: '',
   available: true,
@@ -101,6 +102,8 @@ type UnitRecord = {
   price: number;
   imagePaths?: string[];
   images?: string[];
+  videoPaths?: string[];
+  videos?: string[];
   policies: string;
   capacity?: number | null;
   available: boolean;
@@ -155,17 +158,15 @@ function revokePreviewUrls(items: ImagePreviewItem[]) {
 function getPublicImageUrl(path: string) {
   if (!path) return '';
 
-  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('blob:')) {
+  if (
+    path.startsWith('http://') ||
+    path.startsWith('https://') ||
+    path.startsWith('blob:')
+  ) {
     return path;
   }
 
-  let normalizedPath = path.trim();
-
-  if (normalizedPath.startsWith('property_images/')) {
-    normalizedPath = normalizedPath.replace(/^property_images\//, '');
-  }
-
-  const { data } = supabase.storage.from('property_images').getPublicUrl(normalizedPath);
+  const { data } = supabase.storage.from('property_media').getPublicUrl(path.trim());
   return data.publicUrl;
 }
 
@@ -282,6 +283,7 @@ type UnitFormModalProps = {
       description: string;
       price: number;
       imagePaths: string[];
+      videoPaths: string[];
       policies: string;
       capacity?: number;
       available: boolean;
@@ -295,6 +297,7 @@ type UnitFormModalProps = {
   }) => Promise<void>;
   uploadUnitContract: (file: File) => Promise<{ path: string; name: string } | null>;
   uploadUnitImage: (file: File) => Promise<string | null | undefined>;
+  uploadUnitVideo: (file: File) => Promise<string | null | undefined>;
   onOpenLightbox: (src: string) => void;
 };
 
@@ -306,6 +309,7 @@ const UnitFormModal = React.memo(function UnitFormModal({
   onClose,
   onSave,
   uploadUnitImage,
+  uploadUnitVideo,
   uploadUnitContract,
   onOpenLightbox,
 }: UnitFormModalProps) {
@@ -319,77 +323,98 @@ const UnitFormModal = React.memo(function UnitFormModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
 
-  const previewsRef = useRef<ImagePreviewItem[]>([]);
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
+  const [videoPreviews, setVideoPreviews] = useState<ImagePreviewItem[]>([]);
+  const [isUploadingVideos, setIsUploadingVideos] = useState(false);
+
+  const allPreviewsRef = useRef<ImagePreviewItem[]>([]);
 
   useEffect(() => {
-    previewsRef.current = imagePreviews;
-  }, [imagePreviews]);
+    allPreviewsRef.current = [...imagePreviews, ...videoPreviews];
+  }, [imagePreviews, videoPreviews]);
 
   useEffect(() => {
-    if (!open) return;
+  if (!open) return;
 
-    revokePreviewUrls(previewsRef.current);
+  revokePreviewUrls(allPreviewsRef.current);
 
-    if (editingUnit) {
-      const existingPaths =
-        Array.isArray(editingUnit.imagePaths) && editingUnit.imagePaths.length
-          ? editingUnit.imagePaths
-          : Array.isArray(editingUnit.images)
-            ? editingUnit.images
-            : [];
+  if (editingUnit) {
+    const existingPaths =
+      Array.isArray(editingUnit.imagePaths) && editingUnit.imagePaths.length
+        ? editingUnit.imagePaths
+        : Array.isArray(editingUnit.images)
+          ? editingUnit.images
+          : [];
 
-      setImagePreviews(
-        existingPaths.map((path, index) => ({
-          id: `${path}-${index}`,
-          path,
-          previewUrl: getPublicImageUrl(path),
-        }))
-      );
+    const existingVideoPaths =
+      Array.isArray(editingUnit.videoPaths) && editingUnit.videoPaths.length
+        ? editingUnit.videoPaths
+        : Array.isArray(editingUnit.videos)
+          ? editingUnit.videos
+          : [];
 
-      setUnitForm({
-        name: editingUnit.name,
-        type: editingUnit.type,
-        description: editingUnit.description,
-        price: editingUnit.price.toString(),
-        images: existingPaths.join(', '),
-        policies: editingUnit.policies,
-        capacity:
-          editingUnit.type === 'function_hall' ? editingUnit.capacity?.toString() || '' : '',
-        available: editingUnit.available,
-        features: editingUnit.features.join(', '),
-        propertyId: editingUnit.propertyId || '',
-        location: editingUnit.location || defaultLocation,
-        minimumPaymentPercent:
+    setImagePreviews(
+      existingPaths.map((path, index) => ({
+        id: `image-${path}-${index}`,
+        path,
+        previewUrl: getPublicImageUrl(path),
+      }))
+    );
+
+    setVideoPreviews(
+      existingVideoPaths.map((path, index) => ({
+        id: `video-${path}-${index}`,
+        path,
+        previewUrl: getPublicImageUrl(path),
+      }))
+    );
+
+    setUnitForm({
+      name: editingUnit.name,
+      type: editingUnit.type,
+      description: editingUnit.description,
+      price: editingUnit.price.toString(),
+      images: existingPaths.join(', '),
+      videos: existingVideoPaths.join(', '),
+      policies: editingUnit.policies,
+      capacity:
+        editingUnit.type === 'function_hall' ? editingUnit.capacity?.toString() || '' : '',
+      available: editingUnit.available,
+      features: editingUnit.features.join(', '),
+      propertyId: editingUnit.propertyId || '',
+      location: editingUnit.location || defaultLocation,
+      minimumPaymentPercent:
         editingUnit.minimumPaymentPercent !== null &&
         editingUnit.minimumPaymentPercent !== undefined
           ? String(editingUnit.minimumPaymentPercent)
-      : '',
-       contractFilePath: editingUnit.contractFilePath || '',
+          : '',
+      contractFilePath: editingUnit.contractFilePath || '',
       contractFileName: editingUnit.contractFileName || '',
-      });
-    } else {
-      setImagePreviews([]);
-      setUnitForm({
-        ...INITIAL_FORM_STATE,
-        location: defaultLocation,
-      });
-    }
+    });
+  } else {
+    setImagePreviews([]);
+    setVideoPreviews([]);
+    setUnitForm({
+      ...INITIAL_FORM_STATE,
+      location: defaultLocation,
+    });
+  }
 
-    setIsSubmitting(false);
-    setIsUploadingImages(false);
+  setIsSubmitting(false);
+  setIsUploadingImages(false);
+  setIsUploadingVideos(false);
 
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  }, [open, editingUnit, defaultLocation]);
+  if (fileInputRef.current) fileInputRef.current.value = '';
+  if (videoInputRef.current) videoInputRef.current.value = '';
+}, [open, editingUnit, defaultLocation]);
 
   useEffect(() => {
-    if (!open) return;
+  if (!open) return;
 
-    return () => {
-      revokePreviewUrls(previewsRef.current);
-    };
-  }, [open]);
+  return () => {
+    revokePreviewUrls(allPreviewsRef.current);
+  };
+}, [open]);
 
   useEffect(() => {
     if (open && !unitForm.location && defaultLocation) {
@@ -437,6 +462,89 @@ const UnitFormModal = React.memo(function UnitFormModal({
       return prev.filter((item) => item.path !== imagePath);
     });
   }, []);
+
+  const triggerVideoUpload = useCallback(() => {
+  if (!isUploadingVideos) videoInputRef.current?.click();
+}, [isUploadingVideos]);
+
+const removeVideo = useCallback((videoPath: string) => {
+  setUnitForm((prev) => {
+    const remaining = parseCommaSeparated(prev.videos).filter((vid) => vid !== videoPath);
+    return { ...prev, videos: remaining.join(', ') };
+  });
+
+  setVideoPreviews((prev) => {
+    const target = prev.find((item) => item.path === videoPath);
+
+    if (target?.previewUrl?.startsWith('blob:')) {
+      try {
+        URL.revokeObjectURL(target.previewUrl);
+      } catch {
+        // ignore
+      }
+    }
+
+    return prev.filter((item) => item.path !== videoPath);
+  });
+}, []);
+
+const handleVideoFilesSelected = useCallback(
+  async (filesList: FileList | null) => {
+    const files = Array.from(filesList || []);
+    if (!files.length) return;
+
+    setIsUploadingVideos(true);
+
+    try {
+      const uploadResults = await Promise.all(
+        files.map(async (file) => {
+          const previewUrl = URL.createObjectURL(file);
+          const uploadedPath = await uploadUnitVideo(file);
+
+          if (!uploadedPath) {
+            URL.revokeObjectURL(previewUrl);
+            return null;
+          }
+
+          return {
+            path: uploadedPath,
+            previewUrl,
+          };
+        })
+      );
+
+      const validResults = uploadResults.filter(Boolean) as {
+        path: string;
+        previewUrl: string;
+      }[];
+
+      if (!validResults.length) return;
+
+      setVideoPreviews((prev) => [
+        ...prev,
+        ...validResults.map((item) => ({
+          id: `${item.path}-${crypto.randomUUID()}`,
+          path: item.path,
+          previewUrl: item.previewUrl,
+        })),
+      ]);
+
+      setUnitForm((prev) => {
+        const existing = parseCommaSeparated(prev.videos);
+        return {
+          ...prev,
+          videos: [...existing, ...validResults.map((r) => r.path)].join(', '),
+        };
+      });
+    } catch (err) {
+      console.error('Video upload failed', err);
+      alert('Video upload failed. See console for details.');
+    } finally {
+      setIsUploadingVideos(false);
+    }
+  },
+  [uploadUnitVideo]
+);
 
   const handleFilesSelected = useCallback(
     async (filesList: FileList | null) => {
@@ -523,14 +631,14 @@ const UnitFormModal = React.memo(function UnitFormModal({
 }, [uploadUnitContract]);
 
   const handleClose = useCallback(() => {
-    if (isSubmitting || isUploadingImages) return;
-    onClose();
-  }, [isSubmitting, isUploadingImages, onClose]);
+  if (isSubmitting || isUploadingImages || isUploadingVideos || isUploadingContract) return;
+  onClose();
+}, [isSubmitting, isUploadingImages, isUploadingVideos, isUploadingContract, onClose]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      if (isSubmitting || !unitForm.type || isUploadingImages) return;
+      if (isSubmitting || !unitForm.type || isUploadingImages || isUploadingVideos || isUploadingContract) return;
 
       setIsSubmitting(true);
 
@@ -553,6 +661,7 @@ const UnitFormModal = React.memo(function UnitFormModal({
             description: unitForm.description.trim(),
             price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
             imagePaths: parseCommaSeparated(unitForm.images),
+            videoPaths: parseCommaSeparated(unitForm.videos),
             policies: unitForm.policies.trim(),
             capacity: parsedCapacity,
             available: unitForm.available,
@@ -575,7 +684,17 @@ const UnitFormModal = React.memo(function UnitFormModal({
         setIsSubmitting(false);
       }
     },
-    [isSubmitting, unitForm, isUploadingImages, onSave, editingUnit?.id, defaultLocation, onClose]
+    [
+      isSubmitting,
+      unitForm,
+      isUploadingImages,
+      isUploadingVideos,
+      isUploadingContract,
+      onSave,
+      editingUnit?.id,
+      defaultLocation,
+      onClose,
+    ]
   );
 
   if (!open) return null;
@@ -827,6 +946,77 @@ const UnitFormModal = React.memo(function UnitFormModal({
               onOpenLightbox={onOpenLightbox}
               onTriggerUpload={triggerUpload}
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <label
+              htmlFor="videos"
+              className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400"
+            >
+              Unit Videos
+            </label>
+
+            <input
+              ref={videoInputRef}
+              id="videos"
+              type="file"
+              accept="video/mp4,video/webm,video/quicktime"
+              multiple
+              onChange={(e) => handleVideoFilesSelected(e.target.files)}
+              className="hidden"
+            />
+
+            {videoPreviews.length > 0 ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 overflow-x-auto py-1">
+                  {videoPreviews.map((item) => (
+                    <div
+                      key={item.id}
+                      className="group relative h-[150px] w-[220px] flex-shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 shadow-sm"
+                    >
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeVideo(item.path);
+                        }}
+                        className="absolute right-3 top-3 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white text-slate-600 shadow-lg transition-all hover:bg-red-500 hover:text-white"
+                      >
+                        <X className="size-4" />
+                      </button>
+
+                      <video
+                        src={item.previewUrl}
+                        controls
+                        preload="metadata"
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={triggerVideoUpload}
+                    disabled={isUploadingVideos}
+                    className="flex h-24 w-24 flex-shrink-0 items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 text-slate-500 transition-all hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-60"
+                  >
+                    <Plus className="size-6" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={triggerVideoUpload}
+                disabled={isUploadingVideos}
+                className="flex h-24 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 text-slate-500 transition-all hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-60"
+              >
+                <Plus className="size-5" />
+                <span className="text-sm font-semibold">
+                  {isUploadingVideos ? 'Uploading...' : 'Upload Videos'}
+                </span>
+              </button>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -1889,6 +2079,7 @@ export default function AdminUnitManagement() {
     updateUnit,
     deleteUnit,
     uploadUnitImage,
+    uploadUnitVideo,
     uploadUnitContract,
     locationOptions,
     defaultLocation,
@@ -2297,6 +2488,7 @@ export default function AdminUnitManagement() {
           onClose={closeUnitModal}
           onSave={handleSaveUnit}
           uploadUnitImage={uploadUnitImage}
+          uploadUnitVideo={uploadUnitVideo}
           uploadUnitContract={uploadUnitContract}
           onOpenLightbox={openLightbox}
         />

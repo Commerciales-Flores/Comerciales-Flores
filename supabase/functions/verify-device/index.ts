@@ -154,19 +154,25 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { error: auditError } = await adminClient.from('audit_log').insert({
-      user_id: verification.user_id,
-      action: 'LOGIN_APPROVED',
-      target_table: rememberDevice ? 'trusted_devices' : 'users',
-      target_id: rememberDevice ? verification.device_fingerprint : verification.user_id,
-      changed_fields: rememberDevice
-        ? ['device_fingerprint', 'is_trusted']
-        : ['device_fingerprint'],
-      timestamp: nowIso,
-      notes: rememberDevice
-        ? 'Login approved from verification link and device trusted immediately'
-        : 'Login approved from verification link',
-    });
+    const deviceLabel =
+  verification.device_name?.trim() ||
+  (verification.user_agent?.toLowerCase().includes('chrome') ? 'Chrome browser' : '') ||
+  'Trusted device';
+
+const { error: auditError } = await adminClient.from('audit_log').insert({
+  user_id: verification.user_id,
+  action: 'LOGIN_APPROVED',
+  target_table: rememberDevice ? 'trusted_devices' : 'users',
+  target_id: rememberDevice ? verification.device_fingerprint : verification.user_id,
+  target_public_id: rememberDevice ? deviceLabel : null,
+  changed_fields: rememberDevice
+    ? ['device_fingerprint', 'is_trusted']
+    : ['device_fingerprint'],
+  timestamp: nowIso,
+  notes: rememberDevice
+    ? 'Login approved from verification link and device trusted immediately'
+    : 'Login approved from verification link',
+});
 
     console.log('AUDIT ERROR:', auditError?.message ?? null);
 

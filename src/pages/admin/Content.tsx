@@ -1,5 +1,6 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, useRef, type ReactNode } from 'react';
 import { useData } from '../../contexts/DataContext';
+import supabase from '../../supabaseClient';
 import {
   Save,
   Plus,
@@ -34,6 +35,127 @@ export default function AdminContent() {
   const [newAnnouncement, setNewAnnouncement] = useState('');
   const [formData, setFormData] = useState(contentSettings);
   const [saved, setSaved] = useState(false);
+
+  const [isUploadingHeroImage, setIsUploadingHeroImage] = useState(false);
+const [isUploadingHistoryImages, setIsUploadingHistoryImages] = useState(false);
+
+const heroImageInputRef = useRef<HTMLInputElement | null>(null);
+const historyImagesInputRef = useRef<HTMLInputElement | null>(null);
+
+function getPublicMediaUrl(path: string) {
+  if (!path) return '';
+  if (
+    path.startsWith('http://') ||
+    path.startsWith('https://') ||
+    path.startsWith('blob:')
+  ) {
+    return path;
+  }
+
+  const { data } = supabase.storage.from('property_media').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+async function removePublicImage(path?: string | null) {
+  if (!path) return;
+
+  if (
+    path.startsWith('http://') ||
+    path.startsWith('https://')
+  ) {
+    return;
+  }
+
+  const { error } = await supabase.storage
+    .from('property_media')
+    .remove([path]);
+
+  if (error) throw error;
+}
+
+async function uploadPublicImage(file: File, folder: string) {
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+  const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const filePath = `${folder}/${fileName}`;
+
+  const { error } = await supabase.storage.from('property_media').upload(filePath, file, {
+    cacheControl: '3600',
+    upsert: false,
+    contentType: file.type || 'image/jpeg',
+  });
+
+  if (error) throw error;
+  return filePath;
+}
+
+async function compressImage(file: File): Promise<File> {
+  if (!file.type.startsWith('image/')) return file;
+
+  const img = await createImageBitmap(file);
+
+  const canvas = document.createElement('canvas');
+  const maxWidth = 1600;
+  const scale = Math.min(1, maxWidth / img.width);
+
+  canvas.width = img.width * scale;
+  canvas.height = img.height * scale;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return file;
+
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  const blob = await new Promise<Blob | null>((res) =>
+    canvas.toBlob(res, 'image/jpeg', 0.8)
+  );
+
+  if (!blob) return file;
+
+  return new File([blob], file.name.replace(/\.\w+$/, '.jpg'), {
+    type: 'image/jpeg',
+  });
+}
+
+const handleHeroImageUpload = async (file: File | null) => {
+  if (!file) return;
+
+  try {
+    setIsUploadingHeroImage(true);
+    const compressed = await compressImage(file);
+    const path = await uploadPublicImage(compressed, 'public/landing');
+    updateHero({ image: path });
+  } catch (error) {
+    console.error('Failed to upload hero image:', error);
+    alert('Failed to upload hero image.');
+  } finally {
+    setIsUploadingHeroImage(false);
+  }
+};
+
+const handleHistoryImagesUpload = async (files: FileList | null) => {
+  const selectedFiles = Array.from(files || []);
+  if (!selectedFiles.length) return;
+
+  try {
+    setIsUploadingHistoryImages(true);
+
+    const uploadedPaths = await Promise.all(
+      selectedFiles.map(async (file) => {
+        const compressed = await compressImage(file);
+        return uploadPublicImage(compressed, 'public/history');
+      })
+    );
+
+    updateHistory({
+      images: [...(formData.history.images ?? []), ...uploadedPaths],
+    });
+  } catch (error) {
+    console.error('Failed to upload history images:', error);
+    alert('Failed to upload one or more history images.');
+  } finally {
+    setIsUploadingHistoryImages(false);
+  }
+};
 
   useEffect(() => {
     setFormData(contentSettings);
@@ -151,6 +273,17 @@ export default function AdminContent() {
     }));
   };
 
+  const moveHistoryImage = (from: number, to: number) => {
+    const arr = [...(formData.history.images ?? [])];
+    if (to < 0 || to >= arr.length) return;
+
+    const [item] = arr.splice(from, 1);
+    arr.splice(to, 0, item);
+
+    updateHistory({ images: arr });
+  };
+
+  const [isDraggingHistory, setIsDraggingHistory] = useState(false);
 
 
   return (
@@ -301,30 +434,81 @@ export default function AdminContent() {
                 </FieldWrapper>
               </div>
 
-              <FieldWrapper label="Hero Image URL">
-                {isEditing('hero') ? (
-                  <input
-                    type="text"
-                    value={formData.hero.image || ''}
-                    onChange={(e) => updateHero({ image: e.target.value })}
-                    placeholder="https://example.com/hero-image.jpg"
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-blue-500"
-                  />
-                ) : (
-                  <div className="space-y-3">
-                    <p className="break-all text-sm text-slate-700">
-                      {contentSettings.hero.image || 'None'}
-                    </p>
-                    {contentSettings.hero.image && (
-                      <img
-                        src={contentSettings.hero.image}
-                        alt="Hero preview"
-                        className="max-h-72 w-full rounded-2xl border border-slate-200 object-cover"
-                      />
-                    )}
-                  </div>
-                )}
-              </FieldWrapper>
+              <FieldWrapper label="Hero Image">
+  {isEditing('hero') ? (
+    <div className="space-y-3">
+      <input
+        ref={heroImageInputRef}
+        type="file"
+        accept="image/*"
+        onChange={(e) => handleHeroImageUpload(e.target.files?.[0] ?? null)}
+        className="hidden"
+      />
+
+      {formData.hero.image ? (
+        <div className="space-y-3">
+          <img
+            src={getPublicMediaUrl(formData.hero.image)}
+            alt="Hero preview"
+            className="max-h-72 w-full rounded-2xl border border-slate-200 object-cover"
+          />
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => heroImageInputRef.current?.click()}
+              disabled={isUploadingHeroImage}
+              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+            >
+              {isUploadingHeroImage ? 'Uploading...' : 'Replace Image'}
+            </button>
+
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  if (formData.hero.image) {
+                    await removePublicImage(formData.hero.image);
+                  }
+                  updateHero({ image: '' });
+                } catch (error) {
+                  console.error('Failed to remove hero image:', error);
+                }
+              }}
+              className="rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-600 transition hover:bg-rose-100"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => heroImageInputRef.current?.click()}
+          disabled={isUploadingHeroImage}
+          className="flex h-24 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 text-slate-500 transition hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-60"
+        >
+          <span className="text-sm font-semibold">
+            {isUploadingHeroImage ? 'Uploading...' : 'Upload Hero Image'}
+          </span>
+        </button>
+      )}
+    </div>
+  ) : (
+    <div className="space-y-3">
+      <p className="break-all text-sm text-slate-700">
+        {contentSettings.hero.image || 'None'}
+      </p>
+      {contentSettings.hero.image && (
+        <img
+          src={getPublicMediaUrl(contentSettings.hero.image)}
+          alt="Hero preview"
+          className="max-h-72 w-full rounded-2xl border border-slate-200 object-cover"
+        />
+      )}
+    </div>
+  )}
+</FieldWrapper>
             </div>
           </ContentCard>
 
@@ -512,108 +696,152 @@ export default function AdminContent() {
               </FieldWrapper>
 
               <FieldWrapper label="History Images">
-                {isEditing('history') ? (
-                  <div className="space-y-3">
-                    {(formData.history.images ?? []).length > 0 ? (
-                      <div className="space-y-3">
-                        {(formData.history.images ?? []).map((img, index) => (
-                          <div
-                            key={index}
-                            className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3"
-                          >
-                            <div className="flex gap-2">
-                              <input
-                                type="text"
-                                value={img}
-                                onChange={(e) => {
-                                  const updated = [...(formData.history.images ?? [])];
-                                  updated[index] = e.target.value;
-                                  updateHistory({ images: updated });
-                                }}
-                                placeholder="https://example.com/history-image.jpg"
-                                className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-blue-500"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const updated = (formData.history.images ?? []).filter(
-                                    (_, i) => i !== index
-                                  );
-                                  updateHistory({ images: updated });
-                                }}
-                                className="rounded-xl bg-rose-50 px-3 py-3 text-rose-600 transition hover:bg-rose-100"
-                              >
-                                <X className="size-4" />
-                              </button>
-                            </div>
+  {isEditing('history') ? (
+    <div className="space-y-3">
+      <input
+        ref={historyImagesInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        onChange={(e) => handleHistoryImagesUpload(e.target.files)}
+        className="hidden"
+      />
 
-                            {img && (
-                              <img
-                                src={img}
-                                alt={`History preview ${index + 1}`}
-                                className="max-h-52 w-full rounded-xl border border-slate-200 object-cover"
-                              />
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
-                        <p className="text-sm text-slate-500">
-                          No history images added yet.
-                        </p>
-                      </div>
-                    )}
+      {(formData.history.images ?? []).length > 0 ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {(formData.history.images ?? []).map((img, index) => (
+            <div
+              key={index}
+              className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3"
+            >
+              <img
+                src={getPublicMediaUrl(img)}
+                alt={`History preview ${index + 1}`}
+                className="h-40 w-full rounded-xl border border-slate-200 object-cover"
+              />
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateHistory({
-                          images: [...(formData.history.images ?? []), ''],
-                        })
-                      }
-                      className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800"
-                    >
-                      <Plus className="size-4" />
-                      Add Image URL
-                    </button>
+              <div className="flex items-center justify-between gap-2">
+  <p className="truncate text-xs text-slate-500">{img}</p>
 
-                    <p className="text-xs text-slate-400">
-                      Add one or more image URLs for the History slideshow.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {contentSettings.history.images?.length > 0 ? (
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        {contentSettings.history.images.map((img, index) => (
-                          <div key={index} className="space-y-2">
-                            <p className="break-all text-xs text-slate-500">{img}</p>
-                            <img
-                              src={img}
-                              alt={`History preview ${index + 1}`}
-                              className="h-40 w-full rounded-2xl border border-slate-200 object-cover"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    ) : contentSettings.history.image ? (
-                      <div className="space-y-3">
-                        <p className="break-all text-sm text-slate-700">
-                          {contentSettings.history.image}
-                        </p>
-                        <img
-                          src={contentSettings.history.image}
-                          alt="History preview"
-                          className="max-h-72 w-full rounded-2xl border border-slate-200 object-cover"
-                        />
-                      </div>
-                    ) : (
-                      <p className="text-sm text-slate-700">None</p>
-                    )}
-                  </div>
-                )}
-              </FieldWrapper>
+  <div className="flex items-center gap-2">
+    <button
+      type="button"
+      disabled={index === 0}
+      onClick={() => moveHistoryImage(index, index - 1)}
+      className="rounded-xl border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-40"
+    >
+      ↑
+    </button>
+
+    <button
+      type="button"
+      disabled={index === (formData.history.images ?? []).length - 1}
+      onClick={() => moveHistoryImage(index, index + 1)}
+      className="rounded-xl border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-40"
+    >
+      ↓
+    </button>
+
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          const target = (formData.history.images ?? [])[index];
+          if (target) {
+            await removePublicImage(target);
+          }
+
+          const updated = (formData.history.images ?? []).filter((_, i) => i !== index);
+          updateHistory({ images: updated });
+        } catch (error) {
+          console.error('Failed to remove history image:', error);
+        }
+      }}
+      className="rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-100"
+    >
+      Remove
+    </button>
+  </div>
+</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
+          <p className="text-sm text-slate-500">No history images added yet.</p>
+        </div>
+      )}
+
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDraggingHistory(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          setIsDraggingHistory(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDraggingHistory(false);
+          handleHistoryImagesUpload(e.dataTransfer.files);
+        }}
+        className={`rounded-2xl border-2 border-dashed p-4 text-center transition ${
+          isDraggingHistory
+            ? 'border-blue-400 bg-blue-50'
+            : 'border-slate-300 bg-slate-50'
+        }`}
+      >
+        <p className="text-sm font-medium text-slate-700">
+          Drag & drop images here
+        </p>
+
+        <button
+          type="button"
+          onClick={() => historyImagesInputRef.current?.click()}
+          disabled={isUploadingHistoryImages}
+          className="mt-3 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60"
+        >
+          {isUploadingHistoryImages ? 'Uploading...' : 'Choose Files'}
+        </button>
+      </div>
+
+      <p className="text-xs text-slate-400">
+        Upload one or more images for the History slideshow.
+      </p>
+    </div>
+  ) : (
+    <div className="space-y-3">
+      {contentSettings.history.images?.length > 0 ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {contentSettings.history.images.map((img, index) => (
+            <div key={index} className="space-y-2">
+              <p className="break-all text-xs text-slate-500">{img}</p>
+              <img
+                src={getPublicMediaUrl(img)}
+                alt={`History preview ${index + 1}`}
+                className="h-40 w-full rounded-2xl border border-slate-200 object-cover"
+              />
+            </div>
+          ))}
+        </div>
+      ) : contentSettings.history.image ? (
+        <div className="space-y-3">
+          <p className="break-all text-sm text-slate-700">
+            {contentSettings.history.image}
+          </p>
+          <img
+            src={getPublicMediaUrl(contentSettings.history.image)}
+            alt="History preview"
+            className="max-h-72 w-full rounded-2xl border border-slate-200 object-cover"
+          />
+        </div>
+      ) : (
+        <p className="text-sm text-slate-700">None</p>
+      )}
+    </div>
+  )}
+</FieldWrapper>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                 <MiniCardEditor

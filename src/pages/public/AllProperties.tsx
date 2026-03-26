@@ -14,6 +14,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState, useMemo } from "react";
 import { formatCurrency } from "../../utils/currency";
 import { getUnitTypeLabel, getPriceLabel } from "../../utils/propertyHelpers";
+
+function isVideoUrl(url?: string | null) {
+  if (!url) return false;
+  return /\.(mp4|webm|mov|m4v|ogg)$/i.test(url);
+}
 import UnitModal from "../../components/PropertyModal";
 
 type PriceRange = "all" | "0-1000" | "1001-5000" | "5001-10000" | "10001+";
@@ -340,14 +345,31 @@ const averageRating =
     className="group flex h-full flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-all hover:shadow-xl"
   >
     <div className="relative h-48 overflow-hidden sm:h-56 md:h-64">
-      <img
-        src={prop.images?.[0] || FALLBACK_IMAGE}
-        alt={prop.name}
-        className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-      />
+      {prop.videos?.[0] ? (
+        <video
+          src={prop.videos[0]}
+          muted
+          playsInline
+          preload="metadata"
+          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+        />
+      ) : (
+        <img
+          src={prop.images?.[0] || FALLBACK_IMAGE}
+          alt={prop.name}
+          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+        />
+      )}
+
       <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-blue-600 backdrop-blur-md">
         {getUnitTypeLabel(prop.type)}
       </div>
+
+      {prop.videos?.length ? (
+        <div className="absolute right-4 top-4 rounded-full bg-black/70 px-3 py-1 text-xs font-bold text-white backdrop-blur-md">
+          {prop.videos.length} video{prop.videos.length > 1 ? "s" : ""}
+        </div>
+      ) : null}
     </div>
 
     <div className="flex flex-1 flex-col p-5">

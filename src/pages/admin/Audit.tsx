@@ -34,6 +34,8 @@ const ACTION_OPTIONS = [
   'DELETE',
   'DEACTIVATE',
   'LOGIN',
+  'LOGIN_FAILED',
+  'LOGIN_APPROVED',
   'LOGOUT',
   'SESSION_EXPIRED',
   'PAYMENT_CREATED',
@@ -43,7 +45,14 @@ const ACTION_OPTIONS = [
   'PAYMENT_PROOF_UPLOADED',
 ];
 
-const MODULE_OPTIONS = ['All', 'users', 'units', 'reservations', 'payments'];
+const MODULE_OPTIONS = [
+  'All',
+  'users',
+  'units',
+  'reservations',
+  'payments',
+  'trusted_devices',
+];
 
 const ACTION_STYLES: Record<string, string> = {
   CREATE: 'bg-green-100 text-green-800',
@@ -51,6 +60,8 @@ const ACTION_STYLES: Record<string, string> = {
   DELETE: 'bg-red-100 text-red-800',
   DEACTIVATE: 'bg-gray-200 text-gray-800',
   LOGIN: 'bg-blue-100 text-blue-800',
+  LOGIN_FAILED: 'bg-rose-100 text-rose-800',
+  LOGIN_APPROVED: 'bg-emerald-100 text-emerald-800',
   LOGOUT: 'bg-purple-100 text-purple-800',
   SESSION_EXPIRED: 'bg-orange-100 text-orange-800',
   PAYMENT_CREATED: 'bg-sky-100 text-sky-800',
@@ -546,7 +557,7 @@ export default function AdminAudit() {
             />
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left">
+              <table className="w-full table-fixed text-left">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     {['Log ID', 'Action', 'Module', 'Target', 'Performed By', 'Date', 'Details'].map(
@@ -600,9 +611,9 @@ export default function AdminAudit() {
                           {log.formattedDate}
                         </td>
 
-                        <td className="px-6 py-4 text-sm text-gray-500 max-w-[260px] break-words">
-                          {log.details || '—'}
-                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-500 max-w-[180px] whitespace-normal break-words">
+  {log.details || '—'}
+</td>
                       </tr>
                     ))
                   )}

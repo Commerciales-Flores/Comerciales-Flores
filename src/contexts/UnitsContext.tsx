@@ -67,6 +67,7 @@ interface UnitsContextType {
   updateUnit: (id: string, unit: Partial<Unit>) => Promise<void>;
   deleteUnit: (id: string) => Promise<void>;
   uploadUnitImage: (file: File) => Promise<string | null>;
+  uploadUnitVideo: (file: File) => Promise<string | null>;
   uploadUnitContract: (file: File) => Promise<{ path: string; name: string } | null>;
   getUnitById: (id: string) => Unit | undefined;
   refreshUnits: () => Promise<void>;
@@ -93,7 +94,7 @@ function getPublicId(type: UnitType, uuid: string) {
 }
 
 function getPublicImageUrl(path: string) {
-  const { data } = supabase.storage.from('property_images').getPublicUrl(path);
+  const { data } = supabase.storage.from('property_media').getPublicUrl(path);
   return data.publicUrl;
 }
 
@@ -149,6 +150,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         price,
         location,
         images,
+        videos,
         minimum_payment_percent,
         contract_file_path,
         contract_file_name
@@ -213,7 +215,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
 
       const resolvedType = base.unit_type as UnitType;
       const imagePaths = Array.isArray(base.images) ? base.images.filter(Boolean) : [];
-
+      const videoPaths = Array.isArray(base.videos) ? base.videos.filter(Boolean) : [];
       return {
         id: base.unit_id,
         propertyId: base.public_id || getPublicId(resolvedType, base.unit_id),
@@ -226,6 +228,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
           imagePaths.length > 0
             ? imagePaths.map((path) => getPublicImageUrl(path))
             : [DEFAULT_UNIT_IMAGE],
+        videos: videoPaths.map((path) => getPublicImageUrl(path)),
         policies: specific?.policies || '',
         capacity:
           resolvedType === 'function_hall'
@@ -283,10 +286,10 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
-      const filePath = `units/${fileName}`;
+      const filePath = `units/images/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('property_images')
+        .from('property_media')
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
@@ -297,6 +300,28 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
       return null;
     }
   }, []);
+
+  const uploadUnitVideo = useCallback(async (file: File): Promise<string | null> => {
+  try {
+    const fileExt = file.name.split('.').pop()?.toLowerCase() || 'mp4';
+    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+    const filePath = `units/videos/${fileName}`;
+
+    const { error } = await supabase.storage
+      .from('property_media')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: file.type || 'video/mp4',
+      });
+
+    if (error) throw error;
+    return filePath;
+  } catch (error) {
+    console.error('Error uploading unit video:', error);
+    return null;
+  }
+}, []);
 
   const uploadUnitContract = useCallback(
   async (file: File): Promise<{ path: string; name: string } | null> => {
@@ -342,6 +367,12 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
           : Array.isArray(unitData.images)
             ? unitData.images
             : [];
+          
+         const videoPaths = Array.isArray(unitData.videoPaths)
+          ? unitData.videoPaths
+          : Array.isArray(unitData.videos)
+            ? unitData.videos
+            : [];
 
         const { error: baseError } = await supabase.from('units').insert([
           {
@@ -353,6 +384,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
             price: unitData.price,
             location: safeLocation,
             images: imagePaths,
+            videos: videoPaths,
             minimum_payment_percent: unitData.minimumPaymentPercent ?? null,
             contract_file_path: unitData.contractFilePath ?? null,
             contract_file_name: unitData.contractFileName ?? null,
@@ -396,6 +428,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
             imagePaths.length > 0
               ? imagePaths.map((path) => getPublicImageUrl(path))
               : [DEFAULT_UNIT_IMAGE],
+          videos: videoPaths.map((path) => getPublicImageUrl(path)),
           policies: unitData.policies,
           capacity: unitData.type === 'function_hall' ? unitData.capacity : undefined,
           available: unitData.available,
@@ -462,6 +495,9 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         if (unitUpdate.imagePaths !== undefined) {
           basePayload.images = unitUpdate.imagePaths;
         }
+        if (unitUpdate.videoPaths !== undefined) {
+          basePayload.videos = unitUpdate.videoPaths;
+        }
         if (unitUpdate.contractFilePath !== undefined) {
           basePayload.contract_file_path = unitUpdate.contractFilePath;
         }
@@ -502,20 +538,25 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
           if (error) throw error;
         }
 
-        const sanitizedUpdate: Partial<Unit> = {
-          ...unitUpdate,
-          ...(unitUpdate.location !== undefined
-            ? { location: getSafeLocation(unitUpdate.location) }
-            : {}),
-          ...(unitUpdate.imagePaths !== undefined
-            ? {
-                images:
-                  unitUpdate.imagePaths.length > 0
-                    ? unitUpdate.imagePaths.map((path) => getPublicImageUrl(path))
-                    : [DEFAULT_UNIT_IMAGE],
-              }
-            : {}),
-        };
+       const sanitizedUpdate: Partial<Unit> = {
+        ...unitUpdate,
+        ...(unitUpdate.location !== undefined
+          ? { location: getSafeLocation(unitUpdate.location) }
+          : {}),
+        ...(unitUpdate.imagePaths !== undefined
+          ? {
+              images:
+                unitUpdate.imagePaths.length > 0
+                  ? unitUpdate.imagePaths.map((path) => getPublicImageUrl(path))
+                  : [DEFAULT_UNIT_IMAGE],
+            }
+          : {}),
+        ...(unitUpdate.videoPaths !== undefined
+          ? {
+              videos: unitUpdate.videoPaths.map((path) => getPublicImageUrl(path)),
+            }
+          : {}),
+      };
 
         const updatedUnit = buildAuditSnapshot(existingUnit, sanitizedUpdate);
         const changedFields = getChangedFields(existingUnit, sanitizedUpdate);
@@ -771,6 +812,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
       updateUnit,
       deleteUnit,
       uploadUnitImage,
+      uploadUnitVideo,
       uploadUnitContract,
       getUnitById,
       refreshUnits,
@@ -788,6 +830,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
       updateUnit,
       deleteUnit,
       uploadUnitImage,
+      uploadUnitVideo,
       uploadUnitContract,
       getUnitById,
       refreshUnits,

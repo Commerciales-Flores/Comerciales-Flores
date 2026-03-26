@@ -1,7 +1,7 @@
 import type { Unit } from "../contexts/DataContext";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { formatCurrency } from "../utils/currency";
 import { getPriceLabel, getUnitTypeLabel } from "../utils/propertyHelpers";
 
@@ -10,30 +10,41 @@ interface Props {
   onClose: () => void;
 }
 
-export default function UnitModal({ Unit, onClose }: Props) {
-  const images = useMemo(
-    () =>
-      Array.isArray(Unit.images) && Unit.images.length > 0
-        ? Unit.images
-        : ["/fallback-unit.webp"],
-    [Unit.images]
-  );
+function isVideoUrl(url?: string | null) {
+  if (!url) return false;
+  return /\.(mp4|webm|mov|m4v|ogg)$/i.test(url);
+}
 
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+export default function UnitModal({ Unit, onClose }: Props) {
+  const media = useMemo(() => {
+    const images = Array.isArray(Unit.images) ? Unit.images.filter(Boolean) : [];
+    const videos = Array.isArray(Unit.videos) ? Unit.videos.filter(Boolean) : [];
+    const combined = [...images, ...videos];
+    return combined.length > 0 ? combined : ["/fallback-unit.webp"];
+  }, [Unit.images, Unit.videos]);
+
+  const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
+
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const touchStartXRef = useRef<number | null>(null);
+  const touchEndXRef = useRef<number | null>(null);
 
   useEffect(() => {
-    setCurrentImageIndex(0);
+    setCurrentMediaIndex(0);
   }, [Unit.id]);
 
-  const hasMultipleImages = images.length > 1;
+  const hasMultipleMedia = media.length > 1;
 
-  const prevImage = useCallback(() => {
-    setCurrentImageIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
-  }, [images.length]);
+  const prevMedia = useCallback(() => {
+    setCurrentMediaIndex((prev) => (prev === 0 ? media.length - 1 : prev - 1));
+  }, [media.length]);
 
-  const nextImage = useCallback(() => {
-    setCurrentImageIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1));
-  }, [images.length]);
+  const nextMedia = useCallback(() => {
+    setCurrentMediaIndex((prev) => (prev === media.length - 1 ? 0 : prev + 1));
+  }, [media.length]);
+
+  const currentMedia = media[currentMediaIndex] || "/fallback-unit.webp";
+  const currentIsVideo = isVideoUrl(currentMedia);
 
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
@@ -41,8 +52,8 @@ export default function UnitModal({ Unit, onClose }: Props) {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
-      if (hasMultipleImages && e.key === "ArrowLeft") prevImage();
-      if (hasMultipleImages && e.key === "ArrowRight") nextImage();
+      if (hasMultipleMedia && e.key === "ArrowLeft") prevMedia();
+      if (hasMultipleMedia && e.key === "ArrowRight") nextMedia();
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -51,9 +62,61 @@ export default function UnitModal({ Unit, onClose }: Props) {
       document.body.style.overflow = originalOverflow;
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onClose, hasMultipleImages, prevImage, nextImage]);
+  }, [onClose, hasMultipleMedia, prevMedia, nextMedia]);
 
-  const currentImage = images[currentImageIndex] || "/fallback-unit.webp";
+  useEffect(() => {
+    modalRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!hasMultipleMedia) return;
+
+    const preloadIndex = (currentMediaIndex + 1) % media.length;
+    const nextItem = media[preloadIndex];
+
+    if (!nextItem) return;
+
+    if (isVideoUrl(nextItem)) {
+      const video = document.createElement("video");
+      video.src = nextItem;
+      video.preload = "metadata";
+    } else {
+      const img = new Image();
+      img.src = nextItem;
+    }
+  }, [currentMediaIndex, media, hasMultipleMedia]);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    touchStartXRef.current = e.changedTouches[0]?.clientX ?? null;
+    touchEndXRef.current = null;
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    touchEndXRef.current = e.changedTouches[0]?.clientX ?? null;
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    if (!hasMultipleMedia) return;
+
+    const startX = touchStartXRef.current;
+    const endX = touchEndXRef.current;
+
+    if (startX == null || endX == null) return;
+
+    const delta = startX - endX;
+    const swipeThreshold = 40;
+
+    if (Math.abs(delta) < swipeThreshold) return;
+
+    if (delta > 0) {
+      nextMedia();
+    } else {
+      prevMedia();
+    }
+
+    touchStartXRef.current = null;
+    touchEndXRef.current = null;
+  }, [hasMultipleMedia, nextMedia, prevMedia]);
 
   return (
     <div
@@ -63,25 +126,29 @@ export default function UnitModal({ Unit, onClose }: Props) {
       aria-labelledby="unit-modal-title"
     >
       <div
-        className="absolute inset-0 bg-black/30 "
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
         onClick={onClose}
         aria-hidden="true"
       />
 
-      <div className="relative z-10 bg-white rounded-lg max-w-4xl w-full max-h-[90vh] mx-auto shadow-xl flex flex-col overflow-hidden">
-        <div className="flex justify-between items-start p-6 border-b border-gray-200 flex-shrink-0">
+      <div
+        ref={modalRef}
+        tabIndex={-1}
+        className="relative z-10 mx-auto flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl outline-none"
+      >
+        <div className="flex flex-shrink-0 items-start justify-between border-b border-gray-200 px-6 py-5">
           <div>
-            <div className="text-sm text-blue-600 mb-1">
+            <div className="mb-1 text-sm font-medium text-blue-600">
               {getUnitTypeLabel(Unit.type)}
             </div>
-            <h2 id="unit-modal-title" className="text-lg font-semibold">
+            <h2 id="unit-modal-title" className="text-xl font-semibold text-slate-900">
               {Unit.name}
             </h2>
           </div>
 
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="rounded-full p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
             aria-label="Close modal"
             type="button"
           >
@@ -89,30 +156,53 @@ export default function UnitModal({ Unit, onClose }: Props) {
           </button>
         </div>
 
-        <div className="p-6 space-y-6 overflow-y-auto">
-          <div className="relative">
-            <img
-              src={currentImage}
-              alt={Unit.name}
-              decoding="async"
-              className="w-full h-56 sm:h-72 md:h-96 object-cover rounded-lg"
-            />
+        <div className="space-y-6 overflow-y-auto p-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div
+            className="relative"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+          >
+            {currentIsVideo ? (
+              <video
+                src={currentMedia}
+                controls
+                preload="metadata"
+                playsInline
+                className="h-56 w-full rounded-2xl object-cover sm:h-72 md:h-96"
+              />
+            ) : (
+              <img
+                src={currentMedia}
+                alt={Unit.name}
+                decoding="async"
+                loading="eager"
+                className="h-56 w-full rounded-2xl object-cover sm:h-72 md:h-96"
+              />
+            )}
 
-            {hasMultipleImages && (
+            {currentIsVideo && (
+              <span className="absolute right-3 top-3 z-10 rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-semibold text-white">
+                Video
+              </span>
+            )}
+
+            {hasMultipleMedia && (
               <>
                 <button
-                  onClick={prevImage}
+                  onClick={prevMedia}
                   type="button"
-                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/80 p-2 rounded-full hover:bg-white transition-all shadow-md"
-                  aria-label="Previous image"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 shadow-md backdrop-blur transition-all hover:bg-white"
+                  aria-label="Previous media"
                 >
                   <ChevronLeft className="size-6" />
                 </button>
+
                 <button
-                  onClick={nextImage}
+                  onClick={nextMedia}
                   type="button"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/80 p-2 rounded-full hover:bg-white transition-all shadow-md"
-                  aria-label="Next image"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 shadow-md backdrop-blur transition-all hover:bg-white"
+                  aria-label="Next media"
                 >
                   <ChevronRight className="size-6" />
                 </button>
@@ -120,35 +210,60 @@ export default function UnitModal({ Unit, onClose }: Props) {
             )}
           </div>
 
-          {hasMultipleImages && (
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {images.map((img, index) => (
-                <button
-                  key={`${img}-${index}`}
-                  type="button"
-                  onClick={() => setCurrentImageIndex(index)}
-                  className={`shrink-0 rounded-md overflow-hidden border-2 transition-all ${
-                    currentImageIndex === index
-                      ? "border-blue-600"
-                      : "border-transparent"
-                  }`}
-                  aria-label={`View image ${index + 1}`}
-                >
-                  <img
-                    src={img}
-                    alt={`${Unit.name} thumbnail ${index + 1}`}
-                    loading="lazy"
-                    decoding="async"
-                    className="w-20 h-16 object-cover"
-                  />
-                </button>
-              ))}
-            </div>
+          {hasMultipleMedia && (
+            <>
+              <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {media.map((item, index) => {
+                  const itemIsVideo = isVideoUrl(item);
+
+                  return (
+                    <button
+                      key={`${item}-${index}`}
+                      type="button"
+                      onClick={() => setCurrentMediaIndex(index)}
+                      className={`shrink-0 overflow-hidden rounded-xl border-2 transition-all ${
+                        currentMediaIndex === index
+                          ? "border-blue-600 ring-2 ring-blue-100"
+                          : "border-transparent"
+                      }`}
+                      aria-label={`View media ${index + 1}`}
+                    >
+                      {itemIsVideo ? (
+                        <div className="relative h-16 w-20 bg-gray-100">
+                          <video
+                            src={item}
+                            muted
+                            playsInline
+                            preload="metadata"
+                            className="h-full w-full object-cover pointer-events-none"
+                          />
+                          <div className="absolute inset-x-0 bottom-0 bg-black/60 px-1 py-0.5 text-center text-[10px] text-white">
+                            Video
+                          </div>
+                        </div>
+                      ) : (
+                        <img
+                          src={item}
+                          alt={`${Unit.name} thumbnail ${index + 1}`}
+                          loading="lazy"
+                          decoding="async"
+                          className="h-16 w-20 object-cover"
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <p className="text-[11px] text-gray-500">
+                Swipe or use the arrows to browse photos and videos.
+              </p>
+            </>
           )}
 
           <div>
             <h3 className="mb-2 font-semibold text-slate-900">Description</h3>
-            <p className="text-gray-600 leading-relaxed">
+            <p className="leading-relaxed text-gray-600">
               {Unit.description || "No description available."}
             </p>
           </div>
@@ -163,10 +278,13 @@ export default function UnitModal({ Unit, onClose }: Props) {
           <div>
             <h3 className="mb-2 font-semibold text-slate-900">Features</h3>
             {Unit.features?.length ? (
-              <ul className="grid grid-cols-2 gap-2">
+              <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {Unit.features.map((feature, index) => (
-                  <li key={`${feature}-${index}`} className="flex items-center gap-2 text-gray-600">
-                    <div className="size-1.5 bg-blue-600 rounded-full" />
+                  <li
+                    key={`${feature}-${index}`}
+                    className="flex items-center gap-2 text-gray-600"
+                  >
+                    <div className="size-1.5 rounded-full bg-blue-600" />
                     {feature}
                   </li>
                 ))}
@@ -176,10 +294,10 @@ export default function UnitModal({ Unit, onClose }: Props) {
             )}
           </div>
 
-          <div className="bg-blue-50 p-4 rounded-lg flex justify-between items-center gap-4">
+          <div className="flex items-center justify-between gap-4 rounded-2xl bg-blue-50 p-4">
             <div>
-              <p className="text-sm text-gray-600 mb-1">Price</p>
-              <div className="text-blue-600 font-bold">
+              <p className="mb-1 text-sm text-gray-600">Price</p>
+              <div className="font-bold text-blue-600">
                 {formatCurrency(Unit.price)}{" "}
                 <span className="text-sm font-normal">{getPriceLabel(Unit.type)}</span>
               </div>
@@ -187,7 +305,7 @@ export default function UnitModal({ Unit, onClose }: Props) {
 
             {Unit.capacity ? (
               <div>
-                <p className="text-sm text-gray-600 mb-1">Capacity</p>
+                <p className="mb-1 text-sm text-gray-600">Capacity</p>
                 <p className="text-gray-900">{Unit.capacity} persons</p>
               </div>
             ) : null}
@@ -200,10 +318,10 @@ export default function UnitModal({ Unit, onClose }: Props) {
             </p>
           </div>
 
-          <div className="pt-4 border-t border-gray-200">
+          <div className="border-t border-gray-200 pt-4">
             <Link
               to="/register"
-              className="block w-full text-center px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-bold"
+              className="block w-full rounded-xl bg-blue-600 px-4 py-3 text-center font-bold text-white transition-colors hover:bg-blue-700"
             >
               Reserve Now - Sign Up Required
             </Link>
