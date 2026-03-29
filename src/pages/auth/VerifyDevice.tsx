@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Building2, ShieldCheck, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import supabase from '../../supabaseClient';
 
 type Status = 'loading' | 'success' | 'error';
 
 export default function VerifyDevice() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<Status>('loading');
   const [message, setMessage] = useState('Verifying your device...');
@@ -43,38 +44,32 @@ export default function VerifyDevice() {
   const isError = status === 'error';
 
   return (
-    <div className="relative h-[calc(100vh-120px)] w-full flex flex-col items-center justify-center p-6 bg-white rounded-3xl">
-      
-      {/* Branding (same as NotFound) */}
-      <div className="absolute top-8 left-8 flex items-center gap-3 select-none">
-        <div className="bg-blue-600 p-1.5 sm:p-2 rounded-xl">
-          <Building2 className="size-5 sm:size-6 text-white" />
+    <div className="relative h-[calc(100vh-120px)] w-full flex flex-col items-center justify-center rounded-3xl bg-white p-6">
+      <div className="absolute left-8 top-8 flex items-center gap-3 select-none">
+        <div className="rounded-xl bg-blue-600 p-1.5 sm:p-2">
+          <Building2 className="size-5 text-white sm:size-6" />
         </div>
-        <span className="text-lg font-bold text-gray-900 tracking-tight">
+        <span className="text-lg font-bold tracking-tight text-gray-900">
           Comerciales Flores
         </span>
       </div>
 
-      <div className="max-w-md w-full text-center">
-        
-        {/* Big background text (like 404 style) */}
-        <h1 className="text-7xl sm:text-8xl font-black text-gray-100 leading-none select-none italic">
+      <div className="w-full max-w-md text-center">
+        <h1 className="select-none text-7xl font-black italic leading-none text-gray-100 sm:text-8xl">
           ...
         </h1>
 
-        {/* Icon block (same pattern as NotFound) */}
-        <div className="relative -mt-8 mb-8 inline-flex items-center justify-center w-20 h-20 bg-blue-600 rounded-2xl rotate-12 shadow-xl">
+        <div className="relative -mt-8 mb-8 inline-flex h-20 w-20 items-center justify-center rounded-2xl bg-blue-600 shadow-xl rotate-12">
           {isLoading ? (
-            <Loader2 className="size-10 text-white -rotate-12 animate-spin" />
+            <Loader2 className="size-10 -rotate-12 animate-spin text-white" />
           ) : isSuccess ? (
-            <CheckCircle2 className="size-10 text-white -rotate-12" />
+            <CheckCircle2 className="size-10 -rotate-12 text-white" />
           ) : (
-            <AlertCircle className="size-10 text-white -rotate-12" />
+            <AlertCircle className="size-10 -rotate-12 text-white" />
           )}
         </div>
 
-        {/* Title */}
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">
+        <h2 className="mb-2 text-2xl font-bold text-gray-900">
           {isLoading
             ? 'Verifying your device'
             : isSuccess
@@ -82,21 +77,26 @@ export default function VerifyDevice() {
               : 'Verification failed'}
         </h2>
 
-        {/* Message */}
-        <p className="text-gray-500 mb-8 leading-relaxed">
-          {message}
-        </p>
+        <p className="mb-8 leading-relaxed text-gray-500">{message}</p>
 
-        {/* Action button */}
-        <Link
-          to="/login"
-          className="group flex items-center justify-center gap-2 mx-auto px-10 py-3.5 bg-gray-900 text-white rounded-xl font-bold hover:bg-black transition-all active:scale-[0.98] shadow-xl shadow-gray-200"
+        <button
+          type="button"
+          disabled={isLoading}
+          onClick={() => navigate('/login', { replace: true })}
+          className={`group mx-auto flex items-center justify-center gap-2 rounded-xl px-10 py-3.5 font-bold transition-all shadow-xl ${
+            isLoading
+              ? 'cursor-not-allowed bg-gray-200 text-gray-400 shadow-none'
+              : 'bg-gray-900 text-white shadow-gray-200 hover:bg-black active:scale-[0.98]'
+          }`}
         >
           <ShieldCheck className="size-4" />
-          Back to Login
-        </Link>
+          {isLoading
+            ? 'Please wait...'
+            : isSuccess
+              ? 'Go to Login'
+              : 'Back to Login'}
+        </button>
 
-        {/* Extra helper text */}
         {isError && (
           <p className="mt-4 text-xs text-gray-400">
             The link may be expired or already used.

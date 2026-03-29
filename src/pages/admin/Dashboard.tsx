@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { useReviews } from '../../contexts/ReviewsContext';
 import { useUsers } from '../../contexts/UsersContext';
+import { useInquiries } from '../../contexts/InquiriesContext';
 import { formatDate, formatDateTime, formatMonth } from '../../utils/date';
 import {
   AlertCircle,
@@ -222,7 +223,8 @@ const getWatchlistBadgeClass = (reason: WatchlistItem['reason']) => {
 };
 
 export default function AdminDashboard() {
-  const { reservations, payments, units, inquiries, auditLogs } = useData();
+  const { reservations, payments, units, auditLogs } = useData();
+  const { tickets } = useInquiries();
   const { reviews } = useReviews();
   const { fetchUsersPage } = useUsers();
   const [watchlistUsers, setWatchlistUsers] = useState<any[]>([]);
@@ -278,7 +280,15 @@ export default function AdminDashboard() {
       (p) => p.status === 'unpaid' || p.status === 'partial'
     );
 
-    const recentInquiries = inquiries.filter((i) => i.status === 'open').slice(0, 4);
+    const recentInquiries = (tickets ?? [])
+      .filter((t) => t.status === 'waiting_for_support')
+      .slice(0, 4)
+      .map((t) => ({
+        id: t.id,
+        subject: t.subject,
+        email: t.guestEmail || 'Registered User',
+        message: 'Open support ticket',
+      }));
 
     const recentReviews: Array<
       ReviewRow & {
@@ -331,8 +341,15 @@ export default function AdminDashboard() {
       value: d.revenue,
     }));
 
-    const activeUnitsCount = units.filter((u) => u.available).length;
-    const occupancyRate = units.length > 0 ? (activeUnitsCount / units.length) * 100 : 0;
+   const occupiedUnitIds = new Set(
+  reservations
+    .filter((r) => r.status === 'confirmed')
+    .map((r) => r.unitId)
+    .filter(Boolean)
+);
+
+const occupancyRate =
+  units.length > 0 ? (occupiedUnitIds.size / units.length) * 100 : 0;
     const totalRevenue = paidPayments.reduce((sum, p) => sum + p.amount, 0);
 
     const lastMonthReservations = reservations.filter((r) => {
@@ -371,6 +388,7 @@ export default function AdminDashboard() {
         images: unit.images,
         revenue: revenueByUnitId.get(unit.id) ?? 0,
       }))
+      .filter((unit) => unit.revenue > 0)
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 3);
 
@@ -399,7 +417,7 @@ export default function AdminDashboard() {
       topUnits,
       latestActivity,
     };
-  }, [reservations, payments, units, inquiries, auditLogs, reviews]);
+  }, [reservations, payments, units, auditLogs, reviews]);
 
   const customerWatchlist = useMemo<WatchlistItem[]>(() => {
     const now = Date.now();
@@ -829,35 +847,36 @@ export default function AdminDashboard() {
               <div className="space-y-4">
                 {dashboardData.topUnits.length > 0 ? (
                   dashboardData.topUnits.map((unit, i) => (
-                    <div
-                      key={unit.id}
-                      className="group flex items-center gap-3 rounded-xl bg-gray-50 p-3 transition hover:bg-gray-100"
-                    >
-                      <div className="relative shrink-0">
-                        <img
-                          src={unit.images?.[0] || '/fallback-property.webp'}
-                          alt={unit.name}
-                          loading="lazy"
-                          decoding="async"
-                          className="size-12 rounded-xl border border-gray-100 object-cover"
-                        />
-                        <div className="absolute -left-1 -top-1 flex size-5 items-center justify-center rounded-full bg-gray-900 text-[9px] font-bold text-white">
-                          {i + 1}
-                        </div>
-                      </div>
+  <Link
+    key={unit.id}
+    to={`/admin/analytics?unit=${encodeURIComponent(unit.id)}`}
+    className="group flex items-center gap-3 rounded-xl bg-gray-50 p-3 transition hover:bg-gray-100"
+  >
+    <div className="relative shrink-0">
+      <img
+        src={unit.images?.[0] || '/fallback-property.webp'}
+        alt={unit.name}
+        loading="lazy"
+        decoding="async"
+        className="size-12 rounded-xl border border-gray-100 object-cover"
+      />
+      <div className="absolute -left-1 -top-1 flex size-5 items-center justify-center rounded-full bg-gray-900 text-[9px] font-bold text-white">
+        {i + 1}
+      </div>
+    </div>
 
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-gray-900">
-                          {unit.name}
-                        </p>
-                        <p className="text-xs font-semibold text-green-600">
-                          {formatCurrency(unit.revenue)}
-                        </p>
-                      </div>
+    <div className="min-w-0 flex-1">
+      <p className="truncate text-sm font-semibold text-gray-900">
+        {unit.name}
+      </p>
+      <p className="text-xs font-semibold text-green-600">
+        {formatCurrency(unit.revenue)}
+      </p>
+    </div>
 
-                      <ArrowRight className="size-4 text-gray-300 transition-colors group-hover:text-blue-500" />
-                    </div>
-                  ))
+    <ArrowRight className="size-4 text-gray-300 transition-colors group-hover:text-blue-500" />
+  </Link>
+))
                 ) : (
                   <EmptyPanel text="No unit performance data yet" compact />
                 )}

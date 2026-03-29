@@ -1,10 +1,14 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { useData } from '../../contexts/DataContext';
+import { motion, AnimatePresence } from 'framer-motion';
+import EmptyState from '../../components/common/EmptyState';
+import { formatDate, formatDateTime } from '../../utils/date';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
-import { motion, AnimatePresence } from 'framer-motion';
-import EmptyState from '../../components/common/EmptyState'
-import { formatDate, formatDateTime } from '../../utils/date';
+import {
+  useInquiries,
+  type SupportMessage,
+  type SupportTicket,
+} from '../../contexts/InquiriesContext';
 
 import {
   Mail,
@@ -15,21 +19,21 @@ import {
   Clock,
   ArrowLeft,
   MessageSquare,
+  RefreshCcw,
 } from 'lucide-react';
 
-
 const statusStyles = {
-  open: {
+  waiting_for_support: {
     bg: 'bg-amber-50',
     text: 'text-amber-700',
     border: 'border-amber-200',
-    label: 'Pending',
+    label: 'Waiting for Support',
   },
-  responded: {
+  waiting_for_customer: {
     bg: 'bg-blue-50',
     text: 'text-blue-700',
     border: 'border-blue-200',
-    label: 'Replied',
+    label: 'Support Replied',
   },
   resolved: {
     bg: 'bg-green-50',
@@ -57,27 +61,34 @@ function getTimestamp(value?: string | null) {
   return Number.isNaN(time) ? 0 : time;
 }
 
-
-function getInquiryStatusStyle(status?: string) {
+function getTicketStatusStyle(status?: string) {
   return statusStyles[status as keyof typeof statusStyles] ?? defaultStatusStyle;
 }
 
-type InquiryListItemProps = {
-  inquiry: any;
+function getMessagePreview(messages: SupportMessage[]) {
+  const last = messages[messages.length - 1];
+  return last?.body ?? 'No messages yet';
+}
+
+type TicketListItemProps = {
+  ticket: SupportTicket;
+  messages: SupportMessage[];
   isSelected: boolean;
   onSelect: (id: string) => void;
 };
 
-const InquiryListItem = React.memo(function InquiryListItem({
-  inquiry,
+const TicketListItem = React.memo(function TicketListItem({
+  ticket,
+  messages,
   isSelected,
   onSelect,
-}: InquiryListItemProps) {
-  const style = getInquiryStatusStyle(inquiry.status);
+}: TicketListItemProps) {
+  const style = getTicketStatusStyle(ticket.status);
+  const preview = getMessagePreview(messages);
 
   return (
     <button
-      onClick={() => onSelect(inquiry.id)}
+      onClick={() => onSelect(ticket.id)}
       className={`w-full rounded-2xl border p-5 text-left transition-all ${
         isSelected
           ? 'border-blue-500 bg-white ring-4 ring-blue-50 shadow-sm'
@@ -92,36 +103,59 @@ const InquiryListItem = React.memo(function InquiryListItem({
         </span>
 
         <span className="shrink-0 text-[11px] text-gray-400">
-          {formatDate(inquiry.date)}
+          {formatDate(ticket.lastMessageAt || ticket.createdAt)}
         </span>
       </div>
 
       <h3 className="mb-1 truncate text-sm font-bold text-gray-900">
-        {inquiry.subject}
+        {ticket.subject}
       </h3>
 
-      <p className="line-clamp-2 text-xs text-gray-500">{inquiry.message}</p>
+      <p className="line-clamp-2 text-xs text-gray-500">{preview}</p>
+
+      <div className="mt-3 flex items-center gap-2 text-[11px] text-gray-400">
+        <span className="font-mono">
+          {ticket.publicId ?? `#${ticket.id.slice(-6).toUpperCase()}`}
+        </span>
+      </div>
     </button>
   );
 });
 
-
-type InquiryDetailProps = {
-  inquiry: any;
+type TicketDetailProps = {
+  ticket: SupportTicket;
+  messages: SupportMessage[];
+  currentUserId: string;
+  replyDraft: string;
+  isSendingReply: boolean;
+  isUpdatingStatus: boolean;
+  onReplyChange: (value: string) => void;
+  onSendReply: () => void;
+  onResolve: () => void;
+  onReopen: () => void;
   onBack: () => void;
   onClose: () => void;
 };
 
-const InquiryDetail = React.memo(function InquiryDetail({
-  inquiry,
+const TicketDetail = React.memo(function TicketDetail({
+  ticket,
+  messages,
+  currentUserId,
+  replyDraft,
+  isSendingReply,
+  isUpdatingStatus,
+  onReplyChange,
+  onSendReply,
+  onResolve,
+  onReopen,
   onBack,
   onClose,
-}: InquiryDetailProps) {
-  const style = getInquiryStatusStyle(inquiry.status);
+}: TicketDetailProps) {
+  const style = getTicketStatusStyle(ticket.status);
 
   return (
     <motion.div
-      key={inquiry.id}
+      key={ticket.id}
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
@@ -138,16 +172,18 @@ const InquiryDetail = React.memo(function InquiryDetail({
 
           <div>
             <h2 className="text-base font-bold leading-tight text-gray-900 lg:text-lg">
-              {inquiry.subject}
+              {ticket.subject}
             </h2>
 
-            <div className="mt-0.5 flex items-center gap-2">
-              <span className={`text-[10px] font-bold uppercase ${style.text}`}>
+            <div className="mt-0.5 flex flex-wrap items-center gap-2">
+              <span
+                className={`text-[10px] font-bold uppercase ${style.text}`}
+              >
                 {style.label}
               </span>
 
               <span className="hidden font-mono text-[10px] text-gray-400 sm:inline">
-                • ID: #{String(inquiry.id).slice(-6).toUpperCase()}
+                • {ticket.publicId ?? `#${ticket.id.slice(-6).toUpperCase()}`}
               </span>
             </div>
           </div>
@@ -162,50 +198,130 @@ const InquiryDetail = React.memo(function InquiryDetail({
       </div>
 
       <div className="custom-scrollbar flex-1 space-y-6 overflow-y-auto bg-white p-6">
-        <div className="flex flex-col items-end">
-          <span className="mb-2 text-[10px] font-bold uppercase text-blue-500">
-            Your Message
-          </span>
-
-          <div className="max-w-[90%] rounded-2xl rounded-tr-none bg-blue-600 p-4 text-white shadow-sm">
-            <p className="whitespace-pre-wrap text-sm">{inquiry.message}</p>
+        {messages.length === 0 ? (
+          <div className="mx-auto max-w-sm rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
+            No messages yet.
           </div>
-
-          <span className="mt-2 text-[10px] text-gray-400">
-            You • {formatDateTime(inquiry.date)}
-          </span>
-        </div>
-
-        {inquiry.response ? (
-          <>
-            <div className="flex flex-col items-start">
-              <span className="mb-2 text-[10px] font-bold uppercase text-gray-500">
-                Support Reply
-              </span>
-
-              <div className="max-w-[90%] rounded-2xl rounded-tl-none border border-gray-200 bg-gray-100 p-4 text-gray-800">
-                <p className="whitespace-pre-wrap text-sm">{inquiry.response}</p>
-              </div>
-
-              <span className="mt-2 text-[10px] text-gray-400">
-                Support Team • {formatDateTime(inquiry.responseDate)}
-              </span>
-            </div>
-
-            <div className="mx-auto max-w-xl rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-              This ticket is now closed. Each ticket is for one concern only. If you still
-              need help, please submit a new message.
-            </div>
-          </>
         ) : (
+          messages.map((message) => {
+            const isCurrentUserMessage =
+              message.senderType === 'customer' &&
+              message.senderUserId === currentUserId;
+
+            const isSupportMessage = message.senderType === 'support';
+
+            return (
+              <div
+                key={message.id}
+                className={`flex flex-col ${
+                  isCurrentUserMessage ? 'items-end' : 'items-start'
+                }`}
+              >
+                <span
+                  className={`mb-2 text-[10px] font-bold uppercase ${
+                    isCurrentUserMessage
+                      ? 'text-blue-500'
+                      : isSupportMessage
+                        ? 'text-gray-500'
+                        : 'text-slate-500'
+                  }`}
+                >
+                  {isCurrentUserMessage
+                    ? 'Your Message'
+                    : isSupportMessage
+                      ? 'Support Reply'
+                      : 'Guest Message'}
+                </span>
+
+                <div
+                  className={`max-w-[90%] rounded-2xl p-4 shadow-sm ${
+                    isCurrentUserMessage
+                      ? 'rounded-tr-none bg-blue-600 text-white'
+                      : 'rounded-tl-none border border-gray-200 bg-gray-100 text-gray-800'
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap text-sm">{message.body}</p>
+                </div>
+
+                <span className="mt-2 text-[10px] text-gray-400">
+                  {isCurrentUserMessage ? 'You' : 'Support Team'} •{' '}
+                  {formatDateTime(message.createdAt)}
+                </span>
+              </div>
+            );
+          })
+        )}
+
+        {ticket.status === 'resolved' ? (
+          <div className="mx-auto max-w-xl rounded-2xl border border-green-100 bg-green-50 px-4 py-3 text-sm text-green-800">
+            This ticket has been marked as resolved.
+          </div>
+        ) : ticket.status === 'waiting_for_support' ? (
           <div className="mx-auto flex max-w-sm items-center gap-3 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-amber-800">
             <Clock className="size-5 shrink-0" />
             <div>
-              <p className="text-xs font-semibold">Awaiting response</p>
+              <p className="text-xs font-semibold">Waiting for support</p>
               <p className="text-[11px] text-amber-700">
-                Your message has been sent to the support team. This ticket will close once
-                a reply is sent.
+                Our support team will reply here once they review your message.
               </p>
+            </div>
+          </div>
+        ) : (
+          <div className="mx-auto flex max-w-sm items-center gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-blue-800">
+            <CheckCircle className="size-5 shrink-0" />
+            <div>
+              <p className="text-xs font-semibold">Support replied</p>
+              <p className="text-[11px] text-blue-700">
+                You can reply back here or mark this ticket as resolved.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="shrink-0 border-t border-gray-100 bg-white p-4 lg:p-6">
+        {ticket.status === 'resolved' ? (
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={onReopen}
+              disabled={isUpdatingStatus}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 transition-all hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCcw className="size-4" />
+              {isUpdatingStatus ? 'Reopening...' : 'Reopen Ticket'}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <textarea
+              rows={4}
+              value={replyDraft}
+              onChange={(e) => onReplyChange(e.target.value)}
+              className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500"
+              placeholder="Write your reply here..."
+            />
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
+              <button
+                type="button"
+                onClick={onResolve}
+                disabled={isUpdatingStatus}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-bold text-green-700 transition-all hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <CheckCircle className="size-4" />
+                {isUpdatingStatus ? 'Updating...' : 'Mark as Resolved'}
+              </button>
+
+              <button
+                type="button"
+                onClick={onSendReply}
+                disabled={isSendingReply || !replyDraft.trim()}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-blue-100 transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <Send className="size-4" />
+                {isSendingReply ? 'Sending...' : 'Send Reply'}
+              </button>
             </div>
           </div>
         )}
@@ -214,7 +330,7 @@ const InquiryDetail = React.memo(function InquiryDetail({
   );
 });
 
-type InquiryComposerModalProps = {
+type TicketComposerModalProps = {
   isOpen: boolean;
   onClose: () => void;
   form: { subject: string; message: string };
@@ -225,7 +341,7 @@ type InquiryComposerModalProps = {
   onSubmit: (e: React.FormEvent) => void;
 };
 
-const InquiryComposerModal = React.memo(function InquiryComposerModal({
+const TicketComposerModal = React.memo(function TicketComposerModal({
   isOpen,
   onClose,
   form,
@@ -234,7 +350,7 @@ const InquiryComposerModal = React.memo(function InquiryComposerModal({
   onSubjectChange,
   onMessageChange,
   onSubmit,
-}: InquiryComposerModalProps) {
+}: TicketComposerModalProps) {
   return (
     <AnimatePresence>
       {isOpen && (
@@ -310,9 +426,8 @@ const InquiryComposerModal = React.memo(function InquiryComposerModal({
                   />
                 </div>
 
-                <div className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-                  This ticket is for one concern only. Once our team responds, the ticket is considered
-                  closed. If you need more help afterward, please submit a new message.
+                <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-800">
+                  You can continue replying to this ticket later until your concern is fully resolved.
                 </div>
 
                 <button
@@ -320,7 +435,7 @@ const InquiryComposerModal = React.memo(function InquiryComposerModal({
                   className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 py-4 font-bold text-white shadow-lg shadow-blue-100 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   <Send className="size-4" />
-                  {loading ? 'Sending...' : 'Send Message'}
+                  {loading ? 'Sending...' : 'Create Ticket'}
                 </button>
               </form>
             )}
@@ -333,31 +448,48 @@ const InquiryComposerModal = React.memo(function InquiryComposerModal({
 
 export default function ClientMessages() {
   const { user } = useAuth();
-  const { getInquiriesByUserId, addInquiry } = useData();
   const { sendSystemNotification } = useNotifications();
+  const {
+    getTicketsByUserId,
+    getMessagesByTicketId,
+    createTicket,
+    sendTicketMessage,
+    markTicketResolved,
+    reopenTicket,
+  } = useInquiries();
 
-  const [selectedInquiryId, setSelectedInquiryId] = useState<string | null>(null);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
-  const [newInquiryForm, setNewInquiryForm] = useState(initialFormState);
+  const [newTicketForm, setNewTicketForm] = useState(initialFormState);
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [formSuccess, setFormSuccess] = useState(false);
+  const [isSendingReply, setIsSendingReply] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   const userId = user?.id ?? '';
 
-  const sortedInquiries = useMemo(() => {
+  const sortedTickets = useMemo(() => {
     if (!userId) return [];
-    const userInquiries = getInquiriesByUserId(userId) ?? [];
+    const userTickets = getTicketsByUserId(userId) ?? [];
 
-    return [...userInquiries].sort(
-      (a, b) => getTimestamp(b.date) - getTimestamp(a.date)
+    return [...userTickets].sort(
+      (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
     );
-  }, [getInquiriesByUserId, userId]);
+  }, [getTicketsByUserId, userId]);
 
-  const selectedInquiry = useMemo(
-    () => sortedInquiries.find((i) => i.id === selectedInquiryId) ?? null,
-    [sortedInquiries, selectedInquiryId]
+  const selectedTicket = useMemo(
+    () => sortedTickets.find((ticket) => ticket.id === selectedTicketId) ?? null,
+    [sortedTickets, selectedTicketId]
   );
+
+  const selectedMessages = useMemo(
+    () => (selectedTicket ? getMessagesByTicketId(selectedTicket.id) : []),
+    [getMessagesByTicketId, selectedTicket]
+  );
+
+  const currentReply = selectedTicket ? replyDrafts[selectedTicket.id] ?? '' : '';
 
   const openModal = useCallback(() => {
     setIsModalOpen(true);
@@ -367,41 +499,48 @@ export default function ClientMessages() {
     if (loading) return;
     setIsModalOpen(false);
     if (!formSuccess) {
-      setNewInquiryForm(initialFormState);
+      setNewTicketForm(initialFormState);
     }
   }, [loading, formSuccess]);
 
-  const selectInquiry = useCallback((id: string) => {
-    setSelectedInquiryId(id);
+  const selectTicket = useCallback((id: string) => {
+    setSelectedTicketId(id);
     setShowDetail(true);
   }, []);
 
-  const deselectInquiry = useCallback(() => {
-    setSelectedInquiryId(null);
+  const deselectTicket = useCallback(() => {
+    setSelectedTicketId(null);
     setShowDetail(false);
   }, []);
 
   const handleSubjectChange = useCallback((value: string) => {
-    setNewInquiryForm((prev) => ({ ...prev, subject: value }));
+    setNewTicketForm((prev) => ({ ...prev, subject: value }));
   }, []);
 
   const handleMessageChange = useCallback((value: string) => {
-    setNewInquiryForm((prev) => ({ ...prev, message: value }));
+    setNewTicketForm((prev) => ({ ...prev, message: value }));
   }, []);
 
-  const handleNewInquirySubmit = useCallback(
+  const handleReplyChange = useCallback((ticketId: string, value: string) => {
+    setReplyDrafts((prev) => ({
+      ...prev,
+      [ticketId]: value,
+    }));
+  }, []);
+
+  const handleNewTicketSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
 
-      const subject = newInquiryForm.subject.trim();
-      const message = newInquiryForm.message.trim();
+      const subject = newTicketForm.subject.trim();
+      const message = newTicketForm.message.trim();
 
       if (!user || !subject || !message || loading) return;
 
       setLoading(true);
 
       try {
-        await addInquiry({
+        const ticketId = await createTicket({
           userId: user.id,
           firstName: user.firstName,
           lastName: user.lastName,
@@ -412,71 +551,160 @@ export default function ClientMessages() {
 
         sendSystemNotification(
           user.id,
-          'Inquiry Submitted',
-          `We've received your inquiry: "${subject}".`
+          'Support Ticket Created',
+          `We've received your ticket: "${subject}".`
         );
 
+        setSelectedTicketId(ticketId);
+        setShowDetail(true);
         setFormSuccess(true);
 
         window.setTimeout(() => {
           setIsModalOpen(false);
           setFormSuccess(false);
-          setNewInquiryForm(initialFormState);
+          setNewTicketForm(initialFormState);
         }, 2000);
       } finally {
         setLoading(false);
       }
     },
-    [addInquiry, loading, newInquiryForm.message, newInquiryForm.subject, sendSystemNotification, user]
+    [
+      createTicket,
+      loading,
+      newTicketForm.message,
+      newTicketForm.subject,
+      sendSystemNotification,
+      user,
+    ]
   );
+
+  const handleSendReply = useCallback(async () => {
+    if (!selectedTicket || !user || isSendingReply) return;
+
+    const reply = currentReply.trim();
+    if (!reply) return;
+
+    setIsSendingReply(true);
+
+    try {
+      await sendTicketMessage(selectedTicket.id, {
+        body: reply,
+        senderType: 'customer',
+        senderUserId: user.id,
+        senderName: [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || null,
+        senderEmail: user.email ?? null,
+      });
+
+      setReplyDrafts((prev) => ({
+        ...prev,
+        [selectedTicket.id]: '',
+      }));
+
+      sendSystemNotification(
+        user.id,
+        'Reply Sent',
+        `Your reply to "${selectedTicket.subject}" has been sent.`
+      );
+    } finally {
+      setIsSendingReply(false);
+    }
+  }, [
+    currentReply,
+    isSendingReply,
+    selectedTicket,
+    sendSystemNotification,
+    sendTicketMessage,
+    user,
+  ]);
+
+  const handleResolve = useCallback(async () => {
+    if (!selectedTicket || isUpdatingStatus) return;
+
+    setIsUpdatingStatus(true);
+
+    try {
+      await markTicketResolved(selectedTicket.id);
+
+      if (user?.id) {
+        sendSystemNotification(
+          user.id,
+          'Ticket Resolved',
+          `You marked "${selectedTicket.subject}" as resolved.`
+        );
+      }
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  }, [isUpdatingStatus, markTicketResolved, selectedTicket, sendSystemNotification, user]);
+
+  const handleReopen = useCallback(async () => {
+    if (!selectedTicket || isUpdatingStatus) return;
+
+    setIsUpdatingStatus(true);
+
+    try {
+      await reopenTicket(selectedTicket.id);
+
+      if (user?.id) {
+        sendSystemNotification(
+          user.id,
+          'Ticket Reopened',
+          `You reopened "${selectedTicket.subject}".`
+        );
+      }
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  }, [isUpdatingStatus, reopenTicket, selectedTicket, sendSystemNotification, user]);
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <div className="flex items-end justify-between gap-4">
-  <header>
-    <h1 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">
-      Messages
-    </h1>
-    <p className="mt-0.5 text-xs text-gray-500 sm:text-sm">
-      Track your support tickets and inquiries.
-    </p>
-  </header>
+          <header>
+            <h1 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">
+              Messages
+            </h1>
+            <p className="mt-0.5 text-xs text-gray-500 sm:text-sm">
+              Track your support tickets and continue the conversation here.
+            </p>
+          </header>
 
-  <button
-    onClick={openModal}
-    className="hidden md:inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-100 transition-all hover:bg-blue-700 active:scale-95"
-  >
-    <PlusCircle className="size-5" />
-    New Message
-  </button>
-</div>
+          <button
+            onClick={openModal}
+            className="hidden items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-100 transition-all hover:bg-blue-700 active:scale-95 md:inline-flex"
+          >
+            <PlusCircle className="size-5" />
+            New Message
+          </button>
+        </div>
 
-        {sortedInquiries.length === 0 ? (
-  <motion.div
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.25 }}
-  >
-    <EmptyState
-      icon={<Mail className="size-10 text-blue-500" />}
-      title="No messages yet"
-      description="Need help? Start a conversation with our team."
-    />
-  </motion.div>
-) : (
+        {sortedTickets.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+          >
+            <EmptyState
+              icon={<Mail className="size-10 text-blue-500" />}
+              title="No messages yet"
+              description="Need help? Start a conversation with our team."
+            />
+          </motion.div>
+        ) : (
           <div className="relative flex flex-1 gap-6 overflow-hidden">
             <div
               className={`custom-scrollbar w-full flex-col gap-3 overflow-y-auto pb-24 lg:w-1/3 lg:pb-0 ${
                 showDetail ? 'hidden lg:flex' : 'flex'
               }`}
             >
-              {sortedInquiries.map((inquiry) => (
-                <InquiryListItem
-                  key={inquiry.id}
-                  inquiry={inquiry}
-                  isSelected={selectedInquiryId === inquiry.id}
-                  onSelect={selectInquiry}
+              {sortedTickets.map((ticket) => (
+                <TicketListItem
+                  key={ticket.id}
+                  ticket={ticket}
+                  messages={getMessagesByTicketId(ticket.id)}
+                  isSelected={selectedTicketId === ticket.id}
+                  onSelect={selectTicket}
                 />
               ))}
             </div>
@@ -487,12 +715,21 @@ export default function ClientMessages() {
               }`}
             >
               <AnimatePresence mode="wait">
-                {selectedInquiry ? (
-                  <InquiryDetail
-                    key={selectedInquiry.id}
-                    inquiry={selectedInquiry}
-                    onBack={deselectInquiry}
-                    onClose={deselectInquiry}
+                {selectedTicket ? (
+                  <TicketDetail
+                    key={selectedTicket.id}
+                    ticket={selectedTicket}
+                    messages={selectedMessages}
+                    currentUserId={userId}
+                    replyDraft={currentReply}
+                    isSendingReply={isSendingReply}
+                    isUpdatingStatus={isUpdatingStatus}
+                    onReplyChange={(value) => handleReplyChange(selectedTicket.id, value)}
+                    onSendReply={handleSendReply}
+                    onResolve={handleResolve}
+                    onReopen={handleReopen}
+                    onBack={deselectTicket}
+                    onClose={deselectTicket}
                   />
                 ) : (
                   <div className="hidden flex-1 flex-col items-center justify-center rounded-[32px] border border-gray-100 bg-white p-12 text-center lg:flex">
@@ -505,8 +742,7 @@ export default function ClientMessages() {
                     </h3>
 
                     <p className="mt-1 text-sm text-gray-500">
-                      Select a ticket from the list to view the full chat
-                      history.
+                      Select a ticket from the list to view the full conversation history.
                     </p>
                   </div>
                 )}
@@ -515,15 +751,22 @@ export default function ClientMessages() {
           </div>
         )}
 
-        <InquiryComposerModal
+        <button
+          onClick={openModal}
+          className="fixed bottom-6 right-6 z-50 flex size-16 items-center justify-center rounded-full border-4 border-white bg-blue-600 text-white shadow-2xl transition-all hover:scale-110 active:scale-95 md:hidden"
+        >
+          <PlusCircle className="size-8" />
+        </button>
+
+        <TicketComposerModal
           isOpen={isModalOpen}
           onClose={closeModal}
-          form={newInquiryForm}
+          form={newTicketForm}
           loading={loading}
           formSuccess={formSuccess}
           onSubjectChange={handleSubjectChange}
           onMessageChange={handleMessageChange}
-          onSubmit={handleNewInquirySubmit}
+          onSubmit={handleNewTicketSubmit}
         />
       </div>
     </div>

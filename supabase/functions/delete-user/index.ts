@@ -4,7 +4,14 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
+
+const jsonResponse = (body: any, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -13,113 +20,72 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get('Authorization')
+
     if (!authHeader) {
-      return new Response(
-        JSON.stringify({ success: false, reason: 'Missing authorization header.' }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      )
+      return jsonResponse({ success: false, reason: 'Missing authorization header.' }, 401)
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')
-    const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
+    const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
-      return new Response(
-        JSON.stringify({ success: false, reason: 'Missing server configuration.' }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      )
-    }
-
-    const supabaseUserClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: authHeader,
-        },
-      },
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
     })
 
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey)
+    const admin = createClient(supabaseUrl, supabaseServiceRoleKey)
 
     const {
       data: { user },
       error: authError,
-    } = await supabaseUserClient.auth.getUser()
+    } = await userClient.auth.getUser()
 
     if (authError || !user) {
-      return new Response(
-        JSON.stringify({ success: false, reason: 'Unauthorized request.' }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      )
+      return jsonResponse({ success: false, reason: 'Unauthorized request.' }, 401)
     }
 
     const body = await req.json().catch(() => null)
-    const requestedUserId = body?.userId
+    const requestedUserId = typeof body?.userId === 'string' ? body.userId.trim() : ''
 
-    if (!requestedUserId || typeof requestedUserId !== 'string') {
-      return new Response(
-        JSON.stringify({ success: false, reason: 'A valid userId is required.' }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      )
+    if (!requestedUserId) {
+      return jsonResponse({ success: false, reason: 'A valid userId is required.' }, 400)
     }
 
-    // Allow admin override OR self-delete
-    const isAdmin = user?.app_metadata?.role === 'admin';
-
-    if (!isAdmin && user.id !== requestedUserId) {
-      return new Response(
-        JSON.stringify({
+    if (user.id !== requestedUserId) {
+      return jsonResponse(
+        {
           success: false,
-          reason: 'You are not authorized to delete this account.',
-        }),
-        {
-          status: 403,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+          reason: 'You can only delete your own account.',
+        },
+        403
       )
     }
 
-    // Check public user row
-    const { data: userRow, error: userRowError } = await supabaseAdmin
-      .from('users')
-      .select('user_id, last_login, is_active')
+    const { data: deletionRequest, error: deletionRequestError } = await admin
+      .from('account_deletion_requests')
+      .select('*')
       .eq('user_id', requestedUserId)
+      .eq('status', 'approved')
       .maybeSingle()
 
-    if (userRowError) {
-      return new Response(
-        JSON.stringify({ success: false, reason: 'Failed to validate account.' }),
+    if (deletionRequestError) {
+      return jsonResponse(
         {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+          success: false,
+          reason: deletionRequestError.message || 'Failed to validate deletion request.',
+        },
+        500
       )
     }
 
-    if (!userRow) {
-      return new Response(
-        JSON.stringify({ success: false, reason: 'Account record not found.' }),
-        {
-          status: 404,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      )
+    if (!deletionRequest) {
+      return jsonResponse({
+        success: false,
+        reason: 'Deletion request is not approved yet.',
+      })
     }
 
-    // Business-rule blocker: active reservation
-    const { data: activeReservation, error: reservationError } = await supabaseAdmin
+    const { data: activeReservation, error: activeReservationError } = await admin
       .from('reservations')
       .select('reservation_id')
       .eq('user_id', requestedUserId)
@@ -127,178 +93,251 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle()
 
-    if (reservationError) {
-      return new Response(
-        JSON.stringify({ success: false, reason: 'Failed to validate reservation status.' }),
+    if (activeReservationError) {
+      return jsonResponse(
         {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+          success: false,
+          reason: activeReservationError.message || 'Failed to validate active reservations.',
+        },
+        500
       )
     }
 
     if (activeReservation) {
-      return new Response(
-        JSON.stringify({
+      return jsonResponse({
+        success: false,
+        reason: 'Cannot delete account with active reservations or ongoing occupancy.',
+      })
+    }
+
+    const { data: unpaidPayment, error: unpaidPaymentError } = await admin
+      .from('payments')
+      .select('payment_id')
+      .eq('user_id', requestedUserId)
+      .in('status', ['unpaid', 'partial'])
+      .limit(1)
+      .maybeSingle()
+
+    if (unpaidPaymentError) {
+      return jsonResponse(
+        {
+          success: false,
+          reason: unpaidPaymentError.message || 'Failed to validate payment status.',
+        },
+        500
+      )
+    }
+
+    if (unpaidPayment) {
+      return jsonResponse({
+        success: false,
+        reason: 'Cannot delete account with unpaid or pending payments.',
+      })
+    }
+
+    const { data: profile, error: profileError } = await admin
+      .from('users')
+      .select('*')
+      .eq('user_id', requestedUserId)
+      .maybeSingle()
+
+    if (profileError) {
+      return jsonResponse(
+        {
+          success: false,
+          reason: profileError.message || 'Failed to load user profile.',
+        },
+        500
+      )
+    }
+
+    const { data: reservations, error: reservationsError } = await admin
+      .from('reservations')
+      .select('*')
+      .eq('user_id', requestedUserId)
+      .order('created_at', { ascending: false })
+
+    if (reservationsError) {
+      return jsonResponse(
+        {
+          success: false,
+          reason: reservationsError.message || 'Failed to load reservation history.',
+        },
+        500
+      )
+    }
+
+    const { data: payments, error: paymentsError } = await admin
+      .from('payments')
+      .select('*')
+      .eq('user_id', requestedUserId)
+      .order('created_at', { ascending: false })
+
+    if (paymentsError) {
+      return jsonResponse(
+        {
+          success: false,
+          reason: paymentsError.message || 'Failed to load payment history.',
+        },
+        500
+      )
+    }
+
+    const { data: reviews, error: reviewsError } = await admin
+      .from('reviews')
+      .select('*')
+      .eq('user_id', requestedUserId)
+      .order('created_at', { ascending: false })
+
+    if (reviewsError) {
+      return jsonResponse(
+        {
+          success: false,
+          reason: reviewsError.message || 'Failed to load review history.',
+        },
+        500
+      )
+    }
+
+    const deletedAt = new Date().toISOString()
+
+    const deletedUserSnapshot = {
+      user_id: requestedUserId,
+      public_id: profile?.public_id ?? null,
+      first_name: profile?.first_name ?? null,
+      last_name: profile?.last_name ?? null,
+      email: profile?.email ?? user.email ?? null,
+      phone: profile?.phone ?? null,
+      address: profile?.address ?? null,
+      role: profile?.role ?? null,
+      deleted_at: deletedAt,
+    }
+
+    const snapshotPayload = {
+      original_user_id: requestedUserId,
+      original_public_id: profile?.public_id ?? null,
+      email: profile?.email ?? user.email ?? null,
+      first_name: profile?.first_name ?? null,
+      last_name: profile?.last_name ?? null,
+      phone: profile?.phone ?? null,
+      address: profile?.address ?? null,
+      role: profile?.role ?? null,
+      created_at: profile?.created_at ?? null,
+      last_login: profile?.last_login ?? null,
+      deleted_at: deletedAt,
+      deleted_by: null,
+      deletion_request_id: deletionRequest.id ?? null,
+      deletion_reason: deletionRequest.request_reason ?? null,
+      admin_note: deletionRequest.admin_note ?? null,
+      reservation_count: reservations?.length ?? 0,
+      payment_count: payments?.length ?? 0,
+      review_count: reviews?.length ?? 0,
+      total_verified_payments:
+        payments
+          ?.filter((payment) => payment.status === 'paid')
+          .reduce((sum, payment) => sum + Number(payment.amount || 0), 0) ?? 0,
+      profile_snapshot: profile ?? {},
+      reservations_snapshot: reservations ?? [],
+      payments_snapshot: payments ?? [],
+      reviews_snapshot: reviews ?? [],
+    }
+
+
+    const { error: snapshotError } = await admin
+      .from('deleted_user_snapshots')
+      .insert(snapshotPayload)
+
+    if (snapshotError) {
+      return jsonResponse(
+        {
+          success: false,
+          reason: snapshotError.message || 'Failed to create deleted account snapshot.',
+        },
+        500
+      )
+    }
+
+    const { error: reservationUpdateError } = await admin
+      .from('reservations')
+      .update({
+        deleted_user: true,
+        deleted_user_snapshot: deletedUserSnapshot,
+        account_deleted_at: deletedAt,
+      })
+      .eq('user_id', requestedUserId)
+
+    if (reservationUpdateError) {
+      return jsonResponse(
+        {
           success: false,
           reason:
-            'Account cannot be deleted because there is an active reservation or ongoing occupancy.',
-        }),
-        {
-          status: 409,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+            reservationUpdateError.message ||
+            'Failed to update reservations for deleted account.',
+        },
+        500
       )
     }
 
-    // Optional consistency rule: recent login within 30 days
-    if (userRow.last_login) {
-      const lastLogin = new Date(userRow.last_login)
-      const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000
+    const { error: publicDeleteError } = await admin
+      .from('users')
+      .delete()
+      .eq('user_id', requestedUserId)
 
-      if (!Number.isNaN(lastLogin.getTime()) && Date.now() - lastLogin.getTime() < THIRTY_DAYS) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            reason: 'Account cannot be deleted because it has recent login activity.',
-          }),
-          {
-            status: 409,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        )
-      }
-    }
-
-    // Optional cleanup: remove avatar objects owned by the user
-    // Note: Supabase docs warn that users owning Storage objects cannot be deleted
-    const { data: avatarFiles } = await supabaseAdmin.storage
-      .from('avatars')
-      .list(requestedUserId, { limit: 100 })
-
-    if (avatarFiles && avatarFiles.length > 0) {
-      const avatarPaths = avatarFiles.map((file) => `${requestedUserId}/${file.name}`)
-      const { error: storageError } = await supabaseAdmin.storage
-        .from('avatars')
-        .remove(avatarPaths)
-
-      if (storageError) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            reason: 'Failed to remove account files before deletion.',
-          }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        )
-      }
-    }
-
-    // =============================
-// SNAPSHOT BEFORE DELETION
-// =============================
-
-// Fetch full user profile
-const { data: fullUser } = await supabaseAdmin
-  .from('users')
-  .select('*')
-  .eq('user_id', requestedUserId)
-  .maybeSingle()
-
-// Fetch reservations
-const { data: userReservations } = await supabaseAdmin
-  .from('reservations')
-  .select('*')
-  .eq('user_id', requestedUserId)
-
-// Fetch payments
-const { data: userPayments } = await supabaseAdmin
-  .from('payments')
-  .select('*')
-  .eq('user_id', requestedUserId)
-
-// Fetch reviews (if table exists)
-const { data: userReviews } = await supabaseAdmin
-  .from('reviews')
-  .select('*')
-  .eq('user_id', requestedUserId)
-
-// Compute summary stats
-const reservationCount = userReservations?.length ?? 0
-const paymentCount = userPayments?.length ?? 0
-const reviewCount = userReviews?.length ?? 0
-
-const totalVerifiedPayments =
-  userPayments
-    ?.filter((p) => p.status === 'verified')
-    .reduce((sum, p) => sum + Number(p.amount || 0), 0) ?? 0
-
-// Insert snapshot
-const { error: snapshotError } = await supabaseAdmin
-  .from('deleted_user_snapshots')
-  .insert({
-    original_user_id: requestedUserId,
-    original_public_id: fullUser?.public_id ?? null,
-    email: fullUser?.email ?? null,
-    first_name: fullUser?.first_name ?? null,
-    last_name: fullUser?.last_name ?? null,
-    phone: fullUser?.phone ?? null,
-    address: fullUser?.address ?? null,
-    role: fullUser?.role ?? null,
-    created_at: fullUser?.created_at ?? null,
-    last_login: fullUser?.last_login ?? null,
-    deleted_by: user.id,
-
-    reservation_count: reservationCount,
-    payment_count: paymentCount,
-    review_count: reviewCount,
-    total_verified_payments: totalVerifiedPayments,
-
-    profile_snapshot: fullUser ?? {},
-    reservations_snapshot: userReservations ?? [],
-    payments_snapshot: userPayments ?? [],
-    reviews_snapshot: userReviews ?? [],
-  })
-
-if (snapshotError) {
-  return new Response(
-    JSON.stringify({
-      success: false,
-      reason: 'Failed to archive user data before deletion.',
-    }),
-    {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    }
-  )
-}
-
-    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(requestedUserId)
-
-    if (deleteError) {
-      return new Response(
-        JSON.stringify({
+    if (publicDeleteError) {
+      return jsonResponse(
+        {
           success: false,
-          reason: deleteError.message || 'Failed to delete account.',
-        }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+          reason: publicDeleteError.message || 'Failed to delete public user profile.',
+        },
+        500
       )
     }
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    const { error: deleteAuthError } = await admin.auth.admin.deleteUser(requestedUserId)
+
+    if (deleteAuthError) {
+      return jsonResponse(
+        {
+          success: false,
+          reason: deleteAuthError.message || 'Failed to delete auth account.',
+        },
+        500
+      )
+    }
+
+    const { error: requestCompleteError } = await admin
+      .from('account_deletion_requests')
+      .update({
+        status: 'completed',
+        admin_note: 'Account deletion completed successfully.',
+        reviewed_at: deletionRequest.reviewed_at ?? deletedAt,
+      })
+      .eq('user_id', requestedUserId)
+      .eq('status', 'approved')
+
+    if (requestCompleteError) {
+      return jsonResponse(
+        {
+          success: false,
+          reason:
+            requestCompleteError.message ||
+            'Account was deleted, but failed to mark deletion request as completed.',
+        },
+        500
+      )
+    }
+
+    return jsonResponse({
+      success: true,
+      reason: 'Account deleted successfully.',
     })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unexpected error.'
-    return new Response(JSON.stringify({ success: false, reason: message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+  } catch (err) {
+    return jsonResponse(
+      {
+        success: false,
+        reason: err instanceof Error ? err.message : 'Unexpected error.',
+      },
+      500
+    )
   }
 })

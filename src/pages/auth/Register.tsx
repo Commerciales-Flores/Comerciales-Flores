@@ -228,8 +228,7 @@ export default function Register() {
         replace: true,
         state: {
           message:
-            result.message ||
-            'Account created. Please check your email and verify your account before signing in.',
+            result.message,
           email: cleanedEmail,
         },
       });
@@ -290,7 +289,7 @@ export default function Register() {
               <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">
                 Need assistance?
               </p>
-              <p className="text-sm text-white font-semibold hover:text-blue-400 transition-colors cursor-pointer">
+              <p className="text-sm text-white font-semibold transition-colors">
                 support@comercialesflores.ph
               </p>
             </div>
@@ -336,7 +335,7 @@ export default function Register() {
                     }
                     onBlur={() => handleBlur('firstName')}
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
-                    placeholder="John"
+                    placeholder="Juan Dela"
                   />
                 </div>
 
@@ -352,7 +351,7 @@ export default function Register() {
                     }
                     onBlur={() => handleBlur('lastName')}
                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
-                    placeholder="Doe"
+                    placeholder="Cruz"
                   />
                 </div>
               </div>

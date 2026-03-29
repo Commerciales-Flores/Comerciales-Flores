@@ -1,41 +1,55 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useData } from '../../contexts/DataContext';
+import { useLocation } from 'react-router-dom';
+import { useUsers } from '../../contexts/UsersContext';
+import { useAuth } from '../../contexts/AuthContext';
+import {
+  useInquiries,
+  type SupportMessage,
+  type SupportTicket,
+} from '../../contexts/InquiriesContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { formatDate, formatDateTime } from '../../utils/date';
+import EmptyState from '../../components/common/EmptyState';
 import {
-  Mail,
   Send,
-  CheckCircle,
-  Clock,
   MessageSquare,
-  User,
-  Calendar,
-  ChevronLeft,
   Search,
+  PlusCircle,
+  ChevronLeft,
 } from 'lucide-react';
 
 const STATUS_STYLES = {
-  open: {
+  waiting_for_support: {
     bg: 'bg-amber-50',
     text: 'text-amber-700',
-    border: 'border-amber-100',
-    icon: <Clock className="size-3" />,
+    border: 'border-amber-200',
+    dot: 'bg-amber-500',
+    label: 'Waiting for Support',
+    shortLabel: 'Support',
   },
-  responded: {
+  waiting_for_customer: {
     bg: 'bg-blue-50',
     text: 'text-blue-700',
-    border: 'border-blue-100',
-    icon: <MessageSquare className="size-3" />,
+    border: 'border-blue-200',
+    dot: 'bg-blue-500',
+    label: 'Waiting for Customer',
+    shortLabel: 'Customer',
   },
   resolved: {
     bg: 'bg-green-50',
     text: 'text-green-700',
-    border: 'border-green-100',
-    icon: <CheckCircle className="size-3" />,
+    border: 'border-green-200',
+    dot: 'bg-green-500',
+    label: 'Resolved',
+    shortLabel: 'Resolved',
   },
 } as const;
 
-type InquiryStatusFilter = 'all' | 'open' | 'responded' | 'resolved';
+type TicketStatusFilter =
+  | 'all'
+  | 'waiting_for_support'
+  | 'waiting_for_customer'
+  | 'resolved';
 
 function useDebouncedValue<T>(value: T, delay = 250) {
   const [debounced, setDebounced] = useState(value);
@@ -48,490 +62,1060 @@ function useDebouncedValue<T>(value: T, delay = 250) {
   return debounced;
 }
 
-export default function AdminInquiries() {
-  const { inquiries, updateInquiry } = useData();
-  const { sendInquiryResponseNotification } = useNotifications();
+function getTimestamp(value?: string | null) {
+  if (!value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
 
-  const [filterStatus, setFilterStatus] = useState<InquiryStatusFilter>('all');
-  const [selectedInquiry, setSelectedInquiry] = useState<string | null>(null);
-  const [showMobileDetail, setShowMobileDetail] = useState(false);
-
-  const [searchTerm, setSearchTerm] = useState('');
-  const debouncedSearch = useDebouncedValue(searchTerm, 250);
-
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [isSending, setIsSending] = useState(false);
-  const [isResolving, setIsResolving] = useState(false);
-
-  const [page, setPage] = useState(1);
-  const [pageSize] = useState(10);
-  const [pageInput, setPageInput] = useState('1');
-
-  const inquiryCounts = useMemo(() => {
-    return inquiries.reduce(
-      (acc, inquiry) => {
-        acc.all += 1;
-        acc[inquiry.status] += 1;
-        return acc;
-      },
-      {
-        all: 0,
-        open: 0,
-        responded: 0,
-        resolved: 0,
-      } as Record<InquiryStatusFilter, number>
-    );
-  }, [inquiries]);
-
-  const filteredInquiries = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase();
-
-    return inquiries.filter((i) => {
-      const matchesStatus = filterStatus === 'all' ? true : i.status === filterStatus;
-
-      const matchesSearch =
-        q === '' ||
-        i.subject?.toLowerCase().includes(q) ||
-        i.message?.toLowerCase().includes(q) ||
-        `${i.firstName ?? ''} ${i.lastName ?? ''}`.toLowerCase().includes(q);
-
-      return matchesStatus && matchesSearch;
-    });
-  }, [inquiries, filterStatus, debouncedSearch]);
-
-  const sortedInquiries = useMemo(() => {
-    return [...filteredInquiries].sort((a, b) => {
-      const aTime = new Date(a.responseDate ?? a.date).getTime();
-      const bTime = new Date(b.responseDate ?? b.date).getTime();
-      return bTime - aTime;
-    });
-  }, [filteredInquiries]);
-
-  const totalCount = sortedInquiries.length;
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-
-  const paginatedInquiries = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return sortedInquiries.slice(start, start + pageSize);
-  }, [sortedInquiries, page, pageSize]);
-
-  const inquiry = useMemo(() => {
-    if (!selectedInquiry) return null;
-    return inquiries.find((i) => i.id === selectedInquiry) ?? null;
-  }, [inquiries, selectedInquiry]);
-
-  const response = inquiry ? drafts[inquiry.id] ?? '' : '';
-
-  useEffect(() => {
-    setPage(1);
-  }, [filterStatus, debouncedSearch]);
-
-  useEffect(() => {
-    setPageInput(String(page));
-  }, [page]);
-
-  useEffect(() => {
-    if (selectedInquiry) {
-      setShowMobileDetail(true);
-    }
-  }, [selectedInquiry]);
-
-  useEffect(() => {
-    if (!selectedInquiry) return;
-
-    const stillVisible = sortedInquiries.some((i) => i.id === selectedInquiry);
-    if (!stillVisible) {
-      setSelectedInquiry(null);
-      setShowMobileDetail(false);
-    }
-  }, [selectedInquiry, sortedInquiries]);
-
-  useEffect(() => {
-    if (selectedInquiry || paginatedInquiries.length === 0) return;
-    if (window.innerWidth >= 1024) {
-      setSelectedInquiry(paginatedInquiries[0].id);
-    }
-  }, [selectedInquiry, paginatedInquiries]);
-
-  const setDraftForInquiry = useCallback((inquiryId: string, value: string) => {
-    setDrafts((prev) => ({
-      ...prev,
-      [inquiryId]: value,
-    }));
-  }, []);
-
-  const handleRespond = useCallback(async () => {
-    if (!selectedInquiry || !response.trim() || isSending) return;
-
-    const currentInquiry = inquiries.find((i) => i.id === selectedInquiry);
-    if (!currentInquiry) return;
-
-    try {
-      setIsSending(true);
-      const reply = response.trim();
-
-      await updateInquiry(selectedInquiry, {
-        status: 'responded',
-        response: reply,
-        responseDate: new Date().toISOString(),
-      });
-
-      if (currentInquiry.userId) {
-        await sendInquiryResponseNotification({
-          userId: currentInquiry.userId,
-          subject: currentInquiry.subject,
-        });
-      }
-
-      setDrafts((prev) => ({
-        ...prev,
-        [selectedInquiry]: '',
-      }));
-    } catch (error) {
-      console.error('Failed to send inquiry response:', error);
-    } finally {
-      setIsSending(false);
-    }
-  }, [
-    selectedInquiry,
-    response,
-    isSending,
-    inquiries,
-    updateInquiry,
-    sendInquiryResponseNotification,
-  ]);
-
-  const handleResolve = useCallback(
-    async (id: string) => {
-      if (isResolving) return;
-
-      const currentInquiry = inquiries.find((i) => i.id === id);
-      if (!currentInquiry) return;
-
-      if (currentInquiry.status === 'open' && !currentInquiry.response) {
-        const confirmed = window.confirm(
-          'Resolve this inquiry without sending a response?'
-        );
-        if (!confirmed) return;
-      }
-
-      try {
-        setIsResolving(true);
-        await updateInquiry(id, { status: 'resolved' });
-      } catch (error) {
-        console.error('Failed to resolve inquiry:', error);
-      } finally {
-        setIsResolving(false);
-      }
-    },
-    [inquiries, updateInquiry, isResolving]
+function getTicketStatusStyle(status?: string) {
+  return (
+    STATUS_STYLES[status as keyof typeof STATUS_STYLES] ??
+    STATUS_STYLES.waiting_for_support
   );
+}
 
-  const handlePageJump = useCallback(() => {
-    const parsed = parseInt(pageInput, 10);
+function getInitials(firstName?: string, lastName?: string, email?: string) {
+  const initials = `${firstName?.[0] ?? ''}${lastName?.[0] ?? ''}`.trim();
+  if (initials) return initials.toUpperCase();
+  return (email?.[0] ?? 'U').toUpperCase();
+}
 
-    if (Number.isNaN(parsed)) {
-      setPageInput(String(page));
-      return;
-    }
+type AdminUserListItemProps = {
+  user: any;
+  isSelected: boolean;
+  openTicketCount: number;
+  onSelect: (userId: string) => void;
+};
 
-    const nextPage = Math.min(Math.max(parsed, 1), totalPages);
-    setPage(nextPage);
-    setPageInput(String(nextPage));
-  }, [pageInput, page, totalPages]);
-
-  const handlePageInputKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Enter') {
-        handlePageJump();
-      }
-    },
-    [handlePageJump]
-  );
-
-  const hasNoInquiries = totalCount === 0;
+function AdminUserListItem({
+  user,
+  isSelected,
+  openTicketCount,
+  onSelect,
+}: AdminUserListItemProps) {
+  const fullName =
+    [user.firstName, user.lastName].filter(Boolean).join(' ').trim() ||
+    user.email ||
+    'Unknown User';
 
   return (
-<div className="bg-gray-50 min-h-screen p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
+    <button
+      type="button"
+      onClick={() => onSelect(user.id)}
+      className={`group w-full rounded-2xl border p-4 text-left transition-all ${
+        isSelected
+          ? 'border-blue-200 bg-blue-50 shadow-sm ring-2 ring-blue-500/10'
+          : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
+      }`}
+    >
+      <div className="flex items-start gap-3">
         <div
-  className={`${
-    showMobileDetail ? 'hidden md:flex' : 'flex'
-  } flex-col gap-4 shrink-0`}
->
-  {/* Header + Filters row */}
-  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-    <div>
-      <h1 className="text-2xl font-bold text-gray-900">Support Inquiries</h1>
-      <p className="text-gray-500">Respond to customer messages.</p>
-    </div>
-
-    <div className="flex bg-white p-1 rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
-      {(['all', 'open', 'responded', 'resolved'] as const).map((status) => (
-        <button
-          key={status}
-          onClick={() => setFilterStatus(status)}
-          className={`px-3 md:px-4 py-1.5 rounded-lg text-xs md:text-sm font-medium transition-all whitespace-nowrap ${
-            filterStatus === status
-              ? 'bg-blue-600 text-white shadow-md'
-              : 'text-gray-500 hover:bg-gray-50'
+          className={`flex size-11 shrink-0 items-center justify-center rounded-2xl text-sm font-bold ${
+            isSelected ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'
           }`}
         >
-          {status.charAt(0).toUpperCase() + status.slice(1)}
-          <span className="ml-2 opacity-70">({inquiryCounts[status]})</span>
-        </button>
-      ))}
-    </div>
-  </div>
+          {getInitials(user.firstName, user.lastName, user.email)}
+        </div>
 
-  {/* Full-width search */}
-  <div className="relative w-full">
-    <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
-    <input
-      type="text"
-      placeholder="Search inquiries..."
-      value={searchTerm}
-      onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-    />
-  </div>
-</div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p
+                className={`truncate text-sm font-semibold ${
+                  isSelected ? 'text-blue-900' : 'text-gray-900'
+                }`}
+              >
+                {fullName}
+              </p>
+              <p className="mt-1 truncate text-[11px] text-gray-500">
+                {user.email || '—'}
+              </p>
+            </div>
 
-      <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0 relative">
-        <div
-          className={`${
-            showMobileDetail ? 'hidden lg:flex' : 'flex'
-          } lg:w-1/3 flex-col min-h-0`}
-        >
-          <div className="flex-1 flex flex-col gap-3 overflow-y-auto pr-2 custom-scrollbar">
-            {hasNoInquiries ? (
-              <div className="bg-white rounded-2xl border border-dashed border-gray-300 p-12 text-center">
-                <Mail className="size-10 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-400 font-medium">No inquiries found</p>
-              </div>
-            ) : (
-              paginatedInquiries.map((inq) => (
-                <button
-                  key={inq.id}
-                  onClick={() => setSelectedInquiry(inq.id)}
-                  className={`w-full text-left p-4 rounded-2xl border transition-all ${
-                    selectedInquiry === inq.id
-                      ? 'bg-blue-50 border-blue-200 ring-2 ring-blue-500/10 shadow-sm'
-                      : 'bg-white border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-1 gap-3">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                      {formatDate(inq.date)}
-                    </span>
-                    <div
-                      className={`shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                        STATUS_STYLES[inq.status].bg
-                      } ${STATUS_STYLES[inq.status].text}`}
-                    >
-                      {STATUS_STYLES[inq.status].icon}
-                      {inq.status}
-                    </div>
-                  </div>
-
-                  <h3
-                    className={`font-semibold text-sm truncate ${
-                      selectedInquiry === inq.id ? 'text-blue-900' : 'text-gray-900'
-                    }`}
-                  >
-                    {inq.subject}
-                  </h3>
-
-                  <p className="text-xs text-gray-500 line-clamp-2 mt-1">{inq.message}</p>
-
-                  <div className="mt-3 flex items-center gap-2 text-[11px] text-gray-400 italic">
-                    <User className="size-3" />
-                    {inq.firstName} {inq.lastName}
-                  </div>
-                </button>
-              ))
+            {openTicketCount > 0 && (
+              <span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">
+                {openTicketCount}
+              </span>
             )}
           </div>
 
-          {!hasNoInquiries && totalPages > 1 && (
-            <div className="mt-4 bg-white border border-gray-200 rounded-2xl shadow-sm px-4 py-4 flex flex-col gap-3">
-              <p className="text-sm text-gray-500">
-                Page {page} of {totalPages} • {totalCount} total inquiries
-              </p>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
-                >
-                  Previous
-                </button>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">Go to</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={totalPages}
-                    value={pageInput}
-                    onChange={(e) => setPageInput(e.target.value)}
-                    onKeyDown={handlePageInputKeyDown}
-                    className="w-20 px-3 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <button
-                    onClick={handlePageJump}
-                    className="px-3 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-                  >
-                    Go
-                  </button>
-                </div>
-
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
-                  className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
+          <div className="mt-2 flex items-center gap-2">
+            <span className="font-mono text-[10px] text-gray-400">
+              {user.publicId ?? user.id}
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700">
+              <span className="size-1.5 rounded-full bg-green-500" />
+              Active
+            </span>
+          </div>
         </div>
+      </div>
+    </button>
+  );
+}
+
+type AdminTicketListItemProps = {
+  ticket: SupportTicket;
+  preview: string;
+  messageCount: number;
+  isSelected: boolean;
+  onSelect: (ticketId: string) => void;
+};
+
+function AdminTicketListItem({
+  ticket,
+  preview,
+  messageCount,
+  isSelected,
+  onSelect,
+}: AdminTicketListItemProps) {
+  const style = getTicketStatusStyle(ticket.status);
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(ticket.id)}
+      className={`group w-full rounded-2xl border p-4 text-left transition-all ${
+        isSelected
+          ? 'border-blue-200 bg-blue-50 shadow-sm ring-2 ring-blue-500/10'
+          : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
+      }`}
+    >
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+          {formatDate(ticket.lastMessageAt || ticket.createdAt)}
+        </span>
 
         <div
-          className={`${
-            !showMobileDetail ? 'hidden lg:flex' : 'flex'
-          } lg:w-2/3 flex-col min-h-0 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden absolute inset-0 lg:relative`}
+          className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${style.bg} ${style.text} ${style.border}`}
         >
-          {!inquiry ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-              <div className="bg-gray-50 p-6 rounded-full mb-4">
-                <MessageSquare className="size-10 text-gray-300" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900">Select an inquiry</h3>
-              <p className="text-gray-500 max-w-xs mx-auto">
-                Click on a message from the sidebar to view the full conversation and respond.
-              </p>
-            </div>
-          ) : (
-            <>
-              <div className="p-4 md:p-6 border-b border-gray-100 bg-gray-50/30 flex justify-between items-start">
-                <div className="flex items-start gap-3">
-                  <button
-                    onClick={() => {
-                      setShowMobileDetail(false);
-                      setSelectedInquiry(null);
-                    }}
-                    className="lg:hidden p-1 -ml-1 hover:bg-gray-200 rounded-full transition-colors"
-                  >
-                    <ChevronLeft className="size-6 text-gray-600" />
-                  </button>
+          <span className={`size-1.5 rounded-full ${style.dot}`} />
+          <span className="hidden sm:inline">{style.label}</span>
+          <span className="sm:hidden">{style.shortLabel}</span>
+        </div>
+      </div>
 
-                  <div>
-                    <h2 className="text-lg md:text-xl font-bold text-gray-900 mb-1">
-                      {inquiry.subject}
-                    </h2>
-                    <div className="flex flex-col md:flex-row md:flex-wrap md:gap-4 text-xs md:text-sm text-gray-500">
-                      <span className="flex items-center gap-1.5">
-                        <User className="size-3 md:size-4" />
-                        {inquiry.firstName} {inquiry.lastName}
-                      </span>
-                      <span className="flex items-center gap-1.5">
-                        <Calendar className="size-3 md:size-4" />
-                        {formatDateTime(inquiry.date)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+      <h3
+        className={`truncate text-sm font-semibold ${
+          isSelected ? 'text-blue-900' : 'text-gray-900'
+        }`}
+      >
+        {ticket.subject}
+      </h3>
 
-                <div
-                  className={`flex items-center gap-2 px-2 md:px-3 py-1 rounded-full text-[10px] md:text-xs font-bold uppercase ${
-                    STATUS_STYLES[inquiry.status].bg
-                  } ${STATUS_STYLES[inquiry.status].text} border ${
-                    STATUS_STYLES[inquiry.status].border
-                  }`}
-                >
-                  {STATUS_STYLES[inquiry.status].icon}
-                  {inquiry.status}
-                </div>
-              </div>
+      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-gray-500">
+        {preview || 'No messages yet'}
+      </p>
 
-              <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-8 custom-scrollbar">
-                <div className="flex flex-col items-start max-w-[90%]">
-                  <span className="text-[10px] font-bold text-gray-400 uppercase mb-2 ml-1">
-                    Customer Message
-                  </span>
-                  <div className="bg-gray-100 text-gray-800 p-4 rounded-2xl rounded-tl-none shadow-sm">
-                    <p className="text-sm leading-relaxed">{inquiry.message}</p>
-                  </div>
-                </div>
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <span className="font-mono text-[10px] text-gray-400">
+          {ticket.publicId ?? `#${ticket.id.slice(-6).toUpperCase()}`}
+        </span>
+        <span className="text-[10px] text-gray-400">
+          {messageCount} {messageCount === 1 ? 'message' : 'messages'}
+        </span>
+      </div>
+    </button>
+  );
+}
 
-                {inquiry.response && (
-                  <div className="flex flex-col items-end ml-auto max-w-[90%]">
-                    <span className="text-[10px] font-bold text-blue-400 uppercase mb-2 mr-1">
-                      Your Response
-                    </span>
-                    <div className="bg-blue-600 text-white p-4 rounded-2xl rounded-tr-none shadow-md">
-                      <p className="text-sm leading-relaxed">{inquiry.response}</p>
-                    </div>
-                    {inquiry.responseDate && (
-                      <span className="text-[10px] text-gray-400 mt-2 italic">
-                        Sent on {formatDateTime(inquiry.responseDate)}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
+type EmptyThreadStateProps = {
+  selectedUser: any;
+  draftSubject: string;
+  draftMessage: string;
+  isStartingTicket: boolean;
+  onSubjectChange: (value: string) => void;
+  onMessageChange: (value: string) => void;
+  onStartConversation: () => void;
+};
 
-              <div className="p-4 md:p-6 border-t border-gray-100 bg-white">
-                {inquiry.status === 'resolved' ? (
-                  <div className="bg-green-50 border border-green-100 rounded-xl p-4 flex items-center gap-3 text-green-700">
-                    <CheckCircle className="size-5 shrink-0" />
-                    <span className="text-sm font-medium">Ticket resolved.</span>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <textarea
-                      value={response}
-                      onChange={(e) => setDraftForInquiry(inquiry.id, e.target.value)}
-                      rows={3}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all resize-none text-sm"
-                      placeholder={
-                        inquiry.status === 'responded'
-                          ? 'Write a follow-up reply...'
-                          : 'Write your reply...'
-                      }
-                    />
+function EmptyThreadState({
+  selectedUser,
+  draftSubject,
+  draftMessage,
+  isStartingTicket,
+  onSubjectChange,
+  onMessageChange,
+  onStartConversation,
+}: EmptyThreadStateProps) {
+  const fullName =
+    [selectedUser?.firstName, selectedUser?.lastName].filter(Boolean).join(' ').trim() ||
+    selectedUser?.email ||
+    'this user';
 
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => handleResolve(inquiry.id)}
-                        disabled={isResolving || isSending}
-                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 border border-gray-200 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-all text-sm disabled:opacity-50"
-                      >
-                        <CheckCircle className="size-4" />
-                        <span className="hidden sm:inline">
-                          {inquiry.status === 'responded' ? 'Mark as Resolved' : 'Resolve Ticket'}
-                        </span>
-                        <span className="sm:hidden">Resolve</span>
-                      </button>
+  return (
+    <div className="flex flex-1 flex-col p-5 md:p-6">
+      <div className="w-full rounded-[2rem] border border-dashed border-gray-300 bg-gray-50/70 p-6 md:p-8">
+        <div className="mb-4 flex items-center gap-3">
+          <div className="rounded-2xl bg-blue-50 p-3">
+            <PlusCircle className="size-6 text-blue-500" />
+          </div>
+          <div>
+            <p className="mt-1 text-sm font-semibold leading-relaxed">
+              {fullName} can have a new support ticket created from here.
+            </p>
+          </div>
+        </div>
 
-                      <button
-                        onClick={handleRespond}
-                        disabled={!response.trim() || isSending || isResolving}
-                        className="flex-[2] flex items-center justify-center gap-2 px-3 py-2.5 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-all disabled:opacity-50 shadow-lg shadow-blue-100 text-sm"
-                      >
-                        <Send className="size-4" />
-                        {isSending ? 'Sending...' : 'Send Response'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
+        <div className="space-y-4 text-left">
+          <div>
+            <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-400">
+              Subject
+            </label>
+            <input
+              type="text"
+              value={draftSubject}
+              onChange={(e) => onSubjectChange(e.target.value)}
+              className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition-all focus:border-blue-300 focus:ring-2 focus:ring-blue-500"
+              placeholder="What is this regarding?"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-gray-400">
+              First Message
+            </label>
+            <textarea
+              rows={6}
+              value={draftMessage}
+              onChange={(e) => onMessageChange(e.target.value)}
+              className="w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition-all focus:border-blue-300 focus:ring-2 focus:ring-blue-500"
+              placeholder="Write your message to the customer."
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={onStartConversation}
+            disabled={!draftSubject.trim() || !draftMessage.trim() || isStartingTicket}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-blue-100 transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <Send className="size-4" />
+            {isStartingTicket ? 'Starting...' : 'Start Conversation'}
+          </button>
         </div>
       </div>
     </div>
   );
+}
+
+function PageLoadingState() {
+  return (
+    <div className="flex flex-1 items-center justify-center">
+      <EmptyState
+        icon={
+          <div className="flex items-center justify-center">
+            <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+          </div>
+        }
+        title="Loading inquiries..."
+        description="Please wait while support tickets and conversations are being retrieved."
+      />
+    </div>
+  );
+}
+
+function ThreadLoadingState() {
+  return (
+    <EmptyState
+      icon={
+        <div className="flex items-center justify-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+        </div>
+      }
+      title="Loading messages..."
+      description="Please wait while the conversation thread is being retrieved."
+    />
+  );
+}
+
+function EmptyMessagesState() {
+  return (
+    <div className="flex h-full min-h-[280px] items-center justify-center">
+      <div className="w-full max-w-md rounded-[2rem] border border-dashed border-gray-300 bg-gray-50 p-8 text-center">
+        <MessageSquare className="mx-auto mb-3 size-10 text-gray-300" />
+        <h3 className="text-base font-semibold text-gray-900">No messages yet</h3>
+        <p className="mt-1 text-sm text-gray-500">
+          This ticket does not have any conversation messages yet.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+type MessageBubbleProps = {
+  message: SupportMessage;
+};
+
+function MessageBubble({ message }: MessageBubbleProps) {
+  const isSupportMessage = message.senderType === 'support';
+
+  return (
+    <div className={`flex ${isSupportMessage ? 'justify-end' : 'justify-start'}`}>
+      <div
+        className={`flex max-w-[88%] gap-3 ${
+          isSupportMessage ? 'flex-row-reverse' : 'flex-row'
+        }`}
+      >
+        <div
+          className={`mt-1 flex size-9 shrink-0 items-center justify-center rounded-2xl text-xs font-bold ${
+            isSupportMessage ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+          }`}
+        >
+          {isSupportMessage ? 'S' : 'C'}
+        </div>
+
+        <div className={`flex flex-col ${isSupportMessage ? 'items-end' : 'items-start'}`}>
+          <span
+            className={`mb-1.5 text-[10px] font-bold uppercase ${
+              isSupportMessage ? 'text-blue-400' : 'text-gray-400'
+            }`}
+          >
+            {isSupportMessage ? 'Support Team' : 'Customer'}
+          </span>
+
+          <div
+            className={`rounded-2xl px-4 py-3 shadow-sm ${
+              isSupportMessage
+                ? 'rounded-tr-md bg-blue-600 text-white shadow-blue-100'
+                : 'rounded-tl-md border border-gray-200 bg-gray-50 text-gray-800'
+            }`}
+          >
+            <p className="whitespace-pre-wrap text-sm leading-relaxed">
+              {message.body}
+            </p>
+          </div>
+
+          <span className="mt-1.5 text-[10px] text-gray-400">
+            {formatDateTime(message.createdAt)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function AdminInquiries() {
+  const location = useLocation();
+
+  const { users, isLoadingUsers } = useUsers();
+  const { user: adminUser } = useAuth();
+  const {
+    tickets,
+    messages,
+    createTicket,
+    sendTicketMessage,
+    reopenTicket,
+    fetchMessagesByTicketId,
+    refreshInquiries,
+    isLoadingTickets,
+    isLoadingMessages,
+  } = useInquiries();
+  const { sendInquiryResponseNotification } = useNotifications();
+
+  const [pageLoading, setPageLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState<TicketStatusFilter>('all');
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [showMobileThread, setShowMobileThread] = useState(false);
+  const [isComposingNewTicket, setIsComposingNewTicket] = useState(false);
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [newTicketSubject, setNewTicketSubject] = useState('');
+  const [newTicketMessage, setNewTicketMessage] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [isStartingTicket, setIsStartingTicket] = useState(false);
+  const [isReopening, setIsReopening] = useState(false);
+
+  const debouncedSearch = useDebouncedValue(searchTerm, 250);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPage = async () => {
+      setPageLoading(true);
+
+      try {
+        await refreshInquiries();
+      } catch (error) {
+        console.error('Failed to refresh inquiries:', error);
+      } finally {
+        if (!cancelled) {
+          setPageLoading(false);
+        }
+      }
+    };
+
+    void loadPage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [location.key, refreshInquiries]);
+
+  const activeUsers = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+
+    return (users ?? [])
+      .filter((u: any) => u.isActive)
+      .filter((u: any) => {
+        const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ').trim();
+        const searchable = [fullName, u.email, u.publicId]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+
+        return q === '' || searchable.includes(q);
+      })
+      .sort((a: any, b: any) => {
+        const aName =
+          [a.firstName, a.lastName].filter(Boolean).join(' ').trim() || a.email || '';
+        const bName =
+          [b.firstName, b.lastName].filter(Boolean).join(' ').trim() || b.email || '';
+
+        return aName.localeCompare(bName);
+      });
+  }, [users, debouncedSearch]);
+
+  const ticketCounts = useMemo(() => {
+  if (!selectedUserId) {
+    return {
+      all: 0,
+      waiting_for_support: 0,
+      waiting_for_customer: 0,
+      resolved: 0,
+    };
+  }
+
+  const userTickets = tickets.filter(
+    (ticket) => ticket.userId === selectedUserId
+  );
+
+  return userTickets.reduce(
+    (acc, ticket) => {
+      acc.all += 1;
+      if (ticket.status in acc) {
+        acc[ticket.status as TicketStatusFilter] += 1;
+      }
+      return acc;
+    },
+    {
+      all: 0,
+      waiting_for_support: 0,
+      waiting_for_customer: 0,
+      resolved: 0,
+    } as Record<TicketStatusFilter, number>
+  );
+}, [tickets, selectedUserId]);
+
+  const openTicketCountByUserId = useMemo(() => {
+    const counts: Record<string, number> = {};
+
+    for (const ticket of tickets) {
+      if (!ticket.userId || ticket.status === 'resolved') continue;
+      counts[ticket.userId] = (counts[ticket.userId] ?? 0) + 1;
+    }
+
+    return counts;
+  }, [tickets]);
+
+  const messagesByTicketId = useMemo(() => {
+    const grouped: Record<string, SupportMessage[]> = {};
+
+    for (const message of messages) {
+      if (!grouped[message.ticketId]) grouped[message.ticketId] = [];
+      grouped[message.ticketId].push(message);
+    }
+
+    for (const ticketId of Object.keys(grouped)) {
+      grouped[ticketId].sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+    }
+
+    return grouped;
+  }, [messages]);
+
+  const ticketPreviewByTicketId = useMemo(() => {
+    const previews: Record<string, string> = {};
+
+    for (const ticket of tickets) {
+      const ticketMessages = messagesByTicketId[ticket.id] ?? [];
+      previews[ticket.id] = ticketMessages[ticketMessages.length - 1]?.body ?? '';
+    }
+
+    return previews;
+  }, [tickets, messagesByTicketId]);
+
+  const selectedUser = useMemo(
+    () => activeUsers.find((u: any) => u.id === selectedUserId) ?? null,
+    [activeUsers, selectedUserId]
+  );
+
+  const filteredTicketsForSelectedUser = useMemo(() => {
+    if (!selectedUserId) return [];
+
+    return tickets
+      .filter((ticket) => ticket.userId === selectedUserId)
+      .filter((ticket) => (filterStatus === 'all' ? true : ticket.status === filterStatus))
+      .sort((a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt));
+  }, [tickets, selectedUserId, filterStatus]);
+
+  const selectedTicket = useMemo(
+    () =>
+      filteredTicketsForSelectedUser.find((ticket) => ticket.id === selectedTicketId) ??
+      null,
+    [filteredTicketsForSelectedUser, selectedTicketId]
+  );
+
+  const selectedTicketMessages = useMemo(
+    () => (selectedTicket ? messagesByTicketId[selectedTicket.id] ?? [] : []),
+    [messagesByTicketId, selectedTicket]
+  );
+
+  const currentReply = selectedTicket ? replyDrafts[selectedTicket.id] ?? '' : '';
+  const isInitialInquiriesLoading = pageLoading || isLoadingTickets || isLoadingUsers;
+  const hasNoUsers = !isInitialInquiriesLoading && activeUsers.length === 0;
+  const hasNoTicketsForSelectedUser =
+    !isInitialInquiriesLoading &&
+    !!selectedUser &&
+    filteredTicketsForSelectedUser.length === 0;
+
+  useEffect(() => {
+    if (isInitialInquiriesLoading) return;
+
+    if (!selectedUserId && activeUsers.length > 0) {
+      setSelectedUserId(activeUsers[0].id);
+    }
+  }, [activeUsers, isInitialInquiriesLoading, selectedUserId]);
+
+  useEffect(() => {
+    if (isInitialInquiriesLoading || !selectedUserId) return;
+
+    const stillExists = activeUsers.some((u: any) => u.id === selectedUserId);
+    if (!stillExists) {
+      setSelectedUserId(activeUsers[0]?.id ?? null);
+      setSelectedTicketId(null);
+      setShowMobileThread(false);
+      setIsComposingNewTicket(false);
+    }
+  }, [activeUsers, isInitialInquiriesLoading, selectedUserId]);
+
+  useEffect(() => {
+    if (isInitialInquiriesLoading) return;
+
+    if (!selectedUserId) {
+      setSelectedTicketId(null);
+      setIsComposingNewTicket(false);
+      return;
+    }
+
+    if (isComposingNewTicket) {
+      setSelectedTicketId(null);
+      return;
+    }
+
+    if (filteredTicketsForSelectedUser.length === 0) {
+      setSelectedTicketId(null);
+      return;
+    }
+
+    const stillVisible = filteredTicketsForSelectedUser.some(
+      (ticket) => ticket.id === selectedTicketId
+    );
+
+    if (!stillVisible) {
+      setSelectedTicketId(filteredTicketsForSelectedUser[0].id);
+    }
+  }, [
+    filteredTicketsForSelectedUser,
+    isComposingNewTicket,
+    isInitialInquiriesLoading,
+    selectedTicketId,
+    selectedUserId,
+  ]);
+
+  useEffect(() => {
+    if (selectedTicketId) {
+      setShowMobileThread(true);
+    }
+  }, [selectedTicketId]);
+
+  useEffect(() => {
+    if (!selectedTicket?.id) return;
+    void fetchMessagesByTicketId(selectedTicket.id);
+  }, [fetchMessagesByTicketId, selectedTicket?.id]);
+
+  const openUser = useCallback((userId: string) => {
+    setSelectedUserId(userId);
+    setSelectedTicketId(null);
+    setIsComposingNewTicket(false);
+    setShowMobileThread(false);
+    setNewTicketSubject('');
+    setNewTicketMessage('');
+  }, []);
+
+  const openTicket = useCallback((ticketId: string) => {
+    setSelectedTicketId(ticketId);
+    setIsComposingNewTicket(false);
+    setShowMobileThread(true);
+  }, []);
+
+  const closeMobileThread = useCallback(() => {
+    setShowMobileThread(false);
+    setSelectedTicketId(null);
+    setIsComposingNewTicket(false);
+  }, []);
+
+  const startNewTicket = useCallback(() => {
+    setSelectedTicketId(null);
+    setNewTicketSubject('');
+    setNewTicketMessage('');
+    setIsComposingNewTicket(true);
+    setShowMobileThread(true);
+  }, []);
+
+  const cancelNewTicket = useCallback(() => {
+    setIsComposingNewTicket(false);
+    setNewTicketSubject('');
+    setNewTicketMessage('');
+
+    if (filteredTicketsForSelectedUser.length > 0) {
+      setSelectedTicketId(filteredTicketsForSelectedUser[0].id);
+      setShowMobileThread(true);
+    } else {
+      setSelectedTicketId(null);
+      setShowMobileThread(false);
+    }
+  }, [filteredTicketsForSelectedUser]);
+
+  const setDraftForTicket = useCallback((ticketId: string, value: string) => {
+    setReplyDrafts((prev) => ({
+      ...prev,
+      [ticketId]: value,
+    }));
+  }, []);
+
+  const handleStartConversation = useCallback(async () => {
+    if (!selectedUser || !adminUser || isStartingTicket) return;
+
+    const subject = newTicketSubject.trim();
+    const body = newTicketMessage.trim();
+
+    if (!subject || !body) return;
+
+    setIsStartingTicket(true);
+
+    try {
+      const ticketId = await createTicket({
+        userId: selectedUser.id,
+        firstName: selectedUser.firstName,
+        lastName: selectedUser.lastName,
+        email: selectedUser.email,
+        subject,
+        message: body,
+        senderType: 'support',
+      });
+
+      if (selectedUser.id) {
+        await sendInquiryResponseNotification({
+          userId: selectedUser.id,
+          subject,
+        });
+      }
+
+      setNewTicketSubject('');
+      setNewTicketMessage('');
+      setIsComposingNewTicket(false);
+      setSelectedTicketId(ticketId);
+      setShowMobileThread(true);
+    } catch (error) {
+      console.error('Failed to start support conversation:', error);
+    } finally {
+      setIsStartingTicket(false);
+    }
+  }, [
+    adminUser,
+    createTicket,
+    isStartingTicket,
+    newTicketMessage,
+    newTicketSubject,
+    selectedUser,
+    sendInquiryResponseNotification,
+  ]);
+
+  const handleSendReply = useCallback(async () => {
+    if (!selectedTicket || !selectedUser || !adminUser || isSending || isLoadingMessages) {
+      return;
+    }
+
+    const reply = currentReply.trim();
+    if (!reply) return;
+
+    setIsSending(true);
+
+    try {
+      if (selectedTicket.status === 'resolved') {
+        await reopenTicket(selectedTicket.id);
+      }
+
+      await sendTicketMessage(selectedTicket.id, {
+        body: reply,
+        senderType: 'support',
+        senderUserId: adminUser.id,
+        senderName:
+          [adminUser.firstName, adminUser.lastName].filter(Boolean).join(' ').trim() ||
+          'Support Team',
+        senderEmail: adminUser.email ?? null,
+      });
+
+      if (selectedUser.id) {
+        await sendInquiryResponseNotification({
+          userId: selectedUser.id,
+          subject: selectedTicket.subject,
+        });
+      }
+
+      setReplyDrafts((prev) => ({
+        ...prev,
+        [selectedTicket.id]: '',
+      }));
+    } catch (error) {
+      console.error('Failed to send support reply:', error);
+    } finally {
+      setIsSending(false);
+    }
+  }, [
+    adminUser,
+    currentReply,
+    isLoadingMessages,
+    isSending,
+    reopenTicket,
+    selectedTicket,
+    selectedUser,
+    sendInquiryResponseNotification,
+    sendTicketMessage,
+  ]);
+
+  const handleReopen = useCallback(async () => {
+    if (!selectedTicket || isReopening) return;
+
+    setIsReopening(true);
+
+    try {
+      await reopenTicket(selectedTicket.id);
+    } catch (error) {
+      console.error('Failed to reopen ticket:', error);
+    } finally {
+      setIsReopening(false);
+    }
+  }, [isReopening, reopenTicket, selectedTicket]);
+
+  return (
+  <div className="h-[calc(100vh-4rem)] min-h-[900px] bg-gray-50">
+    <div className="flex h-full flex-col gap-6 p-4 sm:p-6 lg:p-8">
+      <div
+        className={`${
+          showMobileThread ? 'hidden md:flex' : 'flex'
+        } shrink-0 flex-col gap-4`}
+      >
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900">
+              Support Center
+            </h1>
+            <p className="mt-1 text-sm text-gray-500">
+              View active users, start conversations, and continue support threads.
+            </p>
+          </div>
+
+          <div className="flex overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+            {(
+              ['all', 'waiting_for_support', 'waiting_for_customer', 'resolved'] as const
+            ).map((status) => (
+              <button
+                key={status}
+                type="button"
+                onClick={() => setFilterStatus(status)}
+                className={`whitespace-nowrap rounded-xl px-3 py-2 text-xs font-semibold transition-all md:px-4 md:text-sm ${
+                  filterStatus === status
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                {status === 'all'
+                  ? 'All'
+                  : status === 'waiting_for_support'
+                  ? 'Waiting for Support'
+                  : status === 'waiting_for_customer'
+                  ? 'Waiting for Customer'
+                  : 'Resolved'}
+                <span className="ml-2 opacity-70">({ticketCounts[status]})</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {!isInitialInquiriesLoading && !hasNoUsers && (
+          <div className="rounded-2xl border border-gray-200 bg-white p-2 shadow-sm">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search active users by name, email, or user ID..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="hidden overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm lg:block">
+        {isInitialInquiriesLoading ? (
+            <EmptyState
+              icon={
+                <div className="flex items-center justify-center">
+                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+                </div>
+              }
+              title="Loading inquiries..."
+              description="Please wait while support tickets and conversations are being retrieved."
+            />
+        ) : hasNoUsers ? (
+            <EmptyState
+              icon={<MessageSquare className="size-10 text-blue-500" />}
+              title="No active users found"
+              description="Active users will appear here once accounts become available."
+            />
+        ) : (
+          <div className="grid h-full min-h-0 flex-1 grid-cols-[320px_minmax(0,360px)_minmax(0,1fr)] gap-4 p-4">
+            <div
+              className={`min-h-0 rounded-[2rem] border border-gray-200 bg-white shadow-sm ${
+                showMobileThread ? 'hidden md:flex' : 'flex'
+              } flex-col`}
+            >
+              <div className="border-b border-gray-100 p-5">
+                <h2 className="text-sm font-bold text-gray-900">Users</h2>
+                <p className="mt-1 text-[11px] text-gray-500">
+                  Select a customer to view support tickets.
+                </p>
+              </div>
+
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+                {activeUsers.map((user: any) => (
+                  <AdminUserListItem
+                    key={user.id}
+                    user={user}
+                    isSelected={user.id === selectedUserId}
+                    openTicketCount={openTicketCountByUserId[user.id] ?? 0}
+                    onSelect={openUser}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div
+              className={`min-h-0 rounded-[2rem] border border-gray-200 bg-white shadow-sm ${
+                showMobileThread ? 'hidden md:flex' : 'flex'
+              } flex-col`}
+            >
+              <div className="flex items-center justify-between border-b border-gray-100 p-5">
+                <div>
+                  <h2 className="text-sm font-bold text-gray-900">Tickets</h2>
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    {selectedUser
+                      ? `Support history for ${
+                          [selectedUser.firstName, selectedUser.lastName]
+                            .filter(Boolean)
+                            .join(' ')
+                            .trim() || selectedUser.email
+                        }`
+                      : 'Select a user first.'}
+                  </p>
+                </div>
+
+                {selectedUser && (
+                  <button
+                    type="button"
+                    onClick={startNewTicket}
+                    className="rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-700"
+                  >
+                    New Ticket
+                  </button>
+                )}
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                {!selectedUser ? null : hasNoTicketsForSelectedUser ? (
+                  <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-900">No tickets yet</h3>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Start a new support conversation for this customer.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {filteredTicketsForSelectedUser.map((ticket) => (
+                      <AdminTicketListItem
+                        key={ticket.id}
+                        ticket={ticket}
+                        preview={ticketPreviewByTicketId[ticket.id] ?? ''}
+                        messageCount={(messagesByTicketId[ticket.id] ?? []).length}
+                        isSelected={ticket.id === selectedTicketId}
+                        onSelect={openTicket}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div
+              className={`min-h-0 rounded-[2rem] border border-gray-200 bg-white shadow-sm ${
+                showMobileThread ? 'flex' : 'hidden md:flex'
+              } flex-col`}
+            >
+              <div className="flex items-center justify-between gap-3 border-b border-gray-100 p-5">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={closeMobileThread}
+                    className="inline-flex size-9 items-center justify-center rounded-xl border border-gray-200 text-gray-500 transition hover:bg-gray-50 md:hidden"
+                  >
+                    <ChevronLeft className="size-5" />
+                  </button>
+
+                  <div>
+                    <h2 className="text-sm font-bold text-gray-900">
+                      {isComposingNewTicket
+                        ? 'Start Conversation'
+                        : selectedTicket?.subject || 'Conversation'}
+                    </h2>
+
+                    <p className="mt-1 text-[11px] text-gray-500">
+                      {isComposingNewTicket
+                        ? selectedUser
+                          ? `Starting a new conversation with ${
+                              [selectedUser.firstName, selectedUser.lastName]
+                                .filter(Boolean)
+                                .join(' ')
+                                .trim() || selectedUser.email
+                            }`
+                          : 'Create a new support conversation'
+                        : selectedTicket
+                        ? `Ticket ${
+                            selectedTicket.publicId ?? `#${selectedTicket.id.slice(-6).toUpperCase()}`
+                          } • ${
+                            selectedTicket.status === 'resolved'
+                              ? 'Resolved'
+                              : selectedTicket.status === 'waiting_for_support'
+                              ? 'Waiting for Support'
+                              : 'Waiting for Customer'
+                          }`
+                        : 'No conversation selected'}
+                    </p>
+                  </div>
+                </div>
+
+                {!isComposingNewTicket && selectedTicket?.status === 'resolved' && (
+                  <button
+                    type="button"
+                    onClick={handleReopen}
+                    disabled={isReopening}
+                    className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-xs font-bold text-green-700 transition hover:bg-green-100 disabled:opacity-70"
+                  >
+                    {isReopening ? 'Reopening...' : 'Reopen'}
+                  </button>
+                )}
+
+                {isComposingNewTicket && (
+                  <button
+                    type="button"
+                    onClick={cancelNewTicket}
+                    className="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 transition hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+
+              {isComposingNewTicket ? (
+                <EmptyThreadState
+                  selectedUser={selectedUser}
+                  draftSubject={newTicketSubject}
+                  draftMessage={newTicketMessage}
+                  isStartingTicket={isStartingTicket}
+                  onSubjectChange={setNewTicketSubject}
+                  onMessageChange={setNewTicketMessage}
+                  onStartConversation={handleStartConversation}
+                />
+              ) : !selectedTicket ? (
+                <div className="flex flex-1 items-center justify-center p-6 text-center">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      Select a ticket
+                    </h3>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Choose a support ticket to continue the conversation.
+                    </p>
+                  </div>
+                </div>
+              ) : isLoadingMessages ? (
+                <div className="flex flex-1 p-5 md:p-6">
+                  <ThreadLoadingState />
+                </div>
+              ) : (
+                <>
+                  <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5 md:p-6">
+                    {selectedTicketMessages.length === 0 ? (
+                      <EmptyMessagesState />
+                    ) : (
+                      selectedTicketMessages.map((message) => (
+                        <MessageBubble key={message.id} message={message} />
+                      ))
+                    )}
+                  </div>
+
+                  <div className="border-t border-gray-100 p-5">
+                    <div className="space-y-3">
+                      <textarea
+                        rows={4}
+                        value={currentReply}
+                        onChange={(e) =>
+                          selectedTicket &&
+                          setDraftForTicket(selectedTicket.id, e.target.value)
+                        }
+                        placeholder="Write your reply..."
+                        disabled={isSending || isLoadingMessages}
+                        className="w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition-all focus:border-blue-300 focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-50"
+                      />
+
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={handleSendReply}
+                          disabled={!currentReply.trim() || isSending || isLoadingMessages}
+                          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-blue-100 transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          <Send className="size-4" />
+                          {isSending ? 'Sending...' : 'Send Reply'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+);
 }

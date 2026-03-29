@@ -3,6 +3,7 @@ import type { JSX } from 'react';
 import { useUnits } from '../../contexts/UnitsContext';
 import type { UnitType } from '../../data/types';
 import supabase from '../../supabaseClient';
+import { DataCell, ActionCell } from '../../components/common/DataTable';
 import {
   Plus,
   Edit,
@@ -264,7 +265,9 @@ const UnitImagePicker = React.memo(function UnitImagePicker({
         </span>
       </button>
 
-      <p className="ml-1 text-[11px] text-slate-400">Select one or more images.</p>
+      <p className="ml-1 text-[11px] text-slate-400">
+        Select one or more images. Max file size: 5MB per image.
+      </p>
     </div>
   );
 });
@@ -300,7 +303,9 @@ type UnitFormModalProps = {
   uploadUnitVideo: (file: File) => Promise<string | null | undefined>;
   onOpenLightbox: (src: string) => void;
 };
-
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+const MAX_VIDEO_SIZE = 50 * 1024 * 1024;
+const MAX_CONTRACT_SIZE = 10 * 1024 * 1024;
 const UnitFormModal = React.memo(function UnitFormModal({
   open,
   editingUnit,
@@ -332,6 +337,30 @@ const UnitFormModal = React.memo(function UnitFormModal({
   useEffect(() => {
     allPreviewsRef.current = [...imagePreviews, ...videoPreviews];
   }, [imagePreviews, videoPreviews]);
+
+
+  useEffect(() => {
+  if (!open) return;
+
+  return () => {
+    revokePreviewUrls(allPreviewsRef.current);
+  };
+}, [open]);
+
+  useEffect(() => {
+    if (open && !unitForm.location && defaultLocation) {
+      setUnitForm((prev) => ({ ...prev, location: defaultLocation }));
+    }
+  }, [open, unitForm.location, defaultLocation]);
+
+  useEffect(() => {
+    if (unitForm.type !== 'function_hall' && unitForm.capacity !== '') {
+      setUnitForm((prev) => ({
+        ...prev,
+        capacity: '',
+      }));
+    }
+  }, [unitForm.type, unitForm.capacity]);
 
   useEffect(() => {
   if (!open) return;
@@ -400,6 +429,7 @@ const UnitFormModal = React.memo(function UnitFormModal({
     });
   }
 
+  setFormError(null);
   setIsSubmitting(false);
   setIsUploadingImages(false);
   setIsUploadingVideos(false);
@@ -408,35 +438,16 @@ const UnitFormModal = React.memo(function UnitFormModal({
   if (videoInputRef.current) videoInputRef.current.value = '';
 }, [open, editingUnit, defaultLocation]);
 
-  useEffect(() => {
-  if (!open) return;
-
-  return () => {
-    revokePreviewUrls(allPreviewsRef.current);
-  };
-}, [open]);
-
-  useEffect(() => {
-    if (open && !unitForm.location && defaultLocation) {
-      setUnitForm((prev) => ({ ...prev, location: defaultLocation }));
-    }
-  }, [open, unitForm.location, defaultLocation]);
-
-  useEffect(() => {
-    if (unitForm.type !== 'function_hall' && unitForm.capacity !== '') {
-      setUnitForm((prev) => ({
-        ...prev,
-        capacity: '',
-      }));
-    }
-  }, [unitForm.type, unitForm.capacity]);
-
   const updateFormField = useCallback(
-    <K extends keyof typeof INITIAL_FORM_STATE>(key: K, value: (typeof INITIAL_FORM_STATE)[K]) => {
-      setUnitForm((prev) => ({ ...prev, [key]: value }));
-    },
-    []
-  );
+  <K extends keyof typeof INITIAL_FORM_STATE>(
+    key: K,
+    value: (typeof INITIAL_FORM_STATE)[K]
+  ) => {
+    setUnitForm((prev) => ({ ...prev, [key]: value }));
+    setFormError(null);
+  },
+  []
+);
 
   const triggerUpload = useCallback(() => {
     if (!isUploadingImages) fileInputRef.current?.click();
@@ -493,52 +504,101 @@ const handleVideoFilesSelected = useCallback(
     const files = Array.from(filesList || []);
     if (!files.length) return;
 
+    const oversizedFiles = files.filter((file) => file.size > MAX_VIDEO_SIZE);
+
+    if (oversizedFiles.length > 0) {
+      setFormError(
+        oversizedFiles.length === 1
+          ? `${oversizedFiles[0].name} exceeds the 50MB video limit.`
+          : `${oversizedFiles.length} video files exceed the 50MB limit.`
+      );
+    }
+
+    const validFiles = files.filter((file) => file.size <= MAX_VIDEO_SIZE);
+    if (!validFiles.length) return;
+
     setIsUploadingVideos(true);
+
+    const tempItems = validFiles.map((file) => ({
+      id: `temp-video-${crypto.randomUUID()}`,
+      path: '',
+      previewUrl: URL.createObjectURL(file),
+      file,
+    }));
+
+    setVideoPreviews((prev) => [
+      ...prev,
+      ...tempItems.map(({ id, path, previewUrl }) => ({
+        id,
+        path,
+        previewUrl,
+      })),
+    ]);
 
     try {
       const uploadResults = await Promise.all(
-        files.map(async (file) => {
-          const previewUrl = URL.createObjectURL(file);
-          const uploadedPath = await uploadUnitVideo(file);
+        tempItems.map(async (item) => {
+          const uploadedPath = await uploadUnitVideo(item.file);
 
           if (!uploadedPath) {
-            URL.revokeObjectURL(previewUrl);
-            return null;
+            return { ...item, failed: true };
           }
 
           return {
+            ...item,
             path: uploadedPath,
-            previewUrl,
+            failed: false,
           };
         })
       );
 
-      const validResults = uploadResults.filter(Boolean) as {
-        path: string;
-        previewUrl: string;
-      }[];
+      const successful = uploadResults.filter((item) => !item.failed && item.path);
 
-      if (!validResults.length) return;
-
-      setVideoPreviews((prev) => [
-        ...prev,
-        ...validResults.map((item) => ({
-          id: `${item.path}-${crypto.randomUUID()}`,
-          path: item.path,
-          previewUrl: item.previewUrl,
-        })),
-      ]);
+      setVideoPreviews((prev) =>
+        prev
+          .filter(
+            (item) =>
+              !tempItems.some((temp) => temp.id === item.id) ||
+              successful.some((s) => s.id === item.id)
+          )
+          .map((item) => {
+            const match = successful.find((s) => s.id === item.id);
+            return match
+              ? {
+                  id: `${match.path}-${crypto.randomUUID()}`,
+                  path: match.path,
+                  previewUrl: item.previewUrl,
+                }
+              : item;
+          })
+      );
 
       setUnitForm((prev) => {
         const existing = parseCommaSeparated(prev.videos);
         return {
           ...prev,
-          videos: [...existing, ...validResults.map((r) => r.path)].join(', '),
+          videos: [...existing, ...successful.map((r) => r.path)].join(', '),
         };
       });
+
+      uploadResults
+        .filter((item) => item.failed)
+        .forEach((item) => {
+          URL.revokeObjectURL(item.previewUrl);
+        });
+
+      setVideoPreviews((prev) =>
+        prev.filter((item) => !uploadResults.some((r) => r.failed && r.id === item.id))
+      );
     } catch (err) {
       console.error('Video upload failed', err);
-      alert('Video upload failed. See console for details.');
+
+      tempItems.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      setVideoPreviews((prev) =>
+        prev.filter((item) => !tempItems.some((temp) => temp.id === item.id))
+      );
+
+      setFormError('Video upload failed. Please try again.');
     } finally {
       setIsUploadingVideos(false);
     }
@@ -546,89 +606,150 @@ const handleVideoFilesSelected = useCallback(
   [uploadUnitVideo]
 );
 
+
+
   const handleFilesSelected = useCallback(
-    async (filesList: FileList | null) => {
-      const files = Array.from(filesList || []);
-      if (!files.length) return;
+  async (filesList: FileList | null) => {
+    const files = Array.from(filesList || []);
+    if (!files.length) return;
 
-      setIsUploadingImages(true);
+    const oversizedFiles = files.filter((file) => file.size > MAX_IMAGE_SIZE);
 
-      try {
-        const uploadResults = await Promise.all(
-          files.map(async (file) => {
-            const previewUrl = URL.createObjectURL(file);
-            const uploadedPath = await uploadUnitImage(file);
+    if (oversizedFiles.length > 0) {
+      setFormError(
+        oversizedFiles.length === 1
+          ? `${oversizedFiles[0].name} exceeds the 5MB image limit.`
+          : `${oversizedFiles.length} image files exceed the 5MB limit.`
+      );
+    }
 
-            if (!uploadedPath) {
-              URL.revokeObjectURL(previewUrl);
-              return null;
-            }
+    const validFiles = files.filter((file) => file.size <= MAX_IMAGE_SIZE);
+    if (!validFiles.length) return;
 
-            return {
-              path: uploadedPath,
-              previewUrl,
-            };
-          })
-        );
+    setIsUploadingImages(true);
 
-        const validResults = uploadResults.filter(Boolean) as {
-          path: string;
-          previewUrl: string;
-        }[];
+    const tempItems = validFiles.map((file) => ({
+      id: `temp-${crypto.randomUUID()}`,
+      path: '',
+      previewUrl: URL.createObjectURL(file),
+      file,
+    }));
 
-        if (!validResults.length) return;
+    setImagePreviews((prev) => [
+      ...prev,
+      ...tempItems.map(({ id, path, previewUrl }) => ({
+        id,
+        path,
+        previewUrl,
+      })),
+    ]);
 
-        setImagePreviews((prev) => [
-          ...prev,
-          ...validResults.map((item) => ({
-            id: `${item.path}-${crypto.randomUUID()}`,
-            path: item.path,
-            previewUrl: item.previewUrl,
-          })),
-        ]);
+    try {
+      const uploadResults = await Promise.all(
+        tempItems.map(async (item) => {
+          const uploadedPath = await uploadUnitImage(item.file);
 
-        setUnitForm((prev) => {
-          const existing = parseCommaSeparated(prev.images);
+          if (!uploadedPath) {
+            return { ...item, failed: true };
+          }
+
           return {
-            ...prev,
-            images: [...existing, ...validResults.map((r) => r.path)].join(', '),
+            ...item,
+            path: uploadedPath,
+            failed: false,
           };
+        })
+      );
+
+      const successful = uploadResults.filter((item) => !item.failed && item.path);
+
+      setImagePreviews((prev) =>
+        prev
+          .filter(
+            (item) =>
+              !tempItems.some((temp) => temp.id === item.id) ||
+              successful.some((s) => s.id === item.id)
+          )
+          .map((item) => {
+            const match = successful.find((s) => s.id === item.id);
+            return match
+              ? {
+                  id: `${match.path}-${crypto.randomUUID()}`,
+                  path: match.path,
+                  previewUrl: item.previewUrl,
+                }
+              : item;
+          })
+      );
+
+      setUnitForm((prev) => {
+        const existing = parseCommaSeparated(prev.images);
+        return {
+          ...prev,
+          images: [...existing, ...successful.map((r) => r.path)].join(', '),
+        };
+      });
+
+      uploadResults
+        .filter((item) => item.failed)
+        .forEach((item) => {
+          URL.revokeObjectURL(item.previewUrl);
         });
-      } catch (err) {
-        console.error('Image upload failed', err);
-        alert('Image upload failed. See console for details.');
-      } finally {
-        setIsUploadingImages(false);
-      }
-    },
-    [uploadUnitImage]
-  );
+
+      setImagePreviews((prev) =>
+        prev.filter((item) => !uploadResults.some((r) => r.failed && r.id === item.id))
+      );
+    } catch (err) {
+      console.error('Image upload failed', err);
+
+      tempItems.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      setImagePreviews((prev) =>
+        prev.filter((item) => !tempItems.some((temp) => temp.id === item.id))
+      );
+
+      setFormError('Image upload failed. Please try again.');
+    } finally {
+      setIsUploadingImages(false);
+    }
+  },
+  [uploadUnitImage]
+);
 
   const contractInputRef = useRef<HTMLInputElement | null>(null);
   const [isUploadingContract, setIsUploadingContract] = useState(false);
 
-  const handleContractUpload = useCallback(async (file: File) => {
-  if (!file) return;
+  const handleContractUpload = useCallback(
+  async (file: File) => {
+    if (!file) return;
 
-  setIsUploadingContract(true);
+    if (file.size > MAX_CONTRACT_SIZE) {
+      setFormError(`${file.name} exceeds the 10MB PDF limit.`);
+      return;
+    }
 
-  try {
-    const result = await uploadUnitContract(file);
+    setIsUploadingContract(true);
 
-    if (!result) return;
+    try {
+      const result = await uploadUnitContract(file);
 
-    setUnitForm((prev) => ({
-      ...prev,
-      contractFilePath: result.path,
-      contractFileName: result.name,
-    }));
-  } catch (err) {
-    console.error('Contract upload failed', err);
-    alert('Contract upload failed.');
-  } finally {
-    setIsUploadingContract(false);
-  }
-}, [uploadUnitContract]);
+      if (!result) return;
+
+      setUnitForm((prev) => ({
+        ...prev,
+        contractFilePath: result.path,
+        contractFileName: result.name,
+      }));
+    } catch (err) {
+      console.error('Contract upload failed', err);
+      setFormError('Contract upload failed. Please try again.');
+    } finally {
+      setIsUploadingContract(false);
+    }
+  },
+  [uploadUnitContract]
+);
+
+const [formError, setFormError] = useState<string | null>(null);
 
   const handleClose = useCallback(() => {
   if (isSubmitting || isUploadingImages || isUploadingVideos || isUploadingContract) return;
@@ -636,66 +757,85 @@ const handleVideoFilesSelected = useCallback(
 }, [isSubmitting, isUploadingImages, isUploadingVideos, isUploadingContract, onClose]);
 
   const handleSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (isSubmitting || !unitForm.type || isUploadingImages || isUploadingVideos || isUploadingContract) return;
+  async (e: React.FormEvent) => {
+    e.preventDefault();
 
-      setIsSubmitting(true);
+    if (
+      isSubmitting ||
+      !unitForm.type ||
+      isUploadingImages ||
+      isUploadingVideos ||
+      isUploadingContract
+    ) {
+      return;
+    }
 
-      try {
-        const parsedPrice = Number(unitForm.price);
-        const parsedCapacity =
-          unitForm.type === 'function_hall' && unitForm.capacity
-            ? parseInt(unitForm.capacity, 10)
-            : undefined;
-        const parsedMinimumPaymentPercent =
+    setFormError(null);
+    setIsSubmitting(true);
+
+    try {
+      const parsedPrice = Number(unitForm.price);
+
+      if (!Number.isFinite(parsedPrice) || parsedPrice < 500) {
+        setFormError('Price must be at least ₱500.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      const parsedCapacity =
+        unitForm.type === 'function_hall' && unitForm.capacity
+          ? parseInt(unitForm.capacity, 10)
+          : undefined;
+
+      const parsedMinimumPaymentPercent =
         unitForm.minimumPaymentPercent === ''
           ? null
           : parseInt(unitForm.minimumPaymentPercent, 10);
 
-        await onSave({
-          unitId: editingUnit?.id,
-          data: {
-            name: unitForm.name.trim(),
-            type: unitForm.type,
-            description: unitForm.description.trim(),
-            price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
-            imagePaths: parseCommaSeparated(unitForm.images),
-            videoPaths: parseCommaSeparated(unitForm.videos),
-            policies: unitForm.policies.trim(),
-            capacity: parsedCapacity,
-            available: unitForm.available,
-            features: parseCommaSeparated(unitForm.features),
-            propertyId: unitForm.propertyId,
-            contractFilePath: unitForm.contractFilePath || null,
-            contractFileName: unitForm.contractFileName || null,
-            location: unitForm.location || defaultLocation,
-            minimumPaymentPercent:
+      await onSave({
+        unitId: editingUnit?.id,
+        data: {
+          name: unitForm.name.trim(),
+          type: unitForm.type,
+          description: unitForm.description.trim(),
+          price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
+          imagePaths: parseCommaSeparated(unitForm.images),
+          videoPaths: parseCommaSeparated(unitForm.videos),
+          policies: unitForm.policies.trim(),
+          capacity: parsedCapacity,
+          available: unitForm.available,
+          features: parseCommaSeparated(unitForm.features),
+          propertyId: unitForm.propertyId,
+          contractFilePath: unitForm.contractFilePath || null,
+          contractFileName: unitForm.contractFileName || null,
+          location: unitForm.location || defaultLocation,
+          minimumPaymentPercent:
             parsedMinimumPaymentPercent !== null &&
             Number.isFinite(parsedMinimumPaymentPercent)
               ? parsedMinimumPaymentPercent
               : null,
-          },
-        });
+        },
+      });
 
-        onClose();
-      } catch (error) {
-        console.error('Failed to save unit:', error);
-        setIsSubmitting(false);
-      }
-    },
-    [
-      isSubmitting,
-      unitForm,
-      isUploadingImages,
-      isUploadingVideos,
-      isUploadingContract,
-      onSave,
-      editingUnit?.id,
-      defaultLocation,
-      onClose,
-    ]
-  );
+      onClose();
+    } catch (error) {
+      console.error('Failed to save unit:', error);
+      setFormError('Failed to save unit. Please try again.');
+      setIsSubmitting(false);
+    }
+  },
+  [
+    isSubmitting,
+    unitForm,
+    isUploadingImages,
+    isUploadingVideos,
+    isUploadingContract,
+    onSave,
+    editingUnit?.id,
+    defaultLocation,
+    onClose,
+  ]
+);
 
   if (!open) return null;
 
@@ -727,6 +867,12 @@ const handleVideoFilesSelected = useCallback(
           onSubmit={handleSubmit}
           className="flex-1 space-y-6 overflow-y-auto p-6 pb-28 sm:p-8 sm:pb-8"
         >
+          {formError && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+              {formError}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label
@@ -805,18 +951,19 @@ const handleVideoFilesSelected = useCallback(
                 id="price"
                 type="number"
                 required
-                min="0"
+                min="500"
                 step="0.01"
                 value={unitForm.price}
                 onChange={(e) => updateFormField('price', e.target.value)}
                 placeholder="e.g. 25000"
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+
               />
               <p className="ml-1 text-[11px] text-slate-400">
-                {unitForm.type === 'rental_space' && 'Monthly Rate'}
-                {unitForm.type === 'function_hall' && 'Daily Rate'}
-                {unitForm.type === 'parking_slot' && 'Parking Area Rate (Monthly)'}
-                {unitForm.type === '' && 'Rate depends on unit type'}
+                Minimum price is ₱500. 
+                {unitForm.type === 'rental_space' && ' Monthly Rate'}
+                {unitForm.type === 'function_hall' && ' Daily Rate'}
+                {unitForm.type === 'parking_slot' && ' Parking Area Rate (Monthly)'}
               </p>
             </div>
 
@@ -1005,17 +1152,23 @@ const handleVideoFilesSelected = useCallback(
                 </div>
               </div>
             ) : (
-              <button
-                type="button"
-                onClick={triggerVideoUpload}
-                disabled={isUploadingVideos}
-                className="flex h-24 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 text-slate-500 transition-all hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-60"
-              >
-                <Plus className="size-5" />
-                <span className="text-sm font-semibold">
-                  {isUploadingVideos ? 'Uploading...' : 'Upload Videos'}
-                </span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={triggerVideoUpload}
+                  disabled={isUploadingVideos}
+                  className="flex h-24 w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 text-slate-500 transition-all hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-60"
+                >
+                  <Plus className="size-5" />
+                  <span className="text-sm font-semibold">
+                    {isUploadingVideos ? 'Uploading...' : 'Upload Videos'}
+                  </span>
+                </button>
+
+                <p className="ml-1 text-[11px] text-slate-400">
+                  Supported formats: MP4, WebM, MOV. Max file size: 50MB per video.
+                </p>
+              </>
             )}
           </div>
 
@@ -1113,7 +1266,7 @@ const handleVideoFilesSelected = useCallback(
   )}
 
   <p className="ml-1 text-[11px] text-slate-400">
-    Optional: Upload a contract (PDF only). Replaces the current contract.
+    Optional: Upload a contract (PDF only, max 10MB). Replaces the current contract.
   </p>
 </div>
           </div>
@@ -1208,87 +1361,99 @@ const UnitsList = React.memo(function UnitsList({
 
               return (
                 <tr key={unit.id} className="transition-colors hover:bg-gray-50">
-                  <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                    <div>
-                      <p>{unit.name}</p>
+  {/* Unit */}
+  <DataCell
+    value={
+      <div>
+        <p className="font-semibold text-gray-900">{unit.name}</p>
 
-                      {unit.type === 'function_hall' && unit.capacity ? (
-                        <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
-                          <Users className="size-3.5" />
-                          Capacity: {unit.capacity}
-                        </p>
-                      ) : null}
+        {unit.type === 'function_hall' && unit.capacity && (
+          <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
+            <Users className="size-3.5" />
+            Capacity: {unit.capacity}
+          </p>
+        )}
 
-                      {unit.type === 'parking_slot' ? (
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                          <span className="inline-flex items-center gap-1">
-                            <Car className="size-3.5" />
-                            {slotStats.total} slot(s)
-                          </span>
-                          <span className="inline-flex items-center gap-1 text-green-600">
-                            <CheckCircle2 className="size-3.5" />
-                            {slotStats.active} active
-                          </span>
-                        </div>
-                      ) : null}
-                    </div>
-                  </td>
+        {unit.type === 'parking_slot' && (
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+            <span className="inline-flex items-center gap-1">
+              <Car className="size-3.5" />
+              {slotStats.total} slot(s)
+            </span>
+            <span className="inline-flex items-center gap-1 text-green-600">
+              <CheckCircle2 className="size-3.5" />
+              {slotStats.active} active
+            </span>
+          </div>
+        )}
+      </div>
+    }
+  />
 
-                  <td className="px-6 py-4 text-sm font-medium text-gray-700">
-                    {unit.propertyId || '—'}
-                  </td>
+  {/* Public ID */}
+  <DataCell value={unit.propertyId || '—'} mono />
 
-                  <td className="whitespace-nowrap px-6 py-4">
-                    <UnitTypeDisplay type={unit.type} />
-                  </td>
+  {/* Type */}
+  <DataCell value={<UnitTypeDisplay type={unit.type} />} nowrap />
 
-                  <td className="px-6 py-4 text-sm text-gray-700">
-                    <div className="flex items-center gap-1.5">
-                      <MapPin className="size-4 text-red-400" />
-                      {unit.location || '—'}
-                    </div>
-                  </td>
+  {/* Location */}
+  <DataCell
+    value={
+      <div className="flex items-center gap-1.5">
+        <MapPin className="size-4 text-red-400" />
+        {unit.location || '—'}
+      </div>
+    }
+  />
 
-                  <td className="px-6 py-4 text-sm text-gray-900">{formatCurrency(unit.price)}</td>
+  {/* Price */}
+  <DataCell value={formatCurrency(unit.price)} mono />
 
-                  <td className="px-6 py-4">
-                    <span
-                      className={`rounded-full px-2 py-1 text-xs font-bold ${
-                        unit.available ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      }`}
-                    >
-                      {unit.available ? 'AVAILABLE' : 'UNAVAILABLE'}
-                    </span>
-                  </td>
+  {/* Status */}
+  <DataCell
+    value={
+      <span
+        className={`inline-block rounded-full px-2 py-1 text-[10px] font-bold ${
+          unit.available
+            ? 'bg-green-100 text-green-700'
+            : 'bg-red-100 text-red-700'
+        }`}
+      >
+        {unit.available ? 'AVAILABLE' : 'UNAVAILABLE'}
+      </span>
+    }
+    nowrap
+  />
 
-                  <td className="whitespace-nowrap px-6 py-4 text-sm">
-                    <div className="flex gap-3">
-                      {unit.type === 'parking_slot' && (
-                        <button
-                          onClick={() => onManageSlots(unit.id)}
-                          className="rounded-lg p-2 text-orange-600 hover:bg-orange-50"
-                          title="Manage Slots"
-                        >
-                          <Settings2 className="size-5" />
-                        </button>
-                      )}
+  {/* Actions */}
+  <ActionCell>
+    {unit.type === 'parking_slot' && (
+      <button
+        onClick={() => onManageSlots(unit.id)}
+        className="flex h-7 w-7 items-center justify-center rounded-md text-orange-600 hover:bg-orange-50"
+        title="Manage Slots"
+      >
+        <Settings2 className="size-4" />
+      </button>
+    )}
 
-                      <button
-                        onClick={() => onEdit(unit.id)}
-                        className="rounded-lg p-2 text-blue-600 hover:bg-blue-50"
-                      >
-                        <Edit className="size-5" />
-                      </button>
+    <button
+      onClick={() => onEdit(unit.id)}
+      className="flex h-7 w-7 items-center justify-center rounded-md text-blue-600 hover:bg-blue-50"
+      title="Edit"
+    >
+      <Edit className="size-4" />
+    </button>
 
-                      <button
-                        onClick={() => onDelete(unit.id)}
-                        className="rounded-lg p-2 text-red-600 hover:bg-red-50"
-                      >
-                        <Trash2 className="size-5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+    <button
+      onClick={() => onDelete(unit.id)}
+      className="flex h-7 w-7 items-center justify-center rounded-md text-red-600 hover:bg-red-50"
+      title="Delete"
+    >
+      <Trash2 className="size-4" />
+    </button>
+  </ActionCell>
+</tr>
               );
             })}
           </tbody>
@@ -1407,6 +1572,7 @@ type SlotManagerModalProps = {
   setSlotImagePreview: React.Dispatch<React.SetStateAction<string>>;
   setSlotForm: React.Dispatch<React.SetStateAction<typeof INITIAL_SLOT_FORM>>;
   slotFileInputRef: React.RefObject<HTMLInputElement>;
+  slotError: string | null;
 };
 
 const SlotManagerModal = React.memo(function SlotManagerModal({
@@ -1427,6 +1593,7 @@ const SlotManagerModal = React.memo(function SlotManagerModal({
   setSlotImagePreview,
   setSlotForm,
   slotFileInputRef,
+  slotError,
 }: SlotManagerModalProps) {
   if (!open || !selectedParkingUnit) return null;
 
@@ -1449,6 +1616,12 @@ const SlotManagerModal = React.memo(function SlotManagerModal({
             <X size={20} />
           </button>
         </div>
+
+        {slotError && (
+          <div className="mx-6 mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {slotError}
+          </div>
+        )}
 
         <div className="grid flex-1 grid-cols-1 gap-6 overflow-y-auto p-6 sm:p-8 xl:grid-cols-[1.1fr_0.9fr]">
           <div className="space-y-4">
@@ -2090,6 +2263,8 @@ export default function AdminUnitManagement() {
     deleteParkingSlot,
   } = useUnits();
 
+  const [slotError, setSlotError] = useState<string | null>(null);
+
   const [showUnitModal, setShowUnitModal] = useState(false);
   const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
 
@@ -2304,7 +2479,7 @@ export default function AdminUnitManagement() {
         }));
       } catch (error) {
         console.error('Failed to upload slot image:', error);
-        alert('Slot image upload failed. See console for details.');
+        setSlotError('Slot image upload failed. Please try again.');
       }
     },
     [uploadUnitImage]
@@ -2316,7 +2491,7 @@ export default function AdminUnitManagement() {
       if (!slot) return;
 
       if (slot.isOccupied) {
-        alert('Cannot edit an occupied parking slot.');
+        setSlotError('Cannot edit an occupied parking slot.');
         return;
       }
 
@@ -2389,7 +2564,7 @@ export default function AdminUnitManagement() {
 
     const targetSlot = selectedParkingUnitSlots.find((slot) => slot.id === slotToDelete);
     if (targetSlot?.isOccupied) {
-      alert('Cannot delete an occupied parking slot.');
+      setSlotError('Cannot delete an occupied parking slot.');
       return;
     }
 
@@ -2511,6 +2686,7 @@ export default function AdminUnitManagement() {
           setSlotImagePreview={setSlotImagePreview}
           setSlotForm={setSlotForm}
           slotFileInputRef={slotFileInputRef}
+          slotError={slotError}
         />
 
         <DeleteUnitDialog

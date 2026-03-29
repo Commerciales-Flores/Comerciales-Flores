@@ -1203,7 +1203,7 @@ const handleHistoryImagesUpload = async (files: FileList | null) => {
   </p>
 </div>
 
-<div className="rounded-[1.5rem] border border-white/10 bg-white/10 p-3 backdrop-blur">
+<div className="rounded-[1.5rem] border border-white/10 bg-white/10 p-3">
   <div className="flex items-center justify-between gap-3">
     <div>
       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300">

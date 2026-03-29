@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useData } from '../../contexts/DataContext';
 import { useRecords } from '../../contexts/RecordsContext';
+import { useUsers } from '../../contexts/UsersContext';
+import { DataTable, DataCell } from '../../components/common/DataTable';
+import TableBadge from '../../components/common/TableBadge';
 import {
   Search,
   Tag,
@@ -14,6 +17,13 @@ import {
 } from 'lucide-react';
 import EmptyState from '../../components/common/EmptyState';
 
+type AuditFormattedDate =
+  | string
+  | {
+      date: string;
+      time: string;
+    };
+
 type AuditRow = {
   id: string;
   publicId?: string;
@@ -24,7 +34,7 @@ type AuditRow = {
   date: string;
   details: string;
   timestampMs: number;
-  formattedDate: string;
+  formattedDate: AuditFormattedDate;
 };
 
 const ACTION_OPTIONS = [
@@ -95,11 +105,11 @@ function NoResultsState() {
       transition={{ duration: 0.25 }}
       className="flex flex-col items-center justify-center text-center"
     >
-      <div className="bg-gray-50 p-5 rounded-3xl shadow-sm mb-4">
+      <div className="mb-4 rounded-3xl bg-gray-50 p-5 shadow-sm">
         <Filter className="size-10 text-blue-500" />
       </div>
       <h3 className="text-lg font-bold text-gray-900">No matching audit logs found</h3>
-      <p className="text-sm text-gray-500 mt-1">Try adjusting your search or filter settings.</p>
+      <p className="mt-1 text-sm text-gray-500">Try adjusting your search or filter settings.</p>
     </motion.div>
   );
 }
@@ -132,23 +142,23 @@ function DesktopFilterBar({
   resetFilters: () => void;
 }) {
   return (
-    <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-4 shadow-sm relative z-10">
+    <div className="relative z-10 space-y-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
+        <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
         <input
           type="text"
           placeholder="Search logs..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
 
-      <div className="hidden md:grid grid-cols-4 gap-4">
+      <div className="hidden grid-cols-4 gap-4 md:grid">
         <select
           value={selectedAction}
           onChange={(e) => setSelectedAction(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
         >
           {ACTION_OPTIONS.map((action) => (
             <option key={action} value={action}>
@@ -160,7 +170,7 @@ function DesktopFilterBar({
         <select
           value={selectedModule}
           onChange={(e) => setSelectedModule(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
         >
           {modules.map((m) => (
             <option key={m} value={m}>
@@ -173,21 +183,21 @@ function DesktopFilterBar({
           type="date"
           value={startDate}
           onChange={(e) => setStartDate(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
         />
 
         <input
           type="date"
           value={endDate}
           onChange={(e) => setEndDate(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
 
-      <div className="hidden md:flex justify-end pt-2">
+      <div className="hidden justify-end pt-2 md:flex">
         <button
           onClick={resetFilters}
-          className="text-sm font-medium text-blue-600 hover:underline flex items-center gap-1"
+          className="flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline"
         >
           <RotateCcw className="size-3" /> Clear Filters
         </button>
@@ -226,12 +236,12 @@ function MobileFilterMenu({
   if (!isOpen) return null;
 
   return (
-    <div className="absolute bottom-16 right-0 w-[85vw] max-w-[320px] bg-white rounded-2xl border border-gray-200 shadow-2xl p-5 space-y-4 animate-in fade-in zoom-in-95 duration-200">
-      <div className="flex justify-between items-center border-b pb-2">
-        <h3 className="font-bold text-gray-900 text-sm">Filters</h3>
+    <div className="absolute bottom-16 right-0 w-[85vw] max-w-[320px] animate-in space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl fade-in zoom-in-95 duration-200">
+      <div className="flex items-center justify-between border-b pb-2">
+        <h3 className="text-sm font-bold text-gray-900">Filters</h3>
         <button
           onClick={resetFilters}
-          className="text-[10px] font-bold text-blue-600 uppercase tracking-tighter hover:text-red-500"
+          className="text-[10px] font-bold uppercase tracking-tighter text-blue-600 hover:text-red-500"
         >
           Reset All
         </button>
@@ -239,11 +249,11 @@ function MobileFilterMenu({
 
       <div className="space-y-4">
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-gray-400 uppercase">Action</label>
+          <label className="text-[10px] font-bold uppercase text-gray-400">Action</label>
           <select
             value={selectedAction}
             onChange={(e) => setSelectedAction(e.target.value)}
-            className="w-full border p-2 rounded-lg text-sm bg-gray-50 outline-none"
+            className="w-full rounded-lg border bg-gray-50 p-2 text-sm outline-none"
           >
             {ACTION_OPTIONS.map((action) => (
               <option key={action} value={action}>
@@ -254,11 +264,11 @@ function MobileFilterMenu({
         </div>
 
         <div className="space-y-1">
-          <label className="text-[10px] font-bold text-gray-400 uppercase">Module</label>
+          <label className="text-[10px] font-bold uppercase text-gray-400">Module</label>
           <select
             value={selectedModule}
             onChange={(e) => setSelectedModule(e.target.value)}
-            className="w-full border p-2 rounded-lg text-sm bg-gray-50 outline-none"
+            className="w-full rounded-lg border bg-gray-50 p-2 text-sm outline-none"
           >
             {modules.map((m) => (
               <option key={m} value={m}>
@@ -270,21 +280,21 @@ function MobileFilterMenu({
 
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase">From</label>
+            <label className="text-[10px] font-bold uppercase text-gray-400">From</label>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full border p-2 rounded-lg text-[10px] bg-gray-50 outline-none appearance-none"
+              className="w-full appearance-none rounded-lg border bg-gray-50 p-2 text-[10px] outline-none"
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase">To</label>
+            <label className="text-[10px] font-bold uppercase text-gray-400">To</label>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full border p-2 rounded-lg text-[10px] bg-gray-50 outline-none appearance-none"
+              className="w-full appearance-none rounded-lg border bg-gray-50 p-2 text-[10px] outline-none"
             />
           </div>
         </div>
@@ -292,7 +302,7 @@ function MobileFilterMenu({
 
       <button
         onClick={onClose}
-        className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold text-sm shadow-lg active:scale-95 transition-transform"
+        className="w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white shadow-lg transition-transform active:scale-95"
       >
         Apply Filters
       </button>
@@ -320,40 +330,47 @@ export default function AdminAudit() {
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 250);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-
   const [pageInput, setPageInput] = useState('1');
+
+  const { refreshUsers } = useUsers();
+
+  useEffect(() => {
+    void refreshUsers();
+  }, [refreshUsers]);
 
   useEffect(() => {
     setPageInput(String(page));
   }, [page]);
 
-    const handlePageJump = useCallback(() => {
-  const parsed = parseInt(pageInput, 10);
+  const handlePageJump = useCallback(() => {
+    const parsed = parseInt(pageInput, 10);
 
-  if (Number.isNaN(parsed)) {
-    setPageInput(String(page));
-    return;
-  }
+    if (Number.isNaN(parsed)) {
+      setPageInput(String(page));
+      return;
+    }
 
-  const nextPage = Math.min(Math.max(parsed, 1), totalPages);
-  setPage(nextPage);
-  setPageInput(String(nextPage));
-}, [pageInput, page, totalPages]);
+    const nextPage = Math.min(Math.max(parsed, 1), totalPages);
+    setPage(nextPage);
+    setPageInput(String(nextPage));
+  }, [pageInput, page, totalPages]);
 
   const formatUserLabel = useCallback(
-    (userId?: string) => {
-      if (!userId) return '—';
+  (userId?: string) => {
+    if (!userId) return '—';
 
-      const user = getUserById(userId);
-      if (!user) return userId;
+    const user = getUserById(userId);
 
-      const fullName =
-        [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.email;
+    if (!user) {
+      return `USR-${userId.slice(0, 8).toUpperCase()}`;
+    }
 
-      return user.publicId ? `${user.publicId}` : fullName;
-    },
-    [getUserById]
-  );
+    if (user.publicId) return user.publicId;
+
+    return `USR-${userId.slice(0, 8).toUpperCase()}`;
+  },
+  [getUserById]
+);
 
   useEffect(() => {
     setPage(1);
@@ -386,29 +403,54 @@ export default function AdminAudit() {
           const parsedDate = safeTimestamp ? new Date(safeTimestamp) : null;
           const timestampMs = parsedDate?.getTime() ?? Number.NaN;
 
-
           const actorLabel = formatUserLabel(log.userId);
 
           const isUserTarget = log.targetTable === 'users';
-          const isSelfAuthEvent =
-            isUserTarget &&
-            ['LOGIN', 'LOGOUT', 'SESSION_EXPIRED'].includes(log.action) &&
-            log.userId === log.targetId;
-
           const isUnitTarget = log.targetTable === 'units';
+          const isReservationTarget = log.targetTable === 'reservations';
 
           const unitTarget =
-            isUnitTarget && log.targetId  
-              ? getUnitById(log.targetId)
-              : undefined;
+            isUnitTarget && log.targetId ? getUnitById(log.targetId) : undefined;
 
-          const targetLabel = isSelfAuthEvent
-            ? 'Own account'
-            : isUserTarget
-              ? formatUserLabel(log.targetId)
-              : isUnitTarget
-                ? log.targetPublicId || unitTarget?.propertyId || log.targetId || '—'
+          const reservationPublicIdFromNotes =
+            log.notes?.match(/\bRSV-[A-Z0-9]+\b/i)?.[0] ?? null;
+
+          const targetLabel = isUserTarget
+            ? formatUserLabel(log.targetId)
+            : isUnitTarget
+              ? log.targetPublicId || unitTarget?.propertyId || log.targetId || '—'
+              : isReservationTarget
+                ? log.targetPublicId || reservationPublicIdFromNotes || log.targetId || '—'
                 : log.targetPublicId || log.targetId || '—';
+
+
+          const paymentPublicIdFromNotes =
+            log.notes?.match(/\bPAY-[A-Z0-9]+\b/i)?.[0] ?? null;
+
+          let detailsText = log.notes ?? 'No additional details';
+
+          if (log.targetTable === 'reservations' && reservationPublicIdFromNotes) {
+            detailsText = detailsText.replace(
+              /reservation\s+[a-f0-9-]{36}/i,
+              `reservation ${reservationPublicIdFromNotes}`
+            );
+          }
+
+          if (log.targetTable === 'payments') {
+            if (paymentPublicIdFromNotes) {
+              detailsText = detailsText.replace(
+                /payment\s+[a-f0-9-]{36}/i,
+                `payment ${paymentPublicIdFromNotes}`
+              );
+            }
+
+            if (reservationPublicIdFromNotes) {
+              detailsText = detailsText.replace(
+                /reservation\s+[a-f0-9-]{36}/i,
+                `reservation ${reservationPublicIdFromNotes}`
+              );
+            }
+          }
 
           return {
             id: log.id,
@@ -418,19 +460,23 @@ export default function AdminAudit() {
             target: targetLabel,
             performedBy: actorLabel,
             date: log.timestamp,
-            details: log.notes ?? 'No additional details',
+            details: detailsText,
             timestampMs,
             formattedDate: Number.isNaN(timestampMs)
-            ? 'Invalid date'
-            : parsedDate!.toLocaleString('en-PH', {
-                year: 'numeric',
-                month: 'short',
-                day: '2-digit',
-                hour: 'numeric',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: true,
-              }),
+              ? 'Invalid date'
+              : {
+                  date: parsedDate!.toLocaleDateString('en-PH', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: '2-digit',
+                  }),
+                  time: parsedDate!.toLocaleTimeString('en-PH', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: true,
+                  }),
+                },
           };
         });
 
@@ -467,8 +513,6 @@ export default function AdminAudit() {
     pageSize,
   ]);
 
-
-
   const hasActiveSearch = Boolean(debouncedSearchTerm.trim());
   const hasActiveFilters =
     hasActiveSearch ||
@@ -481,16 +525,16 @@ export default function AdminAudit() {
   const hasNoSearchResults = !loading && totalCount === 0 && hasActiveFilters;
 
   const handlePageInputKeyDown = useCallback(
-  (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      handlePageJump();
-    }
-  },
-  [handlePageJump]
-);
-
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        handlePageJump();
+      }
+    },
+    [handlePageJump]
+  );
 
   const resetFilters = useCallback(() => {
+    setSearchTerm('');
     setSelectedAction('All');
     setSelectedModule('All');
     setStartDate('');
@@ -507,284 +551,297 @@ export default function AdminAudit() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-  <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
-      <div
-        className={`fixed inset-0 z-40 bg-gray-900/20  transition-opacity duration-300 md:hidden ${
-          isMobileDropdownOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-        onClick={closeMobileDropdown}
-      />
-
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Audit Log</h1>
-        <p className="text-gray-500 text-sm">Monitor all administrative and system activities.</p>
-      </div>
-
-      {!loading && (!hasNoLogs || hasActiveFilters) && (
-        <DesktopFilterBar
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          selectedAction={selectedAction}
-          setSelectedAction={setSelectedAction}
-          selectedModule={selectedModule}
-          setSelectedModule={setSelectedModule}
-          startDate={startDate}
-          setStartDate={setStartDate}
-          endDate={endDate}
-          setEndDate={setEndDate}
-          modules={MODULE_OPTIONS}
-          resetFilters={resetFilters}
+      <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
+        <div
+          className={`fixed inset-0 z-40 bg-gray-900/20 transition-opacity duration-300 md:hidden ${
+            isMobileDropdownOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
+          }`}
+          onClick={closeMobileDropdown}
         />
-      )}
 
-      <div className="flex-1 pb-24 relative z-10">
-        <div className="hidden md:block bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-          {loading ? (
-                            <EmptyState
-                              icon={
-                                <div className="flex items-center justify-center">
-                                  <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-                                </div>
-                              }
-                              title="Loading audit..."
-                              description="Please wait while audit records are being retrieved."
-                            />
-                          ) : hasNoLogs ? (
-            <EmptyState
-              icon={<Inbox className="size-10 text-blue-500" />}
-              title="No audit logs yet"
-              description="Administrative and system activities will appear here once actions are recorded."
-            />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full table-fixed text-left">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    {['Log ID', 'Action', 'Module', 'Target', 'Performed By', 'Date', 'Details'].map(
-                      (header) => (
-                        <th
-                          key={header}
-                          className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                        >
-                          {header}  
-                        </th>
-                      )
-                    )}
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-gray-100">
-                  {hasNoSearchResults ? (
-                    <tr>
-                      <td colSpan={7} className="px-6 py-20 text-center">
-                        <NoResultsState />
-                      </td>
-                    </tr>
-                  ) : (
-                    rows.map((log) => (
-                      <tr key={log.id} className="hover:bg-blue-50/30 transition-colors">
-                        <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[220px]">
-                          {log.publicId ?? log.id}
-                        </td>
-
-                        <td className="px-6 py-4 w-[140px]">
-                          <span
-                            className={`px-2.5 py-1 text-[10px] font-bold rounded-full ${getActionStyle(log.action)}`}
-                          >
-                            {log.action}
-                          </span>
-                        </td>
-
-                        <td className="px-6 py-4 text-sm text-gray-600 w-[140px]">
-                          {log.module || '—'}
-                        </td>
-
-                        <td className="px-6 py-4 text-sm text-gray-700 w-[220px]">
-                          {log.target || '—'}
-                        </td>
-
-                        <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[220px]">
-                          {log.performedBy || '—'}
-                        </td>
-
-                        <td className="px-6 py-4 text-sm text-gray-500 w-[200px]">
-                          {log.formattedDate}
-                        </td>
-
-                        <td className="px-6 py-4 text-sm text-gray-500 max-w-[180px] whitespace-normal break-words">
-  {log.details || '—'}
-</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Audit Log</h1>
+          <p className="text-sm text-gray-500">
+            Monitor all administrative and system activities.
+          </p>
         </div>
 
-        <div className="md:hidden space-y-4">
-          {loading ? (
-                            <EmptyState
-                              icon={
-                                <div className="flex items-center justify-center">
-                                  <div className="w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-                                </div>
-                              }
-                              title="Loading audit..."
-                              description="Please wait while audit records are being retrieved."
-                            />
-                          ) : hasNoLogs ? (
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm py-16 px-6">
+        {!loading && (!hasNoLogs || hasActiveFilters) && (
+          <DesktopFilterBar
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            selectedAction={selectedAction}
+            setSelectedAction={setSelectedAction}
+            selectedModule={selectedModule}
+            setSelectedModule={setSelectedModule}
+            startDate={startDate}
+            setStartDate={setStartDate}
+            endDate={endDate}
+            setEndDate={setEndDate}
+            modules={MODULE_OPTIONS}
+            resetFilters={resetFilters}
+          />
+        )}
+
+        <div className="relative z-10 flex-1 pb-24">
+          <div className="hidden md:block">
+            {loading ? (
+              <EmptyState
+                icon={
+                  <div className="flex items-center justify-center">
+                    <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+                  </div>
+                }
+                title="Loading audit..."
+                description="Please wait while audit records are being retrieved."
+              />
+            ) : hasNoLogs ? (
               <EmptyState
                 icon={<Inbox className="size-10 text-blue-500" />}
                 title="No audit logs yet"
                 description="Administrative and system activities will appear here once actions are recorded."
               />
-            </div>
-          ) : hasNoSearchResults ? (
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm py-16 px-6">
-              <NoResultsState />
-            </div>
-          ) : (
-            rows.map((log) => (
-              <div
-                key={log.id}
-                className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm space-y-3"
+            ) : (
+              <DataTable
+                headers={[
+                  <span className="block w-[120px]">Log ID</span>,
+                  <span className="block w-[120px]">Action</span>,
+                  <span className="block w-[100px]">Module</span>,
+                  <span className="block w-[120px]">Target</span>,
+                  <span className="block w-[120px]">Performed By</span>,
+                  <span className="block w-[130px]">Date</span>,
+                  <span className="block">Details</span>
+                ]}
               >
-                <div className="flex justify-between items-start border-b border-gray-100 pb-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Hash className="size-3.5 text-gray-400 shrink-0" />
-                    <span className="text-xs font-mono text-gray-400 truncate">
-                      {log.publicId ?? log.id}
-                    </span>
+                {hasNoSearchResults ? (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-20 text-center">
+                      <NoResultsState />
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((log) => (
+                    <tr key={log.id} className="transition-colors hover:bg-gray-50/70">
+                      <DataCell value={log.publicId ?? log.id} mono />
+                      <DataCell
+                        nowrap
+                        value={
+                          <TableBadge className={getActionStyle(log.action)}>
+                            {log.action}
+                          </TableBadge>
+                        }
+                      />
+                      <DataCell value={log.module} />
+                      <DataCell value={log.target} mono />
+                      <DataCell value={log.performedBy} mono />
+                      <DataCell
+                        value={
+                          typeof log.formattedDate === 'string' ? (
+                            log.formattedDate
+                          ) : (
+                            <div className="leading-tight">
+                              <div className="font-medium text-gray-900">
+                                {log.formattedDate.date}
+                              </div>
+                              <div className="mt-1 text-xs text-gray-400">
+                                {log.formattedDate.time}
+                              </div>
+                            </div>
+                          )
+                        }
+                      />
+                      <DataCell
+  value={
+    <div className="whitespace-normal break-words leading-snug text-gray-600">
+      {log.details}
+    </div>
+  }
+  className="align-top"
+/>
+                    </tr>
+                  ))
+                )}
+              </DataTable>
+            )}
+          </div>
+
+          <div className="space-y-4 md:hidden">
+            {loading ? (
+              <EmptyState
+                icon={
+                  <div className="flex items-center justify-center">
+                    <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
                   </div>
-
-                  <span
-                    className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded-full ${getActionStyle(log.action)}`}
-                  >
-                    {log.action}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-y-3 gap-x-2 text-sm">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
-                      <Layers className="size-3" /> Module
-                    </span>
-                    <span className="text-sm text-gray-600">{log.module || '—'}</span>
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <span className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
-                      <Tag className="size-3" /> Target
-                    </span>
-                    <span className="text-sm text-gray-700">{log.target || '—'}</span>
-                  </div>
-
-                  <div className="flex flex-col gap-1 col-span-2">
-                    <span className="text-[10px] text-gray-400 uppercase font-bold">
-                      Performed By
-                    </span>
-                    <span className="text-sm font-semibold text-gray-900">
-                      {log.performedBy || '—'}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-col gap-1 col-span-2">
-                    <span className="text-[10px] text-gray-400 uppercase font-bold">Date</span>
-                    <span className="text-sm text-gray-500">{log.formattedDate}</span>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 p-3 rounded-xl">
-                  <p className="text-sm text-gray-500 leading-snug">{log.details || '—'}</p>
-                </div>
+                }
+                title="Loading audit..."
+                description="Please wait while audit records are being retrieved."
+              />
+            ) : hasNoLogs ? (
+              <div className="rounded-2xl border border-gray-200 bg-white px-6 py-16 shadow-sm">
+                <EmptyState
+                  icon={<Inbox className="size-10 text-blue-500" />}
+                  title="No audit logs yet"
+                  description="Administrative and system activities will appear here once actions are recorded."
+                />
               </div>
-            ))
+            ) : hasNoSearchResults ? (
+              <div className="rounded-2xl border border-gray-200 bg-white px-6 py-16 shadow-sm">
+                <NoResultsState />
+              </div>
+            ) : (
+              rows.map((log) => (
+                <div
+                  key={log.id}
+                  className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+                >
+                  <div className="flex items-start justify-between border-b border-gray-100 pb-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Hash className="size-3.5 shrink-0 text-gray-400" />
+                      <span className="truncate font-mono text-xs text-gray-400">
+                        {log.publicId ?? log.id}
+                      </span>
+                    </div>
+
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${getActionStyle(log.action)}`}
+                    >
+                      {log.action}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-x-2 gap-y-3 text-sm">
+                    <div className="flex flex-col gap-1">
+                      <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-gray-400">
+                        <Layers className="size-3" /> Module
+                      </span>
+                      <span className="text-sm text-gray-600">{log.module || '—'}</span>
+                    </div>
+
+                    <div className="flex flex-col gap-1">
+                      <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-gray-400">
+                        <Tag className="size-3" /> Target
+                      </span>
+                      <span className="text-sm text-gray-700">{log.target || '—'}</span>
+                    </div>
+
+                    <div className="col-span-2 flex flex-col gap-1">
+                      <span className="text-[10px] font-bold uppercase text-gray-400">
+                        Performed By
+                      </span>
+                      <span className="text-sm font-semibold text-gray-900">
+                        {log.performedBy || '—'}
+                      </span>
+                    </div>
+
+                    <div className="col-span-2 flex flex-col gap-1">
+                      <span className="text-[10px] font-bold uppercase text-gray-400">
+                        Date
+                      </span>
+                      {typeof log.formattedDate === 'string' ? (
+                        <span className="text-sm text-gray-500">{log.formattedDate}</span>
+                      ) : (
+                        <div className="leading-tight">
+                          <div className="text-sm font-medium text-gray-900">
+                            {log.formattedDate.date}
+                          </div>
+                          <div className="mt-1 text-xs text-gray-400">
+                            {log.formattedDate.time}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-gray-50 p-3">
+                    <p className="text-sm leading-snug text-gray-500">
+                      {log.details || '—'}
+                    </p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {!loading && !hasNoLogs && totalPages > 1 && (
+            <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-gray-500">
+                Page {page} of {totalPages} • {totalCount} total logs
+              </p>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+                >
+                  Previous
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">Go to</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={totalPages}
+                    value={pageInput}
+                    onChange={(e) => setPageInput(e.target.value)}
+                    onKeyDown={handlePageInputKeyDown}
+                    className="w-20 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={handlePageJump}
+                    className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+                  >
+                    Go
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           )}
         </div>
 
-        {!loading && !hasNoLogs && totalPages > 1 && (
-          <div className="flex flex-col gap-3 mt-4 bg-white border border-gray-200 rounded-2xl shadow-sm px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-gray-500">
-              Page {page} of {totalPages} • {totalCount} total logs
-            </p>
+        <div className="fixed bottom-6 right-6 z-50 md:hidden">
+          <MobileFilterMenu
+            isOpen={isMobileDropdownOpen}
+            onClose={closeMobileDropdown}
+            selectedAction={selectedAction}
+            setSelectedAction={setSelectedAction}
+            selectedModule={selectedModule}
+            setSelectedModule={setSelectedModule}
+            startDate={startDate}
+            setStartDate={setStartDate}
+            endDate={endDate}
+            setEndDate={setEndDate}
+            modules={MODULE_OPTIONS}
+            resetFilters={resetFilters}
+          />
 
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
-              >
-                Previous
-              </button>
+          <button
+            onClick={toggleMobileDropdown}
+            className={`relative flex size-14 items-center justify-center rounded-full shadow-2xl transition-all duration-300 ${
+              isMobileDropdownOpen
+                ? 'rotate-90 bg-gray-900 text-white'
+                : 'bg-blue-600 text-white hover:scale-105'
+            }`}
+          >
+            {isMobileDropdownOpen ? <X size={24} /> : <Filter size={24} />}
 
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-500">Go to</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={totalPages}
-                  value={pageInput}
-                  onChange={(e) => setPageInput(e.target.value)}
-                  onKeyDown={handlePageInputKeyDown}
-                  className="w-20 px-3 py-2 text-sm border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  onClick={handlePageJump}
-                  className="px-3 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-                >
-                  Go
-                </button>
-              </div>
-
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="px-3 py-2 text-sm rounded-lg border border-gray-300 disabled:opacity-50"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
+            {!isMobileDropdownOpen && hasActiveFilters && (
+              <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full border-2 border-white bg-red-500 text-[10px] font-bold text-white">
+                !
+              </span>
+            )}
+          </button>
+        </div>
       </div>
-
-      <div className="md:hidden fixed bottom-6 right-6 z-50">
-        <MobileFilterMenu
-          isOpen={isMobileDropdownOpen}
-          onClose={closeMobileDropdown}
-          selectedAction={selectedAction}
-          setSelectedAction={setSelectedAction}
-          selectedModule={selectedModule}
-          setSelectedModule={setSelectedModule}
-          startDate={startDate}
-          setStartDate={setStartDate}
-          endDate={endDate}
-          setEndDate={setEndDate}
-          modules={MODULE_OPTIONS}
-          resetFilters={resetFilters}
-        />
-
-        <button
-          onClick={toggleMobileDropdown}
-          className={`size-14 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300 relative ${
-            isMobileDropdownOpen
-              ? 'bg-gray-900 text-white rotate-90'
-              : 'bg-blue-600 text-white hover:scale-105'
-          }`}
-        >
-          {isMobileDropdownOpen ? <X size={24} /> : <Filter size={24} />}
-
-          {!isMobileDropdownOpen && hasActiveFilters && (
-            <span className="absolute -top-1 -right-1 size-5 bg-red-500 border-2 border-white rounded-full flex items-center justify-center text-[10px] font-bold text-white">
-              !
-            </span>
-          )}
-        </button>
-      </div>
-    </div>
     </div>
   );
 }

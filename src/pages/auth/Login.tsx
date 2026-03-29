@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIndicator } from '../../contexts/IndicatorContext';
@@ -44,7 +44,9 @@ const FacebookLogo = () => (
   </svg>
 );
 
+
 export default function Login() {
+  const [oauthChecked, setOauthChecked] = useState(false);
   const {
     login,
     recoverPassword,
@@ -83,11 +85,15 @@ export default function Login() {
 
   const [approvalMessage, setApprovalMessage] = useState('');
 
-  const registerMessage =
-    typeof location.state?.message === 'string' ? location.state.message : '';
+ const registerMessage = useMemo(
+  () => (typeof location.state?.message === 'string' ? location.state.message : ''),
+  [location.state]
+);
 
-  const registerEmail =
-    typeof location.state?.email === 'string' ? location.state.email : '';
+const registerEmail = useMemo(
+  () => (typeof location.state?.email === 'string' ? location.state.email : ''),
+  [location.state]
+);
 
   const normalizedEmail = formData.email.trim().toLowerCase();
   const LOGIN_COOLDOWN_KEY = 'loginCooldownUntil';
@@ -96,6 +102,61 @@ export default function Login() {
     name: string;
     profilePictureUrl?: string;
   } | null>(null);
+
+  useEffect(() => {
+  const handleOAuthDeviceCheck = async () => {
+    if (!user || loading || oauthChecked) return;
+
+    try {
+      const deviceFingerprint = localStorage.getItem('device_fingerprint');
+
+      if (!deviceFingerprint) return;
+
+      const { data, error } = await supabase.functions.invoke(
+        'check-device-and-send-verification',
+        {
+          body: {
+            userId: user.id,
+            deviceFingerprint,
+            userAgent: navigator.userAgent,
+            rememberDevice: true, // OAuth = always trusted intent
+          },
+        }
+      );
+
+      if (error) {
+        console.error('OAuth device check failed:', error);
+        return;
+      }
+
+      // 🚨 NOT TRUSTED → trigger approval flow
+      if (!data?.trusted) {
+        setPendingApproval({
+          loginRequestId: data?.loginRequestId,
+          expiresAt: data?.expiresAt,
+        });
+
+        setApprovalMessage(
+          'This browser is not trusted yet. We sent a device approval email. Approve the sign-in from your email, then return here.'
+        );
+
+        showIndicator(
+          `New device approval required for ${user.email}`,
+          'security'
+        );
+
+        // 🚨 VERY IMPORTANT: sign out until approved
+        await supabase.auth.signOut();
+      }
+    } catch (err) {
+      console.error('OAuth device check error:', err);
+    } finally {
+      setOauthChecked(true);
+    }
+  };
+
+  handleOAuthDeviceCheck();
+}, [user, loading, oauthChecked, showIndicator]);
 
   useEffect(() => {
     const raw = localStorage.getItem('lastLoginUser');
@@ -118,13 +179,29 @@ export default function Login() {
   }, [formKey]);
 
   useEffect(() => {
-    if (loading) return;
-    if (!user) return;
+  if (!registerMessage && !registerEmail) return;
 
-    navigate(user.role === 'admin' ? '/admin/dashboard' : '/client/dashboard', {
-      replace: true,
-    });
-  }, [user, loading, navigate]);
+  const timer = window.setTimeout(() => {
+    navigate(location.pathname, { replace: true, state: null });
+  }, 15000);
+
+  return () => window.clearTimeout(timer);
+}, [registerMessage, registerEmail, navigate, location.pathname]);
+
+
+
+  useEffect(() => {
+  if (loading) return;
+  if (!user) return;
+
+  // 🚨 Wait for OAuth check first
+  if (!oauthChecked) return;
+
+  navigate(
+    user.role === 'admin' ? '/admin/dashboard' : '/client/dashboard',
+    { replace: true }
+  );
+}, [user, loading, navigate, oauthChecked]);
 
   useEffect(() => {
   if (!user) {
@@ -328,22 +405,23 @@ useEffect(() => {
 
       case 'unverified_device':
         if ((result as any).loginRequestId) {
-        setPendingApproval({
-          loginRequestId: (result as any).loginRequestId,
-          expiresAt: (result as any).expiresAt,
-        });
+          setPendingApproval({
+            loginRequestId: (result as any).loginRequestId,
+            expiresAt: (result as any).expiresAt,
+          });
 
-        setApprovalMessage(
-          'Check your email to approve this sign-in. You can approve it from your phone and this browser will continue automatically.'
+          setApprovalMessage(
+            'This browser is not trusted yet. We sent a device approval email. Approve the sign-in from your email, then return to this browser.'
+          );
+        }
+
+        showIndicator(
+          `New device approval required for ${normalizedEmail} at ${formatTime(new Date())}`,
+          'security'
         );
-      }
 
-      showIndicator(
-        `Verification required for ${normalizedEmail} at ${formatTime(new Date())}`,
-        'security'
-      );
         setError(
-          ''
+          'This browser is not trusted yet. Please check your email to approve this sign-in.'
         );
         break;
 
@@ -432,7 +510,7 @@ useEffect(() => {
         </div>
       </div>
 
-      <h2 className="text-2xl font-bold text-slate-900 mb-3">Check your email</h2>
+      <h2 className="text-2xl font-bold text-slate-900 mb-3">Next step sent</h2>
       <p className="text-slate-500 mb-8 leading-relaxed max-w-xs mx-auto">
         {message}
       </p>
@@ -453,7 +531,7 @@ useEffect(() => {
           onClick={() => navigate('/login', { replace: true })}
           className="text-sm font-bold text-blue-600 hover:text-blue-700 transition-colors"
         >
-          Back to Login
+          Continue to Sign In
         </button>
       </div>
     </div>
@@ -568,6 +646,8 @@ useEffect(() => {
                         value={formData.email}
                         onChange={(e) => {
                           setFormData((prev) => ({ ...prev, email: e.target.value }));
+                          setPendingApproval(null);
+                          setApprovalMessage('');
                           if (error) setError('');
                         }}
                         className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
@@ -591,6 +671,8 @@ useEffect(() => {
                         value={formData.password}
                         onChange={(e) => {
                           setFormData((prev) => ({ ...prev, password: e.target.value }));
+                          setPendingApproval(null);
+                          setApprovalMessage('');
                           if (error) setError('');
                         }}
                         className="w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"

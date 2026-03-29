@@ -17,6 +17,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const token = String(body?.token ?? '').trim();
+    const requestedRememberDevice = Boolean(body?.rememberDevice);
 
     console.log('VERIFY TOKEN PRESENT:', Boolean(token));
 
@@ -60,7 +61,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    const rememberDevice = Boolean(verification.remember_device);
+    const rememberDevice =
+      Boolean(verification.remember_device) || requestedRememberDevice;
     console.log('REMEMBER DEVICE:', rememberDevice);
 
     if (new Date(verification.expires_at).getTime() < Date.now()) {
@@ -74,10 +76,12 @@ Deno.serve(async (req) => {
     }
 
     if (verification.approved_at) {
+    if (!rememberDevice) {
       return new Response(
         JSON.stringify({
           success: true,
           approved: true,
+          trusted: false,
           message: 'Sign-in already approved. Return to your original browser to continue.',
         }),
         {
@@ -86,12 +90,13 @@ Deno.serve(async (req) => {
         }
       );
     }
+  }
 
     const nowIso = new Date().toISOString();
 
     const { error: markVerifiedError } = await adminClient
       .from('pending_login_verifications')
-      .update({
+      .update({ 
         verified_at: nowIso,
         approved_at: nowIso,
       })

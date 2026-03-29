@@ -25,6 +25,8 @@ export default function UnitModal({ Unit, onClose }: Props) {
 
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
 
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+
   const modalRef = useRef<HTMLDivElement | null>(null);
   const touchStartXRef = useRef<number | null>(null);
   const touchEndXRef = useRef<number | null>(null);
@@ -45,6 +47,26 @@ export default function UnitModal({ Unit, onClose }: Props) {
 
   const currentMedia = media[currentMediaIndex] || "/fallback-unit.webp";
   const currentIsVideo = isVideoUrl(currentMedia);
+
+  useEffect(() => {
+  if (!currentIsVideo) return;
+
+  const video = previewVideoRef.current;
+  if (!video) return;
+
+  video.pause();
+  video.currentTime = 0;
+  video.muted = true;
+  video.load();
+
+  const timeout = window.setTimeout(() => {
+    void video.play().catch(() => {});
+  }, 120);
+
+  return () => {
+    window.clearTimeout(timeout);
+  };
+}, [currentMedia, currentIsVideo]);
 
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
@@ -126,7 +148,7 @@ export default function UnitModal({ Unit, onClose }: Props) {
       aria-labelledby="unit-modal-title"
     >
       <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-black/40"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -165,10 +187,13 @@ export default function UnitModal({ Unit, onClose }: Props) {
           >
             {currentIsVideo ? (
               <video
+                ref={previewVideoRef}
+                key={currentMedia}
                 src={currentMedia}
                 controls
-                preload="metadata"
+                muted
                 playsInline
+                preload="auto"
                 className="h-56 w-full rounded-2xl object-cover sm:h-72 md:h-96"
               />
             ) : (
@@ -192,7 +217,7 @@ export default function UnitModal({ Unit, onClose }: Props) {
                 <button
                   onClick={prevMedia}
                   type="button"
-                  className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 shadow-md backdrop-blur transition-all hover:bg-white"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 shadow-md transition-all hover:bg-white"
                   aria-label="Previous media"
                 >
                   <ChevronLeft className="size-6" />
@@ -201,7 +226,7 @@ export default function UnitModal({ Unit, onClose }: Props) {
                 <button
                   onClick={nextMedia}
                   type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 shadow-md backdrop-blur transition-all hover:bg-white"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 shadow-md transition-all hover:bg-white"
                   aria-label="Next media"
                 >
                   <ChevronRight className="size-6" />

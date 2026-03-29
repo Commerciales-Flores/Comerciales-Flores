@@ -123,6 +123,7 @@ function buildInitialForm(unitType?: string): AdminReservationFormState {
   };
 }
 
+
 export default function AdminReservationForm({
   userId,
   unitId,
@@ -133,6 +134,8 @@ export default function AdminReservationForm({
 
   const unit = units.find((u) => u.id === unitId);
   const user = users.find((u) => u.id === userId);
+
+  const [formError, setFormError] = useState<string | null>(null);
 
   const [formState, setFormState] = useState<AdminReservationFormState>(() =>
     buildInitialForm(unit?.type)
@@ -222,18 +225,20 @@ export default function AdminReservationForm({
 
     if (isSubmitting) return;
 
+        setFormError(null);
+
     if (unit.type === 'parking_slot' && !formState.slotId) {
-      alert('Please select a parking slot before creating the reservation.');
+      setFormError('Please select a parking slot.');
       return;
     }
 
     if (unit.type === 'rental_space' && !formState.businessType.trim()) {
-      alert('Please enter the business type.');
+      setFormError('Please enter the business type.');
       return;
     }
 
     if (unit.type === 'function_hall' && !formState.eventPurpose.trim()) {
-      alert('Please enter the event purpose.');
+      setFormError('Please enter the event purpose.');
       return;
     }
 
@@ -241,7 +246,7 @@ export default function AdminReservationForm({
       unit.type === 'function_hall' &&
       (!formState.attendees.trim() || Number(formState.attendees) <= 0)
     ) {
-      alert('Please enter a valid number of attendees.');
+      setFormError('Please enter a valid number of attendees.');
       return;
     }
 
@@ -249,7 +254,7 @@ export default function AdminReservationForm({
       unit.type === 'parking_slot' &&
       (!formState.vehicleType.trim() || !formState.plateNumber.trim())
     ) {
-      alert('Please enter the vehicle type and plate number.');
+      setFormError('Please enter vehicle type and plate number.');
       return;
     }
 
@@ -716,6 +721,12 @@ export default function AdminReservationForm({
               </>
             )}
           </div>
+
+          {formError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+              {formError}
+            </div>
+          )}
 
           <button
             type="submit"

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import { useData } from "../../contexts/DataContext";
@@ -226,6 +226,59 @@ function buildInitialReservationForm(
   };
 }
 
+const RESERVATION_LIMITS = {
+  rental_space: {
+    minYears: 1,
+    maxYears: 5,
+  },
+  function_hall: {
+    minDays: 1,
+    maxDays: 7,
+  },
+  parking_slot: {
+    minMonths: 1,
+    maxMonths: 12,
+  },
+  attendees: {
+    min: 1,
+    max: 1000,
+  },
+};
+
+const APPOINTMENT_TIME_STEP_SECONDS = 30 * 60; // 30 minutes
+// if you want every 10 minutes instead, use:
+// const APPOINTMENT_TIME_STEP_SECONDS = 10 * 60;
+
+function clampNumber(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
+}
+
+function getDurationBounds(unitType: UnitType, durationType: DurationType) {
+  if (unitType === "rental_space" && durationType === "years") {
+    return {
+      min: RESERVATION_LIMITS.rental_space.minYears,
+      max: RESERVATION_LIMITS.rental_space.maxYears,
+    };
+  }
+
+  if (unitType === "parking_slot" && durationType === "months") {
+    return {
+      min: RESERVATION_LIMITS.parking_slot.minMonths,
+      max: RESERVATION_LIMITS.parking_slot.maxMonths,
+    };
+  }
+
+  if (unitType === "function_hall" && durationType === "days") {
+    return {
+      min: RESERVATION_LIMITS.function_hall.minDays,
+      max: RESERVATION_LIMITS.function_hall.maxDays,
+    };
+  }
+
+  return { min: 1, max: 30 };
+}
+
 export default function ClientUnits() {
   const { user } = useAuth();
   const { addReservation, reservations } = useData();
@@ -258,6 +311,52 @@ export default function ClientUnits() {
     buildInitialReservationForm('rental_space', 'gcash')
   );
 
+  const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
+
+  const handleCardVideoEnter = useCallback((unitId: string) => {
+  setHoveredCardId(unitId);
+
+  const video = videoRefs.current[unitId];
+  if (!video) return;
+
+  video.currentTime = 0;
+  video.loop = true;
+  void video.play().catch(() => {});
+}, []);
+
+const handleCardVideoLeave = useCallback((unitId: string) => {
+  setHoveredCardId((prev) => (prev === unitId ? null : prev));
+
+  const video = videoRefs.current[unitId];
+  if (!video) return;
+
+  video.pause();
+  video.currentTime = 0;
+}, []);
+
+useEffect(() => {
+  Object.values(videoRefs.current).forEach((video) => {
+    if (!video) return;
+    video.pause();
+    video.currentTime = 0;
+  });
+
+  setHoveredCardId(null);
+}, [searchTerm, filterType, filterLocation, priceRange]);
+
+useEffect(() => {
+  if (showReservationModal) {
+    Object.values(videoRefs.current).forEach((video) => {
+      if (!video) return;
+      video.pause();
+      video.currentTime = 0;
+    });
+
+    setHoveredCardId(null);
+  }
+}, [showReservationModal]);
+  
+
   useEffect(() => {
   setReservationForm((prev) => {
       if (prev.paymentMethod) return prev;
@@ -268,6 +367,8 @@ export default function ClientUnits() {
   useEffect(() => {
     setCurrentImageIndex(0);
   }, [selectedUnitId]);
+
+  
 
   const hasUnits = useMemo(() => units.length > 0, [units]);
 
@@ -298,6 +399,61 @@ export default function ClientUnits() {
     const media = [...images, ...videos];
     return media.length > 0 ? media : [FALLBACK_IMAGE];
   }, [selectedUnitData]);
+
+  const updateDuration = useCallback(
+  (nextValue: number) => {
+    if (!selectedUnitData) return;
+
+    const bounds = getDurationBounds(
+      selectedUnitData.type,
+      reservationForm.durationType
+    );
+
+    const safeDuration = clampNumber(nextValue, bounds.min, bounds.max);
+
+    setReservationForm((prev) => ({
+      ...prev,
+      duration: safeDuration,
+      endDate: computeEndFromForm(prev.startDate, safeDuration, prev.durationType),
+    }));
+
+    if (selectedUnitData.type === "function_hall") {
+      setFunctionHallConflictMessage("");
+    }
+  },
+  [selectedUnitData, reservationForm.durationType]
+);
+
+useEffect(() => {
+  if (!selectedUnitData) return;
+
+  const bounds = getDurationBounds(
+    selectedUnitData.type,
+    reservationForm.durationType
+  );
+
+  if (
+    reservationForm.duration < bounds.min ||
+    reservationForm.duration > bounds.max
+  ) {
+    const safeDuration = clampNumber(
+      reservationForm.duration,
+      bounds.min,
+      bounds.max
+    );
+
+    setReservationForm((prev) => ({
+      ...prev,
+      duration: safeDuration,
+      endDate: computeEndFromForm(prev.startDate, safeDuration, prev.durationType),
+    }));
+  }
+}, [
+  selectedUnitData,
+  reservationForm.duration,
+  reservationForm.durationType,
+  reservationForm.startDate,
+]);
 
   const unitParkingSlots = useMemo(() => {
     if (!selectedUnitData || selectedUnitData.type !== "parking_slot") return [];
@@ -984,6 +1140,43 @@ const getParkingSlotState = useCallback(
         return;
       }
 
+      const durationBounds = getDurationBounds(
+  selectedUnitData.type,
+  reservationForm.durationType
+);
+
+if (
+  reservationForm.duration < durationBounds.min ||
+  reservationForm.duration > durationBounds.max
+) {
+  alert(
+    `Please enter a valid duration between ${durationBounds.min} and ${durationBounds.max}.`
+  );
+  return;
+}
+
+const parsedAttendees = parseInt(reservationForm.attendees || "0", 10);
+
+const attendeesMax =
+  selectedUnitData.type === "function_hall"
+    ? Math.min(
+        selectedUnitData.capacity ?? RESERVATION_LIMITS.attendees.max,
+        RESERVATION_LIMITS.attendees.max
+      )
+    : RESERVATION_LIMITS.attendees.max;
+
+if (
+  selectedUnitData.type === "function_hall" &&
+  (Number.isNaN(parsedAttendees) ||
+    parsedAttendees < RESERVATION_LIMITS.attendees.min ||
+    parsedAttendees > attendeesMax)
+) {
+  alert(
+    `Please enter attendees between ${RESERVATION_LIMITS.attendees.min} and ${attendeesMax}.`
+  );
+  return;
+}
+
       const reservationData: Omit<
         Reservation,
         'id' | 'requestDate' | 'status' | 'paidAmount'
@@ -1015,7 +1208,7 @@ const getParkingSlotState = useCallback(
 
       if (selectedUnitData.type === "function_hall") {
         reservationData.eventPurpose = reservationForm.eventPurpose.trim();
-        reservationData.attendees = parseInt(reservationForm.attendees || "0", 10);
+        reservationData.attendees = parsedAttendees;
       }
 
       if (selectedUnitData.type === "parking_slot") {
@@ -1209,17 +1402,18 @@ const getParkingSlotState = useCallback(
       >
         <div
           className="relative h-44 w-full overflow-hidden bg-gray-100"
-          onMouseEnter={() => setHoveredCardId(unit.id)}
-          onMouseLeave={() => setHoveredCardId((prev) => (prev === unit.id ? null : prev))}
+          onMouseEnter={() => handleCardVideoEnter(unit.id)}
+          onMouseLeave={() => handleCardVideoLeave(unit.id)}
         >
           {unit.videos?.[0] ? (
             <video
+              ref={(node) => {
+                videoRefs.current[unit.id] = node;
+              }}
               src={unit.videos[0]}
               muted
               playsInline
               preload="metadata"
-              autoPlay={hoveredCardId === unit.id}
-              loop={hoveredCardId === unit.id}
               className="h-full w-full object-cover"
             />
           ) : (
@@ -1535,14 +1729,18 @@ const getParkingSlotState = useCallback(
                       <div className="relative mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-gray-100">
                         {isVideoUrl(selectedUnitMedia[safeCurrentMediaIndex]) ? (
                           <video
+                            key={selectedUnitMedia[safeCurrentMediaIndex]}
                             src={selectedUnitMedia[safeCurrentMediaIndex]}
                             controls
-                            preload="metadata"
+                            autoPlay
+                            muted
                             playsInline
+                            preload="metadata"
                             className="h-56 w-full object-cover"
                           />
                         ) : (
                           <img
+                            key={selectedUnitMedia[safeCurrentMediaIndex]}
                             src={selectedUnitMedia[safeCurrentMediaIndex]}
                             alt={selectedUnitData.name}
                             className="h-56 w-full object-cover"
@@ -1697,6 +1895,7 @@ const getParkingSlotState = useCallback(
                                 type="time"
                                 min="09:00"
                                 max="17:00"
+                                step={APPOINTMENT_TIME_STEP_SECONDS}
                                 value={reservationForm.appointmentTime || ""}
                                 onChange={(e) =>
                                   setReservationForm((prev) => ({
@@ -1964,7 +2163,7 @@ const getParkingSlotState = useCallback(
 
                             {showCalendar && (
                               <div className="mt-2 overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 shadow-lg">
-                                <Calendar
+                               <Calendar
                                   onChange={(value) => {
                                     if (Array.isArray(value) && value[0] && value[1]) {
                                       const start = new Date(value[0]);
@@ -1979,21 +2178,35 @@ const getParkingSlotState = useCallback(
                                       const endDay = new Date(end);
                                       endDay.setHours(0, 0, 0, 0);
 
-                                      const dayCount =
-                                        Math.floor((endDay.getTime() - startDay.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                                      const rawDayCount =
+                                        Math.floor(
+                                          (endDay.getTime() - startDay.getTime()) / (1000 * 60 * 60 * 24)
+                                        ) + 1;
 
-                                      const hasConflict = checkFunctionHallConflict(start, end);
+                                      const dayCount = clampNumber(
+                                        rawDayCount,
+                                        RESERVATION_LIMITS.function_hall.minDays,
+                                        RESERVATION_LIMITS.function_hall.maxDays
+                                      );
+
+                                      const adjustedEnd = new Date(start);
+                                      adjustedEnd.setDate(start.getDate() + dayCount - 1);
+                                      adjustedEnd.setHours(23, 59, 59, 999);
+
+                                      const hasConflict = checkFunctionHallConflict(start, adjustedEnd);
 
                                       setReservationForm((prev) => ({
                                         ...prev,
                                         startDate: start,
-                                        endDate: end,
+                                        endDate: adjustedEnd,
                                         duration: dayCount,
                                         durationType: "days",
                                       }));
 
                                       setFunctionHallConflictMessage(
-                                        hasConflict ? "The selected dates are already reserved. Please choose different dates." : ""
+                                        hasConflict
+                                          ? "The selected dates are already reserved. Please choose different dates."
+                                          : ""
                                       );
 
                                       if (!hasConflict) {
@@ -2001,10 +2214,7 @@ const getParkingSlotState = useCallback(
                                       }
                                     }
                                   }}
-                                  value={[
-                                    reservationForm.startDate,
-                                    reservationForm.endDate,
-                                  ]}
+                                  value={[reservationForm.startDate, reservationForm.endDate]}
                                   selectRange={true}
                                   minDate={getTomorrow()}
                                   className="w-full border-0"
@@ -2056,8 +2266,12 @@ const getParkingSlotState = useCallback(
                             <input
                               type="number"
                               required
-                              min={1}
-                              max={selectedUnitData.capacity}
+                              min={RESERVATION_LIMITS.attendees.min}
+                              max={Math.min(
+                                selectedUnitData.capacity ?? RESERVATION_LIMITS.attendees.max,
+                                RESERVATION_LIMITS.attendees.max
+                              )}
+                              step={1}
                               value={reservationForm.attendees}
                               onChange={(e) =>
                                 setReservationForm((prev) => ({
@@ -2066,7 +2280,6 @@ const getParkingSlotState = useCallback(
                                 }))
                               }
                               className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                              placeholder={`Max: ${selectedUnitData.capacity}`}
                             />
                           </div>
                         </>
@@ -2123,23 +2336,28 @@ const getParkingSlotState = useCallback(
                             <input
                               type="number"
                               required
-                              min={getMinimumDuration(selectedUnitData.type).value}
+                              min={RESERVATION_LIMITS.rental_space.minYears}
+                              max={RESERVATION_LIMITS.rental_space.maxYears}
+                              step={1}
                               value={reservationForm.duration}
                               onChange={(e) => {
-                                const minYears =
-                                  getMinimumDuration(selectedUnitData.type).value;
                                 const parsed = parseInt(e.target.value, 10);
-                                const newDuration = Number.isNaN(parsed)
-                                  ? minYears
-                                  : Math.max(parsed, minYears);
+
+                                const safeDuration = clampNumber(
+                                  Number.isNaN(parsed)
+                                    ? RESERVATION_LIMITS.rental_space.minYears
+                                    : parsed,
+                                  RESERVATION_LIMITS.rental_space.minYears,
+                                  RESERVATION_LIMITS.rental_space.maxYears
+                                );
 
                                 setReservationForm((prev) => ({
                                   ...prev,
-                                  duration: newDuration,
+                                  duration: safeDuration,
                                   durationType: "years",
                                   endDate: computeEndFromForm(
                                     prev.startDate,
-                                    newDuration,
+                                    safeDuration,
                                     "years"
                                   ),
                                 }));

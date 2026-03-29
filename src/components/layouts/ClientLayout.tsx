@@ -6,6 +6,7 @@ import LogoutConfirmModal from "../LogoutConfirmModal";
 import { useLocation } from "react-router-dom";
 import ErrorWrapper from "./ErrorWrapper";
 import { motion, AnimatePresence } from 'framer-motion';
+import { useInquiries } from "../../contexts/InquiriesContext";
 import {
   LayoutDashboard,
   Building2,
@@ -33,21 +34,27 @@ export default function ClientLayout() {
 
   const navRef = useRef<HTMLDivElement>(null);
   const [underlineStyle, setUnderlineStyle] = useState({ left: 0, width: 0 });
+  const { tickets } = useInquiries();
 
-  const userNotifications = useMemo(
+const userNotifications = useMemo(
   () => getNotificationsByUserId(user?.id || ""),
   [getNotificationsByUserId, user?.id]
 );
 
 const unreadNotifications = useMemo(
-  () => userNotifications.filter((n) => !n.read && n.type !== "inquiry").length,
+  () => userNotifications.filter((n) => !n.read).length,
   [userNotifications]
 );
 
-const unreadMessages = useMemo(
-  () => userNotifications.filter((n) => !n.read && n.type === "inquiry").length,
-  [userNotifications]
-);
+const unreadMessages = useMemo(() => {
+  if (!user?.id) return 0;
+
+  return tickets.filter(
+    (ticket) =>
+      ticket.userId === user.id &&
+      ticket.status === "waiting_for_customer"
+  ).length;
+}, [tickets, user?.id]);
 
   const location = useLocation();
 
@@ -140,11 +147,12 @@ const unreadMessages = useMemo(
   const fullName = [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() || "User";
 
   const avatarUrl =
-    (user as any)?.avatarUrl ||
-    (user as any)?.photoURL ||
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(
-      fullName
-    )}&background=0D8ABC&color=fff&size=128`;
+  (user as any)?.avatarUrl ||
+  (user as any)?.photoURL ||
+  (user as any)?.profilePictureUrl ||
+  `https://ui-avatars.com/api/?name=${encodeURIComponent(
+    fullName
+  )}&background=0D8ABC&color=fff&size=128`;
 
   if (!user) return <Navigate to="/login" replace />;
 

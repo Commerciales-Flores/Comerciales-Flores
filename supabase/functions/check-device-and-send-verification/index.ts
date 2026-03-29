@@ -18,12 +18,23 @@ function jsonResponse(body: unknown, status = 200) {
 function getClientIp(req: Request) {
   const forwardedFor = req.headers.get('x-forwarded-for');
   if (forwardedFor) {
-    return forwardedFor.split(',')[0]?.trim() || null;
+    const first = forwardedFor.split(',')[0]?.trim();
+    if (first) return first;
   }
 
   const realIp = req.headers.get('x-real-ip');
-  if (realIp) {
+  if (realIp?.trim()) {
     return realIp.trim();
+  }
+
+  const cfConnectingIp = req.headers.get('cf-connecting-ip');
+  if (cfConnectingIp?.trim()) {
+    return cfConnectingIp.trim();
+  }
+
+  const flyClientIp = req.headers.get('fly-client-ip');
+  if (flyClientIp?.trim()) {
+    return flyClientIp.trim();
   }
 
   return null;
@@ -134,7 +145,7 @@ async function resolveIpLocation(ip: string | null) {
   if (!ip) {
     return {
       ipAddress: null,
-      locationLabel: null,
+      locationLabel: 'Unknown location',
       city: null,
       region: null,
       country: null,
@@ -142,12 +153,12 @@ async function resolveIpLocation(ip: string | null) {
   }
 
   try {
-    const res = await fetch(`https://ipapi.co/${ip}/json/`);
+    const res = await fetch(`http://ip-api.com/json/${ip}`);
 
     if (!res.ok) {
       return {
         ipAddress: ip,
-        locationLabel: null,
+        locationLabel: 'Unknown location',
         city: null,
         region: null,
         country: null,
@@ -157,12 +168,22 @@ async function resolveIpLocation(ip: string | null) {
     const geo = await res.json();
 
     const city = geo.city ?? null;
-    const region = geo.region ?? null;
-    const country = geo.country_name ?? null;
+const region = geo.regionName ?? null;
+const country = geo.country ?? null;
+
+    let locationLabel = [city, region, country].filter(Boolean).join(', ');
+
+    if (!locationLabel && country) {
+      locationLabel = country;
+    }
+
+    if (!locationLabel) {
+      locationLabel = 'Unknown location';
+    }
 
     return {
       ipAddress: ip,
-      locationLabel: [city, region, country].filter(Boolean).join(', ') || null,
+      locationLabel: locationLabel || 'Unknown location',
       city,
       region,
       country,
@@ -170,7 +191,7 @@ async function resolveIpLocation(ip: string | null) {
   } catch {
     return {
       ipAddress: ip,
-      locationLabel: null,
+      locationLabel: 'Unknown location',
       city: null,
       region: null,
       country: null,
@@ -368,7 +389,8 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
 
-    const deviceFingerprint = String(body?.deviceFingerprint ?? '').trim();
+    const rawFingerprint = String(body?.deviceFingerprint ?? '').trim();
+    const [deviceFingerprint, deviceSignature] = rawFingerprint.split('.', 2);
     const userAgent = String(body?.userAgent ?? '').trim() || null;
     const rememberDevice = Boolean(body?.rememberDevice);
     const deviceName = String(body?.deviceName ?? '').trim() || null;
@@ -621,8 +643,13 @@ Deno.serve(async (req) => {
       );
     }
 
+    const baseUrl =
+      siteUrl && siteUrl.startsWith('http')
+        ? siteUrl.replace(/\/$/, '')
+        : 'https://commercialesflores.com';
+
     const verifyUrl =
-      `${siteUrl}/verify-device?token=${encodeURIComponent(token)}` +
+      `${baseUrl}/verify-device?token=${encodeURIComponent(token)}` +
       `&rememberDevice=${rememberDevice ? '1' : '0'}`;
 
     const approvalHtml = buildApproveSignInEmail({

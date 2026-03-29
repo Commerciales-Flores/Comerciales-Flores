@@ -34,7 +34,18 @@ type AddressPickerProps = {
   }) => void;
 };
 
-const DEFAULT_CENTER: [number, number] = [14.5995, 120.9842];
+const DEFAULT_CENTER: [number, number] = [12.8797, 121.774];
+
+
+const PH_BOUNDS = L.latLngBounds(
+  L.latLng(4, 116),
+  L.latLng(21, 127)
+);
+
+
+const isWithinPhilippines = (lat: number, lng: number) => {
+  return lat >= 4 && lat <= 21 && lng >= 116 && lng <= 127;
+};
 
 const markerIcon = new L.Icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
@@ -73,6 +84,27 @@ function MapClickHandler({
   return null;
 }
 
+function MapBoundsGuard() {
+  const map = useMap();
+
+  useEffect(() => {
+    map.setMaxBounds(PH_BOUNDS);
+    map.setMinZoom(6);
+
+    const handleDrag = () => {
+      map.panInsideBounds(PH_BOUNDS, { animate: true });
+    };
+
+    map.on('drag', handleDrag);
+
+    return () => {
+      map.off('drag', handleDrag);
+    };
+  }, [map]);
+
+  return null;
+}
+
 export default function AddressPicker({
   value,
   latitude,
@@ -87,6 +119,7 @@ export default function AddressPicker({
   const [results, setResults] = useState<AddressResult[]>([]);
   const [selectedAddress, setSelectedAddress] = useState(value);
   const [showMap, setShowMap] = useState(true);
+  const [hasSearched, setHasSearched] = useState(false);
 
   const [position, setPosition] = useState<[number, number] | null>(
     Number.isFinite(parsedLat) && Number.isFinite(parsedLng)
@@ -121,6 +154,7 @@ export default function AddressPicker({
     setSelectedAddress('');
     setPosition(null);
     setShowMap(true);
+    setHasSearched(false);
 
     onChange({
       address: '',
@@ -133,46 +167,51 @@ export default function AddressPicker({
   selectedAddress.trim().length > 0 && position !== null;
 
   const searchAddress = async () => {
-    const trimmed = query.trim();
+  const trimmed = query.trim();
 
-    if (!trimmed) {
-      setResults([]);
-      return;
-    }
+  if (!trimmed) {
+    setResults([]);
+    setHasSearched(false);
+    return;
+  }
 
-    setLoading(true);
+  setLoading(true);
+  setHasSearched(true);
 
-    try {
-      const params = new URLSearchParams({
-        q: trimmed,
-        format: 'jsonv2',
-        addressdetails: '1',
-        limit: '5',
-      });
+  try {
+    const params = new URLSearchParams({
+      q: trimmed,
+      format: 'jsonv2',
+      addressdetails: '1',
+      limit: '5',
+      countrycodes: 'ph',
+      viewbox: '116,4,127,21',
+      bounded: '1',
+    });
 
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?${params.toString()}`,
-        {
-          headers: {
-            Accept: 'application/json',
-          },
-        }
-      );
-
-      if (!res.ok) {
-        throw new Error('Failed to search address');
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?${params.toString()}`,
+      {
+        headers: {
+          Accept: 'application/json',
+        },
       }
+    );
 
-      const data: AddressResult[] = await res.json();
-      setResults(data);
-      setShowMap(true);
-    } catch (error) {
-      console.error('Address search failed:', error);
-      setResults([]);
-    } finally {
-      setLoading(false);
+    if (!res.ok) {
+      throw new Error('Failed to search address');
     }
-  };
+
+    const data: AddressResult[] = await res.json();
+    setResults(data);
+    setShowMap(true);
+  } catch (error) {
+    console.error('Address search failed:', error);
+    setResults([]);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const reverseGeocode = async (lat: number, lng: number) => {
     try {
@@ -180,6 +219,7 @@ export default function AddressPicker({
         lat: String(lat),
         lon: String(lng),
         format: 'jsonv2',
+        countrycodes: 'ph',
       });
 
       const res = await fetch(
@@ -222,28 +262,39 @@ export default function AddressPicker({
   };
 
   const selectResult = (item: AddressResult) => {
-    const lat = Number(item.lat);
-    const lng = Number(item.lon);
+  const lat = Number(item.lat);
+  const lng = Number(item.lon);
 
-    setSelectedAddress(item.display_name);
-    setQuery(item.display_name);
-    setPosition([lat, lng]);
-    setResults([]);
-    setShowMap(true);
+  setSelectedAddress(item.display_name);
+  setQuery(item.display_name);
+  setPosition([lat, lng]);
+  setResults([]);
+  setShowMap(true);
+  setHasSearched(false);
 
-    onChange({
-      address: item.display_name,
-      latitude: item.lat,
-      longitude: item.lon,
-    });
-  };
+  onChange({
+    address: item.display_name,
+    latitude: item.lat,
+    longitude: item.lon,
+  });
+};
 
-  const handleMapPick = async (lat: number, lng: number) => {
-    setPosition([lat, lng]);
-    setResults([]);
-    setShowMap(true);
-    await reverseGeocode(lat, lng);
-  };
+const clampToPhilippines = (lat: number, lng: number): [number, number] => {
+  const clampedLat = Math.min(21, Math.max(4, lat));
+  const clampedLng = Math.min(127, Math.max(116, lng));
+  return [clampedLat, clampedLng];
+};
+
+ const handleMapPick = async (lat: number, lng: number) => {
+  const [safeLat, safeLng] = clampToPhilippines(lat, lng);
+
+  setPosition([safeLat, safeLng]);
+  setResults([]);
+  setShowMap(true);
+  setHasSearched(false);
+
+  await reverseGeocode(safeLat, safeLng);
+};
 
   return (
     <div className="space-y-4">
@@ -258,7 +309,11 @@ export default function AddressPicker({
               <input
                 type="text"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setHasSearched(false);
+                  setResults([]);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
@@ -268,6 +323,7 @@ export default function AddressPicker({
                 className="w-full px-4 py-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
                 placeholder="Search address, building, street, or landmark"
               />
+              
               <MapPin className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
             </div>
 
@@ -295,7 +351,7 @@ export default function AddressPicker({
             </div>
           </div>
 
-          {(results.length > 0 || query) && (
+          {(results.length > 0 || (hasSearched && query.trim().length > 0)) && (
             <div className="absolute left-0 right-0 top-full mt-2 z-[1000] rounded-2xl border border-slate-200 overflow-hidden bg-white shadow-xl">
                 {results.length > 0 ? (
                 results.map((item, index) => (
@@ -325,6 +381,7 @@ export default function AddressPicker({
 
         <p className="text-xs text-slate-500">
           Search your address, choose the closest result, then drag the pin if needed.
+          Only locations within the Philippines are supported.
         </p>
       </div>
 
@@ -361,37 +418,46 @@ export default function AddressPicker({
         {showMap && (
           <div className="h-[280px] w-full">
             <MapContainer
-              center={mapCenter}
-              zoom={mapZoom}
-              scrollWheelZoom
-              className="h-full w-full"
-            >
-              <RecenterMap center={mapCenter} zoom={mapZoom} />
+  center={mapCenter}
+  zoom={mapZoom}
+  scrollWheelZoom
+  maxBounds={PH_BOUNDS}
+  maxBoundsViscosity={1.0}
+  className="h-full w-full"
+>
+  <RecenterMap center={mapCenter} zoom={mapZoom} />
+  <MapBoundsGuard />
 
-              <TileLayer
-                attribution='&copy; OpenStreetMap contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
+  <TileLayer
+    attribution="&copy; OpenStreetMap contributors"
+    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+  />
 
-              <MapClickHandler onPick={handleMapPick} />
+  <MapClickHandler onPick={handleMapPick} />
 
-              {position && (
-                <Marker
-                  position={position}
-                  draggable
-                  icon={markerIcon}
-                  eventHandlers={{
-                    dragend: async (e) => {
-                      const marker = e.target as L.Marker;
-                      const next = marker.getLatLng();
-                      await handleMapPick(next.lat, next.lng);
-                    },
-                  }}
-                >
-                  <Popup>Selected address</Popup>
-                </Marker>
-              )}
-            </MapContainer>
+  {position && (
+    <Marker
+      position={position}
+      draggable
+      icon={markerIcon}
+      eventHandlers={{
+        dragend: async (e) => {
+          const marker = e.target as L.Marker;
+          const next = marker.getLatLng();
+
+          if (!isWithinPhilippines(next.lat, next.lng)) {
+            marker.setLatLng(position);
+            return;
+          }
+
+          await handleMapPick(next.lat, next.lng);
+        },
+      }}
+    >
+      <Popup>Selected address</Popup>
+    </Marker>
+  )}
+</MapContainer>
           </div>
         )}
 

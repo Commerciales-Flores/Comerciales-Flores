@@ -16,6 +16,8 @@ const Register = lazy(() => import('./pages/auth/Register'));
 const ResetPassword = lazy(() => import('./pages/auth/ResetPassword'));
 const AllProperties = lazy(() => import('./pages/public/AllProperties'));
 const VerifyDevice = lazy(() => import('./pages/auth/VerifyDevice'));
+const AuthCallback = lazy(() => import('./pages/auth/AuthCallback'));
+
 
 // Client Pages
 const ClientDashboard = lazy(() => import('./pages/client/Dashboard'));
@@ -25,7 +27,7 @@ const ClientPayments = lazy(() => import('./pages/client/Payments'));
 const ClientReview = lazy(() => import('./pages/client/Reviews'));
 const ClientNotifications = lazy(() => import('./pages/client/Notifications'));
 const ClientProfile = lazy(() => import('./pages/client/Profile'));
-const ClientMessages = lazy(() => import('./pages/client/messages'));
+const ClientMessages = lazy(() => import('./pages/client/Messages'));
 
 // Admin Pages
 const AdminDashboard = lazy(() => import('./pages/admin/Dashboard'));
@@ -126,6 +128,7 @@ function AppRoutes() {
               </GuestRoute>
             }
           />
+          <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/verify-device" element={<VerifyDevice />} />
           <Route path="/spaces" element={<AllProperties />} />

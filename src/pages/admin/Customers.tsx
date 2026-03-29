@@ -4,12 +4,16 @@ import { useAuth } from '../../contexts/AuthContext';
 import type { UnitType } from '../../data/types';
 import supabase from '../../supabaseClient';
 import { useNotifications } from '../../contexts/NotificationContext';
+import { DataTable, DataCell, ActionCell } from '../../components/common/DataTable';
+import TableBadge from '../../components/common/TableBadge';
 import { formatDateTime, formatDate } from '../../utils/date';
+import { useLocation } from 'react-router-dom';
 import {
   Search,
   Eye,
   Plus,
   X,
+  Check,
   UserX,
   Mail,
   Phone,
@@ -72,6 +76,8 @@ type NewCustomerForm = {
   is_active: boolean;
 };
 
+type DeletionDecisionAction = 'approve' | 'reject';
+
 const INITIAL_CUSTOMER_FORM: NewCustomerForm = {
   first_name: '',
   last_name: '',
@@ -117,6 +123,10 @@ function getPasswordStrengthLabel(score: number) {
     default:
       return '';
   }
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function formatLastLogin(value?: string | null) {
@@ -173,11 +183,13 @@ function CustomerDetailItem({
   value: string;
 }) {
   return (
-    <div className="flex items-start gap-4 rounded-2xl bg-gray-50 p-4">
-      <div className="rounded-lg bg-white p-2 text-blue-600 shadow-sm">{icon}</div>
-      <div>
+    <div className="flex min-w-0 items-start gap-4 rounded-2xl bg-gray-50 p-4">
+      <div className="shrink-0 rounded-lg bg-white p-2 text-blue-600 shadow-sm">{icon}</div>
+      <div className="min-w-0">
         <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">{label}</p>
-        <p className="text-sm font-bold leading-relaxed text-gray-800">{value || '—'}</p>
+        <p className="break-words text-sm font-bold leading-relaxed text-gray-800">
+          {value || '—'}
+        </p>
       </div>
     </div>
   );
@@ -236,9 +248,26 @@ function mapUserToCustomerRow(u: any): CustomerRow {
   };
 }
 
+function StatusBadge({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className: string;
+}) {
+  return (
+    <span
+      className={`inline-flex max-w-full items-center rounded-full px-2 py-1 text-[10px] font-bold leading-none ${className}`}
+    >
+      {children}
+    </span>
+  );
+}
+
 export default function AdminCustomers() {
   const { fetchUsersPage, updateUserStatus } = useUsers();
   const { user } = useAuth();
+  const { sendDeletionStatusNotification } = useNotifications();
 
   const [rows, setRows] = useState<CustomerRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -252,12 +281,26 @@ export default function AdminCustomers() {
   const [confirmDeactivateId, setConfirmDeactivateId] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [newCustomer, setNewCustomer] = useState<NewCustomerForm>(INITIAL_CUSTOMER_FORM);
+  const [pageInput, setPageInput] = useState('1');
+
+  const [isSubmittingDeletionDecision, setIsSubmittingDeletionDecision] = useState(false);
+  const [deletionDecisionState, setDeletionDecisionState] = useState<{
+    target: CustomerRow | null;
+    action: DeletionDecisionAction | null;
+  }>({
+    target: null,
+    action: null,
+  });
+
+  const location = useLocation();
+
+  const [restrictionModal, setRestrictionModal] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
 
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 250);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const [pageInput, setPageInput] = useState('1');
-
-  const { sendDeletionStatusNotification } = useNotifications();
 
   const customer = useMemo(
     () => (selectedCustomer ? rows.find((c) => c.id === selectedCustomer) ?? null : null),
@@ -281,11 +324,6 @@ export default function AdminCustomers() {
     () => getPasswordStrengthLabel(passwordScore),
     [passwordScore]
   );
-
-  const [restrictionModal, setRestrictionModal] = useState<{
-    title: string;
-    message: string;
-  } | null>(null);
 
   const openRestrictionModal = useCallback((message: string) => {
     setRestrictionModal({
@@ -324,18 +362,21 @@ export default function AdminCustomers() {
     [handlePageJump]
   );
 
-  const requestDeactivate = useCallback((target: CustomerRow | null) => {
-    if (!target) return;
-    if (!(target.is_active ?? true)) return;
+  const requestDeactivate = useCallback(
+    (target: CustomerRow | null) => {
+      if (!target) return;
+      if (!(target.is_active ?? true)) return;
 
-    if (target.deactivationBlocked) {
-      setConfirmDeactivateId(null);
-      openRestrictionModal(getDeactivationReason(target));
-      return;
-    }
+      if (target.deactivationBlocked) {
+        setConfirmDeactivateId(null);
+        openRestrictionModal(getDeactivationReason(target));
+        return;
+      }
 
-    setConfirmDeactivateId(target.id);
-  }, []);
+      setConfirmDeactivateId(target.id);
+    },
+    [openRestrictionModal]
+  );
 
   const closeDeactivateModal = useCallback(() => {
     setConfirmDeactivateId(null);
@@ -404,206 +445,241 @@ export default function AdminCustomers() {
         setConfirmDeactivateId(null);
       }
     },
-    [updateUserStatus, rows, confirmTarget, reloadUsers, selectedCustomer]
+    [updateUserStatus, rows, confirmTarget, reloadUsers, selectedCustomer, openRestrictionModal]
   );
 
-  const handleApproveDeletion = useCallback(async (target: CustomerRow | null) => {
-  if (!target) return;
+  const openDeletionDecisionModal = useCallback(
+    (target: CustomerRow | null, action: DeletionDecisionAction) => {
+      if (!target || isSubmittingDeletionDecision) return;
+      if (target.deletionStatus !== 'pending') return;
 
-  try {
-    const { data, error } = await supabase.functions.invoke('delete-user', {
-      body: { userId: target.id },
-    });
-
-    if (error || !data?.success) {
-      setRestrictionModal({
-        title: 'Deletion Failed',
-        message: data?.reason || 'Failed to permanently delete this customer account.',
+      setDeletionDecisionState({
+        target,
+        action,
       });
-      return;
-    }
+    },
+    [isSubmittingDeletionDecision]
+  );
 
-    await sendDeletionStatusNotification({
-      userId: target.id,
-      status: 'approved',
+  const closeDeletionDecisionModal = useCallback(() => {
+    if (isSubmittingDeletionDecision) return;
+
+    setDeletionDecisionState({
+      target: null,
+      action: null,
     });
+  }, [isSubmittingDeletionDecision]);
 
-    await reloadUsers();
-    setSelectedCustomer(null);
-    setRestrictionModal({
-      title: 'Deletion Completed',
-      message: 'The customer account has been permanently deleted.',
-    });
-  } catch (error) {
-    console.error('Failed to approve deletion:', error);
-    setRestrictionModal({
-      title: 'Deletion Failed',
-      message: 'An unexpected error occurred while deleting this account.',
-    });
-  }
-}, [reloadUsers]);
+  const handleDeletionDecision = useCallback(async () => {
+    const target = deletionDecisionState.target;
+    const action = deletionDecisionState.action;
 
-const handleRejectDeletion = useCallback(async (target: CustomerRow | null) => {
-  if (!target) return;
+    if (!target || !action || isSubmittingDeletionDecision) return;
 
-  try {
-    const { error } = await supabase
-      .from('account_deletion_requests')
-      .update({
-        status: 'rejected',
-        admin_note: 'Deletion request was rejected after admin review.',
-        reviewed_at: new Date().toISOString(),
-        reviewed_by: user?.id ?? null,
-      })
-      .eq('user_id', target.id)
-      .eq('status', 'pending');
+    try {
+      setIsSubmittingDeletionDecision(true);
 
-    if (error) {
-      console.error('Failed to reject deletion request:', error);
-      setRestrictionModal({
-        title: 'Update Failed',
-        message: 'Failed to reject the deletion request.',
+      const nextStatus = action === 'approve' ? 'approved' : 'rejected';
+      const nextNote =
+        action === 'approve'
+          ? 'Deletion request was approved after admin review.'
+          : 'Deletion request was rejected after admin review.';
+
+      const { data, error } = await supabase
+        .from('account_deletion_requests')
+        .update({
+          status: nextStatus,
+          admin_note: nextNote,
+          reviewed_at: new Date().toISOString(),
+          reviewed_by: user?.id ?? null,
+        })
+        .eq('user_id', target.id)
+        .eq('status', 'pending')
+        .select('id')
+        .limit(1);
+
+      if (error) {
+        console.error(`Failed to ${action} deletion request:`, error);
+        setRestrictionModal({
+          title: action === 'approve' ? 'Approval Failed' : 'Update Failed',
+          message:
+            action === 'approve'
+              ? 'Failed to approve the deletion request.'
+              : 'Failed to reject the deletion request.',
+        });
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        await reloadUsers();
+        setDeletionDecisionState({
+          target: null,
+          action: null,
+        });
+        setRestrictionModal({
+          title: 'Already Processed',
+          message: 'This account deletion request was already processed.',
+        });
+        return;
+      }
+
+      await sendDeletionStatusNotification({
+        userId: target.id,
+        status: nextStatus,
       });
-      return;
-    }
 
-    await sendDeletionStatusNotification({
-      userId: target.id,
-      status: 'rejected',
-    });
-
-    await reloadUsers();
-    setRestrictionModal({
-      title: 'Request Rejected',
-      message: 'The account deletion request has been rejected.',
-    });
-  } catch (error) {
-    console.error('Failed to reject deletion request:', error);
-    setRestrictionModal({
-      title: 'Update Failed',
-      message: 'An unexpected error occurred while rejecting the request.',
-    });
-  }
-}, [reloadUsers]);
-
-const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
-  if (!target) return;
-
-  try {
-    const { data: profile, error: profileError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('user_id', target.id)
-      .maybeSingle();
-
-    if (profileError) {
-      console.error('Failed to fetch customer profile for export:', profileError);
-      setRestrictionModal({
-        title: 'Export Failed',
-        message: 'Failed to load customer profile for export.',
+      await reloadUsers();
+      setSelectedCustomer(null);
+      setDeletionDecisionState({
+        target: null,
+        action: null,
       });
-      return;
-    }
 
-    const { data: reservations, error: reservationsError } = await supabase
-      .from('reservations')
-      .select('*')
-      .eq('user_id', target.id)
-      .order('created_at', { ascending: false });
-
-    if (reservationsError) {
-      console.error('Failed to fetch reservations for export:', reservationsError);
       setRestrictionModal({
-        title: 'Export Failed',
-        message: 'Failed to load reservation history for export.',
+        title: nextStatus === 'approved' ? 'Request Approved' : 'Request Rejected',
+        message:
+          nextStatus === 'approved'
+            ? 'The deletion request has been approved. The user may now proceed with account deletion.'
+            : 'The account deletion request has been rejected.',
       });
-      return;
-    }
-
-    const { data: payments, error: paymentsError } = await supabase
-      .from('payments')
-      .select('*')
-      .eq('user_id', target.id)
-      .order('date', { ascending: false });
-
-    if (paymentsError) {
-      console.error('Failed to fetch payments for export:', paymentsError);
+    } catch (error) {
+      console.error(`Failed to ${action} deletion request:`, error);
       setRestrictionModal({
-        title: 'Export Failed',
-        message: 'Failed to load payment history for export.',
+        title: action === 'approve' ? 'Approval Failed' : 'Update Failed',
+        message: 'An unexpected error occurred while processing the request.',
       });
-      return;
+    } finally {
+      setIsSubmittingDeletionDecision(false);
     }
+  }, [
+    deletionDecisionState,
+    isSubmittingDeletionDecision,
+    reloadUsers,
+    sendDeletionStatusNotification,
+    user?.id,
+  ]);
 
-    const { data: reviews, error: reviewsError } = await supabase
-      .from('reviews')
-      .select('*')
-      .eq('user_id', target.id)
-      .order('date', { ascending: false });
+  const handleExportCustomer = useCallback(
+    async (target: CustomerRow | null) => {
+      if (!target) return;
 
-    if (reviewsError) {
-      console.error('Failed to fetch reviews for export:', reviewsError);
-    }
+      try {
+        const { data: profile, error: profileError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('user_id', target.id)
+          .maybeSingle();
 
-    const exportPayload = {
-      exported_at: new Date().toISOString(),
-      exported_by_admin_id: user?.id ?? null,
-      customer: {
-        id: target.id,
-        publicId: target.publicId ?? null,
-        firstName: target.firstName,
-        lastName: target.lastName,
-        email: target.email,
-        contactNumber: target.contactNumber ?? null,
-        address: target.address ?? null,
-        isActive: target.is_active ?? true,
-        lastLogin: target.lastLogin ?? null,
-        deletionStatus: target.deletionStatus ?? null,
-        deletionRequestReason: target.deletionRequestReason ?? null,
-      },
-      profile,
-      reservations: reservations ?? [],
-      payments: payments ?? [],
-      reviews: reviews ?? [],
-      summary: {
-        reservationCount: reservations?.length ?? 0,
-        paymentCount: payments?.length ?? 0,
-        reviewCount: reviews?.length ?? 0,
-        verifiedPaymentTotal:
-          payments
-            ?.filter((payment) => payment.status === 'verified')
-            .reduce((sum, payment) => sum + Number(payment.amount || 0), 0) ?? 0,
-      },
-    };
+        if (profileError) {
+          console.error('Failed to fetch customer profile for export:', profileError);
+          setRestrictionModal({
+            title: 'Export Failed',
+            message: 'Failed to load customer profile for export.',
+          });
+          return;
+        }
 
-    const blob = new Blob([JSON.stringify(exportPayload, null, 2)], {
-      type: 'application/json',
-    });
+        const { data: reservations, error: reservationsError } = await supabase
+          .from('reservations')
+          .select('*')
+          .eq('user_id', target.id)
+          .order('created_at', { ascending: false });
 
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    const safeName = `${target.firstName}_${target.lastName}`.replace(/\s+/g, '_');
-    const safePublicId = (target.publicId ?? target.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+        if (reservationsError) {
+          console.error('Failed to fetch reservations for export:', reservationsError);
+          setRestrictionModal({
+            title: 'Export Failed',
+            message: 'Failed to load reservation history for export.',
+          });
+          return;
+        }
 
-    link.href = url;
-    link.download = `customer_export_${safeName}_${safePublicId}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+        const { data: payments, error: paymentsError } = await supabase
+          .from('payments')
+          .select('*')
+          .eq('user_id', target.id)
+          .order('date', { ascending: false });
 
-    setRestrictionModal({
-      title: 'Export Ready',
-      message: 'Customer record has been downloaded as JSON.',
-    });
-  } catch (error) {
-    console.error('Failed to export customer data:', error);
-    setRestrictionModal({
-      title: 'Export Failed',
-      message: 'An unexpected error occurred while exporting customer data.',
-    });
-  }
-}, [user?.id]);
+        if (paymentsError) {
+          console.error('Failed to fetch payments for export:', paymentsError);
+          setRestrictionModal({
+            title: 'Export Failed',
+            message: 'Failed to load payment history for export.',
+          });
+          return;
+        }
+
+        const { data: reviews, error: reviewsError } = await supabase
+          .from('reviews')
+          .select('*')
+          .eq('user_id', target.id)
+          .order('date', { ascending: false });
+
+        if (reviewsError) {
+          console.error('Failed to fetch reviews for export:', reviewsError);
+        }
+
+        const exportPayload = {
+          exported_at: new Date().toISOString(),
+          exported_by_admin_id: user?.id ?? null,
+          customer: {
+            id: target.id,
+            publicId: target.publicId ?? null,
+            firstName: target.firstName,
+            lastName: target.lastName,
+            email: target.email,
+            contactNumber: target.contactNumber ?? null,
+            address: target.address ?? null,
+            isActive: target.is_active ?? true,
+            lastLogin: target.lastLogin ?? null,
+            deletionStatus: target.deletionStatus ?? null,
+            deletionRequestReason: target.deletionRequestReason ?? null,
+          },
+          profile,
+          reservations: reservations ?? [],
+          payments: payments ?? [],
+          reviews: reviews ?? [],
+          summary: {
+            reservationCount: reservations?.length ?? 0,
+            paymentCount: payments?.length ?? 0,
+            reviewCount: reviews?.length ?? 0,
+            verifiedPaymentTotal:
+              payments
+                ?.filter((payment) => payment.status === 'verified')
+                .reduce((sum, payment) => sum + Number(payment.amount || 0), 0) ?? 0,
+          },
+        };
+
+        const blob = new Blob([JSON.stringify(exportPayload, null, 2)], {
+          type: 'application/json',
+        });
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const safeName = `${target.firstName}_${target.lastName}`.replace(/\s+/g, '_');
+        const safePublicId = (target.publicId ?? target.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+
+        link.href = url;
+        link.download = `customer_export_${safeName}_${safePublicId}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        setRestrictionModal({
+          title: 'Export Ready',
+          message: 'Customer record has been downloaded as JSON.',
+        });
+      } catch (error) {
+        console.error('Failed to export customer data:', error);
+        setRestrictionModal({
+          title: 'Export Failed',
+          message: 'An unexpected error occurred while exporting customer data.',
+        });
+      }
+    },
+    [user?.id]
+  );
 
   useEffect(() => {
     setPageInput(String(page));
@@ -620,11 +696,14 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
       setLoading(true);
 
       try {
-        const result = await fetchUsersPage({
-          page,
-          pageSize,
-          searchTerm: debouncedSearchTerm,
-        });
+        const [result] = await Promise.all([
+          fetchUsersPage({
+            page,
+            pageSize,
+            searchTerm: debouncedSearchTerm,
+          }),
+          wait(250),
+        ]);
 
         if (cancelled) return;
 
@@ -649,7 +728,7 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
     return () => {
       cancelled = true;
     };
-  }, [fetchUsersPage, page, pageSize, debouncedSearchTerm]);
+  }, [location.key, fetchUsersPage, page, pageSize, debouncedSearchTerm]);
 
   useEffect(() => {
     if (!confirmDeactivateId) return;
@@ -658,6 +737,19 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
       setConfirmDeactivateId(null);
     }
   }, [confirmDeactivateId, confirmTarget]);
+
+  useEffect(() => {
+    if (!deletionDecisionState.target) return;
+
+    const latestTarget = rows.find((row) => row.id === deletionDecisionState.target?.id) ?? null;
+
+    if (!latestTarget || latestTarget.deletionStatus !== 'pending') {
+      setDeletionDecisionState({
+        target: null,
+        action: null,
+      });
+    }
+  }, [rows, deletionDecisionState.target]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -676,7 +768,8 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
             onClick={() => setShowAddModal(true)}
             className="hidden cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-100 transition-all active:scale-95 hover:bg-blue-700 lg:flex"
           >
-            <Plus className="size-5" /> <span className="hidden font-medium sm:inline">Add Customer</span>
+            <Plus className="size-5" />
+            <span className="hidden font-medium sm:inline">Add Customer</span>
           </button>
         </div>
 
@@ -704,7 +797,7 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
                 </div>
               }
               title="Loading customers..."
-              description="Please wait while customer records are being retrieved."
+              description="Fetching customer data, activity, and account status. This may take a few seconds on first load, but will be faster next time."
             />
           ) : hasNoCustomers ? (
             <EmptyState
@@ -729,14 +822,14 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
                   </div>
 
                   <div className="min-w-0">
-                    <p className="truncate font-bold leading-tight text-gray-900">
+                    <p className="break-words font-bold leading-tight text-gray-900">
                       {c.firstName} {c.lastName}
                     </p>
-                    <p className="mt-0.5 text-[10px] font-mono text-gray-400">
+                    <p className="mt-0.5 break-words text-[10px] font-mono text-gray-400">
                       {c.publicId ?? c.id}
                     </p>
-                    <p className="mt-1 truncate text-xs text-gray-500">{c.email || '—'}</p>
-                    <p className="mt-1 text-[11px] text-gray-400">
+                    <p className="mt-1 break-words text-xs text-gray-500">{c.email || '—'}</p>
+                    <p className="mt-1 break-words text-[11px] text-gray-400">
                       {formatLastLogin(c.lastLogin)}
                     </p>
                   </div>
@@ -744,32 +837,30 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
 
                 <div className="ml-2 flex shrink-0 flex-col items-end gap-2">
                   <div className="flex flex-col items-end gap-1">
-                    <span
-                      className={`rounded-md px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${
+                    <StatusBadge
+                      className={
                         c.is_active ?? true
                           ? 'bg-green-100 text-green-700'
                           : 'bg-red-100 text-red-700'
-                      }`}
+                      }
                     >
                       {(c.is_active ?? true) ? 'Active' : 'Inactive'}
-                    </span>
+                    </StatusBadge>
 
                     {c.hasActiveOccupancy && (
-                      <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-700">
-                        Occupied
-                      </span>
+                      <StatusBadge className="bg-amber-100 text-amber-700">Occupied</StatusBadge>
                     )}
 
                     {c.hasUpcomingBooking && (
-                      <span className="rounded-md bg-blue-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-blue-700">
-                        Upcoming
-                      </span>
+                      <StatusBadge className="bg-blue-100 text-blue-700">Upcoming</StatusBadge>
                     )}
 
                     {c.hasUnpaidBalance && (
-                      <span className="rounded-md bg-rose-100 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-rose-700">
-                        Unpaid
-                      </span>
+                      <StatusBadge className="bg-rose-100 text-rose-700">Unpaid</StatusBadge>
+                    )}
+
+                    {c.deletionStatus === 'pending' && (
+                      <StatusBadge className="bg-purple-100 text-purple-700">Pending</StatusBadge>
                     )}
                   </div>
 
@@ -780,7 +871,7 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
           )}
         </div>
 
-        <div className="hidden overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm lg:block">
+        <div className="hidden lg:block">
           {loading ? (
             <EmptyState
               icon={
@@ -789,7 +880,7 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
                 </div>
               }
               title="Loading customers..."
-              description="Please wait while customer records are being retrieved."
+              description="Fetching customer data, activity, and account status. This may take a few seconds on first load, but will be faster next time."
             />
           ) : hasNoCustomers ? (
             <EmptyState
@@ -798,184 +889,166 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
               description="Customer accounts will appear here once users register or are added by an administrator."
             />
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="border-b border-gray-200 bg-gray-50">
-                  <tr>
-                    {[
-                      'Name',
-                      'User ID',
-                      'Email',
-                      'Contact',
-                      'Last Login',
-                      'Business Status',
-                      'Account Status',
-                      'Actions',
-                    ].map((h) => (
-                      <th
-                        key={h}
-                        className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
+            <DataTable
+              headers={[
+                'Customer',
+                'User ID',
+                'Email',
+                'Contact',
+                'Last Login',
+                'Business',
+                'Account',
+                'Actions',
+              ]}
+            >
+              {hasNoSearchResults ? (
+                <tr>
+                  <td colSpan={8} className="px-6 py-20 text-center">
+                    <NoCustomerResults />
+                  </td>
+                </tr>
+              ) : (
+                rows.map((c) => (
+                  <tr key={c.id} className="transition-colors hover:bg-gray-50/70">
+                    <DataCell
+                      value={
+                        <div>
+                          <p className="break-words font-semibold text-gray-900">
+                            {c.firstName} {c.lastName}
+                          </p>
+                        </div>
+                      }
+                    />
+
+                    <DataCell value={c.publicId ?? c.id} mono />
+                    <DataCell value={c.email} />
+                    <DataCell value={c.contactNumber} />
+                    <DataCell value={formatLastLogin(c.lastLogin)} />
+
+                    <DataCell
+                      value={
+                        <div className="flex flex-wrap gap-2">
+                          {c.hasActiveOccupancy ? (
+                            <TableBadge className="bg-amber-100 text-amber-700">
+                              Occupied
+                            </TableBadge>
+                          ) : (
+                            <TableBadge className="bg-gray-100 text-gray-600">
+                              No occupancy
+                            </TableBadge>
+                          )}
+
+                          {c.hasUpcomingBooking && (
+                            <TableBadge className="bg-blue-100 text-blue-700">
+                              Upcoming
+                            </TableBadge>
+                          )}
+
+                          {c.hasUnpaidBalance && (
+                            <TableBadge className="bg-rose-100 text-rose-700">Unpaid</TableBadge>
+                          )}
+                        </div>
+                      }
+                    />
+
+                    <DataCell
+                      nowrap
+                      value={
+                        <div className="flex flex-wrap gap-2">
+                          <TableBadge
+                            className={
+                              c.is_active
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-red-100 text-red-700'
+                            }
+                          >
+                            {c.is_active ? 'Active' : 'Inactive'}
+                          </TableBadge>
+
+                          {c.deletionStatus === 'pending' && (
+                            <TableBadge className="bg-purple-100 text-purple-700">
+                              Pending
+                            </TableBadge>
+                          )}
+
+                          {c.deletionStatus === 'approved' && (
+                            <TableBadge className="bg-emerald-100 text-emerald-700">
+                              Approved
+                            </TableBadge>
+                          )}
+
+                          {c.deletionStatus === 'rejected' && (
+                            <TableBadge className="bg-slate-100 text-slate-700">
+                              Rejected
+                            </TableBadge>
+                          )}
+                        </div>
+                      }
+                    />
+
+                    <ActionCell>
+                      <button
+                        onClick={() => setSelectedCustomer(c.id)}
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-blue-600 hover:bg-blue-100"
+                        title="View details"
                       >
-                        {h}
-                      </th>
-                    ))}
+                        <Eye size={16} />
+                      </button>
+
+                      <button
+                        onClick={() => void handleExportCustomer(c)}
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-600 hover:bg-blue-100"
+                        title="Export customer"
+                      >
+                        <Download size={16} />
+                      </button>
+
+                      {c.deletionStatus === 'pending' ? (
+                      <>
+                        <button
+                          onClick={() => openDeletionDecisionModal(c, 'approve')}
+                          disabled={isSubmittingDeletionDecision}
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-indigo-600 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          title="Approve deletion"
+                        >
+                          <Check size={16} />
+                        </button>
+
+                        <button
+                          onClick={() => openDeletionDecisionModal(c, 'reject')}
+                          disabled={isSubmittingDeletionDecision}
+                          className="flex h-8 w-8 items-center justify-center rounded-md text-slate-600 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          title="Reject deletion"
+                        >
+                          <X size={16} />
+                        </button>
+                      </>
+                    ) : c.deletionStatus === 'approved' ? (
+                      <span className="inline-flex h-8 items-center rounded-md px-2 text-[11px] font-bold text-emerald-700">
+                        Awaiting user deletion
+                      </span>
+                    ) : c.is_active ? (
+                      <button
+                        onClick={() => requestDeactivate(c)}
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-red-500 hover:bg-red-50"
+                        title="Deactivate account"
+                      >
+                        <UserX size={16} />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => void toggleStatus(c.id, true)}
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-green-600 hover:bg-green-50"
+                        title="Reactivate account"
+                      >
+                        <RotateCcw size={16} />
+                      </button>
+                    )}
+                    </ActionCell>
                   </tr>
-                </thead>
-
-                <tbody className="divide-y divide-gray-100">
-                  {hasNoSearchResults ? (
-                    <tr>
-                      <td colSpan={8} className="px-6 py-20 text-center">
-                        <NoCustomerResults />
-                      </td>
-                    </tr>
-                  ) : (
-                    rows.map((c) => (
-                      <tr key={c.id} className="transition-colors hover:bg-blue-50/30">
-                        <td className="w-[220px] px-6 py-4 text-sm font-semibold text-gray-900">
-                          {c.firstName} {c.lastName}
-                        </td>
-
-                        <td className="w-[180px] px-6 py-4 text-sm font-semibold text-gray-900">
-                          {c.publicId ?? c.id}
-                        </td>
-
-                        <td className="w-[220px] px-6 py-4 text-sm text-gray-600">
-                          {c.email || '—'}
-                        </td>
-
-                        <td className="w-[160px] px-6 py-4 text-sm text-gray-600">
-                          {c.contactNumber || '—'}
-                        </td>
-
-                        <td className="w-[180px] px-6 py-4 text-sm text-gray-500">
-                          {formatLastLogin(c.lastLogin)}
-                        </td>
-
-                        <td className="w-[240px] px-6 py-4">
-                          <div className="flex flex-wrap items-center gap-2">
-                            {c.hasActiveOccupancy ? (
-                              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-800">
-                                Occupied
-                              </span>
-                            ) : (
-                              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[10px] font-bold text-gray-600">
-                                No active occupancy
-                              </span>
-                            )}
-
-                            {c.hasUpcomingBooking && (
-                              <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[10px] font-bold text-blue-800">
-                                Upcoming
-                              </span>
-                            )}
-
-                            {c.hasUnpaidBalance && (
-                              <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-bold text-rose-800">
-                                Unpaid
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="w-[180px] px-6 py-4">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span
-                              className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
-                                c.is_active ?? true
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-red-100 text-red-800'
-                              }`}
-                            >
-                              {(c.is_active ?? true) ? 'Active' : 'Inactive'}
-                            </span>
-
-                            {c.deletionStatus === 'pending' && (
-                              <span className="rounded-full bg-purple-100 px-2.5 py-1 text-[10px] font-bold text-purple-800">
-                                Deletion Pending
-                              </span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="w-[220px] px-6 py-4">
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => setSelectedCustomer(c.id)}
-                              className="rounded-lg p-2 text-blue-600 hover:bg-blue-100"
-                              title="View customer"
-                            >
-                              <Eye size={18} />
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => void handleExportCustomer(c)}
-                              className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
-                              title="Download customer data"
-                            >
-                              <Download size={18} />
-                            </button>
-
-                            {(c.is_active ?? true) ? (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  requestDeactivate(c);
-                                }}
-                                title={
-                                  c.deactivationBlocked
-                                    ? getDeactivationReason(c)
-                                    : 'Deactivate customer'
-                                }
-                                className={`rounded-lg p-2 ${
-                                  c.deactivationBlocked
-                                    ? 'text-amber-500 hover:bg-amber-50'
-                                    : 'text-red-500 hover:bg-red-50'
-                                }`}
-                              >
-                                <UserX size={18} />
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => void toggleStatus(c.id, true)}
-                                className="rounded-lg p-2 text-green-600 hover:bg-green-50"
-                                title="Reactivate customer"
-                              >
-                                <RotateCcw size={18} />
-                              </button>
-                            )}
-
-                            {c.deletionStatus === 'pending' && (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleApproveDeletion(c)}
-                                  className="rounded-lg p-2 text-indigo-600 hover:bg-indigo-100"
-                                  title="Approve and permanently delete account"
-                                >
-                                  ✓
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => void handleRejectDeletion(c)}
-                                  className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"
-                                  title="Reject deletion request"
-                                >
-                                  ✕
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                ))
+              )}
+            </DataTable>
           )}
         </div>
 
@@ -1040,12 +1113,8 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
                 </div>
 
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">
-                    {restrictionModal.title}
-                  </h3>
-                  <p className="mt-1 text-sm text-gray-500">
-                    {restrictionModal.message}
-                  </p>
+                  <h3 className="text-lg font-bold text-gray-900">{restrictionModal.title}</h3>
+                  <p className="mt-1 text-sm text-gray-500">{restrictionModal.message}</p>
                 </div>
 
                 <div className="mt-2 flex w-full">
@@ -1054,6 +1123,63 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
                     className="w-full rounded-xl bg-amber-500 py-3 font-bold text-white shadow-lg shadow-amber-200 transition-all hover:bg-amber-600"
                   >
                     Understood
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {deletionDecisionState.target && deletionDecisionState.action && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
+            <div className="animate-in zoom-in-95 fade-in-0 w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl duration-200">
+              <div className="flex flex-col items-center gap-4 text-center">
+                <div className="flex size-14 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+                  {deletionDecisionState.action === 'approve' ? (
+                    <Check size={28} />
+                  ) : (
+                    <X size={28} />
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    {deletionDecisionState.action === 'approve'
+                      ? 'Approve Deletion Request'
+                      : 'Reject Deletion Request'}
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    {deletionDecisionState.action === 'approve'
+                      ? 'Are you sure you want to approve this account deletion request?'
+                      : 'Are you sure you want to reject this account deletion request?'}
+                  </p>
+                </div>
+
+                <div className="mt-2 flex w-full gap-3">
+                  <button
+                    onClick={closeDeletionDecisionModal}
+                    disabled={isSubmittingDeletionDecision}
+                    className="flex-1 rounded-xl bg-gray-100 py-3 font-bold text-gray-600 transition-all hover:bg-gray-200 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    onClick={() => void handleDeletionDecision()}
+                    disabled={isSubmittingDeletionDecision}
+                    className={`flex-1 rounded-xl py-3 font-bold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+                      deletionDecisionState.action === 'approve'
+                        ? 'bg-indigo-600 hover:bg-indigo-700'
+                        : 'bg-slate-700 hover:bg-slate-800'
+                    }`}
+                  >
+                    {isSubmittingDeletionDecision
+                      ? deletionDecisionState.action === 'approve'
+                        ? 'Approving...'
+                        : 'Rejecting...'
+                      : deletionDecisionState.action === 'approve'
+                        ? 'Approve'
+                        : 'Reject'}
                   </button>
                 </div>
               </div>
@@ -1098,7 +1224,8 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
 
         {customer && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
-<div className="animate-in zoom-in-95 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-[2.5rem] bg-white shadow-xl duration-200">              <div className="relative flex h-28 shrink-0 items-end bg-gradient-to-br from-blue-600 to-blue-800 px-8 pb-4">
+            <div className="animate-in zoom-in-95 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-[2.5rem] bg-white shadow-xl duration-200">
+              <div className="relative flex h-28 shrink-0 items-end bg-gradient-to-br from-blue-600 to-blue-800 px-8 pb-4">
                 <button
                   onClick={closeCustomerModal}
                   className="absolute right-5 top-5 rounded-full bg-white/10 p-2 text-white transition-all hover:bg-white/20"
@@ -1114,18 +1241,18 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
               </div>
 
               <div className="flex-1 overflow-y-auto px-8 pb-8 pt-16">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-gray-900">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h2 className="break-words text-2xl font-bold tracking-tight text-gray-900">
                       {customer.firstName} {customer.lastName}
                     </h2>
-                    <p className="mt-1 flex items-center gap-1.5 text-sm font-mono uppercase text-gray-400">
+                    <p className="mt-1 flex items-center gap-1.5 break-words text-sm font-mono uppercase text-gray-400">
                       <Hash size={12} /> {customer.publicId ?? customer.id}
                     </p>
                   </div>
 
                   <div
-                    className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider ${
+                    className={`shrink-0 flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider ${
                       customer.is_active ?? true
                         ? 'bg-green-50 text-green-600'
                         : 'bg-red-50 text-red-600'
@@ -1142,39 +1269,33 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   {customer.hasActiveOccupancy && (
-                    <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-800">
-                      Occupied
-                    </span>
+                    <StatusBadge className="bg-amber-100 text-amber-800">Occupied</StatusBadge>
                   )}
 
                   {customer.hasUpcomingBooking && (
-                    <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[10px] font-bold text-blue-800">
+                    <StatusBadge className="bg-blue-100 text-blue-800">
                       Upcoming Booking
-                    </span>
+                    </StatusBadge>
                   )}
 
                   {customer.hasUnpaidBalance && (
-                    <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-bold text-rose-800">
+                    <StatusBadge className="bg-rose-100 text-rose-800">
                       Unpaid Balance
-                    </span>
+                    </StatusBadge>
                   )}
 
                   {customer.deletionStatus === 'pending' && (
-                    <span className="rounded-full bg-purple-100 px-2.5 py-1 text-[10px] font-bold text-purple-800">
+                    <StatusBadge className="bg-purple-100 text-purple-800">
                       Deletion Pending
-                    </span>
+                    </StatusBadge>
                   )}
 
                   {customer.deletionStatus === 'approved' && (
-                    <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-[10px] font-bold text-indigo-800">
-                      Approved
-                    </span>
+                    <StatusBadge className="bg-indigo-100 text-indigo-800">Approved</StatusBadge>
                   )}
 
                   {customer.deletionStatus === 'rejected' && (
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-700">
-                      Rejected
-                    </span>
+                    <StatusBadge className="bg-slate-100 text-slate-700">Rejected</StatusBadge>
                   )}
                 </div>
 
@@ -1240,7 +1361,9 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
                     <p className="text-[11px] font-bold uppercase tracking-widest text-amber-700">
                       Deactivation Restricted
                     </p>
-                    <p className="mt-1 text-sm text-amber-800">{customer.deactivationReason}</p>
+                    <p className="mt-1 break-words text-sm text-amber-800">
+                      {customer.deactivationReason}
+                    </p>
                   </div>
                 )}
 
@@ -1261,7 +1384,11 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
                       Export JSON
                     </button>
 
-                    {(customer.is_active ?? true) ? (
+                    {customer.deletionStatus === 'approved' ? (
+                      <div className="flex-1 rounded-2xl border border-emerald-200 bg-emerald-50 py-4 text-center text-xs font-bold uppercase tracking-widest text-emerald-700">
+                        Awaiting user deletion
+                      </div>
+                    ) : (customer.is_active ?? true) ? (
                       <button
                         type="button"
                         onClick={() => requestDeactivate(customer)}
@@ -1287,19 +1414,41 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <button
                         type="button"
-                        onClick={() => void handleApproveDeletion(customer)}
-                        className="rounded-2xl bg-indigo-600 py-4 text-xs font-bold uppercase tracking-widest text-white shadow-lg shadow-indigo-200 transition-all hover:bg-indigo-700"
+                        onClick={() => openDeletionDecisionModal(customer, 'approve')}
+                        disabled={isSubmittingDeletionDecision}
+                        className="rounded-2xl bg-indigo-600 py-4 text-xs font-bold uppercase tracking-widest text-white shadow-lg shadow-indigo-200 transition-all hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        Approve Deletion
+                        {isSubmittingDeletionDecision &&
+                        deletionDecisionState.target?.id === customer.id &&
+                        deletionDecisionState.action === 'approve'
+                          ? 'Approving...'
+                          : 'Approve Deletion'}
                       </button>
 
                       <button
                         type="button"
-                        onClick={() => void handleRejectDeletion(customer)}
-                        className="rounded-2xl border border-slate-200 bg-slate-50 py-4 text-xs font-bold uppercase tracking-widest text-slate-700 transition-all hover:bg-slate-100"
+                        onClick={() => openDeletionDecisionModal(customer, 'reject')}
+                        disabled={isSubmittingDeletionDecision}
+                        className="rounded-2xl border border-slate-200 bg-slate-50 py-4 text-xs font-bold uppercase tracking-widest text-slate-700 transition-all hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        Reject Request
+                        {isSubmittingDeletionDecision &&
+                        deletionDecisionState.target?.id === customer.id &&
+                        deletionDecisionState.action === 'reject'
+                          ? 'Rejecting...'
+                          : 'Reject Request'}
                       </button>
+                    </div>
+                  )}
+
+                  {customer.deletionStatus === 'approved' && (
+                    <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                      <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-700">
+                        Request Approved
+                      </p>
+                      <p className="mt-1 text-sm text-emerald-800">
+                        This request has been approved. The user must complete the final account
+                        deletion from their profile.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -1309,12 +1458,11 @@ const handleExportCustomer = useCallback(async (target: CustomerRow | null) => {
         )}
 
         {showAddModal && (
-<div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 transition-all duration-300">            
-<div className="animate-in zoom-in-95 fade-in-0 w-full max-w-lg overflow-hidden rounded-[2rem] border border-slate-200/60 bg-white shadow-xl duration-300">              <div className="flex items-center justify-between bg-slate-900 p-6">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 transition-all duration-300">
+            <div className="animate-in zoom-in-95 fade-in-0 w-full max-w-lg overflow-hidden rounded-[2rem] border border-slate-200/60 bg-white shadow-xl duration-300">
+              <div className="flex items-center justify-between bg-slate-900 p-6">
                 <div>
-                  <h2 className="text-xl font-bold tracking-tight text-white">
-                    Add New Customer
-                  </h2>
+                  <h2 className="text-xl font-bold tracking-tight text-white">Add New Customer</h2>
                   <p className="mt-1 text-xs font-medium text-slate-400">
                     Create a new client profile for Comerciales Flores
                   </p>

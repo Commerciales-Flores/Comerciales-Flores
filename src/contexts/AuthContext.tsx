@@ -89,6 +89,10 @@ login: (
     success: boolean;
     reason?: string;
   }>;
+  changeEmail: (params: {
+    newEmail: string;
+    currentPassword: string;
+  }) => Promise<{ success: boolean; message?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -107,6 +111,13 @@ if (import.meta.env.DEV) {
 const STORAGE_KEY = 'currentUser';
 const WAS_LOGGED_IN_KEY = 'wasLoggedIn';
 const LAST_LOGIN_USER_KEY = 'lastLoginUser';
+const LOGOUT_BROADCAST_KEY = 'auth:logout';
+
+const AUTH_CALLBACK_PATH = '/auth/callback';
+const RESET_PASSWORD_PATH = '/reset-password';
+
+const getAuthRedirectUrl = (path: string) =>
+  `${window.location.origin}${path}`;
 
 const ALLOWED_AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_AVATAR_SIZE = 2 * 1024 * 1024; // 2 MB
@@ -149,14 +160,35 @@ const getFormattedTime = () => formatTime(new Date());
 
 const getDeviceFingerprint = (): string => {
   const storageKey = 'device_fingerprint';
+  const signatureKey = 'device_signature_v1';
+
   let fingerprint = localStorage.getItem(storageKey);
+  let signature = localStorage.getItem(signatureKey);
+
+  const buildSignature = () => {
+    const parts = [
+      navigator.userAgent || '',
+      navigator.language || '',
+      String(window.screen?.width || ''),
+      String(window.screen?.height || ''),
+      Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+      navigator.platform || '',
+    ];
+
+    return btoa(parts.join('|')).slice(0, 120);
+  };
 
   if (!fingerprint) {
     fingerprint = crypto.randomUUID();
     localStorage.setItem(storageKey, fingerprint);
   }
 
-  return fingerprint;
+  if (!signature) {
+    signature = buildSignature();
+    localStorage.setItem(signatureKey, signature);
+  }
+
+  return `${fingerprint}.${signature}`;
 };
 
 const mapProfileToUser = (data: any): User => ({
@@ -494,6 +526,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isMountedRef.current = false;
     };
   }, [clearUserSession, fetchOrCreateUserProfile, persistUserSession]);
+
+  useEffect(() => {
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key !== LOGOUT_BROADCAST_KEY || !event.newValue) return;
+
+    try {
+      const payload = JSON.parse(event.newValue) as {
+        at?: number;
+        clearGreeting?: boolean;
+      };
+
+      clearUserSession({
+        clearGreeting: Boolean(payload?.clearGreeting),
+      });
+
+      setFormKey((k) => k + 1);
+
+      showIndicator(
+        `SYSTEM ALERT: Session ended in another tab at ${getFormattedTime()}`,
+        'security'
+      );
+
+      if (window.location.pathname !== '/login') {
+        window.history.replaceState(null, '', '/login');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+    } catch {
+      clearUserSession({ clearGreeting: true });
+      setFormKey((k) => k + 1);
+
+      if (window.location.pathname !== '/login') {
+        window.history.replaceState(null, '', '/login');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+    }
+  };
+
+  window.addEventListener('storage', handleStorage);
+  return () => window.removeEventListener('storage', handleStorage);
+}, [clearUserSession, showIndicator]);
 
   // --- AUTH STATE LISTENER ---
   useEffect(() => {
@@ -968,7 +1040,7 @@ if (!deviceCheck?.trusted) {
         return {
           success: true,
           message:
-            'Account created. Please check your email and verify your account before signing in.',
+            'Check your email for the next step. You can return here to continue once completed.',
         };
       } catch (err) {
         console.error('Unexpected registration error:', err);
@@ -1001,6 +1073,15 @@ if (!deviceCheck?.trusted) {
       // Instant local clear first = smoother UX
       clearUserSession({ clearGreeting: shouldClearGreeting });
       setFormKey((k) => k + 1);
+
+      // Broadcast logout to all other tabs
+      localStorage.setItem(
+        LOGOUT_BROADCAST_KEY,
+        JSON.stringify({
+          at: Date.now(),
+          clearGreeting: shouldClearGreeting,
+        })
+      );
 
       const isSecurity = /expired|security|ended/i.test(message ?? '');
 
@@ -1074,9 +1155,12 @@ if (!deviceCheck?.trusted) {
         userData.email !== undefined && nextEmail !== currentEmail;
 
       if (isEmailChanged) {
-        const { error: authEmailError } = await supabase.auth.updateUser({
-          email: nextEmail,
-        });
+        const { error: authEmailError } = await supabase.auth.updateUser(
+        { email: nextEmail },
+        {
+          emailRedirectTo: `${window.location.origin}/login`,
+        }
+      );
 
         if (authEmailError) {
           console.error('Email update failed:', authEmailError.message);
@@ -1118,8 +1202,6 @@ if (!deviceCheck?.trusted) {
         ...(userData.profilePictureUrl !== undefined
           ? { profilePictureUrl: userData.profilePictureUrl }
           : {}),
-        // keep local UI value so the form reflects what user entered
-        ...(isEmailChanged ? { email: nextEmail } : {}),
       };
 
       persistUserSession(updatedUser);
@@ -1159,6 +1241,74 @@ if (!deviceCheck?.trusted) {
     [authActionPending]
   );
 
+  const changeEmail = useCallback(
+  async ({
+    newEmail,
+    currentPassword,
+  }: {
+    newEmail: string;
+    currentPassword: string;
+  }): Promise<{ success: boolean; message?: string }> => {
+    if (!user || authActionPending) {
+      return { success: false, message: 'Action in progress.' };
+    }
+
+    setAuthActionPending(true);
+
+    try {
+      const normalizedEmail = normalizeEmail(newEmail);
+      const currentEmail = normalizeEmail(user.email);
+
+      // 🔐 Re-authenticate user first
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: currentEmail,
+        password: currentPassword,
+      });
+
+      if (signInError) {
+        return {
+          success: false,
+          message: 'Current password is incorrect.',
+        };
+      }
+
+      // 📩 Trigger Supabase email change (with verification)
+      const { error } = await supabase.auth.updateUser(
+        { email: normalizedEmail },
+        {
+          emailRedirectTo: `${window.location.origin}/login`,
+        }
+      );
+
+      if (error) {
+        return {
+          success: false,
+          message: error.message || 'Failed to start email change.',
+        };
+      }
+
+      showIndicator(
+        'A confirmation link has been sent to your new email. Please verify it to complete the change.',
+        'security'
+      );
+
+      return {
+        success: true,
+        message: 'Verification email sent.',
+      };
+    } catch (err) {
+      console.error('Email change error:', err);
+      return {
+        success: false,
+        message: 'Unexpected error occurred.',
+      };
+    } finally {
+      setAuthActionPending(false);
+    }
+  },
+  [authActionPending, showIndicator, user]
+);
+
   const recoverPassword = useCallback(
   async (email: string): Promise<boolean> => {
     if (authActionPending) return false;
@@ -1169,7 +1319,7 @@ if (!deviceCheck?.trusted) {
       const normalizedEmail = normalizeEmail(email);
 
       const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: getAuthRedirectUrl(RESET_PASSWORD_PATH),
       });
 
       if (error) {
@@ -1321,6 +1471,7 @@ if (!deviceCheck?.trusted) {
         logout,
         updateProfile,
         changePassword,
+        changeEmail,
         recoverPassword,
         uploadProfilePicture,
         deleteAccount,

@@ -2,6 +2,7 @@ import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import DeviceManagement from '../../components/security/DeviceManagement';
 import supabase from '../../supabaseClient';
+import AddressPicker from '../../components/common/AddressPicker';
 import {
   User as UserIcon,
   Mail,
@@ -31,7 +32,12 @@ const INITIAL_PASSWORD_FORM = {
 };
 
 export default function ClientProfile() {
-  const { user, updateProfile, changePassword, deleteAccount, logout } = useAuth();
+  const {
+    user,
+    updateProfile,
+    changePassword,
+    changeEmail,
+  } = useAuth();
 
   const [editing, setEditing] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
@@ -41,6 +47,15 @@ export default function ClientProfile() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  const [changingEmail, setChangingEmail] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [emailForm, setEmailForm] = useState({
+    newEmail: '',
+    confirmEmail: '',
+    currentPassword: '',
+  });
+  const [showEmailPassword, setShowEmailPassword] = useState(false);
 
   const [showOldPassword, setShowOldPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -71,15 +86,25 @@ export default function ClientProfile() {
   }, [user, fullName]);
 
   const initialProfileForm = useMemo(
-    () => ({
-      firstName: user?.firstName || '',
-      lastName: user?.lastName || '',
-      email: user?.email || '',
-      contactNumber: user?.phone || '',
-      address: user?.address || '',
-    }),
-    [user?.firstName, user?.lastName, user?.email, user?.phone, user?.address]
-  );
+  () => ({
+    firstName: user?.firstName || '',
+    lastName: user?.lastName || '',
+    email: user?.email || '',
+    contactNumber: user?.phone || '',
+    address: user?.address || '',
+    latitude: String((user as any)?.latitude ?? ''),
+    longitude: String((user as any)?.longitude ?? ''),
+  }),
+  [
+    user?.firstName,
+    user?.lastName,
+    user?.email,
+    user?.phone,
+    user?.address,
+    (user as any)?.latitude,
+    (user as any)?.longitude,
+  ]
+);
 
   const [profileForm, setProfileForm] = useState(initialProfileForm);
   const [passwordForm, setPasswordForm] = useState(INITIAL_PASSWORD_FORM);
@@ -160,15 +185,21 @@ useEffect(() => {
   }, []);
 
   const handleEditStart = useCallback(() => {
-    setProfileForm(initialProfileForm);
-    setEditing(true);
-  }, [initialProfileForm]);
+  setProfileForm(initialProfileForm);
+  setEditing(true);
+}, [initialProfileForm]);
 
-  const handleEditCancel = useCallback(() => {
-    setProfileForm(initialProfileForm);
-    setEditing(false);
-  }, [initialProfileForm]);
-
+const handleEditCancel = useCallback(() => {
+  setProfileForm(initialProfileForm);
+  setChangingEmail(false);
+  setEmailForm({
+    newEmail: '',
+    confirmEmail: '',
+    currentPassword: '',
+  });
+  setShowEmailPassword(false);
+  setEditing(false);
+}, [initialProfileForm]);
   const handlePasswordCancel = useCallback(() => {
     resetPasswordForm();
     setChangingPassword(false);
@@ -215,9 +246,10 @@ useEffect(() => {
         await updateProfile({
           firstName: profileForm.firstName.trim(),
           lastName: profileForm.lastName.trim(),
-          email: profileForm.email.trim(),
           phone: profileForm.contactNumber.trim(),
           address: profileForm.address.trim(),
+          latitude: profileForm.latitude ? Number(profileForm.latitude) : null,
+          longitude: profileForm.longitude ? Number(profileForm.longitude) : null,
         });
 
         setEditing(false);
@@ -230,6 +262,70 @@ useEffect(() => {
     },
     [profileForm, savingProfile, showMessage, updateProfile]
   );
+
+  const handleEmailSubmit = useCallback(async () => {
+  if (savingEmail) return;
+
+  const newEmail = emailForm.newEmail.trim().toLowerCase();
+  const confirmEmail = emailForm.confirmEmail.trim().toLowerCase();
+  const currentEmail = user?.email?.trim().toLowerCase() ?? '';
+
+  if (!newEmail) {
+    showMessage('error', 'New email is required.');
+    return;
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+    showMessage('error', 'Please enter a valid email address.');
+    return;
+  }
+
+  if (newEmail !== confirmEmail) {
+    showMessage('error', 'Email addresses do not match.');
+    return;
+  }
+
+  if (newEmail === currentEmail) {
+    showMessage('error', 'Please enter a different email address.');
+    return;
+  }
+
+  if (!emailForm.currentPassword.trim()) {
+    showMessage('error', 'Current password is required.');
+    return;
+  }
+
+  try {
+    setSavingEmail(true);
+
+    const result = await changeEmail({
+      newEmail,
+      currentPassword: emailForm.currentPassword,
+    });
+
+    if (!result?.success) {
+      showMessage('error', result?.message || 'Failed to start email change.');
+      return;
+    }
+
+    setChangingEmail(false);
+    setEmailForm({
+      newEmail: '',
+      confirmEmail: '',
+      currentPassword: '',
+    });
+    setShowEmailPassword(false);
+
+    showMessage(
+      'success',
+      'Email change started. Please check your new email address for the confirmation link.'
+    );
+  } catch {
+    showMessage('error', 'Failed to start email change.');
+  } finally {
+    setSavingEmail(false);
+  }
+}, [changeEmail, emailForm, savingEmail, showMessage, user?.email]);
 
   const handlePasswordSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -343,6 +439,65 @@ const handleDeleteAccount = useCallback(async () => {
   } catch (err) {
     console.error('Deletion request error:', err);
     showMessage('error', 'Failed to submit deletion request.');
+    setDeleting(false);
+  }
+}, [user, deleting, deletionStatus, showMessage]);
+
+const handleProceedDeletion = useCallback(async () => {
+  try {
+    if (!user || deleting || deletionStatus !== 'approved') return;
+
+    setDeleting(true);
+
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+
+    const accessToken = session?.access_token;
+
+    if (sessionError || !accessToken) {
+      showMessage('error', 'Your session is no longer valid. Please sign in again and retry.');
+      setDeleting(false);
+      return;
+    }
+
+    console.log('delete-user access token exists:', !!accessToken);
+
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ userId: user.id }),
+      }
+    );
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok || !data?.success) {
+      const message =
+        data?.reason ||
+        'Failed to permanently delete your account.';
+
+      showMessage('error', message);
+      setDeleting(false);
+      return;
+    }
+
+    setDeletionStatus('completed');
+    setShowDeleteConfirm(false);
+    showMessage('success', 'Your account has been permanently deleted.');
+    setDeleting(false);
+
+    await supabase.auth.signOut();
+  } catch (err) {
+    console.error('Final deletion error:', err);
+    showMessage('error', 'Failed to permanently delete your account.');
     setDeleting(false);
   }
 }, [user, deleting, deletionStatus, showMessage]);
@@ -500,8 +655,11 @@ const handleDeleteAccount = useCallback(async () => {
                 Permanent Action
               </p>
               <p className="mt-3 text-sm leading-relaxed text-slate-500">
-                This will submit a request to permanently delete your account. Your request will be
-                reviewed by an administrator before it is approved.
+                {deletionStatus === 'approved'
+                  ? 'Your deletion request has been approved. You may now continue with permanent account deletion.'
+                  : deletionStatus === 'completed'
+                    ? 'Your account deletion has already been completed.'
+                    : 'This will submit a request to permanently delete your account. Your request will be reviewed by an administrator before it is approved.'}
               </p>
 
               {deletionStatus === 'pending' && (
@@ -511,6 +669,17 @@ const handleDeleteAccount = useCallback(async () => {
                   </p>
                   <p className="mt-1 text-sm text-amber-800">
                     Your deletion request has already been submitted and is awaiting admin review.
+                  </p>
+                </div>
+              )}
+
+              {deletionStatus === 'approved' && (
+                <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-700">
+                    Request Approved
+                  </p>
+                  <p className="mt-1 text-sm text-emerald-800">
+                    Your deletion request has been approved. You may now proceed with permanently deleting your account.
                   </p>
                 </div>
               )}
@@ -526,19 +695,43 @@ const handleDeleteAccount = useCallback(async () => {
                 </div>
               )}
 
+              {deletionStatus === 'completed' && (
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-700">
+                    Deletion Completed
+                  </p>
+                  <p className="mt-1 text-sm text-slate-700">
+                    Your account deletion has already been completed.
+                  </p>
+                </div>
+              )}
+
               <button
                 type="button"
-                disabled={deleting || loadingDeletionStatus || deletionStatus === 'pending'}
+                disabled={
+                  deleting ||
+                  loadingDeletionStatus ||
+                  deletionStatus === 'pending' ||
+                  deletionStatus === 'completed'
+                }
                 onClick={() => setShowDeleteConfirm(true)}
                 className={`mt-5 w-full rounded-2xl border px-4 py-3 text-sm font-semibold transition-all ${
                   deletionStatus === 'pending'
                     ? 'cursor-not-allowed border-amber-200 bg-amber-50 text-amber-700'
-                    : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                    : deletionStatus === 'approved'
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                      : deletionStatus === 'completed'
+                        ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-500'
+                        : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
                 } disabled:opacity-70`}
               >
                 {deletionStatus === 'pending'
                   ? 'Deletion Request Pending'
-                  : 'Request Account Deletion'}
+                  : deletionStatus === 'approved'
+                    ? 'Proceed with Account Deletion'
+                    : deletionStatus === 'completed'
+                      ? 'Account Deletion Completed'
+                      : 'Request Account Deletion'}
               </button>
             </section>
           </div>
@@ -546,29 +739,66 @@ const handleDeleteAccount = useCallback(async () => {
           <div className="space-y-6 xl:col-span-8">
             <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
               <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-6 py-5">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Profile Information</h3>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Keep your personal and contact information up to date.
-                  </p>
-                </div>
+  <div>
+    <h3 className="text-base font-bold text-slate-900">Profile Information</h3>
+    <p className="mt-1 text-sm text-slate-500">
+      Keep your personal and contact information up to date.
+    </p>
+  </div>
 
-                {!editing && (
-                  <button
-                    type="button"
-                    onClick={handleEditStart}
-                    className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 active:scale-95"
-                  >
-                    <Edit3 className="size-4" />
-                    Edit Details
-                  </button>
-                )}
-              </div>
+  <div className="relative h-11 w-[272px] shrink-0">
+  <div
+    className={`absolute inset-0 flex justify-end transition-opacity duration-150 ${
+      editing ? 'pointer-events-none opacity-0' : 'opacity-100'
+    }`}
+  >
+    <button
+      type="button"
+      onClick={handleEditStart}
+      className="inline-flex h-11 items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+    >
+      <Edit3 className="size-4" />
+      Edit Details
+    </button>
+  </div>
+
+  <div
+    className={`absolute inset-0 flex items-center justify-end gap-2 transition-opacity duration-150 ${
+      editing ? 'opacity-100' : 'pointer-events-none opacity-0'
+    }`}
+  >
+    <button
+      type="button"
+      onClick={handleEditCancel}
+      disabled={savingProfile}
+      className="inline-flex h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
+    >
+      <X className="size-4" />
+      Cancel
+    </button>
+
+    <button
+      type="submit"
+      form="profile-form"
+      disabled={savingProfile}
+      className="inline-flex h-11 items-center gap-2 rounded-2xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 disabled:opacity-50"
+    >
+      {savingProfile ? (
+        <div className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+      ) : (
+        <Save className="size-4" />
+      )}
+      {savingProfile ? 'Saving...' : 'Save Changes'}
+    </button>
+  </div>
+</div>
+</div>
 
               <div className="p-6">
                 <AnimatePresence mode="wait">
                   {editing ? (
                     <motion.form
+                      id="profile-form"
                       key="edit-profile"
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -591,13 +821,103 @@ const handleDeleteAccount = useCallback(async () => {
                           onChange={(v) => handleProfileFieldChange('lastName', v)}
                         />
 
-                        <FormInput
-                          label="Email"
-                          icon={<Mail className="size-4" />}
-                          type="email"
-                          value={profileForm.email}
-                          onChange={(v) => handleProfileFieldChange('email', v)}
-                        />
+                        <div className="space-y-3 md:col-span-2">
+  <label className="ml-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+    Email
+  </label>
+
+  <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+    <div className="flex min-w-0 items-center gap-3">
+      <Mail className="size-4 shrink-0 text-slate-400" />
+      <p className="truncate text-sm font-medium text-slate-800">
+        {profileForm.email || '—'}
+      </p>
+    </div>
+
+    <button
+      type="button"
+      onClick={() => {
+      if (changingEmail) {
+        setEmailForm({
+          newEmail: '',
+          confirmEmail: '',
+          currentPassword: '',
+        });
+        setShowEmailPassword(false);
+      }
+      setChangingEmail((prev) => !prev);
+    }}
+      className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-bold transition ${
+        changingEmail
+          ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+          : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+      }`}
+    >
+      {changingEmail ? 'Cancel' : 'Change Email'}
+    </button>
+  </div>
+
+  <AnimatePresence initial={false}>
+    {changingEmail && (
+      <motion.div
+        initial={{ height: 0, opacity: 0 }}
+        animate={{ height: 'auto', opacity: 1 }}
+        exit={{ height: 0, opacity: 0 }}
+        className="overflow-hidden"
+      >
+        <div className="space-y-4 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+          <p className="text-sm text-slate-600">
+            Your current email is <span className="font-semibold text-slate-900">{user?.email || '—'}</span>.
+            The new email will only be used after verification.
+          </p>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <FormInput
+              label="New Email"
+              icon={<Mail className="size-4" />}
+              type="email"
+              value={emailForm.newEmail}
+              onChange={(v) =>
+                setEmailForm((prev) => ({ ...prev, newEmail: v }))
+              }
+            />
+
+            <FormInput
+              label="Confirm New Email"
+              icon={<Mail className="size-4" />}
+              type="email"
+              value={emailForm.confirmEmail}
+              onChange={(v) =>
+                setEmailForm((prev) => ({ ...prev, confirmEmail: v }))
+              }
+            />
+          </div>
+
+          <PasswordInput
+            label="Current Password"
+            value={emailForm.currentPassword}
+            onChange={(v) =>
+              setEmailForm((prev) => ({ ...prev, currentPassword: v }))
+            }
+            visible={showEmailPassword}
+            onToggleVisibility={() => setShowEmailPassword((prev) => !prev)}
+          />
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => void handleEmailSubmit()}
+              disabled={savingEmail}
+              className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 disabled:opacity-50"
+            >
+              {savingEmail ? 'Submitting...' : 'Send Verification'}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    )}
+  </AnimatePresence>
+</div>
 
                         <FormInput
                           label="Phone"
@@ -606,40 +926,51 @@ const handleDeleteAccount = useCallback(async () => {
                           onChange={(v) => handleProfileFieldChange('contactNumber', v)}
                         />
 
-                        <div className="md:col-span-2">
-                          <FormTextarea
-                            label="Address"
-                            icon={<MapPin className="size-4" />}
+                        <div className="md:col-span-2 space-y-4">
+                          <div className="space-y-1.5">
+                            <label className="ml-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                              Address Status
+                            </label>
+
+                            <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                              <p
+                                className={`text-sm font-medium ${
+                                  profileForm.address && profileForm.latitude && profileForm.longitude
+                                    ? 'text-emerald-600'
+                                    : 'text-slate-500'
+                                }`}
+                              >
+                                {profileForm.address && profileForm.latitude && profileForm.longitude
+                                  ? 'Confirmed on map'
+                                  : 'Not confirmed yet'}
+                              </p>
+
+                              <div
+                                className={`flex items-center justify-center ${
+                                  profileForm.address && profileForm.latitude && profileForm.longitude
+                                    ? 'text-emerald-600'
+                                    : 'text-rose-500'
+                                }`}
+                              >
+                                <CheckCircle className="size-4" />
+                              </div>
+                            </div>
+                          </div>
+
+                          <AddressPicker
                             value={profileForm.address}
-                            onChange={(v) => handleProfileFieldChange('address', v)}
-                            rows={3}
+                            latitude={profileForm.latitude}
+                            longitude={profileForm.longitude}
+                            onChange={({ address, latitude, longitude }) =>
+                              setProfileForm((prev) => ({
+                                ...prev,
+                                address,
+                                latitude,
+                                longitude,
+                              }))
+                            }
                           />
                         </div>
-                      </div>
-
-                      <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
-                        <button
-                          type="button"
-                          onClick={handleEditCancel}
-                          disabled={savingProfile}
-                          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50 disabled:opacity-50"
-                        >
-                          <X className="size-4" />
-                          Cancel
-                        </button>
-
-                        <button
-                          type="submit"
-                          disabled={savingProfile}
-                          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 disabled:opacity-50"
-                        >
-                          {savingProfile ? (
-                            <div className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                          ) : (
-                            <Save className="size-4" />
-                          )}
-                          {savingProfile ? 'Saving...' : 'Save Changes'}
-                        </button>
                       </div>
                     </motion.form>
                   ) : (
@@ -828,8 +1159,9 @@ const handleDeleteAccount = useCallback(async () => {
               >
                 <h3 className="text-lg font-bold text-gray-900">Delete Account</h3>
                 <p className="mt-2 text-sm leading-relaxed text-gray-500">
-                  This will submit a request to permanently delete your account. 
-                  Your request will be reviewed by an administrator before it is approved.
+                  {deletionStatus === 'approved'
+                    ? 'Your deletion request has already been approved. Proceeding will permanently delete your account.'
+                    : 'This will submit a request to permanently delete your account. Your request will be reviewed by an administrator before it is approved.'}
                 </p>
 
                 <div className="mt-6 flex gap-3">
@@ -845,10 +1177,16 @@ const handleDeleteAccount = useCallback(async () => {
                   <button
                     type="button"
                     disabled={deleting}
-                    onClick={handleDeleteAccount}
+                    onClick={deletionStatus === 'approved' ? handleProceedDeletion : handleDeleteAccount}
                     className="flex-1 rounded-2xl bg-red-600 py-3 text-sm font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
                   >
-                    {deleting ? 'Requesting...' : 'Yes, Delete'}
+                    {deleting
+                      ? deletionStatus === 'approved'
+                        ? 'Deleting...'
+                        : 'Requesting...'
+                      : deletionStatus === 'approved'
+                        ? 'Proceed with Deletion'
+                        : 'Yes, Delete'}
                   </button>
                 </div>
               </motion.div>
@@ -964,41 +1302,6 @@ function FormInput({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className={`w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 text-sm text-slate-800 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 ${
-            icon ? 'pl-10 pr-4' : 'px-4'
-          }`}
-        />
-      </div>
-    </div>
-  );
-}
-
-function FormTextarea({
-  label,
-  icon,
-  value,
-  onChange,
-  rows = 3,
-}: {
-  label: string;
-  icon?: ReactNode;
-  value: string;
-  onChange: (v: string) => void;
-  rows?: number;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label className="ml-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-        {label}
-      </label>
-
-      <div className="relative">
-        {icon && <div className="absolute left-3 top-3.5 text-slate-400">{icon}</div>}
-
-        <textarea
-          rows={rows}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className={`w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 py-3 text-sm text-slate-800 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 ${
             icon ? 'pl-10 pr-4' : 'px-4'
           }`}
         />

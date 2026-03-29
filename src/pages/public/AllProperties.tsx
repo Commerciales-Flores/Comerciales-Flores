@@ -11,7 +11,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { formatCurrency } from "../../utils/currency";
 import { getUnitTypeLabel, getPriceLabel } from "../../utils/propertyHelpers";
 
@@ -42,6 +42,34 @@ export default function AllUnits() {
     setFilterLocation("all");
     setPriceRange("all");
   };
+
+  const cardVideoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
+
+const handleCardVideoEnter = useCallback((unitId: string) => {
+  const video = cardVideoRefs.current[unitId];
+  if (!video) return;
+
+  video.currentTime = 0;
+  void video.play().catch(() => {});
+}, []);
+
+const handleCardVideoLeave = useCallback((unitId: string) => {
+  const video = cardVideoRefs.current[unitId];
+  if (!video) return;
+
+  video.pause();
+  video.currentTime = 0;
+}, []);
+
+useEffect(() => {
+  return () => {
+    Object.values(cardVideoRefs.current).forEach((video) => {
+      if (!video) return;
+      video.pause();
+      video.currentTime = 0;
+    });
+  };
+}, []);
 
   const locations: string[] = useMemo(
     () =>
@@ -168,7 +196,7 @@ export default function AllUnits() {
 
   return (
     <div className="min-h-screen bg-[#FAFAFA] pb-20">
-      <header className="sticky top-0 z-50 border-b border-gray-100 bg-white/95 shadow-sm backdrop-blur">
+      <header className="sticky top-0 z-50 border-b border-gray-100 bg-white/95 shadow-sm">
         <div className="mx-auto max-w-7xl px-4 py-4">
           <div className="mb-5">
             <Link
@@ -189,17 +217,6 @@ export default function AllUnits() {
                 Browse units, compare prices, and view complete details.
               </p>
             </div>
-
-            {!hasNoDataAtAll && (
-              <div className="hidden md:flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
-                  Results
-                </div>
-                <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-slate-700 shadow-sm">
-                  {filteredUnits.length}
-                </div>
-              </div>
-            )}
           </div>
 
           {!hasNoDataAtAll && (
@@ -344,13 +361,21 @@ const averageRating =
     animate={{ opacity: 1, y: 0 }}
     className="group flex h-full flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-all hover:shadow-xl"
   >
-    <div className="relative h-48 overflow-hidden sm:h-56 md:h-64">
+    <div
+      className="relative h-48 overflow-hidden sm:h-56 md:h-64"
+      onMouseEnter={() => handleCardVideoEnter(prop.id)}
+      onMouseLeave={() => handleCardVideoLeave(prop.id)}
+    >
       {prop.videos?.[0] ? (
         <video
+          ref={(node) => {
+            cardVideoRefs.current[prop.id] = node;
+          }}
           src={prop.videos[0]}
           muted
           playsInline
           preload="metadata"
+          poster={prop.images?.[0] || FALLBACK_IMAGE}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
       ) : (
@@ -361,12 +386,12 @@ const averageRating =
         />
       )}
 
-      <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-blue-600 backdrop-blur-md">
+      <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-blue-600">
         {getUnitTypeLabel(prop.type)}
       </div>
 
       {prop.videos?.length ? (
-        <div className="absolute right-4 top-4 rounded-full bg-black/70 px-3 py-1 text-xs font-bold text-white backdrop-blur-md">
+        <div className="absolute right-4 top-4 rounded-full bg-black/70 px-3 py-1 text-xs font-bold text-white">
           {prop.videos.length} video{prop.videos.length > 1 ? "s" : ""}
         </div>
       ) : null}

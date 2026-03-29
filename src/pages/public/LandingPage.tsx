@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useData } from "../../contexts/DataContext";
 import { motion, AnimatePresence } from "framer-motion"; // Modern animations
 import 'react-calendar/dist/Calendar.css';
@@ -43,6 +43,7 @@ export default function LandingPage() {
     subject: "",
     message: "",
   });
+  const featuredVideoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
 
     useEffect(() => {
       document.body.style.overflow = isMenuOpen ? "hidden" : "";
@@ -63,6 +64,27 @@ export default function LandingPage() {
     () => units.filter((p) => p.available && p.type !== "parking_slot"),
     [units]
   );
+
+  useEffect(() => {
+  const currentUnit = featuredProperties[currentSlide];
+  if (!currentUnit?.videos?.[0]) return;
+
+  const video = featuredVideoRefs.current[currentUnit.id];
+  if (!video) return;
+
+  video.pause();
+  video.currentTime = 0;
+  video.muted = true;
+  video.load();
+
+  const timeout = window.setTimeout(() => {
+    void video.play().catch(() => {});
+  }, 120);
+
+  return () => {
+    window.clearTimeout(timeout);
+  };
+}, [currentSlide, featuredProperties]);
 
   const announcementsToScroll = useMemo(
     () =>
@@ -137,7 +159,7 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-slate-900 font-sans">
       {/* Modern Transparent Header */}
-    <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
+    <header className="bg-white/80 border-b border-gray-100 sticky top-0 z-50">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 md:h-20 flex justify-between items-center">
       <div className="flex items-center gap-2 group cursor-pointer" onClick={() => navigate('/')}>
         <div className="bg-blue-600 p-1.5 sm:p-2 rounded-xl">
@@ -253,7 +275,7 @@ export default function LandingPage() {
 
               <a
                 href={contentSettings.hero.secondaryCtaLink || '#properties'}
-                className="px-8 py-4 bg-white/10 backdrop-blur-md border border-white/20 text-white font-bold rounded-xl hover:bg-white/20 transition-all"
+                className="px-8 py-4 bg-white/10 border border-white/20 text-white font-bold rounded-xl hover:bg-white/20 transition-all"
               >
                 {contentSettings.hero.secondaryCtaText}
               </a>
@@ -390,7 +412,7 @@ export default function LandingPage() {
                     prev === 0 ? historyImages.length - 1 : prev - 1
                   )
                 }
-                className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/90 backdrop-blur p-3 rounded-full shadow-md hover:bg-white"
+                className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/90 p-3 rounded-full shadow-md hover:bg-white"
               >
                 <ChevronLeft className="size-5 text-slate-700" />
               </button>
@@ -401,7 +423,7 @@ export default function LandingPage() {
                     prev === historyImages.length - 1 ? 0 : prev + 1
                   )
                 }
-                className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/90 backdrop-blur p-3 rounded-full shadow-md hover:bg-white"
+                className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/90 p-3 rounded-full shadow-md hover:bg-white"
               >
                 <ChevronRight className="size-5 text-slate-700" />
               </button>
@@ -559,7 +581,7 @@ export default function LandingPage() {
           animate={{ x: `-${currentSlide * 100}%` }}
           transition={{ type: "spring", stiffness: 50, damping: 15 }}
         >
-          {featuredProperties.map((Unit) => {
+          {featuredProperties.map((Unit, index) => {
             const unitReviews = reviews.filter(
               (r) => r.unit_id === (Unit.id)
             );
@@ -569,6 +591,7 @@ export default function LandingPage() {
                 ? unitReviews.reduce((sum, r) => sum + (r.rating || 0), 0) /
                   unitReviews.length
                 : 0;
+            const isActiveSlide = currentSlide === index;
 
             return (
             <div
@@ -580,14 +603,32 @@ export default function LandingPage() {
                 <div className="grid md:grid-cols-2">
                   <div className="relative h-[200px] sm:h-[250px] md:h-[500px] overflow-hidden">
                     {Unit.videos?.[0] ? (
-                      <motion.video
-                        whileHover={{ scale: 1.02 }}
-                        src={Unit.videos[0]}
-                        muted
-                        playsInline
-                        preload="metadata"
-                        className="w-full h-full object-cover"
-                      />
+                      isActiveSlide ? (
+                        <motion.video
+                          ref={(node) => {
+                            featuredVideoRefs.current[Unit.id] = node;
+                          }}
+                          key={`${Unit.id}-active-video-${currentSlide}`}
+                          whileHover={{ scale: 1.02 }}
+                          src={Unit.videos[0]}
+                          poster={Unit.images?.[0] || "/fallback-property.webp"}
+                          muted
+                          playsInline
+                          preload="auto"
+                          loop
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <motion.img
+                          key={`${Unit.id}-inactive-poster`}
+                          whileHover={{ scale: 1.05 }}
+                          src={Unit.images?.[0] || "/fallback-property.webp"}
+                          alt={Unit.name}
+                          loading="lazy"
+                          decoding="async"
+                          className="w-full h-full object-cover"
+                        />
+                      )
                     ) : (
                       <motion.img
                         whileHover={{ scale: 1.05 }}
@@ -598,11 +639,11 @@ export default function LandingPage() {
                         className="w-full h-full object-cover"
                       />
                     )}
-                    <div className="absolute top-4 left-4 px-3 py-1 bg-white/90 backdrop-blur-md rounded-full text-[10px] md:text-xs font-bold text-blue-600 shadow-sm">
+                    <div className="absolute top-4 left-4 px-3 py-1 bg-white/90 rounded-full text-[10px] md:text-xs font-bold text-blue-600 shadow-sm">
                       {getUnitTypeLabel(Unit.type)}
                     </div>
                     {Unit.videos?.length ? (
-                      <div className="absolute top-4 right-4 px-3 py-1 bg-black/70 backdrop-blur-md rounded-full text-[10px] md:text-xs font-bold text-white shadow-sm">
+                      <div className="absolute top-4 right-4 px-3 py-1 bg-black/70 rounded-full text-[10px] md:text-xs font-bold text-white shadow-sm">
                         {Unit.videos.length} video{Unit.videos.length > 1 ? "s" : ""}
                       </div>
                     ) : null}
@@ -707,6 +748,11 @@ export default function LandingPage() {
       <div className="bg-blue-600 text-white px-4 sm:px-6 lg:px-8 py-4">
         <h4 className="text-xl font-bold">{contentSettings.contact.locationTitle}</h4>
         <p className="text-sm">{contentSettings.contact.locationSubtitle}</p>
+        {contentSettings.contact.address?.trim() && (
+          <p className="mt-2 text-sm text-blue-100">
+            {contentSettings.contact.address}
+          </p>
+        )}
       </div>
       <iframe
         src={`https://www.google.com/maps?q=${encodeURIComponent(contentSettings.contact.address)}&output=embed`}
