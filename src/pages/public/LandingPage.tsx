@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion"; // Modern animations
 import 'react-calendar/dist/Calendar.css';
 import UnitModal from "../../components/PropertyModal";
 import { useReviews } from "../../contexts/ReviewsContext";
+import { useInquiries } from "../../contexts/InquiriesContext";
 import {
   Building2,
   Menu,
@@ -21,18 +22,15 @@ import { formatCurrency } from "../../utils/currency";
 import {
   getUnitTypeLabel,
 } from "../../utils/propertyHelpers";
-
-function isVideoUrl(url?: string | null) {
-  if (!url) return false;
-  return /\.(mp4|webm|mov|m4v|ogg)$/i.test(url);
-}
-
-
+   
 export default function LandingPage() {
-  const { units, contentSettings, addInquiry } = useData();
+  const { units, contentSettings } = useData();
+  const { createTicket } = useInquiries();
   const { reviews } = useReviews();
   const [selectedUnit, setSelectedUnit] = useState<string | null>(null);
   const [inquirySubmitted, setInquirySubmitted] = useState(false);
+  const [isSubmittingInquiry, setIsSubmittingInquiry] = useState(false);
+  const [inquiryError, setInquiryError] = useState("");
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigate = useNavigate();
@@ -116,20 +114,58 @@ export default function LandingPage() {
   }, []);
 
   const handleInquirySubmit = useCallback(
-    (e: React.FormEvent) => {
+    async (e: React.FormEvent) => {
       e.preventDefault();
-      addInquiry(inquiryForm);
-      setInquirySubmitted(true);
-      setInquiryForm({
-        firstName: "",
-        lastName: "",
-        email: "",
-        subject: "",
-        message: "",
-      });
-      setTimeout(() => setInquirySubmitted(false), 3000);
+
+      if (isSubmittingInquiry) return;
+
+        const trimmedFirstName = inquiryForm.firstName.trim();
+        const trimmedLastName = inquiryForm.lastName.trim();
+        const trimmedEmail = inquiryForm.email.trim().toLowerCase();
+        const trimmedSubject = inquiryForm.subject.trim();
+        const trimmedMessage = inquiryForm.message.trim();
+
+        if (
+          !trimmedFirstName ||
+          !trimmedLastName ||
+          !trimmedEmail ||
+          !trimmedSubject ||
+          !trimmedMessage
+        ) {
+          setInquiryError("Please complete all fields before sending your inquiry.");
+          setInquirySubmitted(false);
+          return;
+        }
+
+        setInquiryError("");
+        setInquirySubmitted(false);
+        setIsSubmittingInquiry(true);
+
+      try {
+        await createTicket({
+          firstName: trimmedFirstName,
+          lastName: trimmedLastName,
+          email: trimmedEmail,
+          subject: trimmedSubject,
+          message: trimmedMessage,
+        });
+
+        setInquirySubmitted(true);
+        setInquiryForm({
+          firstName: "",
+          lastName: "",
+          email: "",
+          subject: "",
+          message: "",
+        });
+      } catch (error) {
+        console.error("Failed to submit inquiry:", error);
+        setInquiryError("We couldn't send your inquiry right now. Please try again.");
+      } finally {
+        setIsSubmittingInquiry(false);
+      }
     },
-    [addInquiry, inquiryForm]
+    [createTicket, inquiryForm, isSubmittingInquiry]
   );
 
   const Unit = useMemo(
@@ -154,6 +190,18 @@ export default function LandingPage() {
       setCurrentSlide(0);
     }
   }, [currentSlide, featuredProperties.length]);
+
+  const updateInquiryField = useCallback(
+    (field: keyof typeof inquiryForm, value: string) => {
+      setInquiryError("");
+      setInquirySubmitted(false);
+      setInquiryForm((prev) => ({
+        ...prev,
+        [field]: value,
+      }));
+    },
+    []
+  );
 
 
   return (
@@ -780,10 +828,9 @@ export default function LandingPage() {
     <input
       type="text"
       placeholder="First Name"
+      disabled={isSubmittingInquiry}
       value={inquiryForm.firstName}
-      onChange={(e) =>
-        setInquiryForm({ ...inquiryForm, firstName: e.target.value })
-      }
+      onChange={(e) => updateInquiryField("firstName", e.target.value)}
       className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
       required
     />
@@ -791,10 +838,9 @@ export default function LandingPage() {
     <input
       type="text"
       placeholder="Last Name"
+      disabled={isSubmittingInquiry}
       value={inquiryForm.lastName}
-      onChange={(e) =>
-        setInquiryForm({ ...inquiryForm, lastName: e.target.value })
-      }
+      onChange={(e) => updateInquiryField("lastName", e.target.value)}
       className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
       required
     />
@@ -804,20 +850,33 @@ export default function LandingPage() {
     type="email"
     placeholder="Email"
     value={inquiryForm.email}
-    onChange={(e) =>
-      setInquiryForm({ ...inquiryForm, email: e.target.value })
-    }
+    disabled={isSubmittingInquiry}
+    onChange={(e) => updateInquiryField("email", e.target.value)}
     className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
     required
   />
+
+  <p className="text-xs text-gray-500 leading-relaxed">
+    This inquiry is a one-time submission. Our team will reply directly to your email. 
+    <span className="block mt-1">
+      Want a smoother experience?{" "}
+      <button
+        type="button"
+        onClick={() => navigate('/register')}
+        className="font-semibold text-blue-600 hover:underline"
+      >
+        Create an account
+      </button>{" "}
+      to continue conversations and manage your requests.
+    </span>
+  </p>
 
   <input
     type="text"
     placeholder="Subject"
     value={inquiryForm.subject}
-    onChange={(e) =>
-      setInquiryForm({ ...inquiryForm, subject: e.target.value })
-    }
+    disabled={isSubmittingInquiry}
+    onChange={(e) => updateInquiryField("subject", e.target.value)}
     className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
     required
   />
@@ -825,9 +884,8 @@ export default function LandingPage() {
   <textarea
     placeholder="Message"
     value={inquiryForm.message}
-    onChange={(e) =>
-      setInquiryForm({ ...inquiryForm, message: e.target.value })
-    }
+    disabled={isSubmittingInquiry}
+    onChange={(e) => updateInquiryField("message", e.target.value)}
     className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
     rows={5}
     required
@@ -835,20 +893,41 @@ export default function LandingPage() {
 
   <button
     type="submit"
-    className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all"
+    disabled={isSubmittingInquiry}
+    className="w-full rounded-xl bg-blue-600 py-3 font-bold text-white transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
   >
-    Send Inquiry
+    {isSubmittingInquiry ? "Sending Inquiry..." : "Send Inquiry"}
   </button>
 
+  {inquiryError && (
+  <motion.div
+    initial={{ opacity: 0, y: 6 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-left"
+  >
+    <p className="text-sm font-semibold text-red-800">Inquiry not sent</p>
+    <p className="mt-1 text-sm leading-relaxed text-red-700">
+      {inquiryError}
+    </p>
+  </motion.div>
+)}
+
   {inquirySubmitted && (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="text-green-700 text-center mt-2"
-    >
-      Thank you! We&apos;ve received your inquiry.
-    </motion.div>
-  )}
+  <motion.div
+    initial={{ opacity: 0, y: 6 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="mt-3 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-left"
+  >
+    <p className="text-sm font-semibold text-green-800">
+      Thanks for your inquiry.
+    </p>
+    <p className="mt-1 text-sm leading-relaxed text-green-700">
+      We’ll get back to you through the email address you provided. If you don’t
+      receive any message from us, please make sure the email you entered is correct
+      and check your spam or junk folder as well.
+    </p>
+  </motion.div>
+)}
 </form>
 </motion.div>
   </div>

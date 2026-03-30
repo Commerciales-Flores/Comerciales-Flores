@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useUsers } from '../../contexts/UsersContext';
 import { useAuth } from '../../contexts/AuthContext';
+import supabase from '../../supabaseClient';
 import {
   useInquiries,
   type SupportMessage,
@@ -51,6 +52,22 @@ type TicketStatusFilter =
   | 'waiting_for_customer'
   | 'resolved';
 
+type TicketSenderFilter = 'all' | 'customer' | 'guest' | 'support';
+type ContactType = 'user' | 'guest';
+
+type SupportContact = {
+  id: string;
+  type: ContactType;
+  userId?: string | null;
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  publicId?: string | null;
+  isActive: boolean;
+  openTicketCount: number;
+  latestTicketAt: string;
+};
+
 function useDebouncedValue<T>(value: T, delay = 250) {
   const [debounced, setDebounced] = useState(value);
 
@@ -75,34 +92,34 @@ function getTicketStatusStyle(status?: string) {
   );
 }
 
-function getInitials(firstName?: string, lastName?: string, email?: string) {
+function getInitials(firstName?: string | null, lastName?: string | null, email?: string | null) {
   const initials = `${firstName?.[0] ?? ''}${lastName?.[0] ?? ''}`.trim();
   if (initials) return initials.toUpperCase();
   return (email?.[0] ?? 'U').toUpperCase();
 }
 
-type AdminUserListItemProps = {
-  user: any;
+type AdminContactListItemProps = {
+  contact: SupportContact;
   isSelected: boolean;
-  openTicketCount: number;
-  onSelect: (userId: string) => void;
+  onSelect: (contactId: string) => void;
 };
 
-function AdminUserListItem({
-  user,
+function AdminContactListItem({
+  contact,
   isSelected,
-  openTicketCount,
   onSelect,
-}: AdminUserListItemProps) {
+}: AdminContactListItemProps) {
   const fullName =
-    [user.firstName, user.lastName].filter(Boolean).join(' ').trim() ||
-    user.email ||
-    'Unknown User';
+    [contact.firstName, contact.lastName].filter(Boolean).join(' ').trim() ||
+    contact.email ||
+    'Unknown Contact';
+
+  const isGuest = contact.type === 'guest';
 
   return (
     <button
       type="button"
-      onClick={() => onSelect(user.id)}
+      onClick={() => onSelect(contact.id)}
       className={`group w-full rounded-2xl border p-4 text-left transition-all ${
         isSelected
           ? 'border-blue-200 bg-blue-50 shadow-sm ring-2 ring-blue-500/10'
@@ -115,7 +132,7 @@ function AdminUserListItem({
             isSelected ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'
           }`}
         >
-          {getInitials(user.firstName, user.lastName, user.email)}
+          {getInitials(contact.firstName, contact.lastName, contact.email)}
         </div>
 
         <div className="min-w-0 flex-1">
@@ -129,24 +146,37 @@ function AdminUserListItem({
                 {fullName}
               </p>
               <p className="mt-1 truncate text-[11px] text-gray-500">
-                {user.email || '—'}
+                {contact.email || '—'}
               </p>
             </div>
 
-            {openTicketCount > 0 && (
+            {contact.openTicketCount > 0 && (
               <span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">
-                {openTicketCount}
+                {contact.openTicketCount}
               </span>
             )}
           </div>
 
-          <div className="mt-2 flex items-center gap-2">
-            <span className="font-mono text-[10px] text-gray-400">
-              {user.publicId ?? user.id}
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-bold text-green-700">
-              <span className="size-1.5 rounded-full bg-green-500" />
-              Active
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {contact.publicId && (
+              <span className="font-mono text-[10px] text-gray-400">
+                {contact.publicId}
+              </span>
+            )}
+
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                isGuest
+                  ? 'bg-amber-50 text-amber-700'
+                  : 'bg-green-50 text-green-700'
+              }`}
+            >
+              <span
+                className={`size-1.5 rounded-full ${
+                  isGuest ? 'bg-amber-500' : 'bg-green-500'
+                }`}
+              />
+              {isGuest ? 'Guest' : 'Active'}
             </span>
           </div>
         </div>
@@ -221,7 +251,7 @@ function AdminTicketListItem({
 }
 
 type EmptyThreadStateProps = {
-  selectedUser: any;
+  selectedContact: SupportContact | null;
   draftSubject: string;
   draftMessage: string;
   isStartingTicket: boolean;
@@ -231,7 +261,7 @@ type EmptyThreadStateProps = {
 };
 
 function EmptyThreadState({
-  selectedUser,
+  selectedContact,
   draftSubject,
   draftMessage,
   isStartingTicket,
@@ -240,9 +270,12 @@ function EmptyThreadState({
   onStartConversation,
 }: EmptyThreadStateProps) {
   const fullName =
-    [selectedUser?.firstName, selectedUser?.lastName].filter(Boolean).join(' ').trim() ||
-    selectedUser?.email ||
-    'this user';
+    [selectedContact?.firstName, selectedContact?.lastName]
+      .filter(Boolean)
+      .join(' ')
+      .trim() ||
+    selectedContact?.email ||
+    'this contact';
 
   return (
     <div className="flex flex-1 flex-col p-5 md:p-6">
@@ -300,22 +333,6 @@ function EmptyThreadState({
   );
 }
 
-function PageLoadingState() {
-  return (
-    <div className="flex flex-1 items-center justify-center">
-      <EmptyState
-        icon={
-          <div className="flex items-center justify-center">
-            <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
-          </div>
-        }
-        title="Loading inquiries..."
-        description="Please wait while support tickets and conversations are being retrieved."
-      />
-    </div>
-  );
-}
-
 function ThreadLoadingState() {
   return (
     <EmptyState
@@ -350,6 +367,12 @@ type MessageBubbleProps = {
 
 function MessageBubble({ message }: MessageBubbleProps) {
   const isSupportMessage = message.senderType === 'support';
+  const senderLabel =
+    message.senderType === 'support'
+      ? 'Support Team'
+      : message.senderType === 'guest'
+      ? 'Guest'
+      : 'Customer';
 
   return (
     <div className={`flex ${isSupportMessage ? 'justify-end' : 'justify-start'}`}>
@@ -363,7 +386,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
             isSupportMessage ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
           }`}
         >
-          {isSupportMessage ? 'S' : 'C'}
+          {isSupportMessage ? 'S' : senderLabel[0]}
         </div>
 
         <div className={`flex flex-col ${isSupportMessage ? 'items-end' : 'items-start'}`}>
@@ -372,7 +395,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
               isSupportMessage ? 'text-blue-400' : 'text-gray-400'
             }`}
           >
-            {isSupportMessage ? 'Support Team' : 'Customer'}
+            {senderLabel}
           </span>
 
           <div
@@ -382,9 +405,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
                 : 'rounded-tl-md border border-gray-200 bg-gray-50 text-gray-800'
             }`}
           >
-            <p className="whitespace-pre-wrap text-sm leading-relaxed">
-              {message.body}
-            </p>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.body}</p>
           </div>
 
           <span className="mt-1.5 text-[10px] text-gray-400">
@@ -399,7 +420,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
 export default function AdminInquiries() {
   const location = useLocation();
 
-  const { users, isLoadingUsers } = useUsers();
+  const { users, isLoadingUsers, refreshUsers } = useUsers();
   const { user: adminUser } = useAuth();
   const {
     tickets,
@@ -416,7 +437,8 @@ export default function AdminInquiries() {
 
   const [pageLoading, setPageLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<TicketStatusFilter>('all');
-  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [filterSenderType, setFilterSenderType] = useState<TicketSenderFilter>('all');
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [showMobileThread, setShowMobileThread] = useState(false);
   const [isComposingNewTicket, setIsComposingNewTicket] = useState(false);
@@ -428,6 +450,7 @@ export default function AdminInquiries() {
   const [isSending, setIsSending] = useState(false);
   const [isStartingTicket, setIsStartingTicket] = useState(false);
   const [isReopening, setIsReopening] = useState(false);
+  const [sendReplyError, setSendReplyError] = useState('');
 
   const debouncedSearch = useDebouncedValue(searchTerm, 250);
 
@@ -438,9 +461,9 @@ export default function AdminInquiries() {
       setPageLoading(true);
 
       try {
-        await refreshInquiries();
+        await Promise.all([refreshUsers(true), refreshInquiries()]);
       } catch (error) {
-        console.error('Failed to refresh inquiries:', error);
+        console.error('Failed to load inquiries page data:', error);
       } finally {
         if (!cancelled) {
           setPageLoading(false);
@@ -453,73 +476,129 @@ export default function AdminInquiries() {
     return () => {
       cancelled = true;
     };
-  }, [location.key, refreshInquiries]);
+  }, [location.key, refreshInquiries, refreshUsers]);
 
-  const activeUsers = useMemo(() => {
+  useEffect(() => {
+    setFilterSenderType('all');
+  }, [selectedContactId]);
+
+  useEffect(() => {
+    setSendReplyError('');
+  }, [selectedTicketId]);
+
+  const contacts = useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
+    const map = new Map<string, SupportContact>();
 
-    return (users ?? [])
-      .filter((u: any) => u.isActive)
-      .filter((u: any) => {
-        const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ').trim();
-        const searchable = [fullName, u.email, u.publicId]
+    const activeUserList = (users ?? []).filter((u: any) => u.isActive);
+
+    for (const user of activeUserList) {
+      const email = user.email?.trim().toLowerCase();
+      if (!email) continue;
+
+      const relatedTickets = tickets.filter((ticket) => {
+        const ticketGuestEmail = ticket.guestEmail?.trim().toLowerCase() ?? '';
+
+        return ticket.userId === user.id || (!ticket.userId && ticketGuestEmail === email);
+      });
+
+      const openTicketCount = relatedTickets.filter(
+        (ticket) => ticket.status !== 'resolved'
+      ).length;
+
+      const latestTicketAt =
+        relatedTickets
+          .map((ticket) => ticket.lastMessageAt || ticket.createdAt)
+          .sort((a, b) => getTimestamp(b) - getTimestamp(a))[0] ?? '';
+
+      map.set(`user:${user.id}`, {
+        id: `user:${user.id}`,
+        type: 'user',
+        userId: user.id,
+        email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        publicId: user.publicId ?? user.id,
+        isActive: true,
+        openTicketCount,
+        latestTicketAt,
+      });
+    }
+
+    for (const ticket of tickets) {
+      if (ticket.userId || !ticket.guestEmail) continue;
+
+      const email = ticket.guestEmail.trim().toLowerCase();
+
+      const existingUserContact = Array.from(map.values()).find(
+        (contact) => contact.type === 'user' && contact.email === email
+      );
+
+      if (existingUserContact) {
+        continue;
+      }
+
+      const key = `guest:${email}`;
+      const existingGuest = map.get(key);
+
+      const guestTickets = tickets.filter((t) => {
+        const guestEmail = t.guestEmail?.trim().toLowerCase() ?? '';
+        return !t.userId && guestEmail === email;
+      });
+
+      const openTicketCountForGuest = guestTickets.filter(
+        (t) => t.status !== 'resolved'
+      ).length;
+
+      const latestGuestTicketAt =
+        guestTickets
+          .map((t) => t.lastMessageAt || t.createdAt)
+          .sort((a, b) => getTimestamp(b) - getTimestamp(a))[0] ?? '';
+
+      if (!existingGuest) {
+        map.set(key, {
+          id: key,
+          type: 'guest',
+          userId: null,
+          email,
+          firstName: ticket.guestFirstName ?? null,
+          lastName: ticket.guestLastName ?? null,
+          publicId: 'GUEST',
+          isActive: true,
+          openTicketCount: openTicketCountForGuest,
+          latestTicketAt: latestGuestTicketAt,
+        });
+      }
+    }
+
+    return Array.from(map.values())
+      .filter((contact) => {
+        const fullName = [contact.firstName, contact.lastName]
+          .filter(Boolean)
+          .join(' ')
+          .trim();
+
+        const searchable = [fullName, contact.email, contact.publicId]
           .filter(Boolean)
           .join(' ')
           .toLowerCase();
 
         return q === '' || searchable.includes(q);
       })
-      .sort((a: any, b: any) => {
+      .sort((a, b) => {
+        const aTime = getTimestamp(a.latestTicketAt);
+        const bTime = getTimestamp(b.latestTicketAt);
+
+        if (aTime !== bTime) return bTime - aTime;
+
         const aName =
-          [a.firstName, a.lastName].filter(Boolean).join(' ').trim() || a.email || '';
+          [a.firstName, a.lastName].filter(Boolean).join(' ').trim() || a.email;
         const bName =
-          [b.firstName, b.lastName].filter(Boolean).join(' ').trim() || b.email || '';
+          [b.firstName, b.lastName].filter(Boolean).join(' ').trim() || b.email;
 
         return aName.localeCompare(bName);
       });
-  }, [users, debouncedSearch]);
-
-  const ticketCounts = useMemo(() => {
-  if (!selectedUserId) {
-    return {
-      all: 0,
-      waiting_for_support: 0,
-      waiting_for_customer: 0,
-      resolved: 0,
-    };
-  }
-
-  const userTickets = tickets.filter(
-    (ticket) => ticket.userId === selectedUserId
-  );
-
-  return userTickets.reduce(
-    (acc, ticket) => {
-      acc.all += 1;
-      if (ticket.status in acc) {
-        acc[ticket.status as TicketStatusFilter] += 1;
-      }
-      return acc;
-    },
-    {
-      all: 0,
-      waiting_for_support: 0,
-      waiting_for_customer: 0,
-      resolved: 0,
-    } as Record<TicketStatusFilter, number>
-  );
-}, [tickets, selectedUserId]);
-
-  const openTicketCountByUserId = useMemo(() => {
-    const counts: Record<string, number> = {};
-
-    for (const ticket of tickets) {
-      if (!ticket.userId || ticket.status === 'resolved') continue;
-      counts[ticket.userId] = (counts[ticket.userId] ?? 0) + 1;
-    }
-
-    return counts;
-  }, [tickets]);
+  }, [users, tickets, debouncedSearch]);
 
   const messagesByTicketId = useMemo(() => {
     const grouped: Record<string, SupportMessage[]> = {};
@@ -549,25 +628,80 @@ export default function AdminInquiries() {
     return previews;
   }, [tickets, messagesByTicketId]);
 
-  const selectedUser = useMemo(
-    () => activeUsers.find((u: any) => u.id === selectedUserId) ?? null,
-    [activeUsers, selectedUserId]
+  const selectedContact = useMemo(
+    () => contacts.find((contact) => contact.id === selectedContactId) ?? null,
+    [contacts, selectedContactId]
   );
 
-  const filteredTicketsForSelectedUser = useMemo(() => {
-    if (!selectedUserId) return [];
+  const ticketCounts = useMemo(() => {
+    if (!selectedContact) {
+      return {
+        all: 0,
+        waiting_for_support: 0,
+        waiting_for_customer: 0,
+        resolved: 0,
+      };
+    }
+
+    const matchedTickets = tickets.filter((ticket) => {
+      const ticketGuestEmail = ticket.guestEmail?.trim().toLowerCase() ?? '';
+
+      const matchesContact =
+        selectedContact.type === 'user'
+          ? ticket.userId === selectedContact.userId ||
+            (!ticket.userId && ticketGuestEmail === selectedContact.email)
+          : !ticket.userId && ticketGuestEmail === selectedContact.email;
+
+      const matchesSender =
+        filterSenderType === 'all' ? true : ticket.lastMessageBy === filterSenderType;
+
+      return matchesContact && matchesSender;
+    });
+
+    return matchedTickets.reduce(
+      (acc, ticket) => {
+        acc.all += 1;
+        if (ticket.status in acc) {
+          acc[ticket.status as TicketStatusFilter] += 1;
+        }
+        return acc;
+      },
+      {
+        all: 0,
+        waiting_for_support: 0,
+        waiting_for_customer: 0,
+        resolved: 0,
+      } as Record<TicketStatusFilter, number>
+    );
+  }, [tickets, selectedContact, filterSenderType]);
+
+  const filteredTicketsForSelectedContact = useMemo(() => {
+    if (!selectedContact) return [];
 
     return tickets
-      .filter((ticket) => ticket.userId === selectedUserId)
+      .filter((ticket) => {
+        const ticketGuestEmail = ticket.guestEmail?.trim().toLowerCase() ?? '';
+
+        const matchesContact =
+          selectedContact.type === 'user'
+            ? ticket.userId === selectedContact.userId ||
+              (!ticket.userId && ticketGuestEmail === selectedContact.email)
+            : !ticket.userId && ticketGuestEmail === selectedContact.email;
+
+        const matchesSender =
+          filterSenderType === 'all' ? true : ticket.lastMessageBy === filterSenderType;
+
+        return matchesContact && matchesSender;
+      })
       .filter((ticket) => (filterStatus === 'all' ? true : ticket.status === filterStatus))
       .sort((a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt));
-  }, [tickets, selectedUserId, filterStatus]);
+  }, [tickets, selectedContact, filterStatus, filterSenderType]);
 
   const selectedTicket = useMemo(
     () =>
-      filteredTicketsForSelectedUser.find((ticket) => ticket.id === selectedTicketId) ??
+      filteredTicketsForSelectedContact.find((ticket) => ticket.id === selectedTicketId) ??
       null,
-    [filteredTicketsForSelectedUser, selectedTicketId]
+    [filteredTicketsForSelectedContact, selectedTicketId]
   );
 
   const selectedTicketMessages = useMemo(
@@ -577,36 +711,36 @@ export default function AdminInquiries() {
 
   const currentReply = selectedTicket ? replyDrafts[selectedTicket.id] ?? '' : '';
   const isInitialInquiriesLoading = pageLoading || isLoadingTickets || isLoadingUsers;
-  const hasNoUsers = !isInitialInquiriesLoading && activeUsers.length === 0;
-  const hasNoTicketsForSelectedUser =
+  const hasNoContacts = !isInitialInquiriesLoading && contacts.length === 0;
+  const hasNoTicketsForSelectedContact =
     !isInitialInquiriesLoading &&
-    !!selectedUser &&
-    filteredTicketsForSelectedUser.length === 0;
+    !!selectedContact &&
+    filteredTicketsForSelectedContact.length === 0;
 
   useEffect(() => {
     if (isInitialInquiriesLoading) return;
 
-    if (!selectedUserId && activeUsers.length > 0) {
-      setSelectedUserId(activeUsers[0].id);
+    if (!selectedContactId && contacts.length > 0) {
+      setSelectedContactId(contacts[0].id);
     }
-  }, [activeUsers, isInitialInquiriesLoading, selectedUserId]);
+  }, [contacts, isInitialInquiriesLoading, selectedContactId]);
 
   useEffect(() => {
-    if (isInitialInquiriesLoading || !selectedUserId) return;
+    if (isInitialInquiriesLoading || !selectedContactId) return;
 
-    const stillExists = activeUsers.some((u: any) => u.id === selectedUserId);
+    const stillExists = contacts.some((contact) => contact.id === selectedContactId);
     if (!stillExists) {
-      setSelectedUserId(activeUsers[0]?.id ?? null);
+      setSelectedContactId(contacts[0]?.id ?? null);
       setSelectedTicketId(null);
       setShowMobileThread(false);
       setIsComposingNewTicket(false);
     }
-  }, [activeUsers, isInitialInquiriesLoading, selectedUserId]);
+  }, [contacts, isInitialInquiriesLoading, selectedContactId]);
 
   useEffect(() => {
     if (isInitialInquiriesLoading) return;
 
-    if (!selectedUserId) {
+    if (!selectedContactId) {
       setSelectedTicketId(null);
       setIsComposingNewTicket(false);
       return;
@@ -617,24 +751,24 @@ export default function AdminInquiries() {
       return;
     }
 
-    if (filteredTicketsForSelectedUser.length === 0) {
+    if (filteredTicketsForSelectedContact.length === 0) {
       setSelectedTicketId(null);
       return;
     }
 
-    const stillVisible = filteredTicketsForSelectedUser.some(
+    const stillVisible = filteredTicketsForSelectedContact.some(
       (ticket) => ticket.id === selectedTicketId
     );
 
     if (!stillVisible) {
-      setSelectedTicketId(filteredTicketsForSelectedUser[0].id);
+      setSelectedTicketId(filteredTicketsForSelectedContact[0].id);
     }
   }, [
-    filteredTicketsForSelectedUser,
+    filteredTicketsForSelectedContact,
     isComposingNewTicket,
     isInitialInquiriesLoading,
     selectedTicketId,
-    selectedUserId,
+    selectedContactId,
   ]);
 
   useEffect(() => {
@@ -648,8 +782,8 @@ export default function AdminInquiries() {
     void fetchMessagesByTicketId(selectedTicket.id);
   }, [fetchMessagesByTicketId, selectedTicket?.id]);
 
-  const openUser = useCallback((userId: string) => {
-    setSelectedUserId(userId);
+  const openContact = useCallback((contactId: string) => {
+    setSelectedContactId(contactId);
     setSelectedTicketId(null);
     setIsComposingNewTicket(false);
     setShowMobileThread(false);
@@ -682,14 +816,14 @@ export default function AdminInquiries() {
     setNewTicketSubject('');
     setNewTicketMessage('');
 
-    if (filteredTicketsForSelectedUser.length > 0) {
-      setSelectedTicketId(filteredTicketsForSelectedUser[0].id);
+    if (filteredTicketsForSelectedContact.length > 0) {
+      setSelectedTicketId(filteredTicketsForSelectedContact[0].id);
       setShowMobileThread(true);
     } else {
       setSelectedTicketId(null);
       setShowMobileThread(false);
     }
-  }, [filteredTicketsForSelectedUser]);
+  }, [filteredTicketsForSelectedContact]);
 
   const setDraftForTicket = useCallback((ticketId: string, value: string) => {
     setReplyDrafts((prev) => ({
@@ -699,7 +833,9 @@ export default function AdminInquiries() {
   }, []);
 
   const handleStartConversation = useCallback(async () => {
-    if (!selectedUser || !adminUser || isStartingTicket) return;
+    if (!selectedContact || selectedContact.type !== 'user' || !adminUser || isStartingTicket) {
+      return;
+    }
 
     const subject = newTicketSubject.trim();
     const body = newTicketMessage.trim();
@@ -710,18 +846,18 @@ export default function AdminInquiries() {
 
     try {
       const ticketId = await createTicket({
-        userId: selectedUser.id,
-        firstName: selectedUser.firstName,
-        lastName: selectedUser.lastName,
-        email: selectedUser.email,
+        userId: selectedContact.userId,
+        firstName: selectedContact.firstName ?? undefined,
+        lastName: selectedContact.lastName ?? undefined,
+        email: selectedContact.email,
         subject,
         message: body,
         senderType: 'support',
       });
 
-      if (selectedUser.id) {
+      if (selectedContact.userId) {
         await sendInquiryResponseNotification({
-          userId: selectedUser.id,
+          userId: selectedContact.userId,
           subject,
         });
       }
@@ -742,12 +878,12 @@ export default function AdminInquiries() {
     isStartingTicket,
     newTicketMessage,
     newTicketSubject,
-    selectedUser,
+    selectedContact,
     sendInquiryResponseNotification,
   ]);
 
   const handleSendReply = useCallback(async () => {
-    if (!selectedTicket || !selectedUser || !adminUser || isSending || isLoadingMessages) {
+    if (!selectedTicket || !adminUser || isSending || isLoadingMessages) {
       return;
     }
 
@@ -755,28 +891,72 @@ export default function AdminInquiries() {
     if (!reply) return;
 
     setIsSending(true);
+    setSendReplyError('');
 
     try {
       if (selectedTicket.status === 'resolved') {
         await reopenTicket(selectedTicket.id);
       }
 
-      await sendTicketMessage(selectedTicket.id, {
-        body: reply,
-        senderType: 'support',
-        senderUserId: adminUser.id,
-        senderName:
-          [adminUser.firstName, adminUser.lastName].filter(Boolean).join(' ').trim() ||
-          'Support Team',
-        senderEmail: adminUser.email ?? null,
-      });
+      const isGuestTicket = !selectedTicket.userId;
 
-      if (selectedUser.id) {
-        await sendInquiryResponseNotification({
-          userId: selectedUser.id,
-          subject: selectedTicket.subject,
-        });
-      }
+        if (isGuestTicket) {
+  const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+
+  console.log('guest reply refreshed session:', refreshed?.session);
+  console.log('guest reply refresh error:', refreshError);
+
+  const accessToken = refreshed?.session?.access_token;
+
+  if (refreshError || !accessToken) {
+    throw new Error('Admin session expired. Please log out and log back in.');
+  }
+
+  const result = await supabase.functions.invoke('reply-to-support-ticket', {
+    body: {
+      ticketId: selectedTicket.id,
+      subject: `Re: ${selectedTicket.subject}`,
+      message: reply,
+    },
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  console.log('reply-to-support-ticket result:', result);
+
+  if (result.error) {
+    try {
+      const response = (result.error as any).context as Response | undefined;
+      const text = response ? await response.text() : '';
+      throw new Error(text || result.error.message || 'Failed to send guest reply.');
+    } catch (parseError) {
+      throw parseError instanceof Error
+        ? parseError
+        : new Error(result.error.message || 'Failed to send guest reply.');
+    }
+  }
+
+  await refreshInquiries();
+  await fetchMessagesByTicketId(selectedTicket.id, true);
+} else {
+  await sendTicketMessage(selectedTicket.id, {
+    body: reply,
+    senderType: 'support',
+    senderUserId: adminUser.id,
+    senderName:
+      [adminUser.firstName, adminUser.lastName].filter(Boolean).join(' ').trim() ||
+      'Support Team',
+    senderEmail: adminUser.email ?? null,
+  });
+
+  if (selectedContact?.type === 'user' && selectedContact.userId) {
+    await sendInquiryResponseNotification({
+      userId: selectedContact.userId,
+      subject: selectedTicket.subject,
+    });
+  }
+}
 
       setReplyDrafts((prev) => ({
         ...prev,
@@ -784,17 +964,24 @@ export default function AdminInquiries() {
       }));
     } catch (error) {
       console.error('Failed to send support reply:', error);
+      setSendReplyError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to send the reply. Please try again.'
+      );
     } finally {
       setIsSending(false);
     }
   }, [
     adminUser,
     currentReply,
+    fetchMessagesByTicketId,
     isLoadingMessages,
     isSending,
+    refreshInquiries,
     reopenTicket,
+    selectedContact,
     selectedTicket,
-    selectedUser,
     sendInquiryResponseNotification,
     sendTicketMessage,
   ]);
@@ -814,68 +1001,68 @@ export default function AdminInquiries() {
   }, [isReopening, reopenTicket, selectedTicket]);
 
   return (
-  <div className="h-[calc(100vh-4rem)] min-h-[900px] bg-gray-50">
-    <div className="flex h-full flex-col gap-6 p-4 sm:p-6 lg:p-8">
-      <div
-        className={`${
-          showMobileThread ? 'hidden md:flex' : 'flex'
-        } shrink-0 flex-col gap-4`}
-      >
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-gray-900">
-              Support Center
-            </h1>
-            <p className="mt-1 text-sm text-gray-500">
-              View active users, start conversations, and continue support threads.
-            </p>
-          </div>
+    <div className="h-[calc(100vh-4rem)] min-h-[900px] bg-gray-50">
+      <div className="flex h-full flex-col gap-6 p-4 sm:p-6 lg:p-8">
+        <div
+          className={`${
+            showMobileThread ? 'hidden md:flex' : 'flex'
+          } shrink-0 flex-col gap-4`}
+        >
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-gray-900">
+                Support Center
+              </h1>
+              <p className="mt-1 text-sm text-gray-500">
+                View contacts, start conversations, and continue support threads.
+              </p>
+            </div>
 
-          <div className="flex overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
-            {(
-              ['all', 'waiting_for_support', 'waiting_for_customer', 'resolved'] as const
-            ).map((status) => (
-              <button
-                key={status}
-                type="button"
-                onClick={() => setFilterStatus(status)}
-                className={`whitespace-nowrap rounded-xl px-3 py-2 text-xs font-semibold transition-all md:px-4 md:text-sm ${
-                  filterStatus === status
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'text-gray-500 hover:bg-gray-50'
-                }`}
-              >
-                {status === 'all'
-                  ? 'All'
-                  : status === 'waiting_for_support'
-                  ? 'Waiting for Support'
-                  : status === 'waiting_for_customer'
-                  ? 'Waiting for Customer'
-                  : 'Resolved'}
-                <span className="ml-2 opacity-70">({ticketCounts[status]})</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {!isInitialInquiriesLoading && !hasNoUsers && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-2 shadow-sm">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search active users by name, email, or user ID..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
-              />
+            <div className="flex overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
+              {(
+                ['all', 'waiting_for_support', 'waiting_for_customer', 'resolved'] as const
+              ).map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => setFilterStatus(status)}
+                  className={`whitespace-nowrap rounded-xl px-3 py-2 text-xs font-semibold transition-all md:px-4 md:text-sm ${
+                    filterStatus === status
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  {status === 'all'
+                    ? 'All'
+                    : status === 'waiting_for_support'
+                    ? 'Waiting for Support'
+                    : status === 'waiting_for_customer'
+                    ? 'Waiting for Customer'
+                    : 'Resolved'}
+                  <span className="ml-2 opacity-70">({ticketCounts[status]})</span>
+                </button>
+              ))}
             </div>
           </div>
-        )}
-      </div>
 
-      <div className="hidden overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm lg:block">
-        {isInitialInquiriesLoading ? (
+          {!isInitialInquiriesLoading && !hasNoContacts && (
+            <div className="rounded-2xl border border-gray-200 bg-white p-2 shadow-sm">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search contacts by name, email, or ID..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="hidden overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm lg:block">
+          {isInitialInquiriesLoading ? (
             <EmptyState
               icon={
                 <div className="flex items-center justify-center">
@@ -885,237 +1072,300 @@ export default function AdminInquiries() {
               title="Loading inquiries..."
               description="Please wait while support tickets and conversations are being retrieved."
             />
-        ) : hasNoUsers ? (
+          ) : hasNoContacts ? (
             <EmptyState
               icon={<MessageSquare className="size-10 text-blue-500" />}
-              title="No active users found"
-              description="Active users will appear here once accounts become available."
+              title="No contacts found"
+              description="Contacts with user accounts or guest ticket history will appear here."
             />
-        ) : (
-          <div className="grid h-full min-h-0 flex-1 grid-cols-[320px_minmax(0,360px)_minmax(0,1fr)] gap-4 p-4">
-            <div
-              className={`min-h-0 rounded-[2rem] border border-gray-200 bg-white shadow-sm ${
-                showMobileThread ? 'hidden md:flex' : 'flex'
-              } flex-col`}
-            >
-              <div className="border-b border-gray-100 p-5">
-                <h2 className="text-sm font-bold text-gray-900">Users</h2>
-                <p className="mt-1 text-[11px] text-gray-500">
-                  Select a customer to view support tickets.
-                </p>
-              </div>
-
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-                {activeUsers.map((user: any) => (
-                  <AdminUserListItem
-                    key={user.id}
-                    user={user}
-                    isSelected={user.id === selectedUserId}
-                    openTicketCount={openTicketCountByUserId[user.id] ?? 0}
-                    onSelect={openUser}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div
-              className={`min-h-0 rounded-[2rem] border border-gray-200 bg-white shadow-sm ${
-                showMobileThread ? 'hidden md:flex' : 'flex'
-              } flex-col`}
-            >
-              <div className="flex items-center justify-between border-b border-gray-100 p-5">
-                <div>
-                  <h2 className="text-sm font-bold text-gray-900">Tickets</h2>
+          ) : (
+            <div className="grid h-full min-h-0 flex-1 grid-cols-[320px_minmax(0,360px)_minmax(0,1fr)] gap-4 p-4">
+              <div
+                className={`min-h-0 rounded-[2rem] border border-gray-200 bg-white shadow-sm ${
+                  showMobileThread ? 'hidden md:flex' : 'flex'
+                } flex-col`}
+              >
+                <div className="border-b border-gray-100 p-5">
+                  <h2 className="text-sm font-bold text-gray-900">Contacts</h2>
                   <p className="mt-1 text-[11px] text-gray-500">
-                    {selectedUser
-                      ? `Support history for ${
-                          [selectedUser.firstName, selectedUser.lastName]
-                            .filter(Boolean)
-                            .join(' ')
-                            .trim() || selectedUser.email
-                        }`
-                      : 'Select a user first.'}
+                    Select a contact to view support tickets and conversations.
                   </p>
                 </div>
 
-                {selectedUser && (
-                  <button
-                    type="button"
-                    onClick={startNewTicket}
-                    className="rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-700"
-                  >
-                    New Ticket
-                  </button>
-                )}
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+                  {contacts.map((contact) => (
+                    <AdminContactListItem
+                      key={contact.id}
+                      contact={contact}
+                      isSelected={contact.id === selectedContactId}
+                      onSelect={openContact}
+                    />
+                  ))}
+                </div>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto p-4">
-                {!selectedUser ? null : hasNoTicketsForSelectedUser ? (
-                  <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
+              <div
+                className={`min-h-0 rounded-[2rem] border border-gray-200 bg-white shadow-sm ${
+                  showMobileThread ? 'hidden md:flex' : 'flex'
+                } flex-col`}
+              >
+                <div className="border-b border-gray-100 p-5">
+                  <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-sm font-semibold text-gray-900">No tickets yet</h3>
-                      <p className="mt-1 text-xs text-gray-500">
-                        Start a new support conversation for this customer.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {filteredTicketsForSelectedUser.map((ticket) => (
-                      <AdminTicketListItem
-                        key={ticket.id}
-                        ticket={ticket}
-                        preview={ticketPreviewByTicketId[ticket.id] ?? ''}
-                        messageCount={(messagesByTicketId[ticket.id] ?? []).length}
-                        isSelected={ticket.id === selectedTicketId}
-                        onSelect={openTicket}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div
-              className={`min-h-0 rounded-[2rem] border border-gray-200 bg-white shadow-sm ${
-                showMobileThread ? 'flex' : 'hidden md:flex'
-              } flex-col`}
-            >
-              <div className="flex items-center justify-between gap-3 border-b border-gray-100 p-5">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={closeMobileThread}
-                    className="inline-flex size-9 items-center justify-center rounded-xl border border-gray-200 text-gray-500 transition hover:bg-gray-50 md:hidden"
-                  >
-                    <ChevronLeft className="size-5" />
-                  </button>
-
-                  <div>
-                    <h2 className="text-sm font-bold text-gray-900">
-                      {isComposingNewTicket
-                        ? 'Start Conversation'
-                        : selectedTicket?.subject || 'Conversation'}
-                    </h2>
-
-                    <p className="mt-1 text-[11px] text-gray-500">
-                      {isComposingNewTicket
-                        ? selectedUser
-                          ? `Starting a new conversation with ${
-                              [selectedUser.firstName, selectedUser.lastName]
+                      <h2 className="text-sm font-bold text-gray-900">Tickets</h2>
+                      <p className="mt-1 text-[11px] text-gray-500">
+                        {selectedContact
+                          ? `Support history for ${
+                              [selectedContact.firstName, selectedContact.lastName]
                                 .filter(Boolean)
                                 .join(' ')
-                                .trim() || selectedUser.email
+                                .trim() || selectedContact.email
                             }`
-                          : 'Create a new support conversation'
-                        : selectedTicket
-                        ? `Ticket ${
-                            selectedTicket.publicId ?? `#${selectedTicket.id.slice(-6).toUpperCase()}`
-                          } • ${
-                            selectedTicket.status === 'resolved'
-                              ? 'Resolved'
-                              : selectedTicket.status === 'waiting_for_support'
-                              ? 'Waiting for Support'
-                              : 'Waiting for Customer'
-                          }`
-                        : 'No conversation selected'}
-                    </p>
-                  </div>
-                </div>
+                          : 'Select a contact first.'}
+                          
+                      </p>
+                      {selectedContact?.type === 'guest' && (
+                        <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2">
+                          <p className="text-[11px] font-semibold text-amber-800">
+                            Guest inquiries are one-time email conversations.
+                          </p>
+                          <p className="mt-1 text-[11px] leading-relaxed text-amber-700">
+                            Each new landing page inquiry creates a separate ticket for this guest.
+                            Replies are sent by email and do not continue as in-app messaging.
+                          </p>
+                        </div>
+                      )}
+                    </div>
 
-                {!isComposingNewTicket && selectedTicket?.status === 'resolved' && (
-                  <button
-                    type="button"
-                    onClick={handleReopen}
-                    disabled={isReopening}
-                    className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-xs font-bold text-green-700 transition hover:bg-green-100 disabled:opacity-70"
-                  >
-                    {isReopening ? 'Reopening...' : 'Reopen'}
-                  </button>
-                )}
-
-                {isComposingNewTicket && (
-                  <button
-                    type="button"
-                    onClick={cancelNewTicket}
-                    className="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 transition hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-
-              {isComposingNewTicket ? (
-                <EmptyThreadState
-                  selectedUser={selectedUser}
-                  draftSubject={newTicketSubject}
-                  draftMessage={newTicketMessage}
-                  isStartingTicket={isStartingTicket}
-                  onSubjectChange={setNewTicketSubject}
-                  onMessageChange={setNewTicketMessage}
-                  onStartConversation={handleStartConversation}
-                />
-              ) : !selectedTicket ? (
-                <div className="flex flex-1 items-center justify-center p-6 text-center">
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-900">
-                      Select a ticket
-                    </h3>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Choose a support ticket to continue the conversation.
-                    </p>
-                  </div>
-                </div>
-              ) : isLoadingMessages ? (
-                <div className="flex flex-1 p-5 md:p-6">
-                  <ThreadLoadingState />
-                </div>
-              ) : (
-                <>
-                  <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5 md:p-6">
-                    {selectedTicketMessages.length === 0 ? (
-                      <EmptyMessagesState />
-                    ) : (
-                      selectedTicketMessages.map((message) => (
-                        <MessageBubble key={message.id} message={message} />
-                      ))
+                    {selectedContact?.type === 'user' && (
+                      <div>
+                        <button
+                          type="button"
+                          onClick={startNewTicket}
+                          className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-95"
+                        >
+                          New Ticket
+                        </button>
+                      </div>
                     )}
                   </div>
 
-                  <div className="border-t border-gray-100 p-5">
-                    <div className="space-y-3">
-                      <textarea
-                        rows={4}
-                        value={currentReply}
-                        onChange={(e) =>
-                          selectedTicket &&
-                          setDraftForTicket(selectedTicket.id, e.target.value)
-                        }
-                        placeholder="Write your reply..."
-                        disabled={isSending || isLoadingMessages}
-                        className="w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition-all focus:border-blue-300 focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-50"
-                      />
+                  <div className="mt-4 flex items-center gap-2">
+                    <select
+                      value={filterSenderType}
+                      onChange={(e) =>
+                        setFilterSenderType(e.target.value as TicketSenderFilter)
+                      }
+                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="all">All Senders</option>
+                      <option value="customer">Customer</option>
+                      <option value="guest">Guest</option>
+                      <option value="support">Support</option>
+                    </select>
+                  </div>
+                </div>
 
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={handleSendReply}
-                          disabled={!currentReply.trim() || isSending || isLoadingMessages}
-                          className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-blue-100 transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
-                        >
-                          <Send className="size-4" />
-                          {isSending ? 'Sending...' : 'Send Reply'}
-                        </button>
+                <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                  {!selectedContact ? null : hasNoTicketsForSelectedContact ? (
+                    <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-900">
+                          No tickets yet
+                        </h3>
+                        <p className="mt-1 text-xs text-gray-500">
+                          {selectedContact.type === 'guest'
+                            ? 'Each landing page inquiry from this guest creates a new ticket. Replies are handled via email.'
+                            : 'Start a new support conversation for this customer.'}
+                        </p>
                       </div>
                     </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {filteredTicketsForSelectedContact.map((ticket) => (
+                        <AdminTicketListItem
+                          key={ticket.id}
+                          ticket={ticket}
+                          preview={ticketPreviewByTicketId[ticket.id] ?? ''}
+                          messageCount={(messagesByTicketId[ticket.id] ?? []).length}
+                          isSelected={ticket.id === selectedTicketId}
+                          onSelect={openTicket}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div
+                className={`min-h-0 rounded-[2rem] border border-gray-200 bg-white shadow-sm ${
+                  showMobileThread ? 'flex' : 'hidden md:flex'
+                } flex-col`}
+              >
+                <div className="flex items-center justify-between gap-3 border-b border-gray-100 p-5">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={closeMobileThread}
+                      className="inline-flex size-9 items-center justify-center rounded-xl border border-gray-200 text-gray-500 transition hover:bg-gray-50 md:hidden"
+                    >
+                      <ChevronLeft className="size-5" />
+                    </button>
+
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-sm font-bold text-gray-900">
+                          {isComposingNewTicket
+                            ? 'Start Conversation'
+                            : selectedTicket?.subject || 'Conversation'}
+                        </h2>
+
+                        {!isComposingNewTicket && selectedContact?.type === 'guest' && (
+                          <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                            Guest Inquiry
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="mt-1 text-[11px] text-gray-500">
+                        {isComposingNewTicket
+                          ? selectedContact
+                            ? `Starting a new conversation with ${
+                                [selectedContact.firstName, selectedContact.lastName]
+                                  .filter(Boolean)
+                                  .join(' ')
+                                  .trim() || selectedContact.email
+                              }`
+                            : 'Create a new support conversation'
+                          : selectedTicket
+                          ? `Ticket ${
+                              selectedTicket.publicId ??
+                              `#${selectedTicket.id.slice(-6).toUpperCase()}`
+                            } • ${
+                              selectedTicket.status === 'resolved'
+                                ? 'Resolved'
+                                : selectedTicket.status === 'waiting_for_support'
+                                ? 'Waiting for Support'
+                                : 'Waiting for Customer'
+                            }`
+                          : 'No conversation selected'}
+                      </p>
+                    </div>
                   </div>
-                </>
-              )}
+
+                  {!isComposingNewTicket && selectedTicket?.status === 'resolved' && (
+                    <button
+                      type="button"
+                      onClick={handleReopen}
+                      disabled={isReopening}
+                      className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-xs font-bold text-green-700 transition hover:bg-green-100 disabled:opacity-70"
+                    >
+                      {isReopening ? 'Reopening...' : 'Reopen'}
+                    </button>
+                  )}
+
+                  {isComposingNewTicket && (
+                    <button
+                      type="button"
+                      onClick={cancelNewTicket}
+                      className="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 transition hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+
+                {isComposingNewTicket ? (
+                  <EmptyThreadState
+                    selectedContact={selectedContact}
+                    draftSubject={newTicketSubject}
+                    draftMessage={newTicketMessage}
+                    isStartingTicket={isStartingTicket}
+                    onSubjectChange={setNewTicketSubject}
+                    onMessageChange={setNewTicketMessage}
+                    onStartConversation={handleStartConversation}
+                  />
+                ) : !selectedTicket ? (
+                  <div className="flex flex-1 items-center justify-center p-6 text-center">
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-900">
+                        Select a ticket
+                      </h3>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Choose a support ticket to continue the conversation.
+                      </p>
+                    </div>
+                  </div>
+                ) : isLoadingMessages ? (
+                  <div className="flex flex-1 p-5 md:p-6">
+                    <ThreadLoadingState />
+                  </div>
+                ) : (
+                  <>
+                    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5 md:p-6">
+                      {selectedTicketMessages.length === 0 ? (
+                        <EmptyMessagesState />
+                      ) : (
+                        selectedTicketMessages.map((message) => (
+                          <MessageBubble key={message.id} message={message} />
+                        ))
+                      )}
+                    </div>
+
+                    <div className="border-t border-gray-100 p-5">
+                      <div className="space-y-3">
+                        {selectedContact?.type === 'guest' && (
+                          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                            <p className="text-sm font-semibold text-amber-800">
+                              This reply will be sent to the guest’s email.
+                            </p>
+                            <p className="mt-1 text-sm leading-relaxed text-amber-700">
+                              If the same guest submits another inquiry from the landing page, it will appear as a new ticket under this contact.
+                            </p>
+                          </div>
+                        )}
+                        <textarea
+                          rows={4}
+                          value={currentReply}
+                          onChange={(e) =>
+                            selectedTicket &&
+                            setDraftForTicket(selectedTicket.id, e.target.value)
+                          }
+                          placeholder={
+                            selectedContact?.type === 'guest'
+                              ? 'Write your email reply to this guest...'
+                              : 'Write your reply...'
+                          }
+                          disabled={isSending || isLoadingMessages}
+                          className="w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition-all focus:border-blue-300 focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-50"
+                        />
+
+                        {sendReplyError && (
+                          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                            {sendReplyError}
+                          </div>
+                        )}
+
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={handleSendReply}
+                            disabled={!currentReply.trim() || isSending || isLoadingMessages}
+                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-blue-100 transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+                          >
+                            <Send className="size-4" />
+                            {isSending ? 'Sending...' : 'Send Reply'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
 }

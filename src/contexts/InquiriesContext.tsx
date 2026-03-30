@@ -237,74 +237,92 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
   );
 
   const createTicket = useCallback(
-    async (input: CreateTicketInput): Promise<string> => {
-      const now = new Date().toISOString();
-      const senderType: SupportSenderType =
-        input.senderType ?? (!input.userId ? 'guest' : 'customer');
+  async (input: CreateTicketInput): Promise<string> => {
+    const now = new Date().toISOString();
 
-      const trimmedSubject = input.subject.trim();
-      const trimmedMessage = input.message.trim();
+    const trimmedFirstName = input.firstName?.trim() || null;
+    const trimmedLastName = input.lastName?.trim() || null;
+    const trimmedEmail = input.email?.trim().toLowerCase() || null;
+    const trimmedSubject = input.subject.trim();
+    const trimmedMessage = input.message.trim();
 
-      const ticketPayload = {
-        user_id: input.userId ?? null,
-        guest_email: !input.userId ? input.email?.trim() || null : null,
-        guest_first_name: !input.userId ? input.firstName?.trim() || null : null,
-        guest_last_name: !input.userId ? input.lastName?.trim() || null : null,
-        subject: trimmedSubject,
-        status:
-          senderType === 'support'
-            ? ('waiting_for_customer' as SupportTicketStatus)
-            : ('waiting_for_support' as SupportTicketStatus),
-        created_at: now,
-        updated_at: now,
-        last_message_at: now,
-        last_message_by: senderType,
-        resolved_at: null,
-        resolved_by_user: false,
-      };
+    let resolvedUserId = input.userId ?? null;
 
-      const { data: ticketData, error: ticketError } = await supabase
-        .from('support_tickets')
-        .insert([ticketPayload])
-        .select()
-        .single();
+    if (!resolvedUserId && trimmedEmail) {
+      const { data: matchedUser, error: matchedUserError } = await supabase
+        .from('users')
+        .select('user_id')
+        .eq('email', trimmedEmail)
+        .maybeSingle();
 
-      if (ticketError) throw ticketError;
+      if (matchedUserError) throw matchedUserError;
 
-      const messagePayload = {
-        ticket_id: ticketData.ticket_id,
-        sender_type: senderType,
-        sender_user_id: senderType === 'support' ? null : input.userId ?? null,
-        sender_name:
-          senderType === 'support'
-            ? 'Support Team'
-            : [input.firstName, input.lastName].filter(Boolean).join(' ').trim() || null,
-        sender_email: input.email?.trim() || null,
-        body: trimmedMessage,
-        created_at: now,
-        is_internal: false,
-      };
+      resolvedUserId = matchedUser?.user_id ?? null;
+    }
 
-      const { data: messageData, error: messageError } = await supabase
-        .from('support_messages')
-        .insert([messagePayload])
-        .select()
-        .single();
+    const senderType: SupportSenderType =
+      input.senderType ?? (resolvedUserId ? 'customer' : 'guest');
 
-      if (messageError) throw messageError;
+    const ticketPayload = {
+      user_id: resolvedUserId,
+      guest_email: resolvedUserId ? null : trimmedEmail,
+      guest_first_name: resolvedUserId ? null : trimmedFirstName,
+      guest_last_name: resolvedUserId ? null : trimmedLastName,
+      subject: trimmedSubject,
+      status:
+        senderType === 'support'
+          ? ('waiting_for_customer' as SupportTicketStatus)
+          : ('waiting_for_support' as SupportTicketStatus),
+      created_at: now,
+      updated_at: now,
+      last_message_at: now,
+      last_message_by: senderType,
+      resolved_at: null,
+      resolved_by_user: false,
+    };
 
-      const newTicket = mapTicket(ticketData);
-      const newMessage = mapMessage(messageData);
+    const { data: ticketData, error: ticketError } = await supabase
+      .from('support_tickets')
+      .insert([ticketPayload])
+      .select()
+      .single();
 
-      loadedTicketIdsRef.current.add(newTicket.id);
+    if (ticketError) throw ticketError;
 
-      setTickets((prev) => sortTicketsByLastMessageDesc([newTicket, ...prev]));
-      setMessages((prev) => [...prev, newMessage]);
+    const messagePayload = {
+      ticket_id: ticketData.ticket_id,
+      sender_type: senderType,
+      sender_user_id: senderType === 'support' ? null : resolvedUserId,
+      sender_name:
+        senderType === 'support'
+          ? 'Support Team'
+          : [trimmedFirstName, trimmedLastName].filter(Boolean).join(' ').trim() || null,
+      sender_email: trimmedEmail,
+      body: trimmedMessage,
+      created_at: now,
+      is_internal: false,
+    };
 
-      return newTicket.id;
-    },
-    []
-  );
+    const { data: messageData, error: messageError } = await supabase
+      .from('support_messages')
+      .insert([messagePayload])
+      .select()
+      .single();
+
+    if (messageError) throw messageError;
+
+    const newTicket = mapTicket(ticketData);
+    const newMessage = mapMessage(messageData);
+
+    loadedTicketIdsRef.current.add(newTicket.id);
+
+    setTickets((prev) => sortTicketsByLastMessageDesc([newTicket, ...prev]));
+    setMessages((prev) => [...prev, newMessage]);
+
+    return newTicket.id;
+  },
+  []
+);
 
   const sendTicketMessage = useCallback(
     async (ticketId: string, input: SendTicketMessageInput): Promise<void> => {
