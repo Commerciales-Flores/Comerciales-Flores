@@ -26,6 +26,7 @@ interface UsersContextType {
     count: number;
   }>;
   updateUserStatus: (id: string, isActive: boolean) => Promise<boolean>;
+  clearUsersCache: () => void;
 }
 
 const UsersContext = createContext<UsersContextType | undefined>(undefined);
@@ -109,6 +110,11 @@ export function UsersProvider({ children }: { children: ReactNode }) {
   const clearUsersPageCache = useCallback(() => {
     usersPageCacheRef.current.clear();
   }, []);
+
+  const clearUsersCache = useCallback(() => {
+    hasLoadedUsersRef.current = false;
+    clearUsersPageCache();
+  }, [clearUsersPageCache]);
 
   const refreshUsers = useCallback(
     async (force = false): Promise<void> => {
@@ -392,16 +398,25 @@ export function UsersProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<UsersContextType>(
-    () => ({
-      users,
-      isLoadingUsers,
-      getUserById,
-      refreshUsers,
-      fetchUsersPage,
-      updateUserStatus,
-    }),
-    [users, isLoadingUsers, getUserById, refreshUsers, fetchUsersPage, updateUserStatus]
-  );
+  () => ({
+    users,
+    isLoadingUsers,
+    getUserById,
+    refreshUsers,
+    fetchUsersPage,
+    updateUserStatus,
+    clearUsersCache,
+  }),
+  [
+    users,
+    isLoadingUsers,
+    getUserById,
+    refreshUsers,
+    fetchUsersPage,
+    updateUserStatus,
+    clearUsersCache,
+  ]
+);
 
   return <UsersContext.Provider value={value}>{children}</UsersContext.Provider>;
 }

@@ -15,11 +15,9 @@ Deno.serve(async (req) => {
     const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const adminClient = createClient(supabaseUrl, supabaseServiceRoleKey);
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const token = String(body?.token ?? '').trim();
     const requestedRememberDevice = Boolean(body?.rememberDevice);
-
-    console.log('VERIFY TOKEN PRESENT:', Boolean(token));
 
     if (!token) {
       return new Response(
@@ -36,10 +34,6 @@ Deno.serve(async (req) => {
       .select('*')
       .eq('token', token)
       .maybeSingle();
-
-    console.log('VERIFICATION ERROR:', verificationError?.message ?? null);
-    console.log('VERIFICATION FOUND:', Boolean(verification));
-    console.log('VERIFICATION ID:', verification?.verification_id ?? null);
 
     if (verificationError) {
       return new Response(
@@ -63,7 +57,6 @@ Deno.serve(async (req) => {
 
     const rememberDevice =
       Boolean(verification.remember_device) || requestedRememberDevice;
-    console.log('REMEMBER DEVICE:', rememberDevice);
 
     if (new Date(verification.expires_at).getTime() < Date.now()) {
       return new Response(
@@ -76,13 +69,14 @@ Deno.serve(async (req) => {
     }
 
     if (verification.approved_at) {
-    if (!rememberDevice) {
       return new Response(
         JSON.stringify({
           success: true,
           approved: true,
-          trusted: false,
-          message: 'Sign-in already approved. Return to your original browser to continue.',
+          trusted: rememberDevice,
+          message: rememberDevice
+            ? 'Sign-in already approved and this browser is trusted. Return to your original browser to continue.'
+            : 'Sign-in already approved. Return to your original browser to continue.',
         }),
         {
           status: 200,
@@ -90,20 +84,17 @@ Deno.serve(async (req) => {
         }
       );
     }
-  }
 
     const nowIso = new Date().toISOString();
 
     const { error: markVerifiedError } = await adminClient
       .from('pending_login_verifications')
-      .update({ 
+      .update({
         verified_at: nowIso,
         approved_at: nowIso,
       })
       .eq('verification_id', verification.verification_id)
       .is('approved_at', null);
-
-    console.log('MARK VERIFIED ERROR:', markVerifiedError?.message ?? null);
 
     if (markVerifiedError) {
       return new Response(
@@ -132,6 +123,16 @@ Deno.serve(async (req) => {
             location_city: verification.location_city ?? null,
             location_region: verification.location_region ?? null,
             location_country: verification.location_country ?? null,
+            location_timezone: verification.location_timezone ?? null,
+            location_latitude: verification.location_latitude ?? null,
+            location_longitude: verification.location_longitude ?? null,
+            network_isp: verification.network_isp ?? null,
+            network_asn: verification.network_asn ?? null,
+            is_proxy: Boolean(verification.is_proxy),
+            is_vpn: Boolean(verification.is_vpn),
+            is_hosting: Boolean(verification.is_hosting),
+            location_confidence: verification.location_confidence ?? null,
+            location_source: verification.location_source ?? null,
             location_checked_at: nowIso,
             country_change_detected: false,
             city_change_detected: false,
@@ -146,8 +147,6 @@ Deno.serve(async (req) => {
           }
         );
 
-      console.log('TRUST DEVICE ERROR:', trustError?.message ?? null);
-
       if (trustError) {
         return new Response(
           JSON.stringify({ success: false, error: trustError.message }),
@@ -160,26 +159,28 @@ Deno.serve(async (req) => {
     }
 
     const deviceLabel =
-  verification.device_name?.trim() ||
-  (verification.user_agent?.toLowerCase().includes('chrome') ? 'Chrome browser' : '') ||
-  'Trusted device';
+      verification.device_name?.trim() ||
+      (verification.user_agent?.toLowerCase().includes('chrome') ? 'Chrome browser' : '') ||
+      'Trusted device';
 
-const { error: auditError } = await adminClient.from('audit_log').insert({
-  user_id: verification.user_id,
-  action: 'LOGIN_APPROVED',
-  target_table: rememberDevice ? 'trusted_devices' : 'users',
-  target_id: rememberDevice ? verification.device_fingerprint : verification.user_id,
-  target_public_id: rememberDevice ? deviceLabel : null,
-  changed_fields: rememberDevice
-    ? ['device_fingerprint', 'is_trusted']
-    : ['device_fingerprint'],
-  timestamp: nowIso,
-  notes: rememberDevice
-    ? 'Login approved from verification link and device trusted immediately'
-    : 'Login approved from verification link',
-});
+    const { error: auditError } = await adminClient.from('audit_log').insert({
+      user_id: verification.user_id,
+      action: 'LOGIN_APPROVED',
+      target_table: rememberDevice ? 'trusted_devices' : 'users',
+      target_id: rememberDevice ? verification.device_fingerprint : verification.user_id,
+      target_public_id: rememberDevice ? deviceLabel : null,
+      changed_fields: rememberDevice
+        ? ['device_fingerprint', 'is_trusted']
+        : ['device_fingerprint'],
+      timestamp: nowIso,
+      notes: rememberDevice
+        ? 'Login approved from verification link and device trusted immediately'
+        : 'Login approved from verification link',
+    });
 
-    console.log('AUDIT ERROR:', auditError?.message ?? null);
+    if (auditError) {
+      console.log('AUDIT ERROR:', auditError.message);
+    }
 
     return new Response(
       JSON.stringify({

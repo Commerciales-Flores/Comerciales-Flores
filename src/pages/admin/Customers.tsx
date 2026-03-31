@@ -265,7 +265,7 @@ function StatusBadge({
 }
 
 export default function AdminCustomers() {
-  const { fetchUsersPage, updateUserStatus } = useUsers();
+  const { fetchUsersPage, updateUserStatus, clearUsersCache } = useUsers();
   const { user } = useAuth();
   const { sendDeletionStatusNotification } = useNotifications();
 
@@ -527,7 +527,7 @@ export default function AdminCustomers() {
         userId: target.id,
         status: nextStatus,
       });
-
+      clearUsersCache();
       await reloadUsers();
       setSelectedCustomer(null);
       setDeletionDecisionState({
@@ -557,6 +557,7 @@ export default function AdminCustomers() {
     reloadUsers,
     sendDeletionStatusNotification,
     user?.id,
+    clearUsersCache,
   ]);
 
   const handleExportCustomer = useCallback(
@@ -696,14 +697,11 @@ export default function AdminCustomers() {
       setLoading(true);
 
       try {
-        const [result] = await Promise.all([
-          fetchUsersPage({
-            page,
-            pageSize,
-            searchTerm: debouncedSearchTerm,
-          }),
-          wait(250),
-        ]);
+        const result = await fetchUsersPage({
+          page,
+          pageSize,
+          searchTerm: debouncedSearchTerm,
+        });
 
         if (cancelled) return;
 

@@ -34,7 +34,7 @@ type AddressPickerProps = {
   }) => void;
 };
 
-const DEFAULT_CENTER: [number, number] = [12.8797, 121.774];
+const DEFAULT_CENTER: [number, number] = [14.5995, 120.9842];
 
 
 const PH_BOUNDS = L.latLngBounds(
@@ -145,7 +145,7 @@ export default function AddressPicker({
     return position ?? DEFAULT_CENTER;
   }, [position]);
 
-  const mapZoom = position ? 16 : 12;
+  const mapZoom = position ? 16 : 13;
   const addressConfirmed = Boolean(selectedAddress && position);
 
   const clearSelection = () => {

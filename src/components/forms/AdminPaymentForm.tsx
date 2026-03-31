@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { usePayments } from '../../contexts/PaymentsContext';
 import type { PaymentMethod } from '../../data/types';
@@ -27,30 +27,53 @@ export default function AdminPaymentForm({
   const { addPayment } = usePayments();
 
   const reservation = reservations.find((r) => r.id === reservationId);
+
   const balance = reservation
-    ? Math.max(Number(reservation.totalAmount || 0) - Number(reservation.paidAmount || 0), 0)
+    ? Math.max(
+        Number(reservation.totalAmount || 0) - Number(reservation.paidAmount || 0),
+        0
+      )
     : 0;
 
-    const minimumPercent = Number(
-  reservation?.minimumPaymentPercentSnapshot ?? 0
-);
+  const minimumPercent = Number(
+    reservation?.minimumPaymentPercentSnapshot ?? 0
+  );
 
-const isFirstPayment = Number(reservation?.paidAmount || 0) <= 0;
+  const paidAmount = Number(reservation?.paidAmount || 0);
+  const totalAmount = Number(reservation?.totalAmount || 0);
+  const duration = Number(reservation?.duration || 0);
 
-const minimumFirstPayment = minimumPercent
-  ? (Number(reservation?.totalAmount || 0) * minimumPercent) / 100
-  : 0;
+  const isFirstPayment = paidAmount <= 0;
 
-const MIN_SUBSEQUENT_PAYMENT = 500;
+  const minimumFirstPayment = minimumPercent
+    ? (totalAmount * minimumPercent) / 100
+    : 0;
 
-const minimumSubsequentPayment = Math.min(
-  MIN_SUBSEQUENT_PAYMENT,
-  balance
-);
+  const MIN_SUBSEQUENT_PAYMENT = 500;
 
-const effectiveMinimum = isFirstPayment
-  ? minimumFirstPayment
-  : minimumSubsequentPayment;
+  const rentalMonthlyAmount =
+    reservation?.unitType === 'rental_space' && duration > 0
+      ? totalAmount / duration
+      : 0;
+
+  const rentalRequiredPayment =
+    reservation?.unitType === 'rental_space'
+      ? reservation.paymentCycle === 'quarterly'
+        ? Math.min(rentalMonthlyAmount * 3, balance)
+        : reservation.paymentCycle === 'full'
+          ? balance
+          : Math.min(rentalMonthlyAmount, balance)
+      : 0;
+
+  const minimumSubsequentPayment =
+    reservation?.unitType === 'rental_space'
+      ? rentalRequiredPayment
+      : Math.min(MIN_SUBSEQUENT_PAYMENT, balance);
+
+  const effectiveMinimum = isFirstPayment
+    ? minimumFirstPayment
+    : minimumSubsequentPayment;
+
   const [formState, setFormState] = useState<{
     amount: string;
     method: PaymentMethod;
@@ -76,12 +99,21 @@ const effectiveMinimum = isFirstPayment
     formState.method === 'cheque';
 
   const enteredAmount = Number(formState.amount || 0);
+
   const isInvalidAmount =
     !formState.amount ||
     Number.isNaN(enteredAmount) ||
     enteredAmount <= 0 ||
     enteredAmount > balance ||
-    enteredAmount < effectiveMinimum;;
+    enteredAmount < effectiveMinimum;
+
+  const paymentCycleLabel = useMemo(() => {
+    if (!reservation || reservation.unitType !== 'rental_space') return null;
+
+    if (reservation.paymentCycle === 'quarterly') return 'Quarterly';
+    if (reservation.paymentCycle === 'full') return 'Full';
+    return 'Monthly';
+  }, [reservation]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.[0]) return;
@@ -112,6 +144,18 @@ const effectiveMinimum = isFirstPayment
     e.preventDefault();
 
     if (!reservation || isInvalidAmount || balance <= 0 || isSubmitting) return;
+
+    if (
+      reservation.unitType === 'rental_space' &&
+      enteredAmount < effectiveMinimum
+    ) {
+      alert(
+        `Minimum required payment is ${formatCurrency(
+          effectiveMinimum
+        )} for this ${reservation.paymentCycle ?? 'monthly'} rental billing cycle.`
+      );
+      return;
+    }
 
     try {
       setIsSubmitting(true);
@@ -169,7 +213,6 @@ const effectiveMinimum = isFirstPayment
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Reservation Summary */}
       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
         <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
           Payment Target
@@ -183,6 +226,23 @@ const effectiveMinimum = isFirstPayment
             <p className="mt-1 font-mono text-xs text-slate-500">
               Reservation ID: {reservation.publicId ?? reservation.id}
             </p>
+
+            {reservation.unitType === 'rental_space' && (
+              <div className="mt-2 space-y-1">
+                <p className="text-xs text-slate-500">
+                  Payment Cycle:{' '}
+                  <span className="font-medium text-slate-700">
+                    {paymentCycleLabel}
+                  </span>
+                </p>
+                <p className="text-xs text-slate-500">
+                  Monthly Rate:{' '}
+                  <span className="font-medium text-slate-700">
+                    {formatCurrency(rentalMonthlyAmount)}
+                  </span>
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="text-right">
@@ -196,7 +256,6 @@ const effectiveMinimum = isFirstPayment
         </div>
       </div>
 
-      {/* Payment Info */}
       <div className="space-y-5">
         <div>
           <h3 className="mb-3 ml-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
@@ -204,7 +263,6 @@ const effectiveMinimum = isFirstPayment
           </h3>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {/* Amount */}
             <div className="space-y-1.5">
               <label className="ml-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                 Payment Amount
@@ -236,16 +294,40 @@ const effectiveMinimum = isFirstPayment
                 }`}
               >
                 {isFirstPayment && minimumPercent > 0 && (
-                  <>Minimum first payment: {formatCurrency(minimumFirstPayment)} ({minimumPercent}%) • </>
+                  <>
+                    Minimum first payment: {formatCurrency(minimumFirstPayment)} (
+                    {minimumPercent}%){' '}
+                    •{' '}
+                  </>
                 )}
-                {!isFirstPayment && (
-                  <>Minimum payment: {formatCurrency(minimumSubsequentPayment)} • </>
+
+                {!isFirstPayment && reservation.unitType !== 'rental_space' && (
+                  <>
+                    Minimum payment: {formatCurrency(minimumSubsequentPayment)} •{' '}
+                  </>
                 )}
+
+                {!isFirstPayment && reservation.unitType === 'rental_space' && (
+                  <>
+                    {reservation.paymentCycle === 'quarterly'
+                      ? `Quarterly required: ${formatCurrency(
+                          minimumSubsequentPayment
+                        )}`
+                      : reservation.paymentCycle === 'full'
+                        ? `Full payment required: ${formatCurrency(
+                            minimumSubsequentPayment
+                          )}`
+                        : `Monthly required: ${formatCurrency(
+                            minimumSubsequentPayment
+                          )}`}
+                    {' • '}
+                  </>
+                )}
+
                 Maximum: {formatCurrency(balance)}
               </p>
             </div>
 
-            {/* Method */}
             <div className="space-y-1.5">
               <label className="ml-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                 Payment Method
@@ -269,7 +351,6 @@ const effectiveMinimum = isFirstPayment
               </select>
             </div>
 
-            {/* Bank / Provider */}
             {showReferenceFields && (
               <div className="space-y-1.5">
                 <label className="ml-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
@@ -291,7 +372,6 @@ const effectiveMinimum = isFirstPayment
               </div>
             )}
 
-            {/* Reference Number */}
             {showReferenceFields && (
               <div className="space-y-1.5">
                 <label className="ml-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
@@ -318,7 +398,6 @@ const effectiveMinimum = isFirstPayment
           </div>
         </div>
 
-        {/* Proof Upload */}
         <div>
           <h3 className="mb-3 ml-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
             Proof of Payment
@@ -375,7 +454,6 @@ const effectiveMinimum = isFirstPayment
           )}
         </div>
 
-        {/* Notes */}
         <div>
           <h3 className="mb-3 ml-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
             Notes
@@ -402,7 +480,6 @@ const effectiveMinimum = isFirstPayment
         </div>
       </div>
 
-      {/* Footer CTA */}
       <div className="pt-2">
         <button
           type="submit"

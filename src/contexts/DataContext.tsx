@@ -3,7 +3,6 @@ import type {
   AuditLog,
   BusinessSlot,
   ContentSettings,
-  Inquiry,
   LedgerEntry,
   Notification,
   Payment,
@@ -18,14 +17,12 @@ export type {
   PaymentStatus,
   PaymentMethod,
   PaymentCycle,
-  InquiryStatus,
   Unit,
   Reservation,
   Payment,
   LedgerEntry,
   AuditLog,
   User,
-  Inquiry,
   Notification,
   BusinessSlot,
   ParkingSlot,
@@ -37,7 +34,14 @@ import { UnitsProvider, useUnits } from './UnitsContext';
 import { RecordsProvider, useRecords } from './RecordsContext';
 import { ReservationsProvider, useReservations } from './ReservationsContext';
 import { PaymentsProvider, usePayments } from './PaymentsContext';
-import { InquiriesProvider, useInquiries } from './InquiriesContext';
+import {
+  InquiriesProvider,
+  useInquiries,
+  type SupportMessage,
+  type SupportSenderType,
+  type SupportTicket,
+  type SupportTicketStatus,
+} from './InquiriesContext';
 import {
   NotificationProvider,
   useNotifications,
@@ -47,6 +51,24 @@ import {
   useContentSettings,
 } from './ContentSettingsContext';
 
+type CreateTicketInput = {
+  userId?: string | null;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  subject: string;
+  message: string;
+  senderType?: SupportSenderType;
+};
+
+type SendTicketMessageInput = {
+  body: string;
+  senderType: SupportSenderType;
+  senderUserId?: string | null;
+  senderName?: string | null;
+  senderEmail?: string | null;
+};
+
 interface DataContextType {
   users: User[];
   units: Unit[];
@@ -55,11 +77,12 @@ interface DataContextType {
   payments: Payment[];
   ledgers: LedgerEntry[];
   auditLogs: AuditLog[];
-  inquiries: Inquiry[];
+  messages: SupportMessage[];
   notifications: Notification[];
   businessSlots: BusinessSlot[];
   contentSettings: ContentSettings;
-  // parkingSlots: ParkingSlot[];
+
+  isLoadingMessages: boolean;
 
   addUnit: (unit: Omit<Unit, 'id'>) => Promise<void>;
   updateUnit: (id: string, unit: Partial<Unit>) => Promise<void>;
@@ -71,7 +94,9 @@ interface DataContextType {
   updateReservation: (id: string, reservation: Partial<Reservation>) => Promise<void>;
   deleteReservation: (id: string) => void;
 
-  addPayment: (payment: Omit<Payment, 'id' | 'createdAt' | 'updatedAt' | 'date'>) => Promise<string>;
+  addPayment: (
+    payment: Omit<Payment, 'id' | 'createdAt' | 'updatedAt' | 'date'>
+  ) => Promise<string>;
   updatePayment: (id: string, payment: Partial<Payment>) => Promise<void>;
 
   uploadPaymentProof: (file: File) => Promise<string | null>;
@@ -82,10 +107,22 @@ interface DataContextType {
     log: Omit<AuditLog, 'id' | 'timestamp'> & { targetPublicId?: string }
   ) => Promise<string>;
 
-  addInquiry: (inquiry: Omit<Inquiry, 'id' | 'date' | 'status'>) => Promise<string>;
-  updateInquiry: (id: string, inquiry: Partial<Inquiry>) => Promise<void>;
+  createTicket: (input: CreateTicketInput) => Promise<SupportTicket>;
+  sendTicketMessage: (
+    ticketId: string,
+    input: SendTicketMessageInput
+  ) => Promise<{ ticket: SupportTicket; message: SupportMessage }>;
+  markTicketResolved: (ticketId: string) => Promise<SupportTicket>;
+  reopenTicket: (ticketId: string) => Promise<SupportTicket>;
+  fetchMessagesByTicketId: (
+    ticketId: string,
+    force?: boolean
+  ) => Promise<SupportMessage[]>;
+  getMessagesByTicketId: (ticketId: string) => SupportMessage[];
 
-  addNotification: (notification: Omit<Notification, 'id' | 'date' | 'read'>) => Promise<void>;
+  addNotification: (
+    notification: Omit<Notification, 'id' | 'date' | 'read'>
+  ) => Promise<void>;
   markNotificationRead: (id: string) => Promise<void>;
   markAllNotificationsRead: (userId: string) => Promise<void>;
   deleteNotification: (id: string) => Promise<void>;
@@ -101,7 +138,6 @@ interface DataContextType {
   getPaymentsByUserId: (userId: string) => Payment[];
   getLedgerByUserId: (userId: string) => LedgerEntry[];
   getNotificationsByUserId: (userId: string) => Notification[];
-  getInquiriesByUserId: (userId: string) => Inquiry[];
   getUserById: (id: string) => User | undefined;
 }
 
@@ -142,8 +178,16 @@ function DataComposer({ children }: { children: ReactNode }) {
     uploadPaymentProof,
     getPaymentsByUserId,
   } = usePayments();
-  const { inquiries, addInquiry, updateInquiry, getInquiriesByUserId } =
-    useInquiries();
+  const {
+    messages,
+    isLoadingMessages,
+    createTicket,
+    sendTicketMessage,
+    markTicketResolved,
+    reopenTicket,
+    fetchMessagesByTicketId,
+    getMessagesByTicketId,
+  } = useInquiries();
   const {
     notifications,
     addNotification,
@@ -163,20 +207,21 @@ function DataComposer({ children }: { children: ReactNode }) {
     () => ({
       users,
       units,
+      loadingUnits,
       reservations,
       payments,
       ledgers,
       auditLogs,
-      inquiries,
+      messages,
       notifications,
       businessSlots,
       contentSettings,
-      // parkingSlots: MOCK_PARKING_SLOTS,
+
+      isLoadingMessages,
 
       addUnit,
       updateUnit,
       deleteUnit,
-      loadingUnits,
 
       addReservation,
       updateReservation,
@@ -191,8 +236,12 @@ function DataComposer({ children }: { children: ReactNode }) {
       addLedgerEntry,
       addAuditLog,
 
-      addInquiry,
-      updateInquiry,
+      createTicket,
+      sendTicketMessage,
+      markTicketResolved,
+      reopenTicket,
+      fetchMessagesByTicketId,
+      getMessagesByTicketId,
 
       addNotification,
       markNotificationRead,
@@ -210,7 +259,6 @@ function DataComposer({ children }: { children: ReactNode }) {
       getPaymentsByUserId,
       getLedgerByUserId,
       getNotificationsByUserId,
-      getInquiriesByUserId,
       getUserById,
     }),
     [
@@ -221,10 +269,11 @@ function DataComposer({ children }: { children: ReactNode }) {
       payments,
       ledgers,
       auditLogs,
-      inquiries,
+      messages,
       notifications,
       businessSlots,
       contentSettings,
+      isLoadingMessages,
       addUnit,
       updateUnit,
       deleteUnit,
@@ -237,8 +286,12 @@ function DataComposer({ children }: { children: ReactNode }) {
       uploadUnitImage,
       addLedgerEntry,
       addAuditLog,
-      addInquiry,
-      updateInquiry,
+      createTicket,
+      sendTicketMessage,
+      markTicketResolved,
+      reopenTicket,
+      fetchMessagesByTicketId,
+      getMessagesByTicketId,
       addNotification,
       markNotificationRead,
       markAllNotificationsRead,
@@ -252,7 +305,6 @@ function DataComposer({ children }: { children: ReactNode }) {
       getPaymentsByUserId,
       getLedgerByUserId,
       getNotificationsByUserId,
-      getInquiriesByUserId,
       getUserById,
     ]
   );

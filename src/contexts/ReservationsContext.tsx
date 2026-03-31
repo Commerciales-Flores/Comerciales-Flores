@@ -174,7 +174,7 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
       modeOfVisit: row.mode_of_visit,
       appointmentDate: row.appointment_date,
       appointmentTime: row.appointment_time,
-      paymentCycle: row.details?.paymentCycle,
+      paymentCycle: row.details?.paymentCycle as Reservation['paymentCycle'],
       businessType: row.details?.businessType,
       eventPurpose: row.details?.eventPurpose,
       attendees: row.details?.attendees,
@@ -329,127 +329,173 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
 
 
   const addReservation = useCallback(
-    async (
-      reservationData: Omit<Reservation, 'id' | 'requestDate' | 'status' | 'paidAmount'>
-    ): Promise<string> => {
+  async (
+    reservationData: Omit<
+      Reservation,
+      'id' | 'requestDate' | 'status' | 'paidAmount' | 'minimumPaymentPercentSnapshot'
+    >
+  ): Promise<string> => {
+    if (!user?.id) {
+      throw new Error('User not authenticated.');
+    }
 
-      if (!user?.id) {
-        throw new Error('User not authenticated.');
-      }
-      const cleanDetails = buildReservationDetails(reservationData);
-
-        if (
-          reservationData.unitType === 'parking_slot' &&
-          reservationData.slotId
-        ) {
-          const { data: existing, error: checkError } = await supabase
-            .from('reservations')
-            .select('reservation_id')
-            .eq('unit_type', 'parking_slot')
-            .eq('details->>slotId', reservationData.slotId)
-            .in('status', ['approved', 'confirmed']);
-
-          if (checkError) {
-            console.error('Slot validation failed:', checkError);
-            throw new Error('Unable to validate parking slot.');
-          }
-
-          if (existing && existing.length > 0) {
-            throw new Error(
-              'This parking slot is already occupied. Please select another.'
-            );
-          }
-        }
-
-        // 🔥 Fetch unit minimum payment %
-      const { data: unitRow, error: unitError } = await supabase
-        .from('units')
-        .select('minimum_payment_percent')
-        .eq('unit_id', reservationData.unitId)
-        .single();
-
-      if (unitError) {
-        console.error('Failed to fetch unit minimum payment:', unitError);
-        throw new Error('Unable to determine minimum payment requirement.');
+    // Enforce rental-space duration + billing configuration early
+    if (reservationData.unitType === 'rental_space') {
+      if (reservationData.durationType !== 'months') {
+        throw new Error('Rental spaces must use monthly duration.');
       }
 
-      const minimumPaymentPercentSnapshot =
-        unitRow?.minimum_payment_percent ?? null;
+      if (
+        reservationData.paymentCycle &&
+        !['monthly', 'quarterly', 'full'].includes(reservationData.paymentCycle)
+      ) {
+        throw new Error('Invalid rental payment cycle.');
+      }
 
-      const { data, error } = await supabase
+      if (!reservationData.paymentCycle) {
+        throw new Error('Please select a payment cycle for this rental space.');
+      }
+
+      if (!Number.isFinite(Number(reservationData.duration)) || Number(reservationData.duration) <= 0) {
+        throw new Error('Rental duration must be at least 1 month.');
+      }
+
+      if (!Number.isFinite(Number(reservationData.totalAmount)) || Number(reservationData.totalAmount) <= 0) {
+        throw new Error('Rental total amount must be greater than zero.');
+      }
+
+      if (
+        reservationData.paymentCycle === 'quarterly' &&
+        Number(reservationData.duration) < 3
+      ) {
+        throw new Error('Quarterly payment cycle requires at least 3 months of rental duration.');
+      }
+    }
+
+    const cleanDetails = buildReservationDetails(reservationData);
+
+    if (reservationData.unitType === 'parking_slot' && reservationData.slotId) {
+      const { data: existing, error: checkError } = await supabase
         .from('reservations')
-        .insert([
-          {
-            user_id: reservationData.userId,
-            unit_id: reservationData.unitId,
-            title: reservationData.unitName,
-            unit_type: reservationData.unitType,
-            start_date: reservationData.startDate,
-            end_date: reservationData.endDate,
-            duration: reservationData.duration,
-            total_amount: reservationData.totalAmount,
-            status: 'pending',
-            payment_method: reservationData.paymentMethod ?? null,
-            payment_intent: reservationData.paymentIntent ?? null,
-            mode_of_visit: reservationData.modeOfVisit ?? null,
-            appointment_date: reservationData.appointmentDate ?? null,
-            appointment_time: reservationData.appointmentTime ?? null,
-            notes: reservationData.notes ?? null,
-            details: cleanDetails,
-            minimum_payment_percent_snapshot: minimumPaymentPercentSnapshot,
-          },
-        ])
-        .select()
-        .single();
+        .select('reservation_id')
+        .eq('unit_type', 'parking_slot')
+        .eq('details->>slotId', reservationData.slotId)
+        .in('status', ['approved', 'confirmed']);
 
-      if (error) throw error;
-
-      const newReservation: Reservation = {
-        id: data.reservation_id,
-        publicId: data.public_id,
-        userId: data.user_id,
-        unitId: data.unit_id,
-        unitName: data.title,
-        unitType: data.unit_type,
-        startDate: data.start_date,
-        endDate: data.end_date,
-        duration: data.duration,
-        totalAmount: Number(data.total_amount),
-        status: data.status,
-        notes: data.notes,
-        paidAmount: 0,
-        requestDate: data.created_at,
-        paymentMethod: data.payment_method,
-        paymentIntent: data.payment_intent,
-        modeOfVisit: data.mode_of_visit,
-        appointmentDate: data.appointment_date,
-        appointmentTime: data.appointment_time,
-        ...cleanDetails,
-        minimumPaymentPercentSnapshot: minimumPaymentPercentSnapshot,
-      };
-
-      setReservations((prev) => [newReservation, ...prev]);
-
-      try {
-        await addAuditLog({
-          userId: user.id,
-          action: 'CREATE',
-          targetTable: 'reservations',
-          targetId: newReservation.id,
-          targetPublicId: newReservation.publicId,
-          beforeValue: null,
-          afterValue: newReservation,
-          changedFields: Object.keys(newReservation),
-          notes: `Created reservation ${newReservation.publicId ?? newReservation.id}`,
-        });
-      } catch (auditError) {
-        console.error('Failed to audit reservation creation:', auditError);
+      if (checkError) {
+        console.error('Slot validation failed:', checkError);
+        throw new Error('Unable to validate parking slot.');
       }
 
-      return newReservation.id;
-    },
-    [addAuditLog, user] //[addAuditLog, user?.id]
-  );
+      if (existing && existing.length > 0) {
+        throw new Error(
+          'This parking slot is already occupied. Please select another.'
+        );
+      }
+    }
+
+    const { data: unitRow, error: unitError } = await supabase
+      .from('units')
+      .select('minimum_payment_percent')
+      .eq('unit_id', reservationData.unitId)
+      .single();
+
+    if (unitError) {
+      console.error('Failed to fetch unit minimum payment:', unitError);
+      throw new Error('Unable to determine minimum payment requirement.');
+    }
+
+    const minimumPaymentPercentSnapshot =
+      unitRow?.minimum_payment_percent ?? null;
+
+    const { data, error } = await supabase
+      .from('reservations')
+      .insert([
+        {
+          user_id: reservationData.userId,
+          unit_id: reservationData.unitId,
+          title: reservationData.unitName,
+          unit_type: reservationData.unitType,
+          start_date: reservationData.startDate,
+          end_date: reservationData.endDate,
+          duration: reservationData.duration,
+          total_amount: reservationData.totalAmount,
+          status: 'pending',
+          payment_method: reservationData.paymentMethod ?? null,
+          payment_intent: reservationData.paymentIntent ?? null,
+          mode_of_visit: reservationData.modeOfVisit ?? null,
+          appointment_date: reservationData.appointmentDate ?? null,
+          appointment_time: reservationData.appointmentTime ?? null,
+          notes: reservationData.notes ?? null,
+          details: cleanDetails,
+          minimum_payment_percent_snapshot: minimumPaymentPercentSnapshot,
+        },
+      ])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    const cycle = data.details?.paymentCycle;
+    const safePaymentCycle =
+      cycle === 'monthly' || cycle === 'quarterly' || cycle === 'full'
+        ? cycle
+        : undefined;
+
+    const newReservation: Reservation = {
+      id: data.reservation_id,
+      publicId: data.public_id,
+      userId: data.user_id,
+      unitId: data.unit_id,
+      unitName: data.title,
+      unitType: data.unit_type,
+      startDate: data.start_date,
+      endDate: data.end_date,
+      duration: data.duration,
+      totalAmount: Number(data.total_amount),
+      status: data.status,
+      notes: data.notes,
+      paidAmount: 0,
+      requestDate: data.created_at,
+      paymentMethod: data.payment_method,
+      paymentIntent: data.payment_intent,
+      modeOfVisit: data.mode_of_visit,
+      appointmentDate: data.appointment_date,
+      appointmentTime: data.appointment_time,
+      paymentCycle: safePaymentCycle,
+      businessType: data.details?.businessType,
+      eventPurpose: data.details?.eventPurpose,
+      attendees: data.details?.attendees,
+      slotId: data.details?.slotId,
+      slotName: data.details?.slotName,
+      vehicleType: data.details?.vehicleType,
+      plateNumber: data.details?.plateNumber,
+      durationType: data.details?.durationType,
+      minimumPaymentPercentSnapshot,
+    };
+
+    setReservations((prev) => [newReservation, ...prev]);
+
+    try {
+      await addAuditLog({
+        userId: user.id,
+        action: 'CREATE',
+        targetTable: 'reservations',
+        targetId: newReservation.id,
+        targetPublicId: newReservation.publicId,
+        beforeValue: null,
+        afterValue: newReservation,
+        changedFields: Object.keys(newReservation),
+        notes: `Created reservation ${newReservation.publicId ?? newReservation.id}`,
+      });
+    } catch (auditError) {
+      console.error('Failed to audit reservation creation:', auditError);
+    }
+
+    return newReservation.id;
+  },
+  [addAuditLog, user]
+);
 
   const updateReservation = useCallback(
     async (id: string, reservationUpdate: Partial<Reservation>): Promise<void> => {

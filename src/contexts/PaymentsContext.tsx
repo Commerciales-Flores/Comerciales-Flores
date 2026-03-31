@@ -8,7 +8,12 @@ import {
   type ReactNode,
 } from 'react';
 import supabase from '../supabaseClient';
-import type { Payment, PaymentMethod, PaymentStatus } from '../data/types';
+import type {
+  Payment,
+  PaymentMethod,
+  PaymentStatus,
+  PaymentCycle,
+} from '../data/types';
 import { useReservations } from './ReservationsContext';
 import { useRecords } from './RecordsContext';
 import { useAuth } from './AuthContext';
@@ -133,24 +138,67 @@ function validateMinimumFirstPayment(params: {
   };
 }
 
-function validateMinimumSubsequentPayment(params: {
+function validateScheduledSubsequentPayment(params: {
+  unitType?: string | null;
   totalAmount: number;
   paidAmount: number;
+  duration?: number | null;
+  paymentCycle?: PaymentCycle | null;
 }) {
   return (amount: number) => {
     const submittedAmount = clampMoney(amount);
     const paidAmount = clampMoney(params.paidAmount);
-    const remaining = clampMoney(params.totalAmount - paidAmount);
+    const totalAmount = clampMoney(params.totalAmount);
+    const remaining = clampMoney(totalAmount - paidAmount);
     const isFirstPayment = paidAmount <= 0;
 
-    if (isFirstPayment) return;
     if (remaining <= 0) return;
 
-    const minimumRequired = Math.min(MIN_SUBSEQUENT_PAYMENT_AMOUNT, remaining);
+    // Keep existing logic for non-rental units
+    if (params.unitType !== 'rental_space') {
+      if (isFirstPayment) return;
+
+      const minimumRequired = Math.min(MIN_SUBSEQUENT_PAYMENT_AMOUNT, remaining);
+
+      if (submittedAmount < minimumRequired) {
+        throw new Error(
+          `Subsequent payments must be at least ₱${minimumRequired.toFixed(2)}.`
+        );
+      }
+
+      return;
+    }
+
+    // Rental-space schedule enforcement
+    const duration = Math.max(1, Number(params.duration ?? 1));
+    const cycle: PaymentCycle = params.paymentCycle ?? 'monthly';
+    const monthlyAmount = duration > 0 ? totalAmount / duration : totalAmount;
+
+    let minimumRequired = 0;
+
+    if (cycle === 'monthly') {
+      minimumRequired = monthlyAmount;
+    } else if (cycle === 'quarterly') {
+      minimumRequired = monthlyAmount * 3;
+    } else if (cycle === 'full') {
+      minimumRequired = remaining;
+    }
+
+    minimumRequired = Math.min(clampMoney(minimumRequired), remaining);
+
+    if (minimumRequired <= 0) return;
 
     if (submittedAmount < minimumRequired) {
+      if (cycle === 'full') {
+        throw new Error(
+          `Full payment is required for this rental reservation (₱${minimumRequired.toFixed(2)}).`
+        );
+      }
+
       throw new Error(
-        `Subsequent payments must be at least ₱${minimumRequired.toFixed(2)}.`
+        `${
+          cycle === 'quarterly' ? 'Quarterly' : 'Monthly'
+        } rental payments must be at least ₱${minimumRequired.toFixed(2)}.`
       );
     }
   };
@@ -342,9 +390,12 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
         minimumPaymentPercentSnapshot: reservation.minimumPaymentPercentSnapshot,
       });
 
-      const enforceMinimumSubsequentPayment = validateMinimumSubsequentPayment({
+      const enforceScheduledSubsequentPayment = validateScheduledSubsequentPayment({
+        unitType: reservation.unitType,
         totalAmount: Number(reservation.totalAmount),
         paidAmount: ledgerPaid,
+        duration: reservation.duration,
+        paymentCycle: reservation.paymentCycle ?? null,
       });
 
       if (submittedAmount <= 0) {
@@ -356,7 +407,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       }
 
       enforceMinimumFirstPayment(submittedAmount);
-      enforceMinimumSubsequentPayment(submittedAmount);
+      enforceScheduledSubsequentPayment(submittedAmount);
 
       const { data, error } = await supabase
         .from('payments')
@@ -504,17 +555,26 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
         minimumPaymentPercentSnapshot: reservation.minimumPaymentPercentSnapshot,
       });
 
-      const enforceMinimumSubsequentPayment = validateMinimumSubsequentPayment({
+      const enforceScheduledSubsequentPayment = validateScheduledSubsequentPayment({
+        unitType: reservation.unitType,
         totalAmount: Number(reservation.totalAmount),
         paidAmount: ledgerPaid,
+        duration: reservation.duration,
+        paymentCycle: reservation.paymentCycle ?? null,
       });
 
       if (nextStatus === 'paid') {
         const isAlreadyCountedAsPaid = existingPayment.status === 'paid';
 
         if (!isAlreadyCountedAsPaid) {
+          const remaining = clampMoney(Number(reservation.totalAmount) - ledgerPaid);
+
+          if (sanitizedAmount > remaining) {
+            throw new Error('Payment amount cannot exceed the remaining balance.');
+          }
+
           enforceMinimumFirstPayment(sanitizedAmount);
-          enforceMinimumSubsequentPayment(sanitizedAmount);
+          enforceScheduledSubsequentPayment(sanitizedAmount);
         }
       }
 
@@ -675,89 +735,87 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
   );
 
   const issueRefund = useCallback(
-  async ({
-    reservationId,
-    paymentId = null,
-    amount,
-    method = null,
-    notes = null,
-    referenceNo = null,
-  }: {
-    reservationId: string;
-    paymentId?: string | null;
-    amount: number;
-    method?: PaymentMethod | null;
-    notes?: string | null;
-    referenceNo?: string | null;
-  }) => {
-    const refundAmount = clampMoney(Number(amount));
-
-    if (refundAmount <= 0) {
-      throw new Error('Refund amount must be greater than zero.');
-    }
-
-    const reservation = reservations.find((r) => r.id === reservationId);
-    if (!reservation) {
-      throw new Error('Reservation not found.');
-    }
-
-    const netPaid = await getReservationLedgerNetPaid(reservationId);
-
-    if (netPaid <= 0) {
-      throw new Error('No refundable balance available.');
-    }
-
-    if (refundAmount > netPaid) {
-      throw new Error(
-        `Refund cannot exceed ₱${netPaid.toFixed(2)}.`
-      );
-    }
-
-    let linkedPayment: Payment | undefined;
-
-    if (paymentId) {
-      linkedPayment = payments.find((p) => p.id === paymentId);
-
-      if (!linkedPayment) {
-        throw new Error('Linked payment not found.');
-      }
-
-      if (linkedPayment.status !== 'paid') {
-        throw new Error('Only approved payments can be refunded.');
-      }
-    }
-
-    await addLedgerEntry({
-      userId: reservation.userId,
+    async ({
       reservationId,
-      paymentId: paymentId ?? null,
-      entryType: 'refund',
-      amount: refundAmount,
-      method: method ?? linkedPayment?.method ?? null,
-      status: 'verified',
-      referenceNo,
-      description: linkedPayment
-        ? `Refund for payment ${linkedPayment.publicId ?? linkedPayment.id}`
-        : `Refund for reservation ${reservation.publicId ?? reservation.id}`,
-      notes,
-      recordedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      createdBy: user?.id ?? null,
-    });
+      paymentId = null,
+      amount,
+      method = null,
+      notes = null,
+      referenceNo = null,
+    }: {
+      reservationId: string;
+      paymentId?: string | null;
+      amount: number;
+      method?: PaymentMethod | null;
+      notes?: string | null;
+      referenceNo?: string | null;
+    }) => {
+      const refundAmount = clampMoney(Number(amount));
 
-    await recalculateReservationPaidAmount(reservationId);
-    await refreshPayments();
-  },
-  [
-    addLedgerEntry,
-    getReservationLedgerNetPaid,
-    payments,
-    recalculateReservationPaidAmount,
-    refreshPayments,
-    reservations,
-    user?.id,
-  ]
-);
+      if (refundAmount <= 0) {
+        throw new Error('Refund amount must be greater than zero.');
+      }
+
+      const reservation = reservations.find((r) => r.id === reservationId);
+      if (!reservation) {
+        throw new Error('Reservation not found.');
+      }
+
+      const netPaid = await getReservationLedgerNetPaid(reservationId);
+
+      if (netPaid <= 0) {
+        throw new Error('No refundable balance available.');
+      }
+
+      if (refundAmount > netPaid) {
+        throw new Error(`Refund cannot exceed ₱${netPaid.toFixed(2)}.`);
+      }
+
+      let linkedPayment: Payment | undefined;
+
+      if (paymentId) {
+        linkedPayment = payments.find((p) => p.id === paymentId);
+
+        if (!linkedPayment) {
+          throw new Error('Linked payment not found.');
+        }
+
+        if (linkedPayment.status !== 'paid') {
+          throw new Error('Only approved payments can be refunded.');
+        }
+      }
+
+      await addLedgerEntry({
+        userId: reservation.userId,
+        reservationId,
+        paymentId: paymentId ?? null,
+        entryType: 'refund',
+        amount: refundAmount,
+        method: method ?? linkedPayment?.method ?? null,
+        status: 'verified',
+        referenceNo,
+        description: linkedPayment
+          ? `Refund for payment ${linkedPayment.publicId ?? linkedPayment.id}`
+          : `Refund for reservation ${reservation.publicId ?? reservation.id}`,
+        notes,
+        recordedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        createdBy: user?.id ?? null,
+      });
+
+      await recalculateReservationPaidAmount(reservationId);
+      await refreshPayments();
+    },
+    [
+      addLedgerEntry,
+      getReservationLedgerNetPaid,
+      payments,
+      recalculateReservationPaidAmount,
+      refreshPayments,
+      reservations,
+      user?.id,
+    ]
+  );
 
   const getPaymentsByUserId = useCallback(
     (userId: string) => payments.filter((p) => p.userId === userId),

@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../../contexts/DataContext';
+import { DataTable, DataCell, ActionCell } from '../../components/common/DataTable';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { usePayments } from '../../contexts/PaymentsContext';
 import { useRecords } from '../../contexts/RecordsContext';
@@ -86,7 +87,7 @@ function getStatusLabel(status: PaymentFilterStatus | PaymentView['status']) {
 }
 
 export default function AdminPayments() {
-  const { reservations, getUserById } = useData();
+  const { reservations, getUserById, loadingUnits } = useData();
   const { sendPaymentNotification } = useNotifications();
   const { fetchPaymentsPage, updatePayment, issueRefund } = usePayments();
 
@@ -297,8 +298,9 @@ export default function AdminPayments() {
       : null;
   }, [selectedPayment, paymentViews]);
 
-  const hasNoPayments = !loading && totalCount === 0;
-  const hasNoSearchResults = !loading && totalCount > 0 && paymentViews.length === 0;
+  const isTableLoading = loading || loadingUnits;
+  const hasNoPayments = !isTableLoading && totalCount === 0;
+  const hasNoSearchResults = !isTableLoading && totalCount > 0 && paymentViews.length === 0;
 
   const handleVerify = useCallback(
   async (payment: PaymentView) => {
@@ -457,7 +459,7 @@ export default function AdminPayments() {
   </div>
 </div>
 
-      {!loading && !hasNoPayments && (
+      {!isTableLoading && !hasNoPayments && (
         <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-2">
@@ -560,7 +562,7 @@ export default function AdminPayments() {
       </button>
 
       <div className="grid grid-cols-1 gap-4 lg:hidden">
-        {loading ? (
+        {isTableLoading ? (
           <EmptyState
             icon={
               <div className="flex items-center justify-center">
@@ -681,199 +683,187 @@ export default function AdminPayments() {
         )}
       </div>
 
-      <div className="hidden overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm lg:block">
-        {loading ? (
-          <EmptyState
-            icon={
-              <div className="flex items-center justify-center">
-                <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+      <div className="hidden lg:block">
+  {isTableLoading ? (
+    <EmptyState
+      icon={
+        <div className="flex items-center justify-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+        </div>
+      }
+      title="Loading payments..."
+      description="Please wait while payment records are being retrieved."
+    />
+  ) : hasNoPayments ? (
+    <EmptyState
+      icon={<CreditCard className="size-10 text-blue-500" />}
+      title="No payments yet"
+      description="Payment records will appear here once customers submit payments or an administrator creates one."
+    />
+  ) : hasNoSearchResults ? (
+    <div className="rounded-2xl border border-gray-200 bg-white px-6 py-20 shadow-sm">
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25 }}
+        className="flex flex-col items-center justify-center text-center"
+      >
+        <div className="mb-4 rounded-3xl bg-gray-50 p-5 shadow-sm">
+          <Search className="size-10 text-gray-400" />
+        </div>
+        <h3 className="text-lg font-bold text-gray-900">
+          No matching payments found
+        </h3>
+        <p className="mt-1 text-sm text-gray-500">
+          Try adjusting your search term or payment status filter.
+        </p>
+      </motion.div>
+    </div>
+  ) : (
+    <DataTable
+      headers={[
+        'User ID',
+        'Payment ID',
+        'Reservation ID',
+        'Amount Progress',
+        'Date',
+        'Status',
+        'Proof',
+        'Actions',
+      ]}
+    >
+      {paymentViews.map((payment) => (
+        <tr key={payment.id} className="transition-colors hover:bg-blue-50/30">
+          <DataCell
+            value={payment.userPublicId}
+            mono
+            nowrap
+            className="w-[180px]"
+          />
+
+          <DataCell
+            value={payment.publicId ?? payment.id}
+            mono
+            nowrap
+            className="w-[200px]"
+          />
+
+          <DataCell
+            value={payment.reservationPublicId}
+            mono
+            nowrap
+            className="w-[200px]"
+          />
+
+          <td className="w-[260px] px-4 py-2.5 align-middle">
+            <div className="min-w-0">
+              <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-400 to-sky-500 transition-all"
+                  style={{
+                    width: `${
+                      payment.progress > 0
+                        ? Math.max(Math.min(payment.progress, 100), 2)
+                        : 0
+                    }%`,
+                  }}
+                />
               </div>
-            }
-            title="Loading payments..."
-            description="Please wait while payment records are being retrieved."
+
+              <div className="mt-1 flex items-center justify-between text-[11px] font-medium text-gray-600">
+                <span>
+                  {formatCurrency(payment.reservationPaidAmount)} /{' '}
+                  {formatCurrency(payment.reservationTotalAmount)}
+                </span>
+                <span className="text-[10px] text-gray-400">
+                  {payment.progress < 1
+                    ? payment.progress.toFixed(2)
+                    : payment.progress.toFixed(0)}
+                  %
+                </span>
+              </div>
+            </div>
+          </td>
+
+          <DataCell
+            value={payment.dateLabel}
+            muted
+            nowrap
+            className="w-[150px]"
           />
-        ) : hasNoPayments ? (
-          <EmptyState
-            icon={<CreditCard className="size-10 text-blue-500" />}
-            title="No payments yet"
-            description="Payment records will appear here once customers submit payments or an administrator creates one."
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="border-b border-gray-200 bg-gray-50">
-                <tr>
-                  {[
-                    'User ID',
-                    'Payment ID',
-                    'Reservation ID',
-                    'Amount Progress',
-                    'Date',
-                    'Status',
-                    'Proof',
-                    'Actions',
-                  ].map((h) => (
-                    <th
-                      key={h}
-                      className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
 
-              <tbody className="divide-y divide-gray-100">
-                {hasNoSearchResults ? (
-                  <tr>
-                    <td colSpan={8} className="px-6 py-20 text-center">
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.25 }}
-                        className="flex flex-col items-center justify-center text-center"
-                      >
-                        <div className="mb-4 rounded-3xl bg-gray-50 p-5 shadow-sm">
-                          <Search className="size-10 text-gray-400" />
-                        </div>
-                        <h3 className="text-lg font-bold text-gray-900">
-                          No matching payments found
-                        </h3>
-                        <p className="mt-1 text-sm text-gray-500">
-                          Try adjusting your search term or payment status filter.
-                        </p>
-                      </motion.div>
-                    </td>
-                  </tr>
-                ) : (
-                  paymentViews.map((payment) => (
-                    <tr key={payment.id} className="transition-colors hover:bg-blue-50/30">
-                      <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[220px]">
-                          {payment.userPublicId}
-                      </td>
+          <td className="w-[120px] px-4 py-2.5 align-middle">
+            <span
+              className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold ${statusColors[payment.derivedStatus]}`}
+            >
+              {payment.derivedStatus === 'paid'
+                ? 'VERIFIED'
+                : payment.derivedStatus === 'partial'
+                ? 'PARTIAL'
+                : 'PENDING'}
+            </span>
+          </td>
 
-                      <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[220px]">
-                          {payment.publicId ?? payment.id}
-                      </td>
+          <td className="w-[120px] px-4 py-2.5 align-middle">
+            {payment.proofOfPayment ? (
+              <button
+                onClick={() => setProofImageUrl(payment.proofOfPayment || null)}
+                className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 transition hover:text-blue-700 hover:underline"
+              >
+                <ImageIcon className="size-4" />
+                View Proof
+              </button>
+            ) : (
+              <span className="text-sm text-gray-400">—</span>
+            )}
+          </td>
 
-                      <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[220px]">
-                          {payment.reservationPublicId}
-                      </td>
+          <ActionCell className="w-[140px]">
+            <button
+              onClick={() => setSelectedPayment(payment.id)}
+              className="rounded-lg p-2 text-blue-600 transition hover:bg-blue-100"
+              title="View"
+            >
+              <Eye className="size-4" />
+            </button>
 
-                      <td className="w-[220px] px-6 py-4">
+            {payment.status === 'unpaid' && (
+              <>
+                <button
+                  onClick={() => handleVerify(payment)}
+                  className="rounded-lg p-2 text-emerald-600 transition hover:bg-emerald-50"
+                  title="Verify"
+                >
+                  <CheckCircle className="size-4" />
+                </button>
 
-                        <div className="mt-3">
-                          {/* Progress bar */}
-                          <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
-                            <div
-                              className="h-full bg-gradient-to-r from-emerald-400 to-sky-500 transition-all"
-                              style={{
-                                width: `${
-                                  payment.progress > 0
-                                    ? Math.max(Math.min(payment.progress, 100), 2)
-                                    : 0
-                                }%`,
-                              }}
-                            />
-                          </div>
+                <button
+                  onClick={() => handleReject(payment.id)}
+                  className="rounded-lg p-2 text-rose-600 transition hover:bg-rose-50"
+                  title="Reject"
+                >
+                  <XCircle className="size-4" />
+                </button>
+              </>
+            )}
 
-                          {/* Label */}
-                          <div className="mt-1 flex items-center justify-between text-[11px] font-medium text-gray-600">
-                            <span>
-                              {formatCurrency(payment.reservationPaidAmount)} /{' '}
-                              {formatCurrency(payment.reservationTotalAmount)}
-                            </span>
-                          </div>
-                        </div>
+            {payment.status === 'paid' && (
+              <button
+                onClick={() => openRefundModal(payment)}
+                className="rounded-lg p-2 text-amber-600 transition hover:bg-amber-50"
+                title="Refund"
+              >
+                💸
+              </button>
+            )}
+          </ActionCell>
+        </tr>
+      ))}
+    </DataTable>
+  )}
+</div>
 
-                        <div className="mt-1 text-right text-[10px] text-gray-400">
-                          {payment.progress < 1
-                            ? payment.progress.toFixed(2)
-                            : payment.progress.toFixed(0)}
-                          %
-                        </div>
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-gray-500 w-[200px]">
-                        {payment.dateLabel}
-                      </td>
-
-                      <td className="w-[130px] px-6 py-4">
-                        <span
-                          className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${statusColors[payment.derivedStatus]}`}
-                        >
-                          {payment.derivedStatus === 'paid'
-                            ? 'VERIFIED'
-                            : payment.derivedStatus === 'partial'
-                            ? 'PARTIAL'
-                            : 'PENDING'}
-                        </span>
-                      </td>
-
-                      <td className="w-[140px] px-6 py-4 text-sm">
-                        {payment.proofOfPayment ? (
-                          <button
-                            onClick={() => setProofImageUrl(payment.proofOfPayment || null)}
-                            className="inline-flex items-center gap-1 font-medium text-blue-600 transition hover:text-blue-700 hover:underline"
-                          >
-                            <ImageIcon className="size-4" />
-                            View Proof
-                          </button>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
-                      </td>
-
-                      <td className="w-[140px] px-6 py-4">
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => setSelectedPayment(payment.id)}
-                            className="rounded-lg p-2 text-blue-600 transition hover:bg-blue-100"
-                            title="View"
-                          >
-                            <Eye className="size-4" />
-                          </button>
-
-                          {payment.status === 'unpaid' && (
-                            <>
-                              <button
-                                onClick={() => handleVerify(payment)}
-                                className="rounded-lg p-2 text-emerald-600 transition hover:bg-emerald-50"
-                                title="Verify"
-                              >
-                                <CheckCircle className="size-4" />
-                              </button>
-
-                              <button
-                                onClick={() => handleReject(payment.id)}
-                                className="rounded-lg p-2 text-rose-600 transition hover:bg-rose-50"
-                                title="Reject"
-                              >
-                                <XCircle className="size-4" />
-                              </button>
-                            </>
-                          )}
-                          {payment.status === 'paid' && (
-                          <button
-                            onClick={() => openRefundModal(payment)}
-                            className="rounded-lg p-2 text-amber-600 hover:bg-amber-50"
-                            title="Refund"
-                          >
-                            💸
-                          </button>
-                        )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {!loading && !hasNoPayments && totalPages > 1 && (
+      {!isTableLoading && !hasNoPayments && totalPages > 1 && (
         <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-gray-500">
             Page {page} of {totalPages} • {totalCount} total payments

@@ -2,6 +2,8 @@ import { useState, useMemo, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import AddressPicker from '../../components/common/AddressPicker';
+import PasswordStrengthIndicator from '../../components/common/PasswordStrengthIndicator';
+import { isPasswordPolicyValid } from '../../utils/passwordStrength';
 import {
   Building2,
   AlertCircle,
@@ -61,40 +63,6 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const passwordStrength = useMemo(() => {
-    const { password } = formData;
-    if (!password) return '';
-
-    let score = 0;
-    if (password.length >= 8) score++;
-    if (/[A-Z]/.test(password)) score++;
-    if (/[0-9]/.test(password)) score++;
-    if (/[^A-Za-z0-9]/.test(password)) score++;
-
-    switch (score) {
-      case 0:
-      case 1:
-        return 'Very Weak';
-      case 2:
-        return 'Weak';
-      case 3:
-        return 'Medium';
-      case 4:
-        return 'Strong';
-      default:
-        return '';
-    }
-  }, [formData.password]);
-
-  const passwordScore = useMemo(() => {
-    let score = 0;
-    if (formData.password.length >= 8) score++;
-    if (/[A-Z]/.test(formData.password)) score++;
-    if (/[0-9]/.test(formData.password)) score++;
-    if (/[^A-Za-z0-9]/.test(formData.password)) score++;
-    return score;
-  }, [formData.password]);
-
   const handleBlur = useCallback((field: keyof typeof formData) => {
     setFormData((prev) => {
       const next = { ...prev };
@@ -151,14 +119,9 @@ export default function Register() {
 
     if (!formData.password) {
       errs.password = 'Password is required.';
-    } else if (formData.password.length < 8) {
-      errs.password = 'Password must be at least 8 characters.';
-    } else if (!/[A-Z]/.test(formData.password)) {
-      errs.password = 'Include an uppercase letter.';
-    } else if (!/[0-9]/.test(formData.password)) {
-      errs.password = 'Include a number.';
-    } else if (!/[^A-Za-z0-9]/.test(formData.password)) {
-      errs.password = 'Include a special character.';
+    } else if (!isPasswordPolicyValid(formData.password)) {
+      errs.password =
+        'Password must be at least 8 characters and include an uppercase letter, a number, and a special character.';
     }
 
     if (!formData.confirmPassword) {
@@ -472,38 +435,12 @@ export default function Register() {
                     </button>
                   </div>
 
-                  {formData.password && (
-                    <div className="mt-2 space-y-1.5">
-                      <div className="flex gap-1 h-1">
-                        {[1, 2, 3, 4].map((step) => (
-                          <div
-                            key={step}
-                            className={`h-full flex-1 rounded-full transition-all duration-500 ${
-                              passwordScore >= step
-                                ? passwordScore <= 2
-                                  ? 'bg-rose-500'
-                                  : passwordScore === 3
-                                  ? 'bg-amber-500'
-                                  : 'bg-emerald-500'
-                                : 'bg-slate-200'
-                            }`}
-                          />
-                        ))}
-                      </div>
-
-                      <p
-                        className={`text-[9px] font-bold uppercase tracking-tighter ${
-                          passwordStrength === 'Strong'
-                            ? 'text-emerald-500'
-                            : passwordStrength === 'Medium'
-                            ? 'text-amber-500'
-                            : 'text-rose-500'
-                        }`}
-                      >
-                        Security: {passwordStrength}
-                      </p>
-                    </div>
-                  )}
+                  <PasswordStrengthIndicator
+                    password={formData.password}
+                    confirmPassword={formData.confirmPassword}
+                    showChecklist
+                    showMatchStatus={false}
+                  />
                 </div>
 
                 <div className="space-y-1.5 relative">
@@ -538,19 +475,13 @@ export default function Register() {
                     </button>
                   </div>
 
-                  {formData.confirmPassword && (
-                    <p
-                      className={`text-[9px] font-bold uppercase tracking-tighter ${
-                        formData.password === formData.confirmPassword
-                          ? 'text-emerald-500'
-                          : 'text-rose-500'
-                      }`}
-                    >
-                      {formData.password === formData.confirmPassword
-                        ? 'Passwords match'
-                        : 'Passwords do not match'}
-                    </p>
-                  )}
+                  <PasswordStrengthIndicator
+                    password={formData.password}
+                    confirmPassword={formData.confirmPassword}
+                    showChecklist={false}
+                    showMatchStatus
+                    compact
+                  />
                 </div>
               </div>
 
@@ -558,7 +489,8 @@ export default function Register() {
                 type="submit"
                 disabled={
                   authActionPending ||
-                  !formData.password ||
+                  !isPasswordPolicyValid(formData.password) ||
+                  !formData.confirmPassword ||
                   formData.password !== formData.confirmPassword
                 }
                 className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/10 disabled:opacity-50 mt-6 active:scale-[0.99] flex items-center justify-center gap-2"

@@ -59,6 +59,7 @@ login: (
   password: string,
   options?: {
     rememberDevice?: boolean;
+    turnstileToken?: string;
   }
 ) => Promise<{
   success: boolean;
@@ -69,7 +70,8 @@ login: (
     | 'rate_limited'
     | 'locked'
     | 'unverified_device'
-    | 'device_check_failed';
+    | 'device_check_failed'
+    | 'verification_failed';
   retryAfterSeconds?: number;
 }>;
   loginWithGoogle: () => Promise<void>;
@@ -739,22 +741,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [user, clearSessionTimers, sessionResetKey]);
 
+
+  const verifyTurnstileToken = useCallback(
+  async (token?: string): Promise<boolean> => {
+    if (!token) return false;
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-turnstile`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            token,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        return false;
+      }
+
+      const data = await response.json().catch(() => null);
+      return Boolean(data?.success);
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.warn('Turnstile verification failed:', error);
+      }
+      return false;
+    }
+  },
+  []
+);
+
   // --- AUTH ACTIONS ---
  const login = useCallback(
   async (
-    email: string,
-    password: string,
-    options?: { rememberDevice?: boolean }
-  ): Promise<{
+  email: string,
+  password: string,
+  options?: {
+    rememberDevice?: boolean;
+    turnstileToken?: string;
+  }
+): Promise<{
     success: boolean;
     error?:
-      | 'busy'
-      | 'invalid_login'
-      | 'account_inactive'
-      | 'rate_limited'
-      | 'locked'
-      | 'unverified_device'
-      | 'device_check_failed';
+  | 'busy'
+  | 'invalid_login'
+  | 'account_inactive'
+  | 'rate_limited'
+  | 'locked'
+  | 'unverified_device'
+  | 'device_check_failed'
+  | 'verification_failed';
     retryAfterSeconds?: number;
   }> => {
     if (authActionPending) {
@@ -765,6 +807,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       const normalizedEmail = normalizeEmail(email);
+
+      const isTurnstileValid = await verifyTurnstileToken(options?.turnstileToken);
+
+      if (!isTurnstileValid) {
+        pendingDeviceVerificationRef.current = false;
+
+        return {
+          success: false,
+          error: 'verification_failed',
+        };
+      }
 
       const { data: lockData, error: lockError } = await supabase.rpc('check_login_lock', {
         p_email: normalizedEmail,
@@ -953,6 +1006,7 @@ if (!deviceCheck?.trusted) {
     fetchOrCreateUserProfile,
     persistUserSession,
     touchLastLogin,
+    verifyTurnstileToken,
   ]
 );
   const loginWithGoogle = useCallback(async () => {
@@ -1257,22 +1311,7 @@ if (!deviceCheck?.trusted) {
 
     try {
       const normalizedEmail = normalizeEmail(newEmail);
-      const currentEmail = normalizeEmail(user.email);
 
-      // 🔐 Re-authenticate user first
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: currentEmail,
-        password: currentPassword,
-      });
-
-      if (signInError) {
-        return {
-          success: false,
-          message: 'Current password is incorrect.',
-        };
-      }
-
-      // 📩 Trigger Supabase email change (with verification)
       const { error } = await supabase.auth.updateUser(
         { email: normalizedEmail },
         {
@@ -1281,9 +1320,11 @@ if (!deviceCheck?.trusted) {
       );
 
       if (error) {
+        console.error('Email change error:', error);
+
         return {
           success: false,
-          message: error.message || 'Failed to start email change.',
+          message: 'Unable to process email change request. Please try again',
         };
       }
 
@@ -1298,9 +1339,10 @@ if (!deviceCheck?.trusted) {
       };
     } catch (err) {
       console.error('Email change error:', err);
+
       return {
         success: false,
-        message: 'Unexpected error occurred.',
+        message: 'Unable to process email change request.',
       };
     } finally {
       setAuthActionPending(false);

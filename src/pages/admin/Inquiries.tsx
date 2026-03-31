@@ -92,7 +92,11 @@ function getTicketStatusStyle(status?: string) {
   );
 }
 
-function getInitials(firstName?: string | null, lastName?: string | null, email?: string | null) {
+function getInitials(
+  firstName?: string | null,
+  lastName?: string | null,
+  email?: string | null
+) {
   const initials = `${firstName?.[0] ?? ''}${lastName?.[0] ?? ''}`.trim();
   if (initials) return initials.toUpperCase();
   return (email?.[0] ?? 'U').toUpperCase();
@@ -423,14 +427,11 @@ export default function AdminInquiries() {
   const { users, isLoadingUsers, refreshUsers } = useUsers();
   const { user: adminUser } = useAuth();
   const {
-    tickets,
     messages,
     createTicket,
     sendTicketMessage,
     reopenTicket,
     fetchMessagesByTicketId,
-    refreshInquiries,
-    isLoadingTickets,
     isLoadingMessages,
   } = useInquiries();
   const { sendInquiryResponseNotification } = useNotifications();
@@ -443,6 +444,9 @@ export default function AdminInquiries() {
   const [showMobileThread, setShowMobileThread] = useState(false);
   const [isComposingNewTicket, setIsComposingNewTicket] = useState(false);
 
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [isLoadingTickets, setIsLoadingTickets] = useState(false);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const [newTicketSubject, setNewTicketSubject] = useState('');
@@ -454,6 +458,97 @@ export default function AdminInquiries() {
 
   const debouncedSearch = useDebouncedValue(searchTerm, 250);
 
+  const refreshTickets = useCallback(async () => {
+    setIsLoadingTickets(true);
+
+    try {
+      const { data, error } = await supabase
+  .from('support_tickets')
+  .select(`
+    ticket_id,
+    public_id,
+    user_id,
+    guest_email,
+    guest_first_name,
+    guest_last_name,
+    subject,
+    status,
+    created_at,
+    updated_at,
+    last_message_at,
+    last_message_by,
+    resolved_at,
+    resolved_by_user
+  `)
+  .order('last_message_at', { ascending: false });
+
+      if (error) throw error;
+
+      const nextTickets: SupportTicket[] = (data ?? []).map((row) => ({
+        id: row.ticket_id,
+        publicId: row.public_id ?? null,
+        userId: row.user_id ?? null,
+        guestEmail: row.guest_email ?? null,
+        guestFirstName: row.guest_first_name ?? null,
+        guestLastName: row.guest_last_name ?? null,
+        subject: row.subject ?? 'Untitled Ticket',
+        status: row.status as SupportTicket['status'],
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        lastMessageAt: row.last_message_at ?? row.created_at,
+        lastMessageBy: (row.last_message_by ?? 'customer') as SupportTicket['lastMessageBy'],
+        resolvedAt: row.resolved_at ?? null,
+        resolvedByUser: Boolean(row.resolved_by_user),
+      }));
+
+      setTickets(
+        [...nextTickets].sort(
+          (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
+        )
+      );
+    } catch (error) {
+      console.error('Failed to refresh tickets:', error);
+    } finally {
+      setIsLoadingTickets(false);
+    }
+  }, []);
+
+  const normalizedTickets = useMemo(
+    () =>
+      tickets.map((ticket) => ({
+        ...ticket,
+        normalizedGuestEmail: ticket.guestEmail?.trim().toLowerCase() ?? '',
+      })),
+    [tickets]
+  );
+
+  const ticketIndex = useMemo(() => {
+    const byUserId = new Map<string, SupportTicket[]>();
+    const byGuestEmail = new Map<string, SupportTicket[]>();
+
+    for (const ticket of normalizedTickets) {
+      if (ticket.userId) {
+        const existing = byUserId.get(ticket.userId) ?? [];
+        existing.push(ticket);
+        byUserId.set(ticket.userId, existing);
+      } else if (ticket.normalizedGuestEmail) {
+        const existing = byGuestEmail.get(ticket.normalizedGuestEmail) ?? [];
+        existing.push(ticket);
+        byGuestEmail.set(ticket.normalizedGuestEmail, existing);
+      }
+    }
+
+    for (const list of byUserId.values()) {
+      list.sort((a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt));
+    }
+
+    for (const list of byGuestEmail.values()) {
+      list.sort((a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt));
+    }
+
+    return { byUserId, byGuestEmail };
+  }, [normalizedTickets]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -461,7 +556,7 @@ export default function AdminInquiries() {
       setPageLoading(true);
 
       try {
-        await Promise.all([refreshUsers(true), refreshInquiries()]);
+        await Promise.all([refreshUsers(true), refreshTickets()]);
       } catch (error) {
         console.error('Failed to load inquiries page data:', error);
       } finally {
@@ -476,7 +571,7 @@ export default function AdminInquiries() {
     return () => {
       cancelled = true;
     };
-  }, [location.key, refreshInquiries, refreshUsers]);
+  }, [location.key, refreshTickets, refreshUsers]);
 
   useEffect(() => {
     setFilterSenderType('all');
@@ -496,20 +591,20 @@ export default function AdminInquiries() {
       const email = user.email?.trim().toLowerCase();
       if (!email) continue;
 
-      const relatedTickets = tickets.filter((ticket) => {
-        const ticketGuestEmail = ticket.guestEmail?.trim().toLowerCase() ?? '';
-
-        return ticket.userId === user.id || (!ticket.userId && ticketGuestEmail === email);
-      });
+      const relatedByUserId = ticketIndex.byUserId.get(user.id) ?? [];
+      const relatedGuestTickets = (ticketIndex.byGuestEmail.get(email) ?? []).filter(
+        (ticket) => !ticket.userId
+      );
+      const relatedTickets = [...relatedByUserId, ...relatedGuestTickets].sort(
+        (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
+      );
 
       const openTicketCount = relatedTickets.filter(
         (ticket) => ticket.status !== 'resolved'
       ).length;
 
       const latestTicketAt =
-        relatedTickets
-          .map((ticket) => ticket.lastMessageAt || ticket.createdAt)
-          .sort((a, b) => getTimestamp(b) - getTimestamp(a))[0] ?? '';
+        relatedTickets[0]?.lastMessageAt ?? relatedTickets[0]?.createdAt ?? '';
 
       map.set(`user:${user.id}`, {
         id: `user:${user.id}`,
@@ -525,50 +620,27 @@ export default function AdminInquiries() {
       });
     }
 
-    for (const ticket of tickets) {
-      if (ticket.userId || !ticket.guestEmail) continue;
-
-      const email = ticket.guestEmail.trim().toLowerCase();
-
+    for (const [email, guestTickets] of ticketIndex.byGuestEmail.entries()) {
       const existingUserContact = Array.from(map.values()).find(
         (contact) => contact.type === 'user' && contact.email === email
       );
 
-      if (existingUserContact) {
-        continue;
-      }
+      if (existingUserContact) continue;
 
-      const key = `guest:${email}`;
-      const existingGuest = map.get(key);
+      const firstTicket = guestTickets[0];
 
-      const guestTickets = tickets.filter((t) => {
-        const guestEmail = t.guestEmail?.trim().toLowerCase() ?? '';
-        return !t.userId && guestEmail === email;
+      map.set(`guest:${email}`, {
+        id: `guest:${email}`,
+        type: 'guest',
+        userId: null,
+        email,
+        firstName: firstTicket?.guestFirstName ?? null,
+        lastName: firstTicket?.guestLastName ?? null,
+        publicId: 'GUEST',
+        isActive: true,
+        openTicketCount: guestTickets.filter((ticket) => ticket.status !== 'resolved').length,
+        latestTicketAt: firstTicket?.lastMessageAt ?? firstTicket?.createdAt ?? '',
       });
-
-      const openTicketCountForGuest = guestTickets.filter(
-        (t) => t.status !== 'resolved'
-      ).length;
-
-      const latestGuestTicketAt =
-        guestTickets
-          .map((t) => t.lastMessageAt || t.createdAt)
-          .sort((a, b) => getTimestamp(b) - getTimestamp(a))[0] ?? '';
-
-      if (!existingGuest) {
-        map.set(key, {
-          id: key,
-          type: 'guest',
-          userId: null,
-          email,
-          firstName: ticket.guestFirstName ?? null,
-          lastName: ticket.guestLastName ?? null,
-          publicId: 'GUEST',
-          isActive: true,
-          openTicketCount: openTicketCountForGuest,
-          latestTicketAt: latestGuestTicketAt,
-        });
-      }
     }
 
     return Array.from(map.values())
@@ -598,7 +670,7 @@ export default function AdminInquiries() {
 
         return aName.localeCompare(bName);
       });
-  }, [users, tickets, debouncedSearch]);
+  }, [users, ticketIndex, debouncedSearch]);
 
   const messagesByTicketId = useMemo(() => {
     const grouped: Record<string, SupportMessage[]> = {};
@@ -610,7 +682,7 @@ export default function AdminInquiries() {
 
     for (const ticketId of Object.keys(grouped)) {
       grouped[ticketId].sort(
-        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        (a, b) => getTimestamp(a.createdAt) - getTimestamp(b.createdAt)
       );
     }
 
@@ -633,32 +705,30 @@ export default function AdminInquiries() {
     [contacts, selectedContactId]
   );
 
+  const ticketsForSelectedContact = useMemo(() => {
+    if (!selectedContact) return [];
+
+    const baseTickets =
+      selectedContact.type === 'user'
+        ? [
+            ...(ticketIndex.byUserId.get(selectedContact.userId ?? '') ?? []),
+            ...(ticketIndex.byGuestEmail.get(selectedContact.email) ?? []).filter(
+              (ticket) => !ticket.userId
+            ),
+          ]
+        : ticketIndex.byGuestEmail.get(selectedContact.email) ?? [];
+
+    const senderFiltered = baseTickets.filter((ticket) =>
+      filterSenderType === 'all' ? true : ticket.lastMessageBy === filterSenderType
+    );
+
+    return [...senderFiltered].sort(
+      (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
+    );
+  }, [selectedContact, ticketIndex, filterSenderType]);
+
   const ticketCounts = useMemo(() => {
-    if (!selectedContact) {
-      return {
-        all: 0,
-        waiting_for_support: 0,
-        waiting_for_customer: 0,
-        resolved: 0,
-      };
-    }
-
-    const matchedTickets = tickets.filter((ticket) => {
-      const ticketGuestEmail = ticket.guestEmail?.trim().toLowerCase() ?? '';
-
-      const matchesContact =
-        selectedContact.type === 'user'
-          ? ticket.userId === selectedContact.userId ||
-            (!ticket.userId && ticketGuestEmail === selectedContact.email)
-          : !ticket.userId && ticketGuestEmail === selectedContact.email;
-
-      const matchesSender =
-        filterSenderType === 'all' ? true : ticket.lastMessageBy === filterSenderType;
-
-      return matchesContact && matchesSender;
-    });
-
-    return matchedTickets.reduce(
+    return ticketsForSelectedContact.reduce(
       (acc, ticket) => {
         acc.all += 1;
         if (ticket.status in acc) {
@@ -673,29 +743,12 @@ export default function AdminInquiries() {
         resolved: 0,
       } as Record<TicketStatusFilter, number>
     );
-  }, [tickets, selectedContact, filterSenderType]);
+  }, [ticketsForSelectedContact]);
 
   const filteredTicketsForSelectedContact = useMemo(() => {
-    if (!selectedContact) return [];
-
-    return tickets
-      .filter((ticket) => {
-        const ticketGuestEmail = ticket.guestEmail?.trim().toLowerCase() ?? '';
-
-        const matchesContact =
-          selectedContact.type === 'user'
-            ? ticket.userId === selectedContact.userId ||
-              (!ticket.userId && ticketGuestEmail === selectedContact.email)
-            : !ticket.userId && ticketGuestEmail === selectedContact.email;
-
-        const matchesSender =
-          filterSenderType === 'all' ? true : ticket.lastMessageBy === filterSenderType;
-
-        return matchesContact && matchesSender;
-      })
-      .filter((ticket) => (filterStatus === 'all' ? true : ticket.status === filterStatus))
-      .sort((a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt));
-  }, [tickets, selectedContact, filterStatus, filterSenderType]);
+    if (filterStatus === 'all') return ticketsForSelectedContact;
+    return ticketsForSelectedContact.filter((ticket) => ticket.status === filterStatus);
+  }, [ticketsForSelectedContact, filterStatus]);
 
   const selectedTicket = useMemo(
     () =>
@@ -845,7 +898,7 @@ export default function AdminInquiries() {
     setIsStartingTicket(true);
 
     try {
-      const ticketId = await createTicket({
+      const newTicket = await createTicket({
         userId: selectedContact.userId,
         firstName: selectedContact.firstName ?? undefined,
         lastName: selectedContact.lastName ?? undefined,
@@ -862,10 +915,16 @@ export default function AdminInquiries() {
         });
       }
 
+      setTickets((prev) =>
+        [newTicket, ...prev].sort(
+          (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
+        )
+      );
+
       setNewTicketSubject('');
       setNewTicketMessage('');
       setIsComposingNewTicket(false);
-      setSelectedTicketId(ticketId);
+      setSelectedTicketId(newTicket.id);
       setShowMobileThread(true);
     } catch (error) {
       console.error('Failed to start support conversation:', error);
@@ -894,73 +953,89 @@ export default function AdminInquiries() {
     setSendReplyError('');
 
     try {
+      let activeTicket = selectedTicket;
+
       if (selectedTicket.status === 'resolved') {
-        await reopenTicket(selectedTicket.id);
+        const reopenedTicket = await reopenTicket(selectedTicket.id);
+
+        setTickets((prev) =>
+          [...prev.map((ticket) => (ticket.id === selectedTicket.id ? reopenedTicket : ticket))].sort(
+            (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
+          )
+        );
+
+        activeTicket = reopenedTicket;
       }
 
-      const isGuestTicket = !selectedTicket.userId;
+      const isGuestTicket = !activeTicket.userId;
 
-        if (isGuestTicket) {
-  const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+      if (isGuestTicket) {
+        const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
 
-  console.log('guest reply refreshed session:', refreshed?.session);
-  console.log('guest reply refresh error:', refreshError);
+        console.log('guest reply refreshed session:', refreshed?.session);
+        console.log('guest reply refresh error:', refreshError);
 
-  const accessToken = refreshed?.session?.access_token;
+        const accessToken = refreshed?.session?.access_token;
 
-  if (refreshError || !accessToken) {
-    throw new Error('Admin session expired. Please log out and log back in.');
-  }
+        if (refreshError || !accessToken) {
+          throw new Error('Admin session expired. Please log out and log back in.');
+        }
 
-  const result = await supabase.functions.invoke('reply-to-support-ticket', {
-    body: {
-      ticketId: selectedTicket.id,
-      subject: `Re: ${selectedTicket.subject}`,
-      message: reply,
-    },
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
+        const result = await supabase.functions.invoke('reply-to-support-ticket', {
+          body: {
+            ticketId: activeTicket.id,
+            subject: `Re: ${activeTicket.subject}`,
+            message: reply,
+          },
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
 
-  console.log('reply-to-support-ticket result:', result);
+        console.log('reply-to-support-ticket result:', result);
 
-  if (result.error) {
-    try {
-      const response = (result.error as any).context as Response | undefined;
-      const text = response ? await response.text() : '';
-      throw new Error(text || result.error.message || 'Failed to send guest reply.');
-    } catch (parseError) {
-      throw parseError instanceof Error
-        ? parseError
-        : new Error(result.error.message || 'Failed to send guest reply.');
-    }
-  }
+        if (result.error) {
+          try {
+            const response = (result.error as any).context as Response | undefined;
+            const text = response ? await response.text() : '';
+            throw new Error(text || result.error.message || 'Failed to send guest reply.');
+          } catch (parseError) {
+            throw parseError instanceof Error
+              ? parseError
+              : new Error(result.error.message || 'Failed to send guest reply.');
+          }
+        }
 
-  await refreshInquiries();
-  await fetchMessagesByTicketId(selectedTicket.id, true);
-} else {
-  await sendTicketMessage(selectedTicket.id, {
-    body: reply,
-    senderType: 'support',
-    senderUserId: adminUser.id,
-    senderName:
-      [adminUser.firstName, adminUser.lastName].filter(Boolean).join(' ').trim() ||
-      'Support Team',
-    senderEmail: adminUser.email ?? null,
-  });
+        await refreshTickets();
+        await fetchMessagesByTicketId(activeTicket.id, true);
+      } else {
+        const result = await sendTicketMessage(activeTicket.id, {
+          body: reply,
+          senderType: 'support',
+          senderUserId: adminUser.id,
+          senderName:
+            [adminUser.firstName, adminUser.lastName].filter(Boolean).join(' ').trim() ||
+            'Support Team',
+          senderEmail: adminUser.email ?? null,
+        });
 
-  if (selectedContact?.type === 'user' && selectedContact.userId) {
-    await sendInquiryResponseNotification({
-      userId: selectedContact.userId,
-      subject: selectedTicket.subject,
-    });
-  }
-}
+        setTickets((prev) =>
+          [...prev.map((ticket) => (ticket.id === activeTicket.id ? result.ticket : ticket))].sort(
+            (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
+          )
+        );
+
+        if (selectedContact?.type === 'user' && selectedContact.userId) {
+          await sendInquiryResponseNotification({
+            userId: selectedContact.userId,
+            subject: activeTicket.subject,
+          });
+        }
+      }
 
       setReplyDrafts((prev) => ({
         ...prev,
-        [selectedTicket.id]: '',
+        [activeTicket.id]: '',
       }));
     } catch (error) {
       console.error('Failed to send support reply:', error);
@@ -978,7 +1053,7 @@ export default function AdminInquiries() {
     fetchMessagesByTicketId,
     isLoadingMessages,
     isSending,
-    refreshInquiries,
+    refreshTickets,
     reopenTicket,
     selectedContact,
     selectedTicket,
@@ -992,7 +1067,13 @@ export default function AdminInquiries() {
     setIsReopening(true);
 
     try {
-      await reopenTicket(selectedTicket.id);
+      const updatedTicket = await reopenTicket(selectedTicket.id);
+
+      setTickets((prev) =>
+        [...prev.map((ticket) => (ticket.id === selectedTicket.id ? updatedTicket : ticket))].sort(
+          (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
+        )
+      );
     } catch (error) {
       console.error('Failed to reopen ticket:', error);
     } finally {
@@ -1122,8 +1203,8 @@ export default function AdminInquiries() {
                                 .trim() || selectedContact.email
                             }`
                           : 'Select a contact first.'}
-                          
                       </p>
+
                       {selectedContact?.type === 'guest' && (
                         <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2">
                           <p className="text-[11px] font-semibold text-amber-800">
@@ -1320,10 +1401,12 @@ export default function AdminInquiries() {
                               This reply will be sent to the guest’s email.
                             </p>
                             <p className="mt-1 text-sm leading-relaxed text-amber-700">
-                              If the same guest submits another inquiry from the landing page, it will appear as a new ticket under this contact.
+                              If the same guest submits another inquiry from the landing page, it
+                              will appear as a new ticket under this contact.
                             </p>
                           </div>
                         )}
+
                         <textarea
                           rows={4}
                           value={currentReply}

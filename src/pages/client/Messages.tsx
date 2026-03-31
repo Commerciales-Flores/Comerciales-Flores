@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import EmptyState from '../../components/common/EmptyState';
 import { formatDate, formatDateTime } from '../../utils/date';
@@ -9,7 +9,6 @@ import {
   type SupportMessage,
   type SupportTicket,
 } from '../../contexts/InquiriesContext';
-
 import {
   Mail,
   Send,
@@ -88,6 +87,7 @@ const TicketListItem = React.memo(function TicketListItem({
 
   return (
     <button
+      type="button"
       onClick={() => onSelect(ticket.id)}
       className={`w-full rounded-2xl border p-5 text-left transition-all ${
         isSelected
@@ -164,6 +164,7 @@ const TicketDetail = React.memo(function TicketDetail({
       <div className="flex shrink-0 items-center justify-between border-b border-gray-100 p-4 lg:p-6">
         <div className="flex items-center gap-4">
           <button
+            type="button"
             onClick={onBack}
             className="rounded-full p-2 -ml-2 transition-colors hover:bg-gray-100 lg:hidden"
           >
@@ -176,9 +177,7 @@ const TicketDetail = React.memo(function TicketDetail({
             </h2>
 
             <div className="mt-0.5 flex flex-wrap items-center gap-2">
-              <span
-                className={`text-[10px] font-bold uppercase ${style.text}`}
-              >
+              <span className={`text-[10px] font-bold uppercase ${style.text}`}>
                 {style.label}
               </span>
 
@@ -190,6 +189,7 @@ const TicketDetail = React.memo(function TicketDetail({
         </div>
 
         <button
+          type="button"
           onClick={onClose}
           className="hidden rounded-full bg-gray-50 p-2 text-gray-500 transition-colors hover:bg-gray-100 lg:flex"
         >
@@ -222,15 +222,15 @@ const TicketDetail = React.memo(function TicketDetail({
                     isCurrentUserMessage
                       ? 'text-blue-500'
                       : isSupportMessage
-                        ? 'text-gray-500'
-                        : 'text-slate-500'
+                      ? 'text-gray-500'
+                      : 'text-slate-500'
                   }`}
                 >
                   {isCurrentUserMessage
                     ? 'Your Message'
                     : isSupportMessage
-                      ? 'Support Reply'
-                      : 'Guest Message'}
+                    ? 'Support Reply'
+                    : 'Guest Message'}
                 </span>
 
                 <div
@@ -376,6 +376,7 @@ const TicketComposerModal = React.memo(function TicketComposerModal({
               </h2>
 
               <button
+                type="button"
                 onClick={onClose}
                 className="rounded-full p-2 text-blue-600 hover:bg-gray-100"
               >
@@ -389,9 +390,9 @@ const TicketComposerModal = React.memo(function TicketComposerModal({
                   <CheckCircle className="size-10" />
                 </div>
 
-                <h3 className="text-lg font-bold">Message Sent</h3>
+                <h3 className="text-lg font-bold">Ticket Created</h3>
                 <p className="text-sm text-gray-500">
-                  We&apos;ll notify you as soon as we reply.
+                  Continue the conversation here once support replies.
                 </p>
               </div>
             ) : (
@@ -422,20 +423,22 @@ const TicketComposerModal = React.memo(function TicketComposerModal({
                     value={form.message}
                     onChange={(e) => onMessageChange(e.target.value)}
                     className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Tell us more about your inquiry..."
+                    placeholder="Tell us more about your concern..."
                   />
                 </div>
 
                 <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs text-blue-800">
-                  You can continue replying to this ticket later until your concern is fully resolved.
+                  This creates a new ticket. Future replies should continue in this
+                  Messages page.
                 </div>
 
                 <button
+                  type="submit"
                   disabled={loading}
                   className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 py-4 font-bold text-white shadow-lg shadow-blue-100 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   <Send className="size-4" />
-                  {loading ? 'Sending...' : 'Create Ticket'}
+                  {loading ? 'Creating...' : 'Create Ticket'}
                 </button>
               </form>
             )}
@@ -450,8 +453,10 @@ export default function ClientMessages() {
   const { user } = useAuth();
   const { sendSystemNotification } = useNotifications();
   const {
-    getTicketsByUserId,
+    tickets,
+    fetchTickets,
     getMessagesByTicketId,
+    fetchMessagesByTicketId,
     createTicket,
     sendTicketMessage,
     markTicketResolved,
@@ -472,12 +477,15 @@ export default function ClientMessages() {
 
   const sortedTickets = useMemo(() => {
     if (!userId) return [];
-    const userTickets = getTicketsByUserId(userId) ?? [];
+
+    const userTickets = (tickets ?? []).filter(
+      (ticket: SupportTicket) => ticket.userId === userId
+    );
 
     return [...userTickets].sort(
       (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
     );
-  }, [getTicketsByUserId, userId]);
+  }, [tickets, userId]);
 
   const selectedTicket = useMemo(
     () => sortedTickets.find((ticket) => ticket.id === selectedTicketId) ?? null,
@@ -489,9 +497,27 @@ export default function ClientMessages() {
     [getMessagesByTicketId, selectedTicket]
   );
 
+  useEffect(() => {
+    if (!selectedTicket?.id) return;
+    void fetchMessagesByTicketId(selectedTicket.id);
+  }, [fetchMessagesByTicketId, selectedTicket?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    void fetchTickets(user.id);
+  }, [fetchTickets, user?.id]);
+
+  useEffect(() => {
+    if (!selectedTicketId && sortedTickets.length > 0) {
+      setSelectedTicketId(sortedTickets[0].id);
+    }
+  }, [selectedTicketId, sortedTickets]);
+
   const currentReply = selectedTicket ? replyDrafts[selectedTicket.id] ?? '' : '';
 
   const openModal = useCallback(() => {
+    setFormSuccess(false);
     setIsModalOpen(true);
   }, []);
 
@@ -540,13 +566,14 @@ export default function ClientMessages() {
       setLoading(true);
 
       try {
-        const ticketId = await createTicket({
+        const newTicket = await createTicket({
           userId: user.id,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          email: user.email,
+          firstName: user.firstName ?? undefined,
+          lastName: user.lastName ?? undefined,
+          email: user.email ?? undefined,
           subject,
           message,
+          senderType: 'customer',
         });
 
         sendSystemNotification(
@@ -555,7 +582,7 @@ export default function ClientMessages() {
           `We've received your ticket: "${subject}".`
         );
 
-        setSelectedTicketId(ticketId);
+        setSelectedTicketId(newTicket.id);
         setShowDetail(true);
         setFormSuccess(true);
 
@@ -563,7 +590,7 @@ export default function ClientMessages() {
           setIsModalOpen(false);
           setFormSuccess(false);
           setNewTicketForm(initialFormState);
-        }, 2000);
+        }, 1600);
       } finally {
         setLoading(false);
       }
@@ -591,7 +618,8 @@ export default function ClientMessages() {
         body: reply,
         senderType: 'customer',
         senderUserId: user.id,
-        senderName: [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || null,
+        senderName:
+          [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || null,
         senderEmail: user.email ?? null,
       });
 
@@ -605,11 +633,14 @@ export default function ClientMessages() {
         'Reply Sent',
         `Your reply to "${selectedTicket.subject}" has been sent.`
       );
+
+      void fetchMessagesByTicketId(selectedTicket.id, true);
     } finally {
       setIsSendingReply(false);
     }
   }, [
     currentReply,
+    fetchMessagesByTicketId,
     isSendingReply,
     selectedTicket,
     sendSystemNotification,
@@ -671,11 +702,12 @@ export default function ClientMessages() {
           </header>
 
           <button
+            type="button"
             onClick={openModal}
             className="hidden items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-100 transition-all hover:bg-blue-700 active:scale-95 md:inline-flex"
           >
             <PlusCircle className="size-5" />
-            New Message
+            New Ticket
           </button>
         </div>
 
@@ -688,7 +720,7 @@ export default function ClientMessages() {
             <EmptyState
               icon={<Mail className="size-10 text-blue-500" />}
               title="No messages yet"
-              description="Need help? Start a conversation with our team."
+              description="Need help? Start a support ticket and continue the conversation here."
             />
           </motion.div>
         ) : (
@@ -737,9 +769,7 @@ export default function ClientMessages() {
                       <MessageSquare className="size-10 text-gray-300" />
                     </div>
 
-                    <h3 className="font-bold text-gray-900">
-                      Your conversation
-                    </h3>
+                    <h3 className="font-bold text-gray-900">Your conversation</h3>
 
                     <p className="mt-1 text-sm text-gray-500">
                       Select a ticket from the list to view the full conversation history.
@@ -752,6 +782,7 @@ export default function ClientMessages() {
         )}
 
         <button
+          type="button"
           onClick={openModal}
           className="fixed bottom-6 right-6 z-50 flex size-16 items-center justify-center rounded-full border-4 border-white bg-blue-600 text-white shadow-2xl transition-all hover:scale-110 active:scale-95 md:hidden"
         >

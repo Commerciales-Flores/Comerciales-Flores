@@ -44,8 +44,8 @@ type PaymentMethod = PaymentMethodCode;
 type PaymentCycle = "monthly" | "quarterly" | "full";
 
 interface ReservationForm {
-  startDate: Date;
-  endDate: Date;
+  startDate?: Date;
+  endDate?: Date;
   duration: number;
   durationType: DurationType;
   modeOfVisit: VisitMode;
@@ -76,9 +76,33 @@ const FALLBACK_IMAGE =
   "https://placehold.co/1200x800/e5e7eb/6b7280?text=No+Image";
 
   const BLOCKING_STATUSES = ["approved", "confirmed"] as const;
+// If you want pending requests to temporarily hold dates too, use:
+// const BLOCKING_STATUSES = ["pending", "approved", "confirmed"] as const;
 
 function isBlockingReservation(status?: string | null) {
-  return BLOCKING_STATUSES.includes((status ?? "") as (typeof BLOCKING_STATUSES)[number]);
+  return BLOCKING_STATUSES.includes(
+    (status ?? "") as (typeof BLOCKING_STATUSES)[number]
+  );
+}
+
+function getBlockingReservationsForUnit(
+  reservations: Reservation[],
+  unitId: string,
+  unitType: UnitType,
+  excludeUserId?: string
+) {
+  return reservations
+    .filter(
+      (r) =>
+        r.unitId === unitId &&
+        r.unitType === unitType &&
+        isBlockingReservation(r.status) &&
+        r.userId !== excludeUserId
+    )
+    .sort(
+      (a, b) =>
+        new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+    );
 }
 
 
@@ -120,6 +144,48 @@ function getDateInputValue(date?: Date) {
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function startOfLocalDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function endOfLocalDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(23, 59, 59, 999);
+  return next;
+}
+
+function differenceInCalendarDaysInclusive(start: Date, end: Date) {
+  const startDay = startOfLocalDay(start).getTime();
+  const endDay = startOfLocalDay(end).getTime();
+  const msPerDay = 24 * 60 * 60 * 1000;
+  return Math.floor((endDay - startDay) / msPerDay) + 1;
+}
+
+function buildFunctionHallRange(start: Date, end?: Date | null) {
+  const safeStart = startOfLocalDay(start);
+  const safeRawEnd = end ? startOfLocalDay(end) : safeStart;
+  const safeEnd = safeRawEnd.getTime() < safeStart.getTime() ? safeStart : safeRawEnd;
+
+  return {
+    startDate: safeStart,
+    endDate: endOfLocalDay(safeEnd),
+    duration: differenceInCalendarDaysInclusive(safeStart, safeEnd),
+    durationType: "days" as const,
+  };
+}
+
+function isSameLocalDay(a?: Date | null, b?: Date | null) {
+  if (!a || !b) return false;
+
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
 }
 
 function isVideoUrl(url?: string | null) {
@@ -180,35 +246,35 @@ function buildInitialReservationForm(
   }
 
   if (unitType === "function_hall") {
-    return {
-      startDate,
-      endDate: startDate,
-      duration: 0,
-      durationType: "days",
-      modeOfVisit: "online",
-      paymentIntent: "pay_later",
-      paymentMethod: defaultPaymentMethod,
-      paymentCycle: "full",
-      notes: "",
-      slotId: "",
-      vehicleType: "",
-      plateNumber: "",
-      eventPurpose: "",
-      attendees: "",
-      businessType: "",
-      appointmentDate: undefined,
-      appointmentTime: "",
-      agreedToPolicies: false,
-    };
-  }
+  return {
+    startDate: undefined as unknown as Date,
+    endDate: undefined as unknown as Date,
+    duration: 0,
+    durationType: "days",
+    modeOfVisit: "online",
+    paymentIntent: "pay_later",
+    paymentMethod: defaultPaymentMethod,
+    paymentCycle: "full",
+    notes: "",
+    slotId: "",
+    vehicleType: "",
+    plateNumber: "",
+    eventPurpose: "",
+    attendees: "",
+    businessType: "",
+    appointmentDate: undefined,
+    appointmentTime: "",
+    agreedToPolicies: false,
+  };
+}
 
-  const endDate = computeEndFromForm(startDate, 1, "years");
+  const endDate = computeEndFromForm(startDate, 1, "months");
 
   return {
     startDate,
     endDate,
     duration: 1,
-    durationType: "years",
+    durationType: "months",
     modeOfVisit: "online",
     paymentIntent: "pay_later",
     paymentMethod: defaultPaymentMethod,
@@ -228,8 +294,8 @@ function buildInitialReservationForm(
 
 const RESERVATION_LIMITS = {
   rental_space: {
-    minYears: 1,
-    maxYears: 5,
+    minMonths: 1,
+    maxMonths: 60,
   },
   function_hall: {
     minDays: 1,
@@ -255,10 +321,10 @@ function clampNumber(value: number, min: number, max: number) {
 }
 
 function getDurationBounds(unitType: UnitType, durationType: DurationType) {
-  if (unitType === "rental_space" && durationType === "years") {
+  if (unitType === "rental_space" && durationType === "months") {
     return {
-      min: RESERVATION_LIMITS.rental_space.minYears,
-      max: RESERVATION_LIMITS.rental_space.maxYears,
+      min: RESERVATION_LIMITS.rental_space.minMonths,
+      max: RESERVATION_LIMITS.rental_space.maxMonths,
     };
   }
 
@@ -367,6 +433,7 @@ useEffect(() => {
   useEffect(() => {
     setCurrentImageIndex(0);
   }, [selectedUnitId]);
+  
 
   
 
@@ -392,6 +459,87 @@ useEffect(() => {
     return units.find((u) => u.id === selectedUnitId) ?? null;
   }, [selectedUnitId, units]);
 
+  const selectedUnitBlockingReservations = useMemo(() => {
+  if (!selectedUnitData) return [];
+
+  return getBlockingReservationsForUnit(
+    reservations,
+    selectedUnitData.id,
+    selectedUnitData.type,
+    user?.id
+  );
+}, [reservations, selectedUnitData, user?.id]);
+
+const isCalendarTileDisabled = useCallback(
+  ({ date, view }: { date: Date; view: string }) => {
+    if (view !== "month") return false;
+    if (!selectedUnitData) return false;
+    if (selectedUnitData.type === "parking_slot") return false;
+
+    const dayStart = startOfLocalDay(date);
+    const dayEnd = endOfLocalDay(date);
+
+    return selectedUnitBlockingReservations.some((reservation) =>
+      rangesOverlap(dayStart, dayEnd, reservation.startDate, reservation.endDate)
+    );
+  },
+  [selectedUnitData, selectedUnitBlockingReservations]
+);
+
+const getCalendarTileClassName = useCallback(
+  ({ date, view }: { date: Date; view: string }) => {
+    if (view !== "month") return "";
+    if (!selectedUnitData) return "";
+    if (selectedUnitData.type === "parking_slot") return "";
+
+    const dayStart = startOfLocalDay(date);
+    const dayEnd = endOfLocalDay(date);
+
+    const isBlocked = selectedUnitBlockingReservations.some((reservation) =>
+      rangesOverlap(dayStart, dayEnd, reservation.startDate, reservation.endDate)
+    );
+
+    const isStart = isSameLocalDay(date, reservationForm.startDate);
+    const isEnd = isSameLocalDay(date, reservationForm.endDate);
+
+    if (!reservationForm.startDate || !reservationForm.endDate) {
+      return "";
+    }
+
+    const rangeStart = startOfLocalDay(reservationForm.startDate);
+    const rangeEnd = startOfLocalDay(reservationForm.endDate);
+
+    const isWithinSelectedRange =
+      dayStart.getTime() >= Math.min(rangeStart.getTime(), rangeEnd.getTime()) &&
+      dayStart.getTime() <= Math.max(rangeStart.getTime(), rangeEnd.getTime());
+
+    const classes: string[] = [];
+
+    // Always preserve blocked styling first.
+    if (isBlocked) {
+      classes.push("calendar-tile-blocked");
+      return classes.join(" ");
+    }
+
+    if (isStart || isEnd) {
+      classes.push("calendar-tile-selected");
+      return classes.join(" ");
+    }
+
+    if (isWithinSelectedRange) {
+      classes.push("calendar-tile-in-range");
+    }
+
+    return classes.join(" ");
+  },
+  [
+    selectedUnitData,
+    selectedUnitBlockingReservations,
+    reservationForm.startDate,
+    reservationForm.endDate,
+  ]
+);
+
   const selectedUnitMedia = useMemo(() => {
     const images = selectedUnitData?.images?.filter(Boolean) ?? [];
     const videos = selectedUnitData?.videos?.filter(Boolean) ?? [];
@@ -400,29 +548,46 @@ useEffect(() => {
     return media.length > 0 ? media : [FALLBACK_IMAGE];
   }, [selectedUnitData]);
 
-  const updateDuration = useCallback(
-  (nextValue: number) => {
-    if (!selectedUnitData) return;
+//   const updateDuration = useCallback(
+//   (nextValue: number) => {
+//     if (!selectedUnitData) return;
 
-    const bounds = getDurationBounds(
-      selectedUnitData.type,
-      reservationForm.durationType
-    );
+//     const bounds = getDurationBounds(
+//       selectedUnitData.type,
+//       reservationForm.durationType
+//     );
 
-    const safeDuration = clampNumber(nextValue, bounds.min, bounds.max);
+//     const safeDuration = clampNumber(nextValue, bounds.min, bounds.max);  
 
-    setReservationForm((prev) => ({
-      ...prev,
-      duration: safeDuration,
-      endDate: computeEndFromForm(prev.startDate, safeDuration, prev.durationType),
-    }));
+//     setReservationForm((prev) => {
+//       if (selectedUnitData.type === "function_hall") {
+//         const nextEnd = new Date(startOfLocalDay(prev.startDate));
+//         nextEnd.setDate(nextEnd.getDate() + safeDuration - 1);
 
-    if (selectedUnitData.type === "function_hall") {
-      setFunctionHallConflictMessage("");
-    }
-  },
-  [selectedUnitData, reservationForm.durationType]
-);
+//         const nextRange = buildFunctionHallRange(prev.startDate, nextEnd);
+
+//         return {
+//           ...prev,
+//           duration: nextRange.duration,
+//           durationType: nextRange.durationType,
+//           startDate: nextRange.startDate,
+//           endDate: nextRange.endDate,
+//         };
+//       }
+
+//       return {
+//         ...prev,
+//         duration: safeDuration,
+//         endDate: computeEndFromForm(prev.startDate, safeDuration, prev.durationType),
+//       };
+//     });
+
+//     if (selectedUnitData.type === "function_hall") {
+//       setFunctionHallConflictMessage("");
+//     }
+//   },
+//   [selectedUnitData, reservationForm.durationType]
+// );
 
 useEffect(() => {
   if (!selectedUnitData) return;
@@ -442,11 +607,35 @@ useEffect(() => {
       bounds.max
     );
 
-    setReservationForm((prev) => ({
+    setReservationForm((prev) => {
+  if (!prev.startDate) {
+    return {
       ...prev,
       duration: safeDuration,
-      endDate: computeEndFromForm(prev.startDate, safeDuration, prev.durationType),
-    }));
+    };
+  }
+
+  if (selectedUnitData.type === "function_hall") {
+    const nextEnd = new Date(startOfLocalDay(prev.startDate));
+    nextEnd.setDate(nextEnd.getDate() + safeDuration - 1);
+
+    const nextRange = buildFunctionHallRange(prev.startDate, nextEnd);
+
+    return {
+      ...prev,
+      startDate: nextRange.startDate,
+      endDate: nextRange.endDate,
+      duration: nextRange.duration,
+      durationType: nextRange.durationType,
+    };
+  }
+
+  return {
+    ...prev,
+    duration: safeDuration,
+    endDate: computeEndFromForm(prev.startDate, safeDuration, prev.durationType),
+  };
+});
   }
 }, [
   selectedUnitData,
@@ -454,6 +643,22 @@ useEffect(() => {
   reservationForm.durationType,
   reservationForm.startDate,
 ]);
+
+useEffect(() => {
+  if (selectedUnitData?.type !== "rental_space") return;
+
+  setReservationForm((prev) => {
+    if (prev.durationType === "months") return prev;
+
+    return {
+      ...prev,
+      durationType: "months",
+      endDate: prev.startDate
+        ? computeEndFromForm(prev.startDate, prev.duration || 1, "months")
+        : prev.endDate,
+    };
+  });
+}, [selectedUnitData]);
 
   const unitParkingSlots = useMemo(() => {
     if (!selectedUnitData || selectedUnitData.type !== "parking_slot") return [];
@@ -510,19 +715,30 @@ useEffect(() => {
       const availableActiveSlots = slotsWithOwnership.filter((s) => !s.isUnavailable);
       const ownReservedSlots = slotsWithOwnership.filter((s) => s.occupiedByOwnUser);
 
+      if (activeSlots.length === 0) {
+        map.set(unit.id, {
+          status: "occupied",
+          badgeText: "No slots configured",
+          badgeTone: "gray",
+          reserveDisabled: true,
+          reserveLabel: "Unavailable",
+        });
+        continue;
+      }
+
       if (availableActiveSlots.length === 0) {
-  map.set(unit.id, {
-    status: "occupied",
-    badgeText:
-      ownReservedSlots.length > 0
-        ? "All other slots occupied"
-        : "Fully occupied",
-    badgeTone: ownReservedSlots.length > 0 ? "blue" : "red",
-    reserveDisabled: true,
-    reserveLabel: "No Slots Left",
-  });
-  continue;
-}
+        map.set(unit.id, {
+          status: "occupied",
+          badgeText:
+            ownReservedSlots.length > 0
+              ? "All other slots occupied"
+              : "Fully occupied",
+          badgeTone: ownReservedSlots.length > 0 ? "blue" : "red",
+          reserveDisabled: true,
+          reserveLabel: "No Slots Left",
+        });
+        continue;
+      }
 
 if (ownReservedSlots.length > 0) {
   map.set(unit.id, {
@@ -831,6 +1047,10 @@ const ownReservedSlotIds = useMemo(() => {
     return new Set<string>();
   }
 
+  if (!reservationForm.startDate) {
+    return new Set<string>();
+  }
+
   const formStart = new Date(reservationForm.startDate);
   const formType = (reservationForm.durationType as DurationType) ?? "months";
   const formEnd = computeEndFromForm(
@@ -888,6 +1108,32 @@ const ownReservedSlotIds = useMemo(() => {
     reservationForm.paymentCycle,
   ]);
 
+  const rentalMonthlyAmount = useMemo(() => {
+  if (!selectedUnitData || selectedUnitData.type !== "rental_space") return 0;
+  if (!reservationForm.duration || reservationForm.duration <= 0) return 0;
+
+  return estimatedTotal / reservationForm.duration;
+}, [selectedUnitData, reservationForm.duration, estimatedTotal]);
+
+const rentalRequiredPayment = useMemo(() => {
+  if (!selectedUnitData || selectedUnitData.type !== "rental_space") return 0;
+
+  if (reservationForm.paymentCycle === "quarterly") {
+    return Math.min(rentalMonthlyAmount * 3, estimatedTotal);
+  }
+
+  if (reservationForm.paymentCycle === "full") {
+    return estimatedTotal;
+  }
+
+  return Math.min(rentalMonthlyAmount, estimatedTotal);
+}, [
+  selectedUnitData,
+  reservationForm.paymentCycle,
+  rentalMonthlyAmount,
+  estimatedTotal,
+]);
+
   const hidePaymentSection =
     reservationForm.modeOfVisit === "onsite" &&
     reservationForm.paymentIntent === "pay_later";
@@ -909,13 +1155,7 @@ const showPaymentMethodEmptyState = !hidePaymentSection && !hasActivePaymentMeth
     setReservationSuccess(false);
     setIsSlotPanelOpen(false);
     setFunctionHallConflictMessage("");
-
-    if (unit.type === "function_hall" && availability?.reserveLabel === "Check Dates") {
-      setShowCalendar(true);
-    } else {
-      setShowCalendar(false);
-    }
-
+    setShowCalendar(false);
     setShowReservationModal(true);
   },
   [units, unitAvailabilityMap, defaultPaymentMethod]
@@ -996,24 +1236,6 @@ const getParkingSlotState = useCallback(
     }));
   }, []);
 
-  const checkFunctionHallConflict = useCallback(
-  (start: Date, end: Date) => {
-    if (!selectedUnitData || selectedUnitData.type !== "function_hall") return false;
-
-    const blockingReservations = reservations.filter(
-      (r) =>
-        r.unitId === selectedUnitData.id &&
-        r.unitType === selectedUnitData.type &&
-        isBlockingReservation(r.status)
-    );
-
-    return blockingReservations.some((r) =>
-      rangesOverlap(start, end, r.startDate, r.endDate)
-    );
-  },
-  [reservations, selectedUnitData]
-);
-
 
   const handleReservationSubmit = useCallback(
   async (e: React.FormEvent) => {
@@ -1022,12 +1244,12 @@ const getParkingSlotState = useCallback(
     if (isSubmitting) return;
     if (!selectedUnitData || !user) return;
 
-            const blockingReservations = reservations.filter(
-        (r) =>
-          r.unitId === selectedUnitData.id &&
-          r.unitType === selectedUnitData.type &&
-          isBlockingReservation(r.status)
-      );
+            const blockingReservations = getBlockingReservationsForUnit(
+              reservations,
+              selectedUnitData.id,
+              selectedUnitData.type,
+              user.id
+            );
 
       if (selectedUnitData.type === "rental_space") {
         const hasRentalConflict = blockingReservations.some((r) =>
@@ -1139,6 +1361,25 @@ const getParkingSlotState = useCallback(
         alert("Please enter your vehicle information.");
         return;
       }
+      if (selectedUnitData.type === "rental_space") {
+      if (reservationForm.durationType !== "months") {
+        alert("Rental spaces must use monthly duration.");
+        return;
+      }
+
+      if (!reservationForm.paymentCycle) {
+        alert("Please select a payment cycle.");
+        return;
+      }
+
+      if (
+        reservationForm.paymentCycle === "quarterly" &&
+        reservationForm.duration < 3
+      ) {
+        alert("Quarterly payment cycle requires at least 3 months.");
+        return;
+      }
+    }
 
       const durationBounds = getDurationBounds(
   selectedUnitData.type,
@@ -1177,6 +1418,33 @@ if (
   return;
 }
 
+let normalizedStartDate = reservationForm.startDate;
+let normalizedEndDate = reservationForm.endDate;
+let normalizedDuration = reservationForm.duration;
+let normalizedDurationType = reservationForm.durationType;
+
+if (selectedUnitData.type === "function_hall") {
+  if (!reservationForm.startDate || !reservationForm.endDate) {
+    alert("Please select reservation dates first.");
+    return;
+  }
+
+  const normalizedRange = buildFunctionHallRange(
+    reservationForm.startDate,
+    reservationForm.endDate
+  );
+
+  normalizedStartDate = normalizedRange.startDate;
+  normalizedEndDate = normalizedRange.endDate;
+  normalizedDuration = normalizedRange.duration;
+  normalizedDurationType = normalizedRange.durationType;
+}
+
+if (!normalizedStartDate || !normalizedEndDate) {
+  alert("Please select reservation dates first.");
+  return;
+}
+
       const reservationData: Omit<
         Reservation,
         'id' | 'requestDate' | 'status' | 'paidAmount'
@@ -1185,10 +1453,10 @@ if (
         unitId: selectedUnitData.id,
         unitName: selectedUnitData.name,
         unitType: selectedUnitData.type,
-        startDate: reservationForm.startDate.toISOString(),
-        endDate: reservationForm.endDate.toISOString(),
-        duration: reservationForm.duration,
-        durationType: reservationForm.durationType,
+        startDate: normalizedStartDate.toISOString(),
+        endDate: normalizedEndDate.toISOString(),
+        duration: normalizedDuration,
+        durationType: normalizedDurationType,
         modeOfVisit: reservationForm.modeOfVisit,
         paymentIntent:
           reservationForm.modeOfVisit === "onsite"
@@ -1286,6 +1554,36 @@ if (
     }
   },
   []
+);
+
+const calendarLegend = (
+  <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">
+      Legend
+    </p>
+
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs sm:text-sm">
+      <div className="flex items-center gap-2">
+        <span className="h-3.5 w-3.5 rounded-md border border-green-300 bg-green-200" />
+        <span className="text-gray-600">Today</span>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span className="h-3.5 w-3.5 rounded-md border border-blue-300 bg-blue-200" />
+        <span className="text-gray-600">Selected</span>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span className="h-3.5 w-3.5 rounded-md border border-blue-200 bg-blue-100" />
+        <span className="text-gray-600">In range</span>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <span className="h-3.5 w-3.5 rounded-md border border-red-300 bg-red-200" />
+        <span className="text-gray-600">Unavailable</span>
+      </div>
+    </div>
+  </div>
 );
 
   return (
@@ -1508,7 +1806,9 @@ if (
                   {formatCurrency(unit.price)}
                 </div>
                 <div className="text-xs text-gray-500">
-                  {getPriceLabel(unit.type)}
+                  {unit.type === "rental_space"
+                    ? "per month"
+                    : getPriceLabel(unit.type)}
                 </div>
               </div>
             </div>
@@ -2028,6 +2328,7 @@ if (
                                   }}
                                   className="w-full border-0"
                                 />
+                                {calendarLegend}
                               </div>
                             )}
                           </div>
@@ -2154,71 +2455,97 @@ if (
                               onClick={() => setShowCalendar((s) => !s)}
                               className="flex w-full items-center justify-between rounded-xl border border-gray-300 px-3 py-2 text-left text-sm transition hover:border-blue-400"
                             >
-                              <span>
-                                {reservationForm.duration > 0
+                              <span className={reservationForm.startDate && reservationForm.endDate && reservationForm.duration > 0
+                                ? "text-gray-900"
+                                : "text-gray-400"}
+                              >
+                                {reservationForm.startDate &&
+                                reservationForm.endDate &&
+                                reservationForm.duration > 0
                                   ? `${formatDate(reservationForm.startDate)} - ${formatDate(reservationForm.endDate)}`
-                                  : "Select reservation dates"}
+                                  : "Please select reservation dates"}
                               </span>
+
+                              <CalendarDays className="ml-3 size-4 shrink-0 text-blue-500" />
                             </button>
 
                             {showCalendar && (
                               <div className="mt-2 overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 shadow-lg">
                                <Calendar
-                                  onChange={(value) => {
-                                    if (Array.isArray(value) && value[0] && value[1]) {
-                                      const start = new Date(value[0]);
-                                      start.setHours(0, 0, 0, 0);
+                                tileDisabled={isCalendarTileDisabled}
+                                tileClassName={getCalendarTileClassName}
+                                onChange={(value) => {
+                                  if (Array.isArray(value) && value[0] && value[1]) {
+                                    const start = new Date(value[0]);
+                                    start.setHours(0, 0, 0, 0);
 
-                                      const end = new Date(value[1]);
-                                      end.setHours(23, 59, 59, 999);
+                                    const end = new Date(value[1]);
+                                    end.setHours(23, 59, 59, 999);
 
-                                      const startDay = new Date(start);
-                                      startDay.setHours(0, 0, 0, 0);
+                                    const startDay = new Date(start);
+                                    startDay.setHours(0, 0, 0, 0);
 
-                                      const endDay = new Date(end);
-                                      endDay.setHours(0, 0, 0, 0);
+                                    const endDay = new Date(end);
+                                    endDay.setHours(0, 0, 0, 0);
 
-                                      const rawDayCount =
-                                        Math.floor(
-                                          (endDay.getTime() - startDay.getTime()) / (1000 * 60 * 60 * 24)
-                                        ) + 1;
+                                    const rawDayCount =
+                                      Math.floor(
+                                        (endDay.getTime() - startDay.getTime()) / (1000 * 60 * 60 * 24)
+                                      ) + 1;
 
-                                      const dayCount = clampNumber(
-                                        rawDayCount,
-                                        RESERVATION_LIMITS.function_hall.minDays,
-                                        RESERVATION_LIMITS.function_hall.maxDays
-                                      );
+                                    const dayCount = clampNumber(
+                                      rawDayCount,
+                                      RESERVATION_LIMITS.function_hall.minDays,
+                                      RESERVATION_LIMITS.function_hall.maxDays
+                                    );
 
-                                      const adjustedEnd = new Date(start);
-                                      adjustedEnd.setDate(start.getDate() + dayCount - 1);
-                                      adjustedEnd.setHours(23, 59, 59, 999);
+                                    const adjustedEnd = new Date(start);
+                                    adjustedEnd.setDate(start.getDate() + dayCount - 1);
+                                    adjustedEnd.setHours(23, 59, 59, 999);
 
-                                      const hasConflict = checkFunctionHallConflict(start, adjustedEnd);
+                                    const hasConflict = selectedUnitBlockingReservations.some((r) =>
+                                      rangesOverlap(start, adjustedEnd, r.startDate, r.endDate)
+                                    );
 
-                                      setReservationForm((prev) => ({
-                                        ...prev,
-                                        startDate: start,
-                                        endDate: adjustedEnd,
-                                        duration: dayCount,
-                                        durationType: "days",
-                                      }));
-
+                                    if (hasConflict) {
                                       setFunctionHallConflictMessage(
-                                        hasConflict
-                                          ? "The selected dates are already reserved. Please choose different dates."
-                                          : ""
+                                        "Please select one continuous available date range. Separate date groups require separate reservations."
                                       );
-
-                                      if (!hasConflict) {
-                                        setShowCalendar(false);
-                                      }
+                                      return;
                                     }
-                                  }}
-                                  value={[reservationForm.startDate, reservationForm.endDate]}
-                                  selectRange={true}
-                                  minDate={getTomorrow()}
-                                  className="w-full border-0"
-                                />
+
+                                    setReservationForm((prev) => ({
+                                      ...prev,
+                                      startDate: start,
+                                      endDate: adjustedEnd,
+                                      duration: dayCount,
+                                      durationType: "days",
+                                    }));
+
+                                    setFunctionHallConflictMessage("");
+                                    setShowCalendar(false);
+                                  }
+                                }}
+                                value={
+                                  reservationForm.startDate && reservationForm.endDate
+                                    ? [reservationForm.startDate, reservationForm.endDate]
+                                    : undefined
+                                }
+                                selectRange={true}
+                                minDate={getTomorrow()}
+                                defaultActiveStartDate={getTomorrow()}
+                                className="w-full border-0"
+                              />
+                                {calendarLegend}
+                                <p className="mt-3 text-xs leading-5 text-amber-700">
+                                  Function hall reservations must be one continuous available date range.
+                                  If you need dates separated by unavailable days, please submit separate reservations.
+                                </p>
+                                {functionHallConflictMessage ? (
+                                  <p className="mt-2 text-xs font-medium text-red-600">
+                                    {functionHallConflictMessage}
+                                  </p>
+                                ) : null}
                               </div>
                             )}
 
@@ -2297,15 +2624,26 @@ if (
                               onClick={() => setShowCalendar((s) => !s)}
                               className="flex w-full items-center justify-between rounded-xl border border-gray-300 px-3 py-2 text-left text-sm transition hover:border-blue-400"
                             >
-                              <span>{formatDate(reservationForm.startDate)}</span>
+                              <span className="text-gray-900">
+                                {formatDate(reservationForm.startDate)}
+                              </span>
+
+                              <CalendarDays className="ml-3 size-4 shrink-0 text-blue-500" />
                             </button>
 
                             {showCalendar && (
                               <div className="mt-2 overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 shadow-lg">
                                 <Calendar
-                                  value={reservationForm.startDate}
+                                  value={
+                                    reservationForm.endDate
+                                      ? formatDate(reservationForm.endDate)
+                                      : ""
+                                  }
+                                  tileDisabled={isCalendarTileDisabled}
+                                  tileClassName={getCalendarTileClassName}
                                   selectRange={false}
                                   minDate={getTomorrow()}
+                                  defaultActiveStartDate={getTomorrow()}
                                   onChange={(value) => {
                                     if (value instanceof Date) {
                                       const newStart = new Date(value);
@@ -2317,7 +2655,7 @@ if (
                                         endDate: computeEndFromForm(
                                           newStart,
                                           prev.duration,
-                                          "years"
+                                          "months"
                                         ),
                                       }));
                                       setShowCalendar(false);
@@ -2325,19 +2663,20 @@ if (
                                   }}
                                   className="w-full border-0"
                                 />
+                                {calendarLegend}
                               </div>
                             )}
                           </div>
 
                           <div>
                             <label className="mb-2 mt-4 block text-sm text-gray-700">
-                              Duration (years)
+                              Lease Duration (months)
                             </label>
                             <input
                               type="number"
                               required
-                              min={RESERVATION_LIMITS.rental_space.minYears}
-                              max={RESERVATION_LIMITS.rental_space.maxYears}
+                              min={RESERVATION_LIMITS.rental_space.minMonths}
+                              max={RESERVATION_LIMITS.rental_space.maxMonths}
                               step={1}
                               value={reservationForm.duration}
                               onChange={(e) => {
@@ -2345,25 +2684,38 @@ if (
 
                                 const safeDuration = clampNumber(
                                   Number.isNaN(parsed)
-                                    ? RESERVATION_LIMITS.rental_space.minYears
+                                    ? RESERVATION_LIMITS.rental_space.minMonths
                                     : parsed,
-                                  RESERVATION_LIMITS.rental_space.minYears,
-                                  RESERVATION_LIMITS.rental_space.maxYears
+                                  RESERVATION_LIMITS.rental_space.minMonths,
+                                  RESERVATION_LIMITS.rental_space.maxMonths
                                 );
 
-                                setReservationForm((prev) => ({
-                                  ...prev,
-                                  duration: safeDuration,
-                                  durationType: "years",
-                                  endDate: computeEndFromForm(
-                                    prev.startDate,
-                                    safeDuration,
-                                    "years"
-                                  ),
-                                }));
+                                setReservationForm((prev) => {
+                                  const safeStartDate = prev.startDate ?? getTomorrow();
+
+                                  return {
+                                    ...prev,
+                                    startDate: safeStartDate,
+                                    duration: safeDuration,
+                                    durationType: "months",
+                                    paymentCycle:
+                                      prev.paymentCycle === "quarterly" && safeDuration < 3
+                                        ? "monthly"
+                                        : prev.paymentCycle,
+                                    endDate: computeEndFromForm(
+                                      safeStartDate,
+                                      safeDuration,
+                                      "months"
+                                    ),
+                                  };
+                                });
                               }}
                               className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                             />
+                            <p className="mt-2 text-xs text-gray-500">
+                              Minimum {RESERVATION_LIMITS.rental_space.minMonths} month, maximum{" "}
+                              {RESERVATION_LIMITS.rental_space.maxMonths} months.
+                            </p>
                           </div>
 
                           <div className="mt-4">
@@ -2384,18 +2736,70 @@ if (
                             </label>
                             <select
                               value={reservationForm.paymentCycle}
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                const nextCycle = e.target.value as PaymentCycle;
+
+                                if (nextCycle === "quarterly" && reservationForm.duration < 3) {
+                                  return;
+                                }
+
                                 setReservationForm((prev) => ({
                                   ...prev,
-                                  paymentCycle: e.target.value as PaymentCycle,
-                                }))
-                              }
+                                  paymentCycle: nextCycle,
+                                }));
+                              }}
                               className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                             >
                               <option value="monthly">Monthly Installments</option>
-                              <option value="quarterly">Quarterly Payments</option>
+                              <option
+                                value="quarterly"
+                                disabled={reservationForm.duration < 3}
+                              >
+                                Quarterly Payments
+                              </option>
                               <option value="full">Full Payment</option>
                             </select>
+
+                            {reservationForm.duration < 3 && (
+                              <p className="mt-2 text-xs text-amber-600">
+                                Quarterly payment is available only for lease durations of at least 3 months.
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
+                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">
+                              Billing Summary
+                            </p>
+
+                            <div className="mt-2 space-y-1 text-sm text-gray-700">
+                              <div className="flex items-center justify-between gap-4">
+                                <span>Monthly rate</span>
+                                <span className="font-semibold text-gray-900">
+                                  {formatCurrency(rentalMonthlyAmount)}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center justify-between gap-4">
+                                <span>
+                                  {reservationForm.paymentCycle === "quarterly"
+                                    ? "Quarterly minimum"
+                                    : reservationForm.paymentCycle === "full"
+                                      ? "Full payment"
+                                      : "Monthly minimum"}
+                                </span>
+                                <span className="font-semibold text-gray-900">
+                                  {formatCurrency(rentalRequiredPayment)}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center justify-between gap-4 border-t border-blue-100 pt-2">
+                                <span>Total lease amount</span>
+                                <span className="font-bold text-blue-700">
+                                  {formatCurrency(estimatedTotal)}
+                                </span>
+                              </div>
+                            </div>
                           </div>
 
                           <div>

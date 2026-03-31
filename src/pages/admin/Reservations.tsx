@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useData } from '../../contexts/DataContext';
 import { useReservations } from '../../contexts/ReservationsContext';
 import { useNotifications } from '../../contexts/NotificationContext';
+import { DataTable, DataCell, ActionCell } from '../../components/common/DataTable';
 import { formatDate } from '../../utils/date';
 import {
   Search,
@@ -25,6 +26,7 @@ import { getUnitTypeLabel } from '../../utils/propertyHelpers';
 import AdminActionModal from '../../components/modals/AdminActionModal';
 import { motion } from 'framer-motion';
 import EmptyState from '../../components/common/EmptyState';
+import { useUsers } from '../../contexts/UsersContext';
 
 type ReservationFilterStatus =
   | 'all'
@@ -37,8 +39,11 @@ type ReservationFilterStatus =
 
 function enrichReservation(reservation: any, user: any, unit?: any) {
   const reservationPublicId = reservation.publicId ?? reservation.id;
-  const userPublicId = user?.publicId ?? user?.id ?? '';
-  const fullName = `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim();
+  const userPublicId = user?.publicId ?? '';
+  const fullName =
+    `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() ||
+    user?.email ||
+    'Unknown User';
 
   return {
     ...reservation,
@@ -106,7 +111,8 @@ function useDebouncedValue<T>(value: T, delay = 250) {
 }
 
 export default function AdminReservations() {
-  const { getUserById, updateReservation, getUnitById } = useData();
+  const { updateReservation, getUnitById, loadingUnits } = useData();
+  const { users, isLoadingUsers, refreshUsers, getUserById } = useUsers();
   const { fetchReservationsPage } = useReservations();
   const {
     sendReservationNotification,
@@ -123,17 +129,29 @@ export default function AdminReservations() {
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
 
+  const [hasLoadedReservations, setHasLoadedReservations] = useState(false);
+
   const debouncedSearch = useDebouncedValue(searchTerm, 250);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   const [pageInput, setPageInput] = useState('1');
+  const isUsersReady = users.length > 0 || !isLoadingUsers;
+  const isUnitsReady = !loadingUnits;
+  const isPageReady = hasLoadedReservations && isUsersReady && isUnitsReady;
+  const shouldShowLoadingState = loading || !isPageReady;
   
 
 useEffect(() => {
   setPageInput(String(page));
 }, [page]);
+
+useEffect(() => {
+  if (users.length === 0) {
+    void refreshUsers();
+  }
+}, [users.length, refreshUsers]);
 
 const handlePageJump = useCallback(() => {
   const parsed = parseInt(pageInput, 10);
@@ -165,30 +183,35 @@ const handlePageInputKeyDown = useCallback(
     let cancelled = false;
 
     const loadReservations = async () => {
-      setLoading(true);
-      try {
-        const result = await fetchReservationsPage({
-          page,
-          pageSize,
-          status: filterStatus,
-          searchTerm: debouncedSearch,
-        });
+  setLoading(true);
+  setHasLoadedReservations(false);
 
-        if (cancelled) return;
-        setReservations(result.data);
-        setTotalCount(result.count);
-      } catch (error) {
-        console.error('Failed to load reservations page:', error);
-        if (!cancelled) {
-          setReservations([]);
-          setTotalCount(0);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
+  try {
+    const result = await fetchReservationsPage({
+      page,
+      pageSize,
+      status: filterStatus,
+      searchTerm: debouncedSearch,
+    });
+
+    if (cancelled) return;
+
+    setReservations(result.data);
+    setTotalCount(result.count);
+    setHasLoadedReservations(true);
+  } catch (error) {
+    console.error('Failed to load reservations page:', error);
+    if (!cancelled) {
+      setReservations([]);
+      setTotalCount(0);
+      setHasLoadedReservations(true);
+    }
+  } finally {
+    if (!cancelled) {
+      setLoading(false);
+    }
+  }
+};
 
     void loadReservations();
 
@@ -232,8 +255,8 @@ const handlePageInputKeyDown = useCallback(
   const hasActiveSearch = Boolean(debouncedSearch.trim());
   const hasActiveFilters = filterStatus !== 'all' || hasActiveSearch;
 
-  const hasNoReservations = !loading && totalCount === 0 && !hasActiveFilters;
-  const hasNoSearchResults = !loading && totalCount === 0 && hasActiveFilters;
+  const hasNoReservations = !shouldShowLoadingState && totalCount === 0 && !hasActiveFilters;
+  const hasNoSearchResults = !shouldShowLoadingState && totalCount === 0 && hasActiveFilters;
 
   const reloadPage = useCallback(async () => {
     const result = await fetchReservationsPage({
@@ -368,7 +391,7 @@ const handleSendOverdueNotice = useCallback(
         </button>
       </div>
 
-      {!loading && (!hasNoReservations || hasActiveFilters) && (
+      {!shouldShowLoadingState && (!hasNoReservations || hasActiveFilters) && (
         <div className="space-y-4">
           <div className="flex lg:hidden items-center gap-2">
             <div className="relative flex-1">
@@ -428,7 +451,7 @@ const handleSendOverdueNotice = useCallback(
       )}
 
       <div className="flex-1">
-        {loading ? (
+        {shouldShowLoadingState ? (
           <EmptyState
             icon={
               <div className="flex items-center justify-center">
@@ -597,220 +620,220 @@ const handleSendOverdueNotice = useCallback(
               ))}
             </div>
 
-            <div className="hidden lg:block bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      {[
-                          'Reservation ID',
-                          'User ID',
-                          'Unit',
-                          'Date Range',
-                          'Amount',
-                          'Visit Type',
-                          'Visit Status',
-                          'Reservation Status',
-                          'Actions',
-                        ].map((header) => (
-                        <th
-                          key={header}
-                          className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider"
-                        >
-                          {header}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-gray-100">
-                    {enrichedReservations.map((reservation) => (
-                      <tr
-                        key={reservation.id}
-                        className="hover:bg-blue-50/30 transition-colors"
-                      >
-                        <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[220px]">
-                            {reservation.reservationPublicId}
-                        </td>
-
-                        <td className="px-6 py-4 text-sm font-semibold text-gray-900 w-[220px]">
-                            {reservation.userPublicId || reservation.userId}
-                        </td>
-
-                        <td className="px-6 py-4 w-[240px]">
-                          <div className="text-sm font-semibold text-gray-900">
-                            {reservation.unitName}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            {getUnitTypeLabel(reservation.unitType)}
-                          </div>
-                        </td>
-
-                        <td className="px-6 py-4 text-xs text-gray-500 w-[200px]">
-                          <div>{reservation.startDateLabel}</div>
-                          <div className="text-xs text-gray-500">
-                            to {reservation.endDateLabel}
-                          </div>
-                        </td>
-
-
-                        <td className="px-6 py-4 w-[180px]">
-                        <div className="flex flex-col gap-1">
-                          {/* Price */}
-                          <span className="text-sm font-semibold text-gray-900">
-                            {formatCurrency(reservation.totalAmount)}
-                          </span>
-
-                          {/* Payment Status Badge */}
-                          <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full w-fit ${
-                              isFullyPaid(reservation)
-                                ? 'bg-green-100 text-green-700'
-                                : hasRecordedPayment(reservation)
-                                ? 'bg-blue-100 text-blue-700'
-                                : 'bg-gray-100 text-gray-500'
-                            }`}
-                          >
-                            {isFullyPaid(reservation)
-                              ? 'Paid'
-                              : hasRecordedPayment(reservation)
-                              ? 'Partial'
-                              : 'Unpaid'}
-                          </span>
-                        </div>
-                      </td>
-
-                        <td className="px-6 py-4 w-[180px] align-middle">
-  <div className="space-y-2">
-    <span
-      className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-        reservation.modeOfVisit === 'onsite'
-          ? 'border-blue-100 bg-blue-50 text-blue-700'
-          : 'border-green-200 bg-green-400 text-white'
-      }`}
-    >
-      {reservation.modeOfVisit?.replace('_', ' ') || 'online'}
-    </span>
-
-    {reservation.modeOfVisit === 'onsite' && reservation.appointmentDate ? (
-      <div className="space-y-0.5">
-        <div className="text-[11px] font-medium text-gray-700">
-          {formatDate(reservation.appointmentDate)}
-        </div>
-        {reservation.appointmentTime && (
-          <div className="text-[11px] text-gray-500">{reservation.appointmentTime}</div>
-        )}
-      </div>
-    ) : (
-      <div className="text-[11px] text-gray-400">No schedule needed</div>
-    )}
-  </div>
-</td>
-
-                        <td className="px-6 py-4 w-[160px]">
-                          <span className="text-xs font-semibold text-indigo-600 uppercase">
-                            {reservation.modeOfVisit === 'onsite'
-                              ? reservation.visitStatus || 'requested'
-                              : 'not applicable'}
-                          </span>
-                        </td>
-
-                        <td className="px-6 py-4 w-[130px]">
-                          <span
-                            className={`px-2.5 py-1 text-[10px] font-bold rounded-full border ${
-                              statusColors[reservation.status as keyof typeof statusColors]
-                            }`}
-                          >
-                            {reservation.status.toUpperCase()}
-                          </span>
-                        </td>
-
-                        <td className="px-6 py-4 text-right w-[130px]">
-                          <div className="flex justify-end gap-1">
-                            <button
-                              onClick={() => setSelectedReservation(reservation.id)}
-                              className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg"
-                              title="View"
-                            >
-                              <Eye className="size-4" />
-                            </button>
-
-                           {reservation.status === 'pending' && (
-  <>
-    {reservation.modeOfVisit === 'onsite' && (
-      <>
-        <button
-          onClick={() => handleConfirmVisit(reservation)}
-          className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg"
-          title="Confirm Visit"
-        >
-          <Calendar className="size-4" />
-        </button>
-
-        <button
-          onClick={() => handleRequestReschedule(reservation)}
-          className="p-2 text-amber-600 hover:bg-amber-100 rounded-lg"
-          title="Request Reschedule"
-        >
-          <Clock className="size-4" />
-        </button>
-      </>
-    )}
-
-    <button
-      onClick={() => handleApprove(reservation)}
-      className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"
-      title="Approve"
-    >
-      <CheckCircle className="size-4" />
-    </button>
-
-    <button
-      onClick={() => handleReject(reservation)}
-      className="p-2 text-rose-600 hover:bg-red-50 rounded-lg"
-      title="Reject"
-    >
-      <XCircle className="size-4" />
-    </button>
-  </>
-)}
-
-{reservation.status === 'confirmed' && (
-  <button
-    onClick={() => {
-      if (!isFullyPaid(reservation)) return;
-      handleComplete(reservation);
-    }}
-    disabled={!isFullyPaid(reservation)}
-    className={`p-2 rounded-lg ${
-      isFullyPaid(reservation)
-        ? 'text-blue-600 hover:bg-blue-50'
-        : 'cursor-not-allowed text-gray-300'
-    }`}
-    title={
-      isFullyPaid(reservation)
-        ? 'Mark as Completed'
-        : `Cannot mark as completed until fully paid. Remaining: ${formatCurrency(
-            getRemainingBalance(reservation)
-          )}`
-    }
+            <div className="hidden lg:block">
+  <DataTable
+    headers={[
+      'Reservation ID',
+      'User ID',
+      'Unit',
+      'Date Range',
+      'Amount',
+      'Visit Type',
+      'Visit Status',
+      'Reservation Status',
+      'Actions',
+    ]}
   >
-    <CheckCircle className="size-4" />
-  </button>
-)}                       </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+    {enrichedReservations.map((reservation) => (
+      <tr key={reservation.id} className="transition-colors hover:bg-blue-50/30">
+        <DataCell
+          value={reservation.reservationPublicId}
+          mono
+          className="w-[220px]"
+        />
+
+        <DataCell
+          value={reservation.userPublicId || (isLoadingUsers ? 'Loading...' : 'Unknown')}
+          mono
+          className="w-[220px]"
+        />
+
+        <DataCell
+          className="w-[240px]"
+          value={
+            <div>
+              <p className="font-semibold text-gray-900">{reservation.unitName}</p>
+              <p className="mt-0.5 text-xs text-gray-500">
+                {getUnitTypeLabel(reservation.unitType)}
+              </p>
             </div>
+          }
+        />
+
+        <DataCell
+          className="w-[200px]"
+          value={
+            <div className="text-xs text-gray-500">
+              <div>{reservation.startDateLabel}</div>
+              <div>to {reservation.endDateLabel}</div>
+            </div>
+          }
+        />
+
+        <DataCell
+          className="w-[180px]"
+          value={
+            <div className="flex flex-col gap-1">
+              <span className="font-semibold text-gray-900">
+                {formatCurrency(reservation.totalAmount)}
+              </span>
+
+              <span
+                className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                  isFullyPaid(reservation)
+                    ? 'bg-green-100 text-green-700'
+                    : hasRecordedPayment(reservation)
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'bg-gray-100 text-gray-500'
+                }`}
+              >
+                {isFullyPaid(reservation)
+                  ? 'Paid'
+                  : hasRecordedPayment(reservation)
+                  ? 'Partial'
+                  : 'Unpaid'}
+              </span>
+            </div>
+          }
+        />
+
+        <DataCell
+          className="w-[180px]"
+          value={
+            <div className="space-y-2">
+              <span
+                className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                  reservation.modeOfVisit === 'onsite'
+                    ? 'border-blue-100 bg-blue-50 text-blue-700'
+                    : 'border-green-200 bg-green-400 text-white'
+                }`}
+              >
+                {reservation.modeOfVisit?.replace('_', ' ') || 'online'}
+              </span>
+
+              {reservation.modeOfVisit === 'onsite' && reservation.appointmentDate ? (
+                <div className="space-y-0.5 text-[11px]">
+                  <div className="font-medium text-gray-700">
+                    {formatDate(reservation.appointmentDate)}
+                  </div>
+                  {reservation.appointmentTime && (
+                    <div className="text-gray-500">{reservation.appointmentTime}</div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-[11px] text-gray-400">No schedule needed</div>
+              )}
+            </div>
+          }
+        />
+
+        <DataCell
+          className="w-[160px]"
+          value={
+            <span className="text-xs font-semibold uppercase text-indigo-600">
+              {reservation.modeOfVisit === 'onsite'
+                ? reservation.visitStatus || 'requested'
+                : 'not applicable'}
+            </span>
+          }
+        />
+
+        <DataCell
+          className="w-[130px]"
+          value={
+            <span
+              className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold ${
+                statusColors[reservation.status as keyof typeof statusColors]
+              }`}
+            >
+              {reservation.status.toUpperCase()}
+            </span>
+          }
+        />
+
+        <ActionCell className="w-[130px]">
+          <button
+            onClick={() => setSelectedReservation(reservation.id)}
+            className="flex h-8 w-8 items-center justify-center rounded-md text-blue-600 hover:bg-blue-100"
+            title="View"
+          >
+            <Eye size={16} />
+          </button>
+
+          {reservation.status === 'pending' && (
+            <>
+              {reservation.modeOfVisit === 'onsite' && (
+                <>
+                  <button
+                    onClick={() => handleConfirmVisit(reservation)}
+                    className="flex h-8 w-8 items-center justify-center rounded-md text-indigo-600 hover:bg-indigo-100"
+                    title="Confirm Visit"
+                  >
+                    <Calendar size={16} />
+                  </button>
+
+                  <button
+                    onClick={() => handleRequestReschedule(reservation)}
+                    className="flex h-8 w-8 items-center justify-center rounded-md text-amber-600 hover:bg-amber-100"
+                    title="Request Reschedule"
+                  >
+                    <Clock size={16} />
+                  </button>
+                </>
+              )}
+
+              <button
+                onClick={() => handleApprove(reservation)}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-emerald-600 hover:bg-emerald-100"
+                title="Approve"
+              >
+                <CheckCircle size={16} />
+              </button>
+
+              <button
+                onClick={() => handleReject(reservation)}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-rose-600 hover:bg-rose-100"
+                title="Reject"
+              >
+                <XCircle size={16} />
+              </button>
+            </>
+          )}
+
+          {reservation.status === 'confirmed' && (
+            <button
+              onClick={() => {
+                if (!isFullyPaid(reservation)) return;
+                handleComplete(reservation);
+              }}
+              disabled={!isFullyPaid(reservation)}
+              className={`flex h-8 w-8 items-center justify-center rounded-md ${
+                isFullyPaid(reservation)
+                  ? 'text-blue-600 hover:bg-blue-100'
+                  : 'cursor-not-allowed text-gray-300'
+              }`}
+              title={
+                isFullyPaid(reservation)
+                  ? 'Mark as Completed'
+                  : `Cannot mark as completed until fully paid. Remaining: ${formatCurrency(
+                      getRemainingBalance(reservation)
+                    )}`
+              }
+            >
+              <CheckCircle size={16} />
+            </button>
+          )}
+        </ActionCell>
+      </tr>
+    ))}
+  </DataTable>
+</div>
           </>
         )}
       </div>
       </div>
 
-      {!loading && !hasNoReservations && totalPages > 1 && (
+      {!shouldShowLoadingState && !hasNoReservations && totalPages > 1 && (
   <div className="flex flex-col gap-3 bg-white border border-gray-200 rounded-2xl shadow-sm px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
     <p className="text-sm text-gray-500">
       Page {page} of {totalPages} • {totalCount} total reservations
@@ -929,7 +952,9 @@ const handleSendOverdueNotice = useCallback(
                     icon={<User className="size-4" />}
                     label="Customer"
                     value={selectedReservationData.fullName || 'Unknown'}
-                    subValue={`ID: ${selectedReservationData.userPublicId || selectedReservationData.userId}`}
+                    subValue={`ID: ${
+                      selectedReservationData.userPublicId || (isLoadingUsers ? 'Loading...' : 'Unknown')
+                    }`}
                   />
 
                   <DetailItem

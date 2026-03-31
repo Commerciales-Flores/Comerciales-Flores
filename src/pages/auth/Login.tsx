@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useIndicator } from '../../contexts/IndicatorContext';
 import { formatTime } from '../../utils/date';
 import supabase from '../../supabaseClient';
+import TurnstileWidget from '../../components/security/TurnstileWidget';  
 import {
   Building2,
   AlertCircle,
@@ -77,6 +78,8 @@ export default function Login() {
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [recoveryStatus, setRecoveryStatus] = useState({ type: '', msg: '' });
   const [recoveryLoading, setRecoveryLoading] = useState(false);
+
+  const [turnstileToken, setTurnstileToken] = useState('');
 
   const [pendingApproval, setPendingApproval] = useState<{
     loginRequestId: string;
@@ -373,9 +376,19 @@ useEffect(() => {
 
   setError('');
 
-  const result = await login(formData.email.trim(), formData.password, { rememberDevice });
+  if (!turnstileToken) {
+    setError('Please complete the verification challenge.');
+    return;
+  }
+
+  const result = await login(formData.email.trim(), formData.password, {
+    rememberDevice,
+    turnstileToken,
+  });
 
   if (!result.success) {
+    setTurnstileToken('');
+    window.turnstile?.reset?.();
     switch (result.error) {
       case 'busy':
         setError('Please wait a moment and try again.');
@@ -398,6 +411,10 @@ useEffect(() => {
         );
         break;
       }
+
+      case 'verification_failed':
+        setError('Please complete the verification challenge and try again.');
+        break;
 
       case 'invalid_login':
         setError('Invalid email or password.');
@@ -713,6 +730,8 @@ useEffect(() => {
                     </div>
                   </div>
 
+                  <TurnstileWidget onToken={setTurnstileToken} />
+
                   <button
                     type="submit"
                     disabled={authActionPending || loginCooldown > 0 || !!pendingApproval}
@@ -784,65 +803,119 @@ useEffect(() => {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60  flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-[2rem] shadow-2xl max-w-md w-full p-10 animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
-                Recovery
-              </h2>
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 animate-in fade-in duration-200">
+    <div className="relative w-full max-w-md overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_25px_80px_rgba(15,23,42,0.18)] animate-in zoom-in-95 duration-200">
+      <div className="px-8 py-7 bg-slate-900 border-b border-slate-200">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-200/90">
+              Account Security
+            </p>
+            <h2 className="mt-2 text-2xl font-bold tracking-tight text-white">
+              Password Recovery
+            </h2>
+            <p className="mt-2 max-w-sm text-sm leading-relaxed text-slate-300">
+              Recover access to your account securely through your registered email.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsModalOpen(false)}
+            className="inline-flex size-10 items-center justify-center rounded-2xl border border-white/10 bg-white/10 text-slate-300 transition-all hover:bg-white/15 hover:text-white active:scale-95"
+            aria-label="Close recovery modal"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="px-8 py-8">
+        {recoveryStatus.type === 'success' ? (
+          <div className="text-center">
+            <div className="mx-auto mb-5 flex size-18 items-center justify-center rounded-[1.5rem] bg-emerald-50 text-emerald-600 shadow-sm ring-1 ring-emerald-100">
+              <CheckCircle className="size-8" />
+            </div>
+
+            <h3 className="text-lg font-bold text-slate-900">Recovery email sent</h3>
+
+            <p className="mx-auto mt-2 max-w-sm text-sm font-medium leading-relaxed text-slate-500">
+              {recoveryStatus.msg}
+            </p>
+
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left">
+              <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">
+                Next Step
+              </p>
+              <p className="mt-1 text-sm leading-relaxed text-slate-600">
+                Check your inbox and follow the password reset link to continue.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="mt-6 inline-flex w-full items-center justify-center rounded-2xl bg-slate-900 px-5 py-3.5 text-sm font-bold text-white shadow-lg shadow-slate-900/10 transition-all hover:bg-black active:scale-[0.99]"
+            >
+              Close
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleRecoverPassword} className="space-y-6">
+            <div className="rounded-2xl border border-blue-100 bg-blue-50/70 px-4 py-4">
+              <p className="text-[11px] font-black uppercase tracking-widest text-blue-600">
+                Recovery Notice
+              </p>
+              <p className="mt-1 text-sm font-medium leading-relaxed text-slate-600">
+                Enter your email address and we&apos;ll send a secure recovery link if an account is associated with it.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="ml-1 block text-[10px] font-black uppercase tracking-widest text-slate-400">
+                Email Address
+              </label>
+
+              <div className="relative">
+                <input
+                  type="email"
+                  required
+                  value={recoveryEmail}
+                  onChange={(e) => setRecoveryEmail(e.target.value)}
+                  className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-300 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+                  placeholder="you@example.com"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
               <button
+                type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="size-10 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors"
+                disabled={recoveryLoading}
+                className="inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50 disabled:opacity-50"
               >
-                <X className="size-6 text-slate-400" />
+                Cancel
+              </button>
+
+              <button
+                type="submit"
+                disabled={recoveryLoading}
+                className="inline-flex items-center justify-center rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-600/10 transition-all hover:bg-blue-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+              >
+                {recoveryLoading ? 'Sending Recovery Link...' : 'Send Recovery Link'}
               </button>
             </div>
 
-            {recoveryStatus.type === 'success' ? (
-              <div className="text-center py-6">
-                <div className="size-16 rounded-full bg-green-50 text-green-500 flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle className="size-8" />
-                </div>
-                <p className="text-slate-600 font-medium mb-8 leading-relaxed">
-                  {recoveryStatus.msg}
-                </p>
-                <button
-                  onClick={() => setIsModalOpen(false)}
-                  className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold hover:bg-black transition-colors"
-                >
-                  Close
-                </button>
-              </div>
-            ) : (
-              <form onSubmit={handleRecoverPassword} className="space-y-6">
-                <p className="text-sm text-slate-500 font-medium leading-relaxed">
-                  Enter your email and we&apos;ll send instructions to reset your password.
-                </p>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                    Email Address
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={recoveryEmail}
-                    onChange={(e) => setRecoveryEmail(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none text-sm font-medium"
-                    placeholder="you@example.com"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={recoveryLoading}
-                  className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-500/10 transition-all disabled:opacity-50"
-                >
-                  {recoveryLoading ? 'Processing...' : 'Send Recovery Link'}
-                </button>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
+            <p className="text-center text-xs font-medium leading-relaxed text-slate-400">
+              For security, this recovery link will expire after a short time.
+            </p>
+          </form>
+        )}
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }

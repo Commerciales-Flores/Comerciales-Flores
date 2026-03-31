@@ -490,6 +490,37 @@ const getReservationRemainingFromLedger = useCallback(
   );
 }, [selectedReservationData, getReservationPaidFromLedger]);
 
+const rentalMonthlyAmount = useMemo(() => {
+  if (!selectedReservationData || selectedReservationData.unitType !== 'rental_space') return 0;
+
+  const duration = Number(selectedReservationData.duration || 0);
+  const total = Number(selectedReservationData.totalAmount || 0);
+
+  if (!duration || !total) return 0;
+
+  return total / duration;
+}, [selectedReservationData]);
+
+const rentalRequiredPayment = useMemo(() => {
+  if (!selectedReservationData || selectedReservationData.unitType !== 'rental_space') return 0;
+
+  const cycle = selectedReservationData.paymentCycle;
+
+  if (cycle === 'quarterly') {
+    return Math.min(rentalMonthlyAmount * 3, selectedReservationBalance);
+  }
+
+  if (cycle === 'full') {
+    return selectedReservationBalance;
+  }
+
+  return Math.min(rentalMonthlyAmount, selectedReservationBalance);
+}, [
+  selectedReservationData,
+  rentalMonthlyAmount,
+  selectedReservationBalance,
+]);
+
   const handlePaymentSubmit = useCallback(
   async (e: React.FormEvent) => {
     e.preventDefault();
@@ -505,6 +536,16 @@ const getReservationRemainingFromLedger = useCallback(
     if (Number.isNaN(amount) || amount <= 0 || amount > balance) {
       alert('Please enter a valid payment amount.');
       return;
+    }
+
+    // 🔥 Rental enforcement
+    if (reservation.unitType === 'rental_space') {
+      if (amount < rentalRequiredPayment) {
+        alert(
+          `Minimum required payment is ${formatCurrency(rentalRequiredPayment)} based on your ${reservation.paymentCycle} billing.`
+        );
+        return;
+      }
     }
 
     try {
@@ -1301,39 +1342,65 @@ Thank you for your payment.
                 >
                   <div className="grid gap-5">
                     {selectedReservationData && (
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm">
-                          <div className="flex items-center justify-between">
-                            <span className="text-slate-500">Remaining Balance</span>
-                            <span className="font-semibold text-slate-900">
-                              {formatCurrency(selectedReservationBalance)}
-                            </span>
-                          </div>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500">Remaining Balance</span>
+                          <span className="font-semibold text-slate-900">
+                            {formatCurrency(selectedReservationBalance)}
+                          </span>
+                        </div>
 
-                          {getReservationPaidFromLedger(selectedReservationData.id) <= 0 &&
-                            selectedReservationMinimumFirstPayment > 0 && (
-                              <div className="mt-2 flex items-center justify-between">
-                                <span className="text-slate-500">
-                                  Minimum First Payment
-                                  {selectedReservationData.minimumPaymentPercentSnapshot
-                                    ? ` (${selectedReservationData.minimumPaymentPercentSnapshot}%)`
-                                    : ''}
-                                </span>
+                        {selectedReservationData.unitType === 'rental_space' ? (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-500">Monthly Rate</span>
+                              <span className="font-semibold text-slate-900">
+                                {formatCurrency(rentalMonthlyAmount)}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-500">
+                                {selectedReservationData.paymentCycle === 'quarterly'
+                                  ? 'Quarterly Required'
+                                  : selectedReservationData.paymentCycle === 'full'
+                                  ? 'Full Payment Required'
+                                  : 'Monthly Required'}
+                              </span>
+                              <span className="font-semibold text-slate-900">
+                                {formatCurrency(rentalRequiredPayment)}
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            {getReservationPaidFromLedger(selectedReservationData.id) <= 0 &&
+                              selectedReservationMinimumFirstPayment > 0 && (
+                                <div className="flex items-center justify-between">
+                                  <span className="text-slate-500">
+                                    Minimum First Payment
+                                    {selectedReservationData.minimumPaymentPercentSnapshot
+                                      ? ` (${selectedReservationData.minimumPaymentPercentSnapshot}%)`
+                                      : ''}
+                                  </span>
+                                  <span className="font-semibold text-slate-900">
+                                    {formatCurrency(selectedReservationMinimumFirstPayment)}
+                                  </span>
+                                </div>
+                              )}
+
+                            {getReservationPaidFromLedger(selectedReservationData.id) > 0 && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-slate-500">Minimum Subsequent Payment</span>
                                 <span className="font-semibold text-slate-900">
-                                  {formatCurrency(selectedReservationMinimumFirstPayment)}
+                                  {formatCurrency(selectedReservationMinimumSubsequentPayment)}
                                 </span>
                               </div>
                             )}
-
-                          {getReservationPaidFromLedger(selectedReservationData.id) > 0 && (
-                            <div className="mt-2 flex items-center justify-between">
-                              <span className="text-slate-500">Minimum Subsequent Payment</span>
-                              <span className="font-semibold text-slate-900">
-                                {formatCurrency(selectedReservationMinimumSubsequentPayment)}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                          </>
+                        )}
+                      </div>
+                    )}
                     <div>
                       <label className={`${uiTypography.formLabel} mb-2 ml-0`}>
                         Payment Amount (₱)
@@ -1356,6 +1423,12 @@ Thank you for your payment.
                           className={`w-full rounded-2xl border border-slate-300 py-3 pl-10 pr-4 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
                           placeholder="0.00"
                         />
+                        {selectedReservationData?.unitType === 'rental_space' && (
+                          <p className="mt-2 text-xs text-amber-600">
+                            This payment must cover at least{' '}
+                            {formatCurrency(rentalRequiredPayment)} based on your billing cycle.
+                          </p>
+                        )}
                       </div>
                     </div>
 

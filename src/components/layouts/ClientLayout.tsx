@@ -34,7 +34,7 @@ export default function ClientLayout() {
 
   const navRef = useRef<HTMLDivElement>(null);
   const [underlineStyle, setUnderlineStyle] = useState({ left: 0, width: 0 });
-  const { tickets } = useInquiries();
+  const { tickets, fetchTickets } = useInquiries();
 
 const userNotifications = useMemo(
   () => getNotificationsByUserId(user?.id || ""),
@@ -52,7 +52,7 @@ const unreadMessages = useMemo(() => {
   return tickets.filter(
     (ticket) =>
       ticket.userId === user.id &&
-      ticket.status === "waiting_for_customer"
+      ticket.status === 'waiting_for_customer'
   ).length;
 }, [tickets, user?.id]);
 
@@ -114,6 +114,12 @@ const unreadMessages = useMemo(() => {
       document.body.style.overflow = "";
     }
   }, [mobileNavOpen]);
+
+  useEffect(() => {
+  if (!user?.id) return;
+
+  void fetchTickets(user.id);
+}, [fetchTickets, user?.id]);
 
   useEffect(() => {
     const updateUnderline = () => {

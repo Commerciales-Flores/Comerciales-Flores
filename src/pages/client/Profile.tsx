@@ -3,6 +3,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import DeviceManagement from '../../components/security/DeviceManagement';
 import supabase from '../../supabaseClient';
 import AddressPicker from '../../components/common/AddressPicker';
+import PasswordStrengthIndicator from '../../components/common/PasswordStrengthIndicator';
+import { isPasswordPolicyValid } from '../../utils/passwordStrength';
 import {
   User as UserIcon,
   Mail,
@@ -26,7 +28,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 type MessageState = { type: 'success' | 'error'; text: string } | null;
 
 const INITIAL_PASSWORD_FORM = {
-  oldPassword: '',
   newPassword: '',
   confirmPassword: '',
 };
@@ -56,8 +57,6 @@ export default function ClientProfile() {
     currentPassword: '',
   });
   const [showEmailPassword, setShowEmailPassword] = useState(false);
-
-  const [showOldPassword, setShowOldPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -179,7 +178,6 @@ useEffect(() => {
 
   const resetPasswordForm = useCallback(() => {
     setPasswordForm(INITIAL_PASSWORD_FORM);
-    setShowOldPassword(false);
     setShowNewPassword(false);
     setShowConfirmPassword(false);
   }, []);
@@ -218,22 +216,6 @@ const handleEditCancel = useCallback(() => {
     },
     []
   );
-
-  const passwordStrength = useMemo(() => {
-    const password = passwordForm.newPassword;
-    let score = 0;
-
-    if (password.length >= 8) score += 1;
-    if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score += 1;
-    if (/\d/.test(password)) score += 1;
-    if (/[^A-Za-z0-9]/.test(password)) score += 1;
-
-    let label = 'Weak';
-    if (score >= 4) label = 'Strong';
-    else if (score >= 2) label = 'Medium';
-
-    return { score, label };
-  }, [passwordForm.newPassword]);
 
   const handleProfileSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -332,18 +314,16 @@ const handleEditCancel = useCallback(() => {
       e.preventDefault();
       if (savingPassword) return;
 
-      if (!passwordForm.oldPassword.trim()) {
-        showMessage('error', 'Current password is required');
-        return;
-      }
-
       if (passwordForm.newPassword !== passwordForm.confirmPassword) {
         showMessage('error', 'New passwords do not match');
         return;
       }
 
-      if (passwordForm.newPassword.length < 6) {
-        showMessage('error', 'Password must be at least 6 characters');
+      if (!isPasswordPolicyValid(passwordForm.newPassword)) {
+        showMessage(
+          'error',
+          'Password must be at least 8 characters and include an uppercase letter, a number, and a special character.'
+        );
         return;
       }
 
@@ -929,7 +909,7 @@ const handleProceedDeletion = useCallback(async () => {
                         <div className="md:col-span-2 space-y-4">
                           <div className="space-y-1.5">
                             <label className="ml-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                              Address Status
+                              Location Status
                             </label>
 
                             <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -941,8 +921,8 @@ const handleProceedDeletion = useCallback(async () => {
                                 }`}
                               >
                                 {profileForm.address && profileForm.latitude && profileForm.longitude
-                                  ? 'Confirmed on map'
-                                  : 'Not confirmed yet'}
+                                  ? 'Verified on map'
+                                  : 'Not verified on map'}
                               </p>
 
                               <div
@@ -1046,14 +1026,7 @@ const handleProceedDeletion = useCallback(async () => {
                     className="overflow-hidden"
                   >
                     <div className="space-y-5 p-6">
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                        <PasswordInput
-                          label="Current Password"
-                          value={passwordForm.oldPassword}
-                          onChange={(v) => handlePasswordFieldChange('oldPassword', v)}
-                          visible={showOldPassword}
-                          onToggleVisibility={() => setShowOldPassword((prev) => !prev)}
-                        />
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
 
                         <PasswordInput
                           label="New Password"
@@ -1072,50 +1045,39 @@ const handleProceedDeletion = useCallback(async () => {
                         />
                       </div>
 
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        <div className="flex items-center justify-between gap-4">
-                          <p className="text-sm font-semibold text-slate-700">Password Strength</p>
-                          <span
-                            className={`text-xs font-bold uppercase tracking-wider ${
-                              passwordStrength.score >= 4
-                                ? 'text-emerald-600'
-                                : passwordStrength.score >= 2
-                                  ? 'text-amber-600'
-                                  : 'text-rose-600'
-                            }`}
-                          >
-                            {passwordStrength.label}
-                          </span>
-                        </div>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <PasswordStrengthIndicator
+                          password={passwordForm.newPassword}
+                          confirmPassword={passwordForm.confirmPassword}
+                          showChecklist
+                          showMatchStatus={false}
+                        />
 
-                        <div className="mt-3 grid grid-cols-4 gap-2">
-                          {[1, 2, 3, 4].map((step) => (
-                            <div
-                              key={step}
-                              className={`h-2 rounded-full ${
-                                passwordStrength.score >= step
-                                  ? passwordStrength.score >= 4
-                                    ? 'bg-emerald-500'
-                                    : passwordStrength.score >= 2
-                                      ? 'bg-amber-500'
-                                      : 'bg-rose-500'
-                                  : 'bg-slate-200'
-                              }`}
-                            />
-                          ))}
-                        </div>
-
-                        <p className="mt-3 text-xs text-slate-500">
-                          Use at least 8 characters and mix uppercase letters, numbers, and symbols
-                          for a stronger password.
-                        </p>
+                        <PasswordStrengthIndicator
+                          password={passwordForm.newPassword}
+                          confirmPassword={passwordForm.confirmPassword}
+                          showChecklist={false}
+                          showMatchStatus
+                        />
                       </div>
 
                       <div className="flex justify-end">
                         <button
                           type="submit"
-                          disabled={savingPassword}
-                          className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 disabled:opacity-50"
+                          disabled={
+                            savingPassword ||
+                            !isPasswordPolicyValid(passwordForm.newPassword) ||
+                            !passwordForm.confirmPassword ||
+                            passwordForm.newPassword !== passwordForm.confirmPassword
+                          }
+                          className={`inline-flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold shadow-sm transition-all ${
+                            savingPassword ||
+                            !isPasswordPolicyValid(passwordForm.newPassword) ||
+                            !passwordForm.confirmPassword ||
+                            passwordForm.newPassword !== passwordForm.confirmPassword
+                              ? 'cursor-not-allowed bg-slate-200 text-slate-400 shadow-none'
+                              : 'bg-blue-600 text-white hover:bg-blue-700'
+                          }`}
                         >
                           {savingPassword ? (
                             <div className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
