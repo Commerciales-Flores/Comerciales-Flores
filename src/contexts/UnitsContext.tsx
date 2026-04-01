@@ -121,11 +121,6 @@ async function removeStorageFile(bucket: string, path?: string | null) {
   }
 }
 
-function getPublicContractUrl(path?: string | null) {
-  if (!path) return '';
-  const { data } = supabase.storage.from('unit_contracts').getPublicUrl(path);
-  return data.publicUrl;
-}
 
 export function UnitsProvider({ children }: { children: ReactNode }) {
   const [units, setUnits] = useState<Unit[]>([]);

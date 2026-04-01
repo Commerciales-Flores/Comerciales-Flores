@@ -23,8 +23,6 @@ import {
   CheckCircle2,
   CalendarDays,
   MapPin,
-  Wallet,
-  Clock3,
 } from "lucide-react";
 import { formatCurrency } from "../../utils/currency";
 import {

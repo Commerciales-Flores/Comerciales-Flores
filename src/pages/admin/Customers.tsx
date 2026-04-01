@@ -125,9 +125,6 @@ function getPasswordStrengthLabel(score: number) {
   }
 }
 
-function wait(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
 
 function formatLastLogin(value?: string | null) {
   if (!value) return 'No login yet';

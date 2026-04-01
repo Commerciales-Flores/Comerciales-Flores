@@ -1,4 +1,4 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Calendar,
@@ -11,16 +11,19 @@ import {
 
 import { useAuth } from '../../contexts/AuthContext';
 import { useData } from '../../contexts/DataContext';
+import {
+  useInquiries,
+  type SupportMessage,
+  type SupportTicket,
+} from '../../contexts/InquiriesContext';
 import { formatCurrency } from '../../utils/currency';
 import { uiTypography } from '../../styles/uiTypography';
-
 import { formatDate, formatDateTime } from '../../utils/date';
 
 const SECTION_TITLE_CLASS = `${uiTypography.badgeLabel} text-gray-900`;
 const CARD_CLASS =
   'rounded-2xl border border-gray-200 bg-white shadow-sm transition-shadow hover:shadow-md';
 const EMPTY_STATE_CLASS = `text-center py-6 ${uiTypography.helperText} text-gray-500`;
-
 
 function getTimestamp(value?: string | Date | null) {
   if (!value) return 0;
@@ -81,9 +84,7 @@ const SectionHeader = memo(function SectionHeader({
     <div className="mb-3 flex items-start justify-between gap-3">
       <div>
         <h2 className={SECTION_TITLE_CLASS}>{title}</h2>
-        {subtitle ? (
-          <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>
-        ) : null}
+        {subtitle ? <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p> : null}
       </div>
 
       {actionLabel && actionTo ? (
@@ -116,19 +117,12 @@ export function EmptyState({
 }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-10 text-center">
-      
-      <div className="mb-3 text-gray-400">
-        {icon}
-      </div>
+      <div className="mb-3 text-gray-400">{icon}</div>
 
-      <h3 className="text-sm font-semibold text-gray-800">
-        {title}
-      </h3>
+      <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
 
       {description && (
-        <p className="mt-1 text-xs text-gray-500 max-w-[260px]">
-          {description}
-        </p>
+        <p className="mt-1 max-w-[260px] text-xs text-gray-500">{description}</p>
       )}
 
       {actionLabel && actionTo && (
@@ -145,11 +139,17 @@ export function EmptyState({
 
 export default function ClientDashboard() {
   const { user } = useAuth();
-  const { getReservationsByUserId, getPaymentsByUserId, inquiries, notifications } =
-    useData();
+  const { getReservationsByUserId, getPaymentsByUserId, notifications } = useData();
+  const { tickets, messages, fetchTickets } = useInquiries();
 
   const userId = user?.id ?? '';
   const firstName = user?.firstName ?? 'Client';
+
+  useEffect(() => {
+    if (userId) {
+      void fetchTickets(userId);
+    }
+  }, [fetchTickets, userId]);
 
   const userReservations = useMemo(
     () => (userId ? getReservationsByUserId(userId) : []),
@@ -160,6 +160,28 @@ export default function ClientDashboard() {
     () => (userId ? getPaymentsByUserId(userId) : []),
     [getPaymentsByUserId, userId]
   );
+
+  const userTickets = useMemo(
+    () => (tickets ?? []).filter((ticket: SupportTicket) => ticket.userId === userId),
+    [tickets, userId]
+  );
+
+  const userSupportReplies = useMemo(() => {
+    const userTicketIds = new Set(userTickets.map((ticket) => ticket.id));
+
+    return (messages ?? [])
+      .filter(
+        (message: SupportMessage) =>
+          userTicketIds.has(message.ticketId) &&
+          message.senderType === 'support' &&
+          !message.isInternal
+      )
+      .sort(
+        (a: SupportMessage, b: SupportMessage) =>
+          getTimestamp(b.createdAt) - getTimestamp(a.createdAt)
+      )
+      .slice(0, 2);
+  }, [messages, userTickets]);
 
   const dashboard = useMemo(() => {
     const now = Date.now();
@@ -212,18 +234,13 @@ export default function ClientDashboard() {
       })
       .slice(0, 2);
 
-    const userMessages = (inquiries ?? [])
-      .filter((inquiry) => inquiry.userId === userId && inquiry.response)
-      .sort((a, b) => getTimestamp(b.date) - getTimestamp(a.date))
-      .slice(0, 2);
-
     const userNotifications = (notifications ?? [])
-      .filter((notification) => {
+      .filter((notification: any) => {
         if (!notification) return false;
         if (!notification.userId) return true;
         return notification.userId === userId;
       })
-      .sort((a, b) => getTimestamp(b.date) - getTimestamp(a.date))
+      .sort((a: any, b: any) => getTimestamp(b.date) - getTimestamp(a.date))
       .slice(0, 3);
 
     const totalPaid = userPayments.reduce(
@@ -240,14 +257,14 @@ export default function ClientDashboard() {
       totalPaid,
       recentReservations,
       topPaymentReminders,
-      userMessages,
+      userMessages: userSupportReplies,
       userNotifications,
     };
-  }, [userReservations, userPayments, inquiries, notifications, userId]);
+  }, [userReservations, userPayments, notifications, userId, userSupportReplies]);
 
   return (
     <div className="min-h-screen bg-gray-50">
-  <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className={uiTypography.pageTitle}>Welcome back, {firstName}!</h1>
@@ -272,7 +289,7 @@ export default function ClientDashboard() {
           </div>
         </header>
 
-        <div className="grid grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
+        <div className="mb-6 grid grid-cols-2 gap-4 xl:grid-cols-5">
           <DashboardStatCard
             label="Reservations"
             value={dashboard.totalReservations}
@@ -328,7 +345,9 @@ export default function ClientDashboard() {
                           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
-                                <p className={`${uiTypography.infoBlockValue} truncate text-gray-900`}>
+                                <p
+                                  className={`${uiTypography.infoBlockValue} truncate text-gray-900`}
+                                >
                                   {reservation.unitName}
                                 </p>
                                 <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
@@ -409,10 +428,14 @@ export default function ClientDashboard() {
                           </div>
 
                           <div className="min-w-0">
-                            <p className={`${uiTypography.infoBlockValue} truncate text-gray-900`}>
+                            <p
+                              className={`${uiTypography.infoBlockValue} truncate text-gray-900`}
+                            >
                               {reservation.unitName}
                             </p>
-                            <p className={`${uiTypography.helperText} mt-1 italic text-gray-500`}>
+                            <p
+                              className={`${uiTypography.helperText} mt-1 italic text-gray-500`}
+                            >
                               Requested {formatDate(reservation.requestDate)}
                             </p>
                           </div>
@@ -455,30 +478,36 @@ export default function ClientDashboard() {
               <div className="p-4">
                 {dashboard.userMessages.length > 0 ? (
                   <div className="space-y-4">
-                    {dashboard.userMessages.map((msg) => (
-                      <div
-                        key={msg.id}
-                        className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4"
-                      >
-                        <p className="mb-1 text-[10px] text-gray-400">
-                          {formatDate(msg.date)}
-                        </p>
+                    {dashboard.userMessages.map((msg: SupportMessage) => {
+                      const relatedTicket = userTickets.find(
+                        (ticket: SupportTicket) => ticket.id === msg.ticketId
+                      );
 
-                        <p className={`${uiTypography.infoBlockValue} text-gray-900`}>
-                          {msg.subject}
-                        </p>
-
-                        <div className="mt-3 rounded-xl border border-blue-100 bg-white p-3">
-                          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
-                            Admin Reply
+                      return (
+                        <div
+                          key={msg.id}
+                          className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4"
+                        >
+                          <p className="mb-1 text-[10px] text-gray-400">
+                            {formatDate(msg.createdAt)}
                           </p>
 
-                          <p className="text-[11px] leading-relaxed text-gray-700">
-                            {msg.response}
+                          <p className={`${uiTypography.infoBlockValue} text-gray-900`}>
+                            {relatedTicket?.subject ?? 'Support Reply'}
                           </p>
+
+                          <div className="mt-3 rounded-xl border border-blue-100 bg-white p-3">
+                            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
+                              Admin Reply
+                            </p>
+
+                            <p className="text-[11px] leading-relaxed text-gray-700">
+                              {msg.body}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 py-8 text-center">
@@ -496,48 +525,48 @@ export default function ClientDashboard() {
             </section>
 
             <section className="rounded-2xl bg-gray-900 p-4 text-white shadow-sm">
-  <div className="mb-4">
-    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">
-      ALERTS
-    </p>
-    <h2 className="mt-1 text-sm font-semibold text-white">
-      Notifications & Updates
-    </h2>
-    <p className="mt-1 text-xs text-gray-400">
-      Important updates about your reservations and payments.
-    </p>
-  </div>
+              <div className="mb-4">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">
+                  ALERTS
+                </p>
+                <h2 className="mt-1 text-sm font-semibold text-white">
+                  Notifications & Updates
+                </h2>
+                <p className="mt-1 text-xs text-gray-400">
+                  Important updates about your reservations and payments.
+                </p>
+              </div>
 
-  <div className="space-y-3">
-    {dashboard.userNotifications.length > 0 ? (
-      <div className="space-y-3">
-        {dashboard.userNotifications.slice(0, 2).map((notification) => (
-          <div
-            key={notification.id}
-            className="rounded-2xl border border-gray-800 bg-white/5 p-3"
-          >
-            <p className="text-[12px] leading-relaxed text-white">
-              {notification.message}
-            </p>
+              <div className="space-y-3">
+                {dashboard.userNotifications.length > 0 ? (
+                  <div className="space-y-3">
+                    {dashboard.userNotifications.slice(0, 2).map((notification: any) => (
+                      <div
+                        key={notification.id}
+                        className="rounded-2xl border border-gray-800 bg-white/5 p-3"
+                      >
+                        <p className="text-[12px] leading-relaxed text-white">
+                          {notification.message}
+                        </p>
 
-            <p className="mt-2 text-[11px] text-gray-500">
-              {formatDateTime(notification.date)}
-            </p>
-          </div>
-        ))}
-      </div>
-    ) : (
-      <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-700 bg-white/5 py-8 text-center">
-        <p className="text-[12px] font-medium text-gray-300">
-          You're all caught up 🎉
-        </p>
-        <p className="mt-1 text-xs text-gray-500">
-          No new alerts at the moment.
-        </p>
-      </div>
-    )}
-  </div>
-</section>
+                        <p className="mt-2 text-[11px] text-gray-500">
+                          {formatDateTime(notification.date)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-700 bg-white/5 py-8 text-center">
+                    <p className="text-[12px] font-medium text-gray-300">
+                      You're all caught up 🎉
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      No new alerts at the moment.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </section>
           </div>
         </div>
       </div>

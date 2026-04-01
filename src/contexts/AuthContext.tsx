@@ -114,8 +114,6 @@ const STORAGE_KEY = 'currentUser';
 const WAS_LOGGED_IN_KEY = 'wasLoggedIn';
 const LAST_LOGIN_USER_KEY = 'lastLoginUser';
 const LOGOUT_BROADCAST_KEY = 'auth:logout';
-
-const AUTH_CALLBACK_PATH = '/auth/callback';
 const RESET_PASSWORD_PATH = '/reset-password';
 
 const getAuthRedirectUrl = (path: string) =>
@@ -375,38 +373,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  const addFailedLoginAuditLog = useCallback(
-  async ({
-    email,
-    reason,
-  }: {
-    email: string;
-    reason: string;
-  }) => {
-    try {
-      const { error } = await supabase.from('audit_log').insert([
-        {
-          user_id: null,
-          action: 'LOGIN_FAILED',
-          target_table: 'users',
-          target_id: null,
-          changed_fields: ['email'],
-          timestamp: new Date().toISOString(),
-          notes: `Failed login attempt for ${email}: ${reason}`,
-        },
-      ]);
-
-      if (import.meta.env.DEV && error) {
-        console.warn('Failed to write failed-login audit log:', error);
-      }
-    } catch (error) {
-      if (import.meta.env.DEV) {
-        console.warn('Unexpected failed-login audit log error:', error);
-      }
-    }
-  },
-  []
-);
 
   const touchLastLogin = useCallback(async (userId: string) => {
     try {
@@ -1298,7 +1264,6 @@ if (!deviceCheck?.trusted) {
   const changeEmail = useCallback(
   async ({
     newEmail,
-    currentPassword,
   }: {
     newEmail: string;
     currentPassword: string;

@@ -6,7 +6,7 @@ import { useRecords } from '../../contexts/RecordsContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import type { LedgerEntry } from '../../data/types';
 import { usePaymentMethods } from '../../contexts/PaymentMethodsContext';
-import { formatDate, formatDateTime } from '../../utils/date';
+import { formatDate } from '../../utils/date';
 import supabase from '../../supabaseClient';
 import {
   CreditCard,
@@ -102,29 +102,6 @@ function formatFileDate(value?: string | Date | null) {
   const mm = String(date.getMonth() + 1).padStart(2, '0');
   const dd = String(date.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
-}
-
-function resolveImageSrc(value?: string | null) {
-  if (!value) return '';
-
-  const trimmed = value.trim();
-
-  if (!trimmed) return '';
-
-  if (
-    trimmed.startsWith('blob:') ||
-    trimmed.startsWith('data:image/') ||
-    trimmed.startsWith('http://') ||
-    trimmed.startsWith('https://')
-  ) {
-    return trimmed;
-  }
-
-  if (trimmed.startsWith('/')) {
-    return trimmed;
-  }
-
-  return trimmed;
 }
 
 

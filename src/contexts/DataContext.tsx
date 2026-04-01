@@ -40,7 +40,6 @@ import {
   type SupportMessage,
   type SupportSenderType,
   type SupportTicket,
-  type SupportTicketStatus,
 } from './InquiriesContext';
 import {
   NotificationProvider,

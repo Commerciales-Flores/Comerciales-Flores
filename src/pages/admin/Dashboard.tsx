@@ -185,7 +185,7 @@ const TrendCard = ({
             />
             <Tooltip
               contentStyle={{ fontSize: 10, borderRadius: 12 }}
-              formatter={(value: number | undefined) => formatter(value)}
+              formatter={(value) => formatter(typeof value === 'number' ? value : Number(value ?? 0))}
               labelFormatter={(label) => `Month: ${label}`}
             />
           </LineChart>

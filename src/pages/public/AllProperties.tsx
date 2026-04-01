@@ -13,12 +13,8 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { formatCurrency } from "../../utils/currency";
-import { getUnitTypeLabel, getPriceLabel } from "../../utils/propertyHelpers";
+import { getUnitTypeLabel } from "../../utils/propertyHelpers";
 
-function isVideoUrl(url?: string | null) {
-  if (!url) return false;
-  return /\.(mp4|webm|mov|m4v|ogg)$/i.test(url);
-}
 import UnitModal from "../../components/PropertyModal";
 
 type PriceRange = "all" | "0-1000" | "1001-5000" | "5001-10000" | "10001+";
