@@ -139,10 +139,6 @@ const registerEmail = useMemo(
           expiresAt: data?.expiresAt,
         });
 
-        setApprovalMessage(
-          'This browser is not trusted yet. We sent a device approval email. Approve the sign-in from your email, then return here.'
-        );
-
         showIndicator(
           `New device approval required for ${user.email}`,
           'security'
@@ -629,13 +625,6 @@ useEffect(() => {
                   <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-3 text-rose-700 text-xs font-bold animate-in fade-in slide-in-from-top-1">
                     <AlertCircle className="size-4 shrink-0" />
                     {error}
-                  </div>
-                )}
-
-                {pendingApproval && (
-                  <div className="mb-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-                    <p className="font-semibold">Approval required</p>
-                    <p className="mt-1">{approvalMessage}</p>
                   </div>
                 )}
 

@@ -3,7 +3,17 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
+
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'application/json',
+    },
+  });
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -11,46 +21,32 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    const authClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: req.headers.get('Authorization') ?? '',
-        },
-      },
-    });
-
-    const adminClient = createClient(supabaseUrl, supabaseServiceRoleKey);
-
-    const {
-      data: { user },
-      error: userError,
-    } = await authClient.auth.getUser();
-
-    if (userError || !user) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Unauthorized' }),
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+      return jsonResponse(
         {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+          success: false,
+          error: 'Missing Supabase environment configuration.',
+        },
+        500
       );
     }
 
-    const body = await req.json();
+    const adminClient = createClient(supabaseUrl, supabaseServiceRoleKey);
+
+    const body = await req.json().catch(() => null);
     const loginRequestId = String(body?.loginRequestId ?? '').trim();
     const deviceFingerprint = String(body?.deviceFingerprint ?? '').trim();
 
     if (!loginRequestId || !deviceFingerprint) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Missing login request data' }),
+      return jsonResponse(
         {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+          success: false,
+          error: 'Missing login request data.',
+        },
+        400
       );
     }
 
@@ -58,67 +54,54 @@ Deno.serve(async (req) => {
       .from('pending_login_verifications')
       .select('*')
       .eq('login_request_id', loginRequestId)
-      .eq('user_id', user.id)
       .eq('device_fingerprint', deviceFingerprint)
       .maybeSingle();
 
     if (verificationError) {
-      return new Response(
-        JSON.stringify({ success: false, error: verificationError.message }),
+      return jsonResponse(
         {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+          success: false,
+          error: verificationError.message || 'Failed to load login request.',
+        },
+        500
       );
     }
 
     if (!verification) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Login request not found' }),
+      return jsonResponse(
         {
-          status: 404,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+          success: false,
+          error: 'Login request not found.',
+        },
+        404
       );
     }
 
     if (new Date(verification.expires_at).getTime() < Date.now()) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Verification request expired' }),
+      return jsonResponse(
         {
-          status: 410,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+          success: false,
+          error: 'Verification request expired.',
+        },
+        410
       );
     }
 
     if (!verification.approved_at) {
-      return new Response(
-        JSON.stringify({
-          success: true,
-          approved: false,
-          completed: false,
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return jsonResponse({
+        success: true,
+        approved: false,
+        completed: false,
+      });
     }
 
     if (verification.approval_completed_at) {
-      return new Response(
-        JSON.stringify({
-          success: true,
-          approved: true,
-          completed: true,
-          alreadyCompleted: true,
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return jsonResponse({
+        success: true,
+        approved: true,
+        completed: true,
+        alreadyCompleted: true,
+      });
     }
 
     const nowIso = new Date().toISOString();
@@ -132,16 +115,16 @@ Deno.serve(async (req) => {
       .is('approval_completed_at', null);
 
     if (completeError) {
-      return new Response(
-        JSON.stringify({ success: false, error: completeError.message }),
+      return jsonResponse(
         {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+          success: false,
+          error: completeError.message || 'Failed to complete approved login.',
+        },
+        500
       );
     }
 
-    await adminClient.from('audit_log').insert({
+    const { error: auditError } = await adminClient.from('audit_log').insert({
       user_id: verification.user_id,
       action: 'DEVICE_LOGIN_APPROVAL_COMPLETED',
       target_table: 'users',
@@ -153,27 +136,22 @@ Deno.serve(async (req) => {
         : 'Approved login completed on original browser',
     });
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        approved: true,
-        completed: true,
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+    if (auditError) {
+      console.error('Audit log insert failed:', auditError);
+    }
+
+    return jsonResponse({
+      success: true,
+      approved: true,
+      completed: true,
+    });
   } catch (error) {
-    return new Response(
-      JSON.stringify({
+    return jsonResponse(
+      {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+      },
+      500
     );
   }
 });
