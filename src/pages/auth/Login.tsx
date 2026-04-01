@@ -224,12 +224,15 @@ useEffect(() => {
 
   const completeApprovedLogin = async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('complete-device-login', {
-        body: {
-          loginRequestId: pendingApproval.loginRequestId,
-          deviceFingerprint,
-        },
-      });
+      const { data, error } = await supabase.functions.invoke(
+        'complete-device-login',
+        {
+          body: {
+            loginRequestId: pendingApproval.loginRequestId,
+            deviceFingerprint,
+          },
+        }
+      );
 
       if (cancelled) return;
 
@@ -241,22 +244,30 @@ useEffect(() => {
       if (data?.approved && data?.completed) {
         setApprovalMessage('Sign-in approved. Finishing login...');
         setPendingApproval(null);
-        window.location.reload();
+
+        // ✅ refresh auth session
+        await supabase.auth.refreshSession();
+
+        // ✅ small delay to allow AuthContext to update
+        setTimeout(() => {
+          if (user?.role === 'admin') {
+            navigate('/admin/dashboard');
+          } else {
+            navigate('/client/dashboard');
+          }
+        }, 150);
       }
     } catch (err) {
-      if (!cancelled) console.error('Complete login failed:', err);
+      if (!cancelled) {
+        console.error('Complete login failed:', err);
+      }
     }
   };
 
-  // 🔥 1. Run immediately (IMPORTANT)
+  // ✅ ONLY run once initially
   completeApprovedLogin();
 
-  // 🔁 2. Poll every 3 seconds (fallback)
-  const interval = setInterval(() => {
-    completeApprovedLogin();
-  }, 3000);
-
-  // ⚡ 3. Keep realtime (fast path)
+  // ⚡ ONLY realtime (NO polling)
   const channel = supabase
     .channel(`login-approval-${pendingApproval.loginRequestId}`)
     .on(
@@ -282,10 +293,9 @@ useEffect(() => {
 
   return () => {
     cancelled = true;
-    clearInterval(interval);
     void supabase.removeChannel(channel);
   };
-}, [pendingApproval]);
+}, [pendingApproval, navigate]);
 
 useEffect(() => {
   const raw = sessionStorage.getItem(LOGIN_COOLDOWN_KEY);
@@ -387,72 +397,82 @@ useEffect(() => {
   });
 
   if (!result.success) {
+  const shouldResetTurnstile =
+    result.error === 'verification_failed' ||
+    result.error === 'invalid_login' ||
+    result.error === 'locked' ||
+    result.error === 'rate_limited' ||
+    result.error === 'device_check_failed';
+
+  if (shouldResetTurnstile) {
     setTurnstileToken('');
     window.turnstile?.reset?.();
-    switch (result.error) {
-      case 'busy':
-        setError('Please wait a moment and try again.');
-        break;
+  }
 
-      case 'account_inactive':
-        setError(
-          'Your account has been deactivated. Please contact the administrator for assistance.'
-        );
-        break;
+  switch (result.error) {
+    case 'busy':
+      setError('Please wait a moment and try again.');
+      break;
 
-      case 'locked':
-      case 'rate_limited': {
-        const retryAfter = result.retryAfterSeconds ?? 60;
-        const cooldownUntil = Date.now() + retryAfter * 1000;
-        sessionStorage.setItem(LOGIN_COOLDOWN_KEY, String(cooldownUntil));
-        setLoginCooldown(retryAfter);
-        setError(
-          `Too many sign-in attempts. Please wait ${retryAfter} seconds before trying again.`
-        );
-        break;
-      }
+    case 'account_inactive':
+      setError(
+        'Your account has been deactivated. Please contact the administrator for assistance.'
+      );
+      break;
 
-      case 'verification_failed':
-        setError('Please complete the verification challenge and try again.');
-        break;
-
-      case 'invalid_login':
-        setError('Invalid email or password.');
-        break;
-
-      case 'unverified_device':
-        if ((result as any).loginRequestId) {
-          setPendingApproval({
-            loginRequestId: (result as any).loginRequestId,
-            expiresAt: (result as any).expiresAt,
-          });
-
-          setApprovalMessage(
-            'This browser is not trusted yet. We sent a device approval email. Approve the sign-in from your email, then return to this browser.'
-          );
-        }
-
-        showIndicator(
-          `New device approval required for ${normalizedEmail} at ${formatTime(new Date())}`,
-          'security'
-        );
-
-        setError(
-          'This browser is not trusted yet. Please check your email to approve this sign-in.'
-        );
-        break;
-
-      case 'device_check_failed':
-        setError('We couldn’t verify your device right now. Please try again.');
-        break;
-
-      default:
-        setError('Something went wrong. Please try again.');
-        break;
+    case 'locked':
+    case 'rate_limited': {
+      const retryAfter = result.retryAfterSeconds ?? 60;
+      const cooldownUntil = Date.now() + retryAfter * 1000;
+      sessionStorage.setItem(LOGIN_COOLDOWN_KEY, String(cooldownUntil));
+      setLoginCooldown(retryAfter);
+      setError(
+        `Too many sign-in attempts. Please wait ${retryAfter} seconds before trying again.`
+      );
+      break;
     }
 
-    return;
+    case 'verification_failed':
+      setError('Please complete the verification challenge and try again.');
+      break;
+
+    case 'invalid_login':
+      setError('Invalid email or password.');
+      break;
+
+    case 'unverified_device':
+      if ((result as any).loginRequestId) {
+        setPendingApproval({
+          loginRequestId: (result as any).loginRequestId,
+          expiresAt: (result as any).expiresAt,
+        });
+
+        setApprovalMessage(
+          'This browser is not trusted yet. We sent a device approval email. Approve the sign-in from your email, then return to this browser.'
+        );
+      }
+
+      showIndicator(
+        `New device approval required for ${normalizedEmail} at ${formatTime(new Date())}`,
+        'security'
+      );
+
+      setError(
+        'This browser is not trusted yet. Please check your email to approve this sign-in.'
+      );
+      break;
+
+    case 'device_check_failed':
+      setError('We couldn’t verify your device right now. Please try again.');
+      break;
+
+    default:
+      setError('Something went wrong. Please try again.');
+      break;
   }
+
+  return;
+}
 
   sessionStorage.removeItem(LOGIN_COOLDOWN_KEY);
   setLoginCooldown(0);
