@@ -1095,6 +1095,7 @@ if (!isTurnstileValid) {
   setOAuthFlowPending('google');
 
   try {
+    showIndicator('Redirecting to Google sign-in...', 'login');
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -1124,6 +1125,8 @@ if (!isTurnstileValid) {
   setOAuthFlowPending('facebook');
 
   try {
+
+    showIndicator('Redirecting to Facebook sign-in...', 'login');
     await supabase.auth.signInWithOAuth({
       provider: 'facebook',
       options: {

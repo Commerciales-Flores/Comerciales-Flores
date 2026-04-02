@@ -439,6 +439,11 @@ useEffect(() => {
 
   setError('');
 
+  showIndicator(
+    `Signing in with email for ${normalizedEmail || 'your account'}...`,
+    'login'
+  );
+
   // if (!turnstileToken) {
   //   setError('Please complete the verification challenge.');
   //   return;
