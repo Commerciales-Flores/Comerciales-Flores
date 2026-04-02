@@ -23,6 +23,7 @@ interface RecordsContextType {
   ledgers: LedgerEntry[];
   auditLogs: AuditLog[];
   businessSlots: BusinessSlot[];
+  ledgerVersion: number;
 
   addLedgerEntry: (entry: Omit<LedgerEntry, 'id'>) => Promise<string>;
   
@@ -84,12 +85,29 @@ function mapAuditRow(row: any): AuditLog {
   };
 }
 
+function sortLedgers(items: LedgerEntry[]) {
+  return [...items].sort(
+    (a, b) =>
+      new Date(b.recordedAt ?? 0).getTime() - new Date(a.recordedAt ?? 0).getTime()
+  );
+}
+
+function sortAuditLogs(items: AuditLog[]) {
+  return [...items].sort(
+    (a, b) =>
+      new Date(b.timestamp ?? 0).getTime() - new Date(a.timestamp ?? 0).getTime()
+  );
+}
+
 /* ------------------ PROVIDER ------------------ */
 
 export function RecordsProvider({ children }: { children: ReactNode }) {
   const [ledgers, setLedgers] = useState<LedgerEntry[]>([]);
+  const [ledgerVersion, setLedgerVersion] = useState(0);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [businessSlots, setBusinessSlots] = useState<BusinessSlot[]>([]);
+
+  
 
   /* ---------- LOADERS ---------- */
 
@@ -120,7 +138,7 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    setLedgers((data ?? []).map(mapLedgerRow));
+    setLedgers(sortLedgers((data ?? []).map(mapLedgerRow)));
   };
 
   const refreshAuditLogs = async () => {
@@ -143,7 +161,7 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
       .order('timestamp', { ascending: false });
 
     if (!error && data) {
-      setAuditLogs(data.map(mapAuditRow));
+      setAuditLogs(sortAuditLogs(data.map(mapAuditRow)));
     }
   };
 
@@ -151,6 +169,126 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
     void refreshLedgers();
     void refreshAuditLogs();
   }, []);
+
+  useEffect(() => {
+  const channel = supabase
+    .channel('records-realtime')
+
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'ledger',
+      },
+      (payload) => {
+        const newEntry = mapLedgerRow(payload.new);
+
+        setLedgers((prev) => {
+          if (prev.some((item) => item.id === newEntry.id)) return prev;
+          return sortLedgers([newEntry, ...prev]);
+        });
+
+        setLedgerVersion((prev) => prev + 1);
+      }
+    )
+
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'ledger',
+      },
+      (payload) => {
+        const updatedEntry = mapLedgerRow(payload.new);
+
+        setLedgers((prev) =>
+          sortLedgers(
+            prev.map((item) => (item.id === updatedEntry.id ? updatedEntry : item))
+          )
+        );
+
+        setLedgerVersion((prev) => prev + 1);
+      }
+    )
+
+    .on(
+      'postgres_changes',
+      {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'ledger',
+      },
+      (payload) => {
+        const deletedId = payload.old.ledger_id as string | undefined;
+        if (!deletedId) return;
+
+        setLedgers((prev) => prev.filter((item) => item.id !== deletedId));
+        setLedgerVersion((prev) => prev + 1);
+      }
+    )
+
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'audit_log',
+      },
+      (payload) => {
+        const newLog = mapAuditRow(payload.new);
+
+        setAuditLogs((prev) => {
+          if (prev.some((item) => item.id === newLog.id)) return prev;
+          return sortAuditLogs([newLog, ...prev]);
+        });
+      }
+    )
+
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'audit_log',
+      },
+      (payload) => {
+        const updatedLog = mapAuditRow(payload.new);
+
+        setAuditLogs((prev) =>
+          sortAuditLogs(
+            prev.map((item) => (item.id === updatedLog.id ? updatedLog : item))
+          )
+        );
+      }
+    )
+
+    .on(
+      'postgres_changes',
+      {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'audit_log',
+      },
+      (payload) => {
+        const deletedId = payload.old.audit_id as string | undefined;
+        if (!deletedId) return;
+
+        setAuditLogs((prev) => prev.filter((item) => item.id !== deletedId));
+      }
+    )
+
+    .subscribe((status) => {
+      if (import.meta.env.DEV) {
+        console.log('Records realtime status:', status);
+      }
+    });
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}, []);
 
   /* ---------- PAGINATION ---------- */
 
@@ -217,6 +355,7 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
           reservation_id: entry.reservationId,
           payment_id: entry.paymentId,
           entry_type: entry.entryType,
+          deposit_type: entry.depositType ?? null,
           amount: entry.amount,
           method: entry.method,
           status: entry.status, 
@@ -233,9 +372,7 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
 
     if (error) throw error;
 
-    const newEntry = mapLedgerRow(data);
-    setLedgers((prev) => [newEntry, ...prev]);
-    return newEntry.id;
+    return data.ledger_id;
   };
 
   const addAuditLog = async (
@@ -262,9 +399,7 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
 
   if (error) throw error;
 
-  const newLog = mapAuditRow(data);
-  setAuditLogs((prev) => [newLog, ...prev]);
-  return newLog.id;
+  return data.audit_id;
 };
 
   /* ---------- BUSINESS SLOTS ---------- */
@@ -286,21 +421,22 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
   /* ---------- CONTEXT ---------- */
 
   const value = useMemo(
-    () => ({
-      ledgers,
-      auditLogs,
-      businessSlots,
-      addLedgerEntry,
-      addAuditLog,
-      addBusinessSlot,
-      updateBusinessSlot,
-      deleteBusinessSlot,
-      refreshLedgers,
-      refreshAuditLogs,
-      fetchAuditLogsPage,
-    }),
-    [ledgers, auditLogs, businessSlots]
-  );
+  () => ({
+    ledgers,
+    auditLogs,
+    businessSlots,
+    ledgerVersion, // 👈 ADD
+    addLedgerEntry,
+    addAuditLog,
+    addBusinessSlot,
+    updateBusinessSlot,
+    deleteBusinessSlot,
+    refreshLedgers,
+    refreshAuditLogs,
+    fetchAuditLogsPage,
+  }),
+  [ledgers, auditLogs, businessSlots, ledgerVersion]
+);
 
   return <RecordsContext.Provider value={value}>{children}</RecordsContext.Provider>;
 }

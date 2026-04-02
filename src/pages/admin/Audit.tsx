@@ -5,6 +5,11 @@ import { useRecords } from '../../contexts/RecordsContext';
 import { useUsers } from '../../contexts/UsersContext';
 import { DataTable, DataCell } from '../../components/common/DataTable';
 import TableBadge from '../../components/common/TableBadge';
+import AdminFilterBar, {
+  FILTER_BUTTON_CLASS,
+  FILTER_SELECT_CLASS,
+} from '../../components/common/AdminFilterBar';
+import { AdminFilterGroup } from '../../components/common/AdminFilterGroup';
 import {
   Search,
   Tag,
@@ -524,6 +529,9 @@ export default function AdminAudit() {
   const hasNoLogs = !loading && totalCount === 0 && !hasActiveFilters;
   const hasNoSearchResults = !loading && totalCount === 0 && hasActiveFilters;
 
+  const shouldShowFilters =
+  !loading && (!hasNoLogs || hasActiveFilters);
+
   const handlePageInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter') {
@@ -550,7 +558,7 @@ export default function AdminAudit() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <div
           className={`fixed inset-0 z-40 bg-gray-900/20 transition-opacity duration-300 md:hidden ${
@@ -566,104 +574,153 @@ export default function AdminAudit() {
           </p>
         </div>
 
-        {!loading && (!hasNoLogs || hasActiveFilters) && (
-          <DesktopFilterBar
-            searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
-            selectedAction={selectedAction}
-            setSelectedAction={setSelectedAction}
-            selectedModule={selectedModule}
-            setSelectedModule={setSelectedModule}
-            startDate={startDate}
-            setStartDate={setStartDate}
-            endDate={endDate}
-            setEndDate={setEndDate}
-            modules={MODULE_OPTIONS}
-            resetFilters={resetFilters}
+        {shouldShowFilters && (
+  <AdminFilterBar
+    searchTerm={searchTerm}
+    onSearchChange={setSearchTerm}
+    placeholder="Search logs..."
+    showMobileFilters={isMobileDropdownOpen}
+    onToggleMobileFilters={toggleMobileDropdown}
+    filters={
+      <AdminFilterGroup align="between">
+        <div className="grid w-full grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
+          <select
+            value={selectedAction}
+            onChange={(e) => setSelectedAction(e.target.value)}
+            className={FILTER_SELECT_CLASS}
+          >
+            {ACTION_OPTIONS.map((action) => (
+              <option key={action} value={action}>
+                {action === 'All' ? 'All Actions' : action}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={selectedModule}
+            onChange={(e) => setSelectedModule(e.target.value)}
+            className={FILTER_SELECT_CLASS}
+          >
+            {MODULE_OPTIONS.map((module) => (
+              <option key={module} value={module}>
+                {module === 'All'
+                  ? 'All Modules'
+                  : module.charAt(0).toUpperCase() + module.slice(1)}
+              </option>
+            ))}
+          </select>
+
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className={FILTER_SELECT_CLASS}
           />
+
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className={FILTER_SELECT_CLASS}
+          />
+        </div>
+
+        {hasActiveFilters && (
+          <div className="flex w-full justify-end lg:w-auto">
+            <button
+              type="button"
+              onClick={() => {
+                resetFilters();
+                setIsMobileDropdownOpen(false);
+              }}
+              className={FILTER_BUTTON_CLASS}
+            >
+              Clear
+            </button>
+          </div>
         )}
+      </AdminFilterGroup>
+    }
+  />
+)}
 
         <div className="relative z-10 flex-1 pb-24">
           <div className="hidden md:block">
-            {loading ? (
-              <EmptyState
-                icon={
-                  <div className="flex items-center justify-center">
-                    <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
-                  </div>
-                }
-                title="Loading audit..."
-                description="Please wait while audit records are being retrieved."
-              />
-            ) : hasNoLogs ? (
-              <EmptyState
-                icon={<Inbox className="size-10 text-blue-500" />}
-                title="No audit logs yet"
-                description="Administrative and system activities will appear here once actions are recorded."
-              />
-            ) : (
-              <DataTable
-                headers={[
-                  <span className="block w-[120px]">Log ID</span>,
-                  <span className="block w-[120px]">Action</span>,
-                  <span className="block w-[100px]">Module</span>,
-                  <span className="block w-[120px]">Target</span>,
-                  <span className="block w-[120px]">Performed By</span>,
-                  <span className="block w-[130px]">Date</span>,
-                  <span className="block">Details</span>
-                ]}
-              >
-                {hasNoSearchResults ? (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-20 text-center">
-                      <NoResultsState />
-                    </td>
-                  </tr>
-                ) : (
-                  rows.map((log) => (
-                    <tr key={log.id} className="transition-colors hover:bg-gray-50/70">
-                      <DataCell value={log.publicId ?? log.id} mono />
-                      <DataCell
-                        nowrap
-                        value={
-                          <TableBadge className={getActionStyle(log.action)}>
-                            {log.action}
-                          </TableBadge>
-                        }
-                      />
-                      <DataCell value={log.module} />
-                      <DataCell value={log.target} mono />
-                      <DataCell value={log.performedBy} mono />
-                      <DataCell
-                        value={
-                          typeof log.formattedDate === 'string' ? (
-                            log.formattedDate
-                          ) : (
-                            <div className="leading-tight">
-                              <div className="font-medium text-gray-900">
-                                {log.formattedDate.date}
-                              </div>
-                              <div className="mt-1 text-xs text-gray-400">
-                                {log.formattedDate.time}
-                              </div>
-                            </div>
-                          )
-                        }
-                      />
-                      <DataCell
-  value={
-    <div className="whitespace-normal break-words leading-snug text-gray-600">
-      {log.details}
+  {loading ? (
+    <EmptyState
+      icon={
+        <div className="flex items-center justify-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+        </div>
+      }
+      title="Loading audit..."
+      description="Please wait while audit records are being retrieved."
+    />
+  ) : hasNoLogs ? (
+    <EmptyState
+      icon={<Inbox className="size-10 text-blue-500" />}
+      title="No audit logs yet"
+      description="Administrative and system activities will appear here once actions are recorded."
+    />
+  ) : hasNoSearchResults ? (
+    <div className="rounded-2xl border border-gray-200 bg-white px-6 py-20 shadow-sm">
+      <NoResultsState />
     </div>
-  }
-  className="align-top"
-/>
-                    </tr>
-                  ))
-                )}
-              </DataTable>
-            )}
-          </div>
+  ) : (
+    <DataTable
+      headers={[
+        <span className="block w-[120px]">Log ID</span>,
+        <span className="block w-[120px]">Action</span>,
+        <span className="block w-[100px]">Module</span>,
+        <span className="block w-[120px]">Target</span>,
+        <span className="block w-[120px]">Performed By</span>,
+        <span className="block w-[130px]">Date</span>,
+        <span className="block">Details</span>,
+      ]}
+    >
+      {rows.map((log) => (
+        <tr key={log.id} className="transition-colors hover:bg-gray-50/70">
+          <DataCell value={log.publicId ?? log.id} mono />
+          <DataCell
+            nowrap
+            value={
+              <TableBadge className={getActionStyle(log.action)}>
+                {log.action}
+              </TableBadge>
+            }
+          />
+          <DataCell value={log.module} />
+          <DataCell value={log.target} mono />
+          <DataCell value={log.performedBy} mono />
+          <DataCell
+            value={
+              typeof log.formattedDate === 'string' ? (
+                log.formattedDate
+              ) : (
+                <div className="leading-tight">
+                  <div className="font-medium text-gray-900">
+                    {log.formattedDate.date}
+                  </div>
+                  <div className="mt-1 text-xs text-gray-400">
+                    {log.formattedDate.time}
+                  </div>
+                </div>
+              )
+            }
+          />
+          <DataCell
+            value={
+              <div className="whitespace-normal break-words leading-snug text-gray-600">
+                {log.details}
+              </div>
+            }
+            className="align-top"
+          />
+        </tr>
+      ))}
+    </DataTable>
+  )}
+</div>
 
           <div className="space-y-4 md:hidden">
             {loading ? (

@@ -23,6 +23,7 @@ import {
   CheckCircle2,
   CalendarDays,
   MapPin,
+  Check, ChevronDown,
 } from "lucide-react";
 import { formatCurrency } from "../../utils/currency";
 import {
@@ -40,6 +41,38 @@ type VisitMode = "online" | "onsite";
 type PaymentIntent = "pay_onsite" | "pay_later";
 type PaymentMethod = PaymentMethodCode;
 type PaymentCycle = "monthly" | "quarterly" | "full";
+type ReservationIntent = "viewing_only" | "reserve_online" | "reserve_onsite";
+
+const APPOINTMENT_START_HOUR = 9;
+const APPOINTMENT_END_HOUR = 17;
+
+function formatTimeLabel(value: string) {
+  const [hourStr, minuteStr] = value.split(":");
+  const hour = Number(hourStr);
+  const minute = Number(minuteStr);
+
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+
+  return `${hour12}:${String(minute).padStart(2, "0")} ${suffix}`;
+}
+
+function buildAppointmentTimeOptions(stepSeconds: number) {
+  const stepMinutes = Math.max(1, Math.floor(stepSeconds / 60));
+  const options: string[] = [];
+
+  for (let hour = APPOINTMENT_START_HOUR; hour <= APPOINTMENT_END_HOUR; hour++) {
+    for (let minute = 0; minute < 60; minute += stepMinutes) {
+      if (hour === APPOINTMENT_END_HOUR && minute > 0) break;
+
+      options.push(
+        `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
+      );
+    }
+  }
+
+  return options;
+}
 
 interface ReservationForm {
   startDate?: Date;
@@ -219,29 +252,33 @@ function buildInitialReservationForm(
   const startDate = getTomorrow();
 
   if (unitType === "parking_slot") {
-    const endDate = computeEndFromForm(startDate, 1, "months");
+  const endDate = computeEndFromForm(
+    startDate,
+    RESERVATION_LIMITS.parking_slot.minMonths,
+    "months"
+  );
 
-    return {
-      startDate,
-      endDate,
-      duration: 1,
-      durationType: "months",
-      modeOfVisit: "online",
-      paymentIntent: "pay_later",
-      paymentMethod: defaultPaymentMethod,
-      paymentCycle: "monthly",
-      notes: "",
-      slotId: "",
-      vehicleType: "",
-      plateNumber: "",
-      eventPurpose: "",
-      attendees: "",
-      businessType: "",
-      appointmentDate: undefined,
-      appointmentTime: "",
-      agreedToPolicies: false,
-    };
-  }
+  return {
+    startDate,
+    endDate,
+    duration: RESERVATION_LIMITS.parking_slot.minMonths,
+    durationType: "months",
+    modeOfVisit: "online",
+    paymentIntent: "pay_later",
+    paymentMethod: defaultPaymentMethod,
+    paymentCycle: "monthly",
+    notes: "",
+    slotId: "",
+    vehicleType: "",
+    plateNumber: "",
+    eventPurpose: "",
+    attendees: "",
+    businessType: "",
+    appointmentDate: undefined,
+    appointmentTime: "",
+    agreedToPolicies: false,
+  };
+}
 
   if (unitType === "function_hall") {
   return {
@@ -266,38 +303,42 @@ function buildInitialReservationForm(
   };
 }
 
-  const endDate = computeEndFromForm(startDate, 1, "months");
+  const endDate = computeEndFromForm(
+  startDate,
+  RESERVATION_LIMITS.rental_space.minMonths,
+  "months"
+);
 
-  return {
-    startDate,
-    endDate,
-    duration: 1,
-    durationType: "months",
-    modeOfVisit: "online",
-    paymentIntent: "pay_later",
-    paymentMethod: defaultPaymentMethod,
-    paymentCycle: "monthly",
-    notes: "",
-    slotId: "",
-    vehicleType: "",
-    plateNumber: "",
-    eventPurpose: "",
-    attendees: "",
-    businessType: "",
-    appointmentDate: undefined,
-    appointmentTime: "",
-    agreedToPolicies: false,
-  };
+return {
+  startDate,
+  endDate,
+  duration: RESERVATION_LIMITS.rental_space.minMonths,
+  durationType: "months",
+  modeOfVisit: "online",
+  paymentIntent: "pay_later",
+  paymentMethod: defaultPaymentMethod,
+  paymentCycle: "monthly",
+  notes: "",
+  slotId: "",
+  vehicleType: "",
+  plateNumber: "",
+  eventPurpose: "",
+  attendees: "",
+  businessType: "",
+  appointmentDate: undefined,
+  appointmentTime: "",
+  agreedToPolicies: false,
+};
 }
 
 const RESERVATION_LIMITS = {
   rental_space: {
-    minMonths: 1,
-    maxMonths: 60,
+    minMonths: 12,
+    maxMonths: 30,
   },
   function_hall: {
     minDays: 1,
-    maxDays: 7,
+    maxDays: 30,
   },
   parking_slot: {
     minMonths: 1,
@@ -305,7 +346,7 @@ const RESERVATION_LIMITS = {
   },
   attendees: {
     min: 1,
-    max: 1000,
+    max: 100,
   },
 };
 
@@ -343,6 +384,323 @@ function getDurationBounds(unitType: UnitType, durationType: DurationType) {
   return { min: 1, max: 30 };
 }
 
+type UnitAvailability = {
+  status: "available" | "occupied" | "partial";
+  badgeText: string;
+  badgeTone: "green" | "red" | "amber" | "gray" | "blue";
+  reserveDisabled: boolean;
+  reserveLabel: string;
+  nextAvailableText?: string;
+};
+
+function getParkingAvailability(params: {
+  unitId: string;
+  parkingSlots: Array<{
+    id: string;
+    unitId: string;
+    status: string;
+    isOccupied?: boolean;
+  }>;
+  reservations: Reservation[];
+  userId?: string;
+}): UnitAvailability {
+  const { unitId, parkingSlots, reservations, userId } = params;
+
+  const slots = parkingSlots.filter((slot) => slot.unitId === unitId);
+  const activeSlots = slots.filter((slot) => slot.status === "active");
+
+  const slotsWithOwnership = activeSlots.map((slot) => {
+    const occupyingReservation = reservations.find(
+      (r) =>
+        r.unitType === "parking_slot" &&
+        r.unitId === unitId &&
+        r.slotId === slot.id &&
+        isBlockingReservation(r.status)
+    );
+
+    const occupiedByOwnUser =
+      !!occupyingReservation && occupyingReservation.userId === userId;
+
+    const occupiedByOtherUser =
+      !!occupyingReservation && occupyingReservation.userId !== userId;
+
+    const isUnavailable =
+      slot.status !== "active" ||
+      slot.isOccupied ||
+      occupiedByOtherUser;
+
+    return {
+      slot,
+      occupyingReservation,
+      occupiedByOwnUser,
+      occupiedByOtherUser,
+      isUnavailable,
+    };
+  });
+
+  const availableActiveSlots = slotsWithOwnership.filter((s) => !s.isUnavailable);
+  const ownReservedSlots = slotsWithOwnership.filter((s) => s.occupiedByOwnUser);
+
+  if (activeSlots.length === 0) {
+    return {
+      status: "occupied",
+      badgeText: "No slots configured",
+      badgeTone: "gray",
+      reserveDisabled: true,
+      reserveLabel: "Unavailable",
+    };
+  }
+
+  if (availableActiveSlots.length === 0) {
+    return {
+      status: "occupied",
+      badgeText:
+        ownReservedSlots.length > 0
+          ? "All other slots occupied"
+          : "Fully occupied",
+      badgeTone: ownReservedSlots.length > 0 ? "blue" : "red",
+      reserveDisabled: true,
+      reserveLabel: "No Slots Left",
+    };
+  }
+
+  if (ownReservedSlots.length > 0) {
+    return {
+      status: "partial",
+      badgeText: `${availableActiveSlots.length} slot${
+        availableActiveSlots.length === 1 ? "" : "s"
+      } available · You already have ${ownReservedSlots.length}`,
+      badgeTone: "blue",
+      reserveDisabled: false,
+      reserveLabel: "View Slots",
+    };
+  }
+
+  if (availableActiveSlots.length < activeSlots.length) {
+    return {
+      status: "partial",
+      badgeText: `${availableActiveSlots.length} of ${activeSlots.length} slots available`,
+      badgeTone: "amber",
+      reserveDisabled: false,
+      reserveLabel: "Reserve Now",
+    };
+  }
+
+  return {
+    status: "available",
+    badgeText: `${availableActiveSlots.length} slots available`,
+    badgeTone: "green",
+    reserveDisabled: false,
+    reserveLabel: "Reserve Now",
+  };
+}
+
+function getRentalAvailability(params: {
+  unitId: string;
+  unitType: UnitType;
+  reservations: Reservation[];
+  userId?: string;
+}): UnitAvailability {
+  const { unitId, unitType, reservations, userId } = params;
+
+  const blockingReservations = reservations
+    .filter(
+      (r) =>
+        r.unitId === unitId &&
+        r.unitType === unitType &&
+        isBlockingReservation(r.status)
+    )
+    .sort(
+      (a, b) =>
+        new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+    );
+
+  const ownReservations = blockingReservations.filter((r) => r.userId === userId);
+  const otherReservations = blockingReservations.filter((r) => r.userId !== userId);
+  const now = Date.now();
+
+  const activeOwnRental = ownReservations.find((r) => {
+    const start = new Date(r.startDate).getTime();
+    const end = new Date(r.endDate).getTime();
+    return !Number.isNaN(start) && !Number.isNaN(end) && start <= now && end >= now;
+  });
+
+  const upcomingOwnRental = ownReservations.find((r) => {
+    const start = new Date(r.startDate).getTime();
+    return !Number.isNaN(start) && start > now;
+  });
+
+  if (activeOwnRental || upcomingOwnRental) {
+    const ownReservation = activeOwnRental ?? upcomingOwnRental;
+
+    return {
+      status: "occupied",
+      badgeText: "Reserved by you",
+      badgeTone: "blue",
+      reserveDisabled: true,
+      reserveLabel: "Reserved",
+      nextAvailableText:
+        ownReservation?.startDate && ownReservation?.endDate
+          ? `${formatDate(ownReservation.startDate)} - ${formatDate(ownReservation.endDate)}`
+          : ownReservation?.endDate
+            ? `Until ${formatDate(ownReservation.endDate)}`
+            : undefined,
+    };
+  }
+
+  const activeOtherRental = otherReservations.find((r) => {
+    const start = new Date(r.startDate).getTime();
+    const end = new Date(r.endDate).getTime();
+    return !Number.isNaN(start) && !Number.isNaN(end) && start <= now && end >= now;
+  });
+
+  if (activeOtherRental) {
+    return {
+      status: "occupied",
+      badgeText: "Occupied",
+      badgeTone: "red",
+      reserveDisabled: true,
+      reserveLabel: "Occupied",
+      nextAvailableText: activeOtherRental.endDate
+        ? `Until ${formatDate(activeOtherRental.endDate)}`
+        : undefined,
+    };
+  }
+
+  const upcomingOtherRental = otherReservations.find((r) => {
+    const start = new Date(r.startDate).getTime();
+    return !Number.isNaN(start) && start > now;
+  });
+
+  if (upcomingOtherRental) {
+    return {
+      status: "partial",
+      badgeText: "Available soon",
+      badgeTone: "amber",
+      reserveDisabled: false,
+      reserveLabel: "Reserve Now",
+      nextAvailableText: `Reserved ${formatDate(
+        upcomingOtherRental.startDate
+      )} - ${formatDate(upcomingOtherRental.endDate)}`,
+    };
+  }
+
+  return {
+    status: "available",
+    badgeText: "Available",
+    badgeTone: "green",
+    reserveDisabled: false,
+    reserveLabel: "Reserve Now",
+  };
+}
+
+function getFunctionHallAvailability(params: {
+  unitId: string;
+  unitType: UnitType;
+  reservations: Reservation[];
+  userId?: string;
+}): UnitAvailability {
+  const { unitId, unitType, reservations, userId } = params;
+
+  const blockingReservations = reservations
+    .filter(
+      (r) =>
+        r.unitId === unitId &&
+        r.unitType === unitType &&
+        isBlockingReservation(r.status)
+    )
+    .sort(
+      (a, b) =>
+        new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+    );
+
+  const ownReservations = blockingReservations.filter((r) => r.userId === userId);
+  const otherReservations = blockingReservations.filter((r) => r.userId !== userId);
+  const now = Date.now();
+
+  const activeOwnReservation = ownReservations.find((r) => {
+    const start = new Date(r.startDate).getTime();
+    const end = new Date(r.endDate).getTime();
+    return !Number.isNaN(start) && !Number.isNaN(end) && start <= now && end >= now;
+  });
+
+  if (activeOwnReservation) {
+    return {
+      status: "occupied",
+      badgeText: "Reserved by you",
+      badgeTone: "blue",
+      reserveDisabled: true,
+      reserveLabel: "Reserved",
+      nextAvailableText: `${formatDate(activeOwnReservation.startDate)} - ${formatDate(
+        activeOwnReservation.endDate
+      )}`,
+    };
+  }
+
+  const activeOtherReservation = otherReservations.find((r) => {
+  const start = new Date(r.startDate).getTime();
+  const end = new Date(r.endDate).getTime();
+  return !Number.isNaN(start) && !Number.isNaN(end) && start <= now && end >= now;
+});
+
+if (activeOtherReservation) {
+  return {
+    status: "partial",
+    badgeText: "Has reserved dates",
+    badgeTone: "amber",
+    reserveDisabled: false,
+    reserveLabel: "Check Dates",
+    nextAvailableText: `${formatDate(activeOtherReservation.startDate)} - ${formatDate(
+      activeOtherReservation.endDate
+    )}`,
+  };
+}
+
+  const upcomingOwnReservation = ownReservations.find((r) => {
+    const start = new Date(r.startDate).getTime();
+    return !Number.isNaN(start) && start > now;
+  });
+
+  if (upcomingOwnReservation) {
+    return {
+      status: "partial",
+      badgeText: "Reserved by you",
+      badgeTone: "blue",
+      reserveDisabled: true,
+      reserveLabel: "Reserved",
+      nextAvailableText: `${formatDate(upcomingOwnReservation.startDate)} - ${formatDate(
+        upcomingOwnReservation.endDate
+      )}`,
+    };
+  }
+
+  const upcomingOtherReservation = otherReservations.find((r) => {
+    const start = new Date(r.startDate).getTime();
+    return !Number.isNaN(start) && start > now;
+  });
+
+  if (upcomingOtherReservation) {
+    return {
+      status: "partial",
+      badgeText: "Has upcoming reservation",
+      badgeTone: "amber",
+      reserveDisabled: false,
+      reserveLabel: "Check Dates",
+      nextAvailableText: `${formatDate(upcomingOtherReservation.startDate)} - ${formatDate(
+        upcomingOtherReservation.endDate
+      )}`,
+    };
+  }
+
+  return {
+    status: "available",
+    badgeText: "Available",
+    badgeTone: "green",
+    reserveDisabled: false,
+    reserveLabel: "Reserve Now",
+  };
+}
+
 export default function ClientUnits() {
   const { user } = useAuth();
   const { addReservation, reservations } = useData();
@@ -363,8 +721,11 @@ export default function ClientUnits() {
   const [reservationSuccess, setReservationSuccess] = useState(false);
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
 
+  const [isSelectingRangeEnd, setIsSelectingRangeEnd] = useState(false);
+
   const [functionHallConflictMessage, setFunctionHallConflictMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
 
   const { activePaymentMethods } = usePaymentMethods();
   const defaultPaymentMethod = useMemo<PaymentMethod>(() => {
@@ -451,6 +812,7 @@ useEffect(() => {
   }, [units]);
 
   
+  
 
   const selectedUnitData = useMemo(() => {
     if (!selectedUnitId) return null;
@@ -467,6 +829,8 @@ useEffect(() => {
     user?.id
   );
 }, [reservations, selectedUnitData, user?.id]);
+
+
 
 const isCalendarTileDisabled = useCallback(
   ({ date, view }: { date: Date; view: string }) => {
@@ -497,6 +861,11 @@ const getCalendarTileClassName = useCallback(
       rangesOverlap(dayStart, dayEnd, reservation.startDate, reservation.endDate)
     );
 
+    // always show blocked styling immediately
+    if (isBlocked) {
+      return "calendar-tile-blocked";
+    }
+
     const isStart = isSameLocalDay(date, reservationForm.startDate);
     const isEnd = isSameLocalDay(date, reservationForm.endDate);
 
@@ -511,24 +880,15 @@ const getCalendarTileClassName = useCallback(
       dayStart.getTime() >= Math.min(rangeStart.getTime(), rangeEnd.getTime()) &&
       dayStart.getTime() <= Math.max(rangeStart.getTime(), rangeEnd.getTime());
 
-    const classes: string[] = [];
-
-    // Always preserve blocked styling first.
-    if (isBlocked) {
-      classes.push("calendar-tile-blocked");
-      return classes.join(" ");
-    }
-
     if (isStart || isEnd) {
-      classes.push("calendar-tile-selected");
-      return classes.join(" ");
+      return "calendar-tile-selected";
     }
 
     if (isWithinSelectedRange) {
-      classes.push("calendar-tile-in-range");
+      return "calendar-tile-in-range";
     }
 
-    return classes.join(" ");
+    return "";
   },
   [
     selectedUnitData,
@@ -658,290 +1018,53 @@ useEffect(() => {
   });
 }, [selectedUnitData]);
 
+
+
   const unitParkingSlots = useMemo(() => {
     if (!selectedUnitData || selectedUnitData.type !== "parking_slot") return [];
     return parkingSlots.filter((slot) => slot.unitId === selectedUnitData.id);
   }, [parkingSlots, selectedUnitData]);
   
     const unitAvailabilityMap = useMemo(() => {
-  const map = new Map<
-    string,
-    {
-      status: "available" | "occupied" | "partial";
-      badgeText: string;
-      badgeTone: "green" | "red" | "amber" | "gray" | "blue";
-      reserveDisabled: boolean;
-      reserveLabel: string;
-      nextAvailableText?: string;
-    }
-  >();
+  const map = new Map<string, UnitAvailability>();
 
   for (const unit of units) {
     if (unit.type === "parking_slot") {
-      const slots = parkingSlots.filter((slot) => slot.unitId === unit.id);
-      const activeSlots = slots.filter((slot) => slot.status === "active");
-
-      const slotsWithOwnership = activeSlots.map((slot) => {
-        const occupyingReservation = reservations.find(
-          (r) =>
-            r.unitType === "parking_slot" &&
-            r.unitId === unit.id &&
-            r.slotId === slot.id &&
-            isBlockingReservation(r.status)
-        );
-
-        const occupiedByOwnUser =
-          !!occupyingReservation && occupyingReservation.userId === user?.id;
-
-        const occupiedByOtherUser =
-          !!occupyingReservation && occupyingReservation.userId !== user?.id;
-
-        const isUnavailable =
-          slot.status !== "active" ||
-          slot.isOccupied ||
-          occupiedByOtherUser;
-
-        return {
-          slot,
-          occupyingReservation,
-          occupiedByOwnUser,
-          occupiedByOtherUser,
-          isUnavailable,
-        };
-      });
-
-      const availableActiveSlots = slotsWithOwnership.filter((s) => !s.isUnavailable);
-      const ownReservedSlots = slotsWithOwnership.filter((s) => s.occupiedByOwnUser);
-
-      if (activeSlots.length === 0) {
-        map.set(unit.id, {
-          status: "occupied",
-          badgeText: "No slots configured",
-          badgeTone: "gray",
-          reserveDisabled: true,
-          reserveLabel: "Unavailable",
-        });
-        continue;
-      }
-
-      if (availableActiveSlots.length === 0) {
-        map.set(unit.id, {
-          status: "occupied",
-          badgeText:
-            ownReservedSlots.length > 0
-              ? "All other slots occupied"
-              : "Fully occupied",
-          badgeTone: ownReservedSlots.length > 0 ? "blue" : "red",
-          reserveDisabled: true,
-          reserveLabel: "No Slots Left",
-        });
-        continue;
-      }
-
-if (ownReservedSlots.length > 0) {
-  map.set(unit.id, {
-    status: "partial",
-    badgeText: `${availableActiveSlots.length} slot${
-      availableActiveSlots.length === 1 ? "" : "s"
-    } available · You already have ${ownReservedSlots.length}`,
-    badgeTone: "blue",
-    reserveDisabled: false,
-    reserveLabel: "View Slots",
-  });
-  continue;
-}
-
-if (availableActiveSlots.length < activeSlots.length) {
-  map.set(unit.id, {
-    status: "partial",
-    badgeText: `${availableActiveSlots.length} of ${activeSlots.length} slots available`,
-    badgeTone: "amber",
-    reserveDisabled: false,
-    reserveLabel: "Reserve Now",
-  });
-  continue;
-}
-
-map.set(unit.id, {
-  status: "available",
-  badgeText: `${availableActiveSlots.length} slots available`,
-  badgeTone: "green",
-  reserveDisabled: false,
-  reserveLabel: "Reserve Now",
-});
-
+      map.set(
+        unit.id,
+        getParkingAvailability({
+          unitId: unit.id,
+          parkingSlots,
+          reservations,
+          userId: user?.id,
+        })
+      );
       continue;
     }
 
-    const blockingReservations = reservations
-      .filter(
-        (r) =>
-          r.unitId === unit.id &&
-          r.unitType === unit.type &&
-          isBlockingReservation(r.status)
-      )
-      .sort(
-        (a, b) =>
-          new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
-      );
-
-    const ownReservations = blockingReservations.filter((r) => r.userId === user?.id);
-    const otherReservations = blockingReservations.filter((r) => r.userId !== user?.id);
-
     if (unit.type === "rental_space") {
-      const now = Date.now();
-
-      const activeOwnRental = ownReservations.find((r) => {
-        const start = new Date(r.startDate).getTime();
-        const end = new Date(r.endDate).getTime();
-        return !Number.isNaN(start) && !Number.isNaN(end) && start <= now && end >= now;
-      });
-
-      if (activeOwnRental) {
-        map.set(unit.id, {
-          status: "occupied",
-          badgeText: "Reserved by you",
-          badgeTone: "blue",
-          reserveDisabled: true,
-          reserveLabel: "Reserved",
-          nextAvailableText: activeOwnRental.endDate
-            ? `Until ${formatDate(activeOwnRental.endDate)}`
-            : undefined,
-        });
-        continue;
-      }
-
-      const activeOtherRental = otherReservations.find((r) => {
-        const start = new Date(r.startDate).getTime();
-        const end = new Date(r.endDate).getTime();
-        return !Number.isNaN(start) && !Number.isNaN(end) && start <= now && end >= now;
-      });
-
-      if (activeOtherRental) {
-        map.set(unit.id, {
-          status: "occupied",
-          badgeText: "Occupied",
-          badgeTone: "red",
-          reserveDisabled: true,
-          reserveLabel: "Occupied",
-          nextAvailableText: activeOtherRental.endDate
-            ? `Until ${formatDate(activeOtherRental.endDate)}`
-            : undefined,
-        });
-        continue;
-      }
-
-      const upcomingOtherRental = otherReservations.find((r) => {
-        const start = new Date(r.startDate).getTime();
-        return !Number.isNaN(start) && start > now;
-      });
-
-      if (upcomingOtherRental) {
-        map.set(unit.id, {
-          status: "partial",
-          badgeText: "Available soon",
-          badgeTone: "amber",
-          reserveDisabled: false,
-          reserveLabel: "Reserve Now",
-          nextAvailableText: `Reserved ${formatDate(
-            upcomingOtherRental.startDate
-          )} - ${formatDate(upcomingOtherRental.endDate)}`,
-        });
-        continue;
-      }
-
-      map.set(unit.id, {
-        status: "available",
-        badgeText: "Available",
-        badgeTone: "green",
-        reserveDisabled: false,
-        reserveLabel: "Reserve Now",
-      });
-
+      map.set(
+        unit.id,
+        getRentalAvailability({
+          unitId: unit.id,
+          unitType: unit.type,
+          reservations,
+          userId: user?.id,
+        })
+      );
       continue;
     }
 
     if (unit.type === "function_hall") {
-      const now = Date.now();
-
-      const activeOwnReservation = ownReservations.find((r) => {
-        const start = new Date(r.startDate).getTime();
-        const end = new Date(r.endDate).getTime();
-        return !Number.isNaN(start) && !Number.isNaN(end) && start <= now && end >= now;
-      });
-
-      if (activeOwnReservation) {
-        map.set(unit.id, {
-          status: "occupied",
-          badgeText: "Reserved by you",
-          badgeTone: "blue",
-          reserveDisabled: true,
-          reserveLabel: "Reserved",
-          nextAvailableText: `${formatDate(activeOwnReservation.startDate)} - ${formatDate(activeOwnReservation.endDate)}`,
-        });
-        continue;
-      }
-
-      const activeOtherReservation = otherReservations.find((r) => {
-        const start = new Date(r.startDate).getTime();
-        const end = new Date(r.endDate).getTime();
-        return !Number.isNaN(start) && !Number.isNaN(end) && start <= now && end >= now;
-      });
-
-      if (activeOtherReservation) {
-        map.set(unit.id, {
-          status: "occupied",
-          badgeText: "Unavailable",
-          badgeTone: "red",
-          reserveDisabled: true,
-          reserveLabel: "Unavailable",
-          nextAvailableText: `${formatDate(activeOtherReservation.startDate)} - ${formatDate(activeOtherReservation.endDate)}`,
-        });
-        continue;
-      }
-
-      const upcomingOwnReservation = ownReservations.find((r) => {
-        const start = new Date(r.startDate).getTime();
-        return !Number.isNaN(start) && start > now;
-      });
-
-      if (upcomingOwnReservation) {
-        map.set(unit.id, {
-          status: "partial",
-          badgeText: "Reserved by you",
-          badgeTone: "blue",
-          reserveDisabled: true,
-          reserveLabel: "Reserved",
-          nextAvailableText: `${formatDate(upcomingOwnReservation.startDate)} - ${formatDate(upcomingOwnReservation.endDate)}`,
-        });
-        continue;
-      }
-
-      const upcomingOtherReservation = otherReservations.find((r) => {
-        const start = new Date(r.startDate).getTime();
-        return !Number.isNaN(start) && start > now;
-      });
-
-      if (upcomingOtherReservation) {
-        map.set(unit.id, {
-          status: "partial",
-          badgeText: "Has upcoming reservation",
-          badgeTone: "amber",
-          reserveDisabled: false,
-          reserveLabel: "Check Dates",
-          nextAvailableText: `${formatDate(upcomingOtherReservation.startDate)} - ${formatDate(upcomingOtherReservation.endDate)}`,
-        });
-        continue;
-      }
-
-      map.set(unit.id, {
-        status: "available",
-        badgeText: "Available",
-        badgeTone: "green",
-        reserveDisabled: false,
-        reserveLabel: "Reserve Now",
-      });
-
+      map.set(
+        unit.id,
+        getFunctionHallAvailability({
+          unitId: unit.id,
+          unitType: unit.type,
+          reservations,
+          userId: user?.id,
+        })
+      );
       continue;
     }
 
@@ -1091,6 +1214,8 @@ const ownReservedSlotIds = useMemo(() => {
     );
   }, [unitParkingSlots, reservationForm.slotId]);
 
+  
+
   const estimatedTotal = useMemo(() => {
     if (!selectedUnitData) return 0;
 
@@ -1132,12 +1257,89 @@ const rentalRequiredPayment = useMemo(() => {
   estimatedTotal,
 ]);
 
-  const hidePaymentSection =
-    reservationForm.modeOfVisit === "onsite" &&
-    reservationForm.paymentIntent === "pay_later";
+
+
+const appointmentTimeOptions = useMemo(
+  () => buildAppointmentTimeOptions(APPOINTMENT_TIME_STEP_SECONDS),
+  []
+);
+
+const reservationIntent: ReservationIntent =
+  reservationForm.modeOfVisit === "online"
+    ? "reserve_online"
+    : reservationForm.paymentIntent === "pay_later"
+      ? "viewing_only"
+      : "reserve_onsite";
+
+const isViewingOnly = reservationIntent === "viewing_only";
+const requiresAppointment = reservationIntent === "viewing_only" || reservationIntent === "reserve_onsite";
+const shouldShowPaymentSection = reservationIntent !== "viewing_only";
 
 const hasActivePaymentMethods = activePaymentMethods.length > 0;
-const showPaymentMethodEmptyState = !hidePaymentSection && !hasActivePaymentMethods;
+const showPaymentMethodEmptyState =
+  shouldShowPaymentSection && !hasActivePaymentMethods;
+
+const canSubmit = (() => {
+  if (isSubmitting) return false;
+  if (!reservationForm.agreedToPolicies) return false;
+  if (!selectedUnitData) return false;
+
+  if (requiresAppointment) {
+    if (!reservationForm.appointmentDate || !reservationForm.appointmentTime) {
+      return false;
+    }
+  }
+
+  if (shouldShowPaymentSection && showPaymentMethodEmptyState) return false;
+
+  if (selectedUnitData.type === "parking_slot") {
+    if (!selectedSlotObject) return false;
+    if (!reservationForm.startDate || !reservationForm.endDate) return false;
+    if (!reservationForm.vehicleType.trim()) return false;
+    if (!reservationForm.plateNumber.trim()) return false;
+  }
+
+  if (selectedUnitData.type === "function_hall") {
+    if (!reservationForm.startDate || !reservationForm.endDate) return false;
+    if (!reservationForm.duration) return false;
+    if (functionHallConflictMessage) return false;
+    if (!reservationForm.eventPurpose.trim()) return false;
+    if (!String(reservationForm.attendees).trim()) return false;
+  }
+
+  if (selectedUnitData.type === "rental_space") {
+    if (!reservationForm.startDate || !reservationForm.endDate) return false;
+    if (
+      !reservationForm.duration ||
+      reservationForm.duration < RESERVATION_LIMITS.rental_space.minMonths
+    ) {
+      return false;
+    }
+    if (!reservationForm.businessType.trim()) return false;
+  }
+
+  return true;
+})();
+
+
+const [isTimeSelectOpen, setIsTimeSelectOpen] = useState(false);
+const timeSelectRef = useRef<HTMLDivElement | null>(null);
+
+useEffect(() => {
+  function handleClickOutside(event: MouseEvent) {
+    if (
+      timeSelectRef.current &&
+      !timeSelectRef.current.contains(event.target as Node)
+    ) {
+      setIsTimeSelectOpen(false);
+    }
+  }
+
+  document.addEventListener("mousedown", handleClickOutside);
+  return () => {
+    document.removeEventListener("mousedown", handleClickOutside);
+  };
+}, []);
 
     const handleReserveNow = useCallback(
   (unitId: string) => {
@@ -1225,14 +1427,16 @@ const getParkingSlotState = useCallback(
   }, [selectedUnitMedia]);
 
   const handleModeChange = useCallback((mode: VisitMode) => {
-    setReservationForm((prev) => ({
-      ...prev,
-      modeOfVisit: mode,
-      paymentIntent: mode === "online" ? "pay_later" : prev.paymentIntent,
-      appointmentDate: mode === "online" ? undefined : prev.appointmentDate,
-      appointmentTime: mode === "online" ? "" : prev.appointmentTime,
-    }));
-  }, []);
+  setReservationForm((prev) => ({
+    ...prev,
+    modeOfVisit: mode,
+    paymentIntent: mode === "onsite" ? "pay_later" : "pay_onsite",
+    appointmentDate: mode === "onsite" ? prev.appointmentDate : undefined,
+    appointmentTime: mode === "onsite" ? prev.appointmentTime ?? "" : "",
+  }));
+
+  setIsTimeSelectOpen(false);
+}, []);
 
 
   const handleReservationSubmit = useCallback(
@@ -1242,39 +1446,85 @@ const getParkingSlotState = useCallback(
     if (isSubmitting) return;
     if (!selectedUnitData || !user) return;
 
-            const blockingReservations = getBlockingReservationsForUnit(
-              reservations,
-              selectedUnitData.id,
-              selectedUnitData.type,
-              user.id
-            );
+    const isViewingOnly = reservationIntent === "viewing_only";
 
-      if (selectedUnitData.type === "rental_space") {
-        const hasRentalConflict = blockingReservations.some((r) =>
-          rangesOverlap(
-            reservationForm.startDate,
-            reservationForm.endDate,
-            r.startDate,
-            r.endDate
-          )
+    const blockingReservations = getBlockingReservationsForUnit(
+      reservations,
+      selectedUnitData.id,
+      selectedUnitData.type,
+      user.id
+    );
+
+    if (!reservationForm.agreedToPolicies) {
+      alert("Please agree to the policies before submitting your reservation.");
+      return;
+    }
+
+    if (
+      requiresAppointment &&
+      (!reservationForm.appointmentDate || !reservationForm.appointmentTime)
+    ) {
+      alert("Please select an appointment date and time.");
+      return;
+    }
+
+    if (shouldShowPaymentSection && !hasActivePaymentMethods) {
+      alert("No payment methods are currently available. Please try again later.");
+      return;
+    }
+
+    if (selectedUnitData.type === "rental_space") {
+      if (!reservationForm.startDate || !reservationForm.endDate) {
+        alert("Please select your lease dates first.");
+        return;
+      }
+
+      if (reservationForm.durationType !== "months") {
+        alert("Rental spaces must use monthly duration.");
+        return;
+      }
+
+      if (!reservationForm.paymentCycle) {
+        alert("Please select a payment cycle.");
+        return;
+      }
+
+      if (
+        reservationForm.paymentCycle === "quarterly" &&
+        reservationForm.duration < RESERVATION_LIMITS.rental_space.minMonths
+      ) {
+        alert(
+          `Quarterly payment cycle requires at least ${RESERVATION_LIMITS.rental_space.minMonths} months.`
         );
-
-        if (hasRentalConflict) {
-          alert("This rental space is occupied for the selected lease period.");
-          return;
-        }
-      }
-      if (!hidePaymentSection && !hasActivePaymentMethods) {
-        alert("No payment methods are currently available. Please try again later.");
-        return;
-      }
-      if (!reservationForm.agreedToPolicies) {
-        alert("Please agree to the policies before submitting your reservation.");
         return;
       }
 
-      if (selectedUnitData.type === "function_hall") {
-      if (reservationForm.duration <= 0) {
+      if (!reservationForm.businessType.trim()) {
+        alert("Please enter your business type.");
+        return;
+      }
+
+      const hasRentalConflict = blockingReservations.some((r) =>
+        rangesOverlap(
+          reservationForm.startDate,
+          reservationForm.endDate,
+          r.startDate,
+          r.endDate
+        )
+      );
+
+      if (hasRentalConflict) {
+        alert("This rental space is occupied for the selected lease period.");
+        return;
+      }
+    }
+
+    if (selectedUnitData.type === "function_hall") {
+      if (
+        !reservationForm.startDate ||
+        !reservationForm.endDate ||
+        reservationForm.duration <= 0
+      ) {
         alert("Please select reservation dates first.");
         return;
       }
@@ -1292,27 +1542,24 @@ const getParkingSlotState = useCallback(
         alert("This function hall is already reserved for the selected date(s).");
         return;
       }
-    }
 
       if (
-        reservationForm.modeOfVisit === "onsite" &&
-        (!reservationForm.appointmentDate || !reservationForm.appointmentTime)
+        !reservationForm.eventPurpose.trim() ||
+        !reservationForm.attendees.trim()
       ) {
-        alert("Please select an appointment date and time.");
+        alert("Please complete the function hall reservation details.");
         return;
       }
+    }
 
-      if (selectedUnitData.type === "parking_slot" && !reservationForm.slotId) {
+    if (selectedUnitData.type === "parking_slot") {
+      if (!reservationForm.slotId) {
         alert("Please select a specific parking slot before proceeding.");
         setIsSlotPanelOpen(true);
         return;
       }
 
-      // 🔥 Prevent selecting occupied slot (double check)
-      if (selectedUnitData.type === "parking_slot") {
-      const selectedSlot = parkingSlots.find(
-        (s) => s.id === reservationForm.slotId
-      );
+      const selectedSlot = parkingSlots.find((s) => s.id === reservationForm.slotId);
 
       if (!selectedSlot) {
         alert("Invalid slot selected.");
@@ -1332,207 +1579,166 @@ const getParkingSlotState = useCallback(
         alert("This parking slot is no longer available. Please select another.");
         return;
       }
-    }
 
       if (
-        selectedUnitData.type === "rental_space" &&
-        !reservationForm.businessType.trim()
-      ) {
-        alert("Please enter your business type.");
-        return;
-      }
-
-      if (
-        selectedUnitData.type === "function_hall" &&
-        (!reservationForm.eventPurpose.trim() ||
-          !reservationForm.attendees.trim())
-      ) {
-        alert("Please complete the function hall reservation details.");
-        return;
-      }
-
-      if (
-        selectedUnitData.type === "parking_slot" &&
-        (!reservationForm.vehicleType.trim() ||
-          !reservationForm.plateNumber.trim())
+        !reservationForm.vehicleType.trim() ||
+        !reservationForm.plateNumber.trim()
       ) {
         alert("Please enter your vehicle information.");
         return;
       }
-      if (selectedUnitData.type === "rental_space") {
-      if (reservationForm.durationType !== "months") {
-        alert("Rental spaces must use monthly duration.");
-        return;
-      }
-
-      if (!reservationForm.paymentCycle) {
-        alert("Please select a payment cycle.");
-        return;
-      }
-
-      if (
-        reservationForm.paymentCycle === "quarterly" &&
-        reservationForm.duration < 3
-      ) {
-        alert("Quarterly payment cycle requires at least 3 months.");
-        return;
-      }
     }
 
-      const durationBounds = getDurationBounds(
-  selectedUnitData.type,
-  reservationForm.durationType
+    const durationBounds = getDurationBounds(
+      selectedUnitData.type,
+      reservationForm.durationType
+    );
+
+    if (
+      reservationForm.duration < durationBounds.min ||
+      reservationForm.duration > durationBounds.max
+    ) {
+      alert(
+        `Please enter a valid duration between ${durationBounds.min} and ${durationBounds.max}.`
+      );
+      return;
+    }
+
+    const parsedAttendees = parseInt(reservationForm.attendees || "0", 10);
+
+    const attendeesMax =
+      selectedUnitData.type === "function_hall"
+        ? Math.min(
+            selectedUnitData.capacity ?? RESERVATION_LIMITS.attendees.max,
+            RESERVATION_LIMITS.attendees.max
+          )
+        : RESERVATION_LIMITS.attendees.max;
+
+    if (
+      selectedUnitData.type === "function_hall" &&
+      (Number.isNaN(parsedAttendees) ||
+        parsedAttendees < RESERVATION_LIMITS.attendees.min ||
+        parsedAttendees > attendeesMax)
+    ) {
+      alert(
+        `Please enter attendees between ${RESERVATION_LIMITS.attendees.min} and ${attendeesMax}.`
+      );
+      return;
+    }
+
+    let normalizedStartDate = reservationForm.startDate;
+    let normalizedEndDate = reservationForm.endDate;
+    let normalizedDuration = reservationForm.duration;
+    let normalizedDurationType = reservationForm.durationType;
+
+    if (selectedUnitData.type === "function_hall") {
+      const normalizedRange = buildFunctionHallRange(
+        reservationForm.startDate!,
+        reservationForm.endDate!
+      );
+
+      normalizedStartDate = normalizedRange.startDate;
+      normalizedEndDate = normalizedRange.endDate;
+      normalizedDuration = normalizedRange.duration;
+      normalizedDurationType = normalizedRange.durationType;
+    }
+
+    if (!normalizedStartDate || !normalizedEndDate) {
+      alert("Please select reservation dates first.");
+      return;
+    }
+
+    const reservationData: Omit<
+      Reservation,
+      "id" | "requestDate" | "status" | "paidAmount"
+    > = {
+      userId: user.id,
+      unitId: selectedUnitData.id,
+      unitName: selectedUnitData.name,
+      unitType: selectedUnitData.type,
+      startDate: normalizedStartDate.toISOString(),
+      endDate: normalizedEndDate.toISOString(),
+      duration: normalizedDuration,
+      durationType: normalizedDurationType,
+      modeOfVisit: reservationForm.modeOfVisit,
+      paymentIntent: reservationForm.paymentIntent,
+      paymentMethod: shouldShowPaymentSection
+        ? reservationForm.paymentMethod
+        : undefined,
+      totalAmount: estimatedTotal,
+      notes: reservationForm.notes,
+    };
+
+    if (selectedUnitData.type === "rental_space") {
+      reservationData.paymentCycle = reservationForm.paymentCycle;
+      reservationData.businessType = reservationForm.businessType.trim();
+    }
+
+    if (selectedUnitData.type === "function_hall") {
+      reservationData.eventPurpose = reservationForm.eventPurpose.trim();
+      reservationData.attendees = parsedAttendees;
+    }
+
+    if (selectedUnitData.type === "parking_slot") {
+      reservationData.slotId = reservationForm.slotId;
+      reservationData.vehicleType = reservationForm.vehicleType.trim();
+      reservationData.plateNumber = reservationForm.plateNumber.trim();
+    }
+
+    if (requiresAppointment) {
+      reservationData.appointmentDate = reservationForm.appointmentDate
+        ? getDateInputValue(reservationForm.appointmentDate)
+        : null;
+
+      reservationData.appointmentTime = reservationForm.appointmentTime || null;
+    }
+
+    try {
+      setIsSubmitting(true);
+
+      await addReservation(reservationData);
+
+      sendSystemNotification(
+        user.id,
+        isViewingOnly ? "Viewing Appointment Submitted" : "Reservation Request Submitted",
+        isViewingOnly
+          ? `Your viewing appointment request for ${selectedUnitData.name} has been submitted.`
+          : `Your reservation request for ${selectedUnitData.name} has been submitted and is pending admin approval.`
+      );
+
+      setReservationSuccess(true);
+      setTimeout(() => {
+        setShowReservationModal(false);
+        setReservationSuccess(false);
+      }, 7000);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to submit reservation. Please try again.";
+      alert(message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  },
+  [
+  selectedUnitData,
+  user,
+  reservationForm,
+  estimatedTotal,
+  addReservation,
+  sendSystemNotification,
+  hasActivePaymentMethods,
+  reservations,
+  parkingSlots,
+  reservedSlotIds,
+  ownReservedSlotIds,
+  isSubmitting,
+  reservationIntent,
+  requiresAppointment,
+  shouldShowPaymentSection,
+]
 );
-
-if (
-  reservationForm.duration < durationBounds.min ||
-  reservationForm.duration > durationBounds.max
-) {
-  alert(
-    `Please enter a valid duration between ${durationBounds.min} and ${durationBounds.max}.`
-  );
-  return;
-}
-
-const parsedAttendees = parseInt(reservationForm.attendees || "0", 10);
-
-const attendeesMax =
-  selectedUnitData.type === "function_hall"
-    ? Math.min(
-        selectedUnitData.capacity ?? RESERVATION_LIMITS.attendees.max,
-        RESERVATION_LIMITS.attendees.max
-      )
-    : RESERVATION_LIMITS.attendees.max;
-
-if (
-  selectedUnitData.type === "function_hall" &&
-  (Number.isNaN(parsedAttendees) ||
-    parsedAttendees < RESERVATION_LIMITS.attendees.min ||
-    parsedAttendees > attendeesMax)
-) {
-  alert(
-    `Please enter attendees between ${RESERVATION_LIMITS.attendees.min} and ${attendeesMax}.`
-  );
-  return;
-}
-
-let normalizedStartDate = reservationForm.startDate;
-let normalizedEndDate = reservationForm.endDate;
-let normalizedDuration = reservationForm.duration;
-let normalizedDurationType = reservationForm.durationType;
-
-if (selectedUnitData.type === "function_hall") {
-  if (!reservationForm.startDate || !reservationForm.endDate) {
-    alert("Please select reservation dates first.");
-    return;
-  }
-
-  const normalizedRange = buildFunctionHallRange(
-    reservationForm.startDate,
-    reservationForm.endDate
-  );
-
-  normalizedStartDate = normalizedRange.startDate;
-  normalizedEndDate = normalizedRange.endDate;
-  normalizedDuration = normalizedRange.duration;
-  normalizedDurationType = normalizedRange.durationType;
-}
-
-if (!normalizedStartDate || !normalizedEndDate) {
-  alert("Please select reservation dates first.");
-  return;
-}
-
-      const reservationData: Omit<
-        Reservation,
-        'id' | 'requestDate' | 'status' | 'paidAmount'
-      > = {
-        userId: user.id,
-        unitId: selectedUnitData.id,
-        unitName: selectedUnitData.name,
-        unitType: selectedUnitData.type,
-        startDate: normalizedStartDate.toISOString(),
-        endDate: normalizedEndDate.toISOString(),
-        duration: normalizedDuration,
-        durationType: normalizedDurationType,
-        modeOfVisit: reservationForm.modeOfVisit,
-        paymentIntent:
-          reservationForm.modeOfVisit === "onsite"
-            ? reservationForm.paymentIntent
-            : "pay_later",
-        paymentMethod: hidePaymentSection
-          ? undefined
-          : reservationForm.paymentMethod,
-        totalAmount: hidePaymentSection ? 0 : estimatedTotal,
-        notes: reservationForm.notes,
-      };
-
-      if (selectedUnitData.type === "rental_space") {
-        reservationData.paymentCycle = reservationForm.paymentCycle;
-        reservationData.businessType = reservationForm.businessType.trim();
-      }
-
-      if (selectedUnitData.type === "function_hall") {
-        reservationData.eventPurpose = reservationForm.eventPurpose.trim();
-        reservationData.attendees = parsedAttendees;
-      }
-
-      if (selectedUnitData.type === "parking_slot") {
-        reservationData.slotId = reservationForm.slotId;
-        reservationData.vehicleType = reservationForm.vehicleType.trim();
-        reservationData.plateNumber = reservationForm.plateNumber.trim();
-      }
-
-      if (reservationForm.modeOfVisit === "onsite") {
-        reservationData.appointmentDate = reservationForm.appointmentDate
-          ? getDateInputValue(reservationForm.appointmentDate)
-          : null;
-
-        reservationData.appointmentTime = reservationForm.appointmentTime || null;
-      }
-
-      try {
-        setIsSubmitting(true);
-
-        await addReservation(reservationData);
-
-        sendSystemNotification(
-          user.id,
-          "Reservation Request Submitted",
-          `Your reservation request for ${selectedUnitData.name} has been submitted and is pending admin approval.`
-        );
-
-        setReservationSuccess(true);
-        setTimeout(() => {
-          setShowReservationModal(false);
-          setReservationSuccess(false);
-        }, 7000);
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Unable to submit reservation. Please try again.";
-        alert(message);
-      } finally {
-        setIsSubmitting(false);
-      }
-    },
-    [
-      selectedUnitData,
-      user,
-      reservationForm,
-      estimatedTotal,
-      addReservation,
-      sendSystemNotification,
-      hidePaymentSection,
-      hasActivePaymentMethods,
-      reservations,
-      parkingSlots,
-      reservedSlotIds,
-      ownReservedSlotIds,
-      isSubmitting,
-    ]
-  );
 
     const getAvailabilityBadgeClass = useCallback(
   (tone: "green" | "red" | "amber" | "gray" | "blue") => {
@@ -1585,7 +1791,7 @@ const calendarLegend = (
 );
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <header>
           <h1 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">
@@ -2007,9 +2213,11 @@ const calendarLegend = (
               Estimated Total
             </p>
             <p className="mt-1 text-sm font-semibold text-gray-900">
-              {hidePaymentSection
-                ? 'No payment for viewing'
-                : formatCurrency(estimatedTotal)}
+              {isViewingOnly
+                ? 'No payment required'
+                : selectedUnitData.type === "rental_space"
+                  ? formatCurrency(estimatedTotal) + ' total lease'
+                  : formatCurrency(estimatedTotal)}
             </p>
           </div>
         </div>
@@ -2130,7 +2338,12 @@ const calendarLegend = (
                         )}
 
                         <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                          Subsequent payments must be at least ₱500.
+                          {selectedUnitData.type === "rental_space" &&
+                            "Payments follow your selected billing cycle."}
+                          {selectedUnitData.type === "function_hall" &&
+                            "Partial payments are allowed until the event is fully paid."}
+                          {selectedUnitData.type === "parking_slot" &&
+                            "Partial payments may be allowed, but monthly dues must be completed on time."}
                         </div>
                       </div>
 
@@ -2147,139 +2360,182 @@ const calendarLegend = (
 
                     <form onSubmit={handleReservationSubmit} className="space-y-4 pb-1">
                       <div className="space-y-4 rounded-2xl border border-gray-200 p-4">
-                        <div>
-                          <label className="mb-1 block text-sm font-medium text-gray-700">
-                            How do you want to proceed?
-                          </label>
-                          <select
-                            value={reservationForm.modeOfVisit}
-                            onChange={(e) =>
-                              handleModeChange(e.target.value as VisitMode)
-                            }
-                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                          >
-                            <option value="online">Online / Digital Process</option>
-                            <option value="onsite">On-site Visit / Tour</option>
-                          </select>
-                        </div>
+  <div>
+    <label className="mb-1 block text-sm font-medium text-gray-700">
+      How do you want to proceed?
+    </label>
+    <select
+      value={reservationForm.modeOfVisit}
+      onChange={(e) => handleModeChange(e.target.value as VisitMode)}
+      className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+    >
+      <option value="online">Reserve Online</option>
+      <option value="onsite">Visit On-site First</option>
+    </select>
+  </div>
 
-                        {reservationForm.modeOfVisit === "onsite" && (
-                          <div className="border-t border-gray-200 pt-4">
-                            <div>
-                              <label className="mb-1 block text-sm font-medium text-gray-700">
-                                Appointment Date
-                              </label>
-                              <input
-                                type="date"
-                                value={getDateInputValue(reservationForm.appointmentDate)}
-                                min={getDateInputValue(new Date())}
-                                onChange={(e) =>
-                                  setReservationForm((prev) => ({
-                                    ...prev,
-                                    appointmentDate: e.target.value
-                                      ? new Date(`${e.target.value}T00:00:00`)
-                                      : undefined,
-                                  }))
-                                }
-                                className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                              />
-                            </div>
+  {reservationForm.modeOfVisit === "onsite" && (
+    <div className="border-t border-gray-200 pt-4">
+      <div>
+        <label className="mb-1 block text-sm font-medium text-gray-700">
+          Appointment Date
+        </label>
+        <input
+          type="date"
+          value={getDateInputValue(reservationForm.appointmentDate)}
+          min={getDateInputValue(new Date())}
+          onChange={(e) =>
+            setReservationForm((prev) => ({
+              ...prev,
+              appointmentDate: e.target.value
+                ? new Date(`${e.target.value}T00:00:00`)
+                : undefined,
+            }))
+          }
+          className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+        />
+      </div>
 
-                            <div className="mt-4">
-                              <label className="mb-1 block text-sm text-gray-700">
-                                Appointment Time
-                              </label>
-                              <input
-                                type="time"
-                                min="09:00"
-                                max="17:00"
-                                step={APPOINTMENT_TIME_STEP_SECONDS}
-                                value={reservationForm.appointmentTime || ""}
-                                onChange={(e) =>
-                                  setReservationForm((prev) => ({
-                                    ...prev,
-                                    appointmentTime: e.target.value,
-                                  }))
-                                }
-                                className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                              />
-                            </div>
+      <div className="mt-4">
+  <label className="mb-1 block text-sm font-medium text-gray-700">
+    Appointment Time
+  </label>
 
-                            <label className="mt-6 mb-2 block text-sm font-medium text-gray-700">
-                              What is the goal of your visit?
-                            </label>
+  <div className="relative" ref={timeSelectRef}>
+    <button
+      type="button"
+      onClick={() => setIsTimeSelectOpen((prev) => !prev)}
+      className="flex w-full items-center justify-between rounded-xl border border-gray-300 bg-white px-3 py-2 text-left outline-none transition hover:border-blue-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+    >
+      <span
+        className={
+          reservationForm.appointmentTime ? "text-gray-900" : "text-gray-400"
+        }
+      >
+        {reservationForm.appointmentTime
+          ? formatTimeLabel(reservationForm.appointmentTime)
+          : "Select appointment time"}
+      </span>
 
-                            <div className="space-y-2">
-                              <label
-                                className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3 transition ${
-                                  reservationForm.paymentIntent === "pay_later"
-                                    ? "border-blue-500 bg-blue-50"
-                                    : "border-gray-200 bg-white"
-                                }`}
-                              >
-                                <input
-                                  type="radio"
-                                  name="paymentIntent"
-                                  value="pay_later"
-                                  checked={reservationForm.paymentIntent === "pay_later"}
-                                  onChange={(e) =>
-                                    setReservationForm((prev) => ({
-                                      ...prev,
-                                      paymentIntent: e.target.value as PaymentIntent,
-                                    }))
-                                  }
-                                  className="mt-1 size-4 text-blue-600 focus:ring-blue-500"
-                                />
-                                <div>
-                                  <p className="text-sm font-medium text-gray-900">
-                                    Just Viewing
-                                  </p>
-                                  <p className="text-xs text-gray-500">
-                                    I'd like a tour of the unit first before deciding.
-                                  </p>
-                                </div>
-                              </label>
+      <ChevronDown
+        className={`size-4 text-blue-500 transition-transform ${
+          isTimeSelectOpen ? "rotate-180" : ""
+        }`}
+      />
+    </button>
 
-                              <label
-                                className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3 transition ${
-                                  reservationForm.paymentIntent === "pay_onsite"
-                                    ? "border-blue-500 bg-blue-50"
-                                    : "border-gray-200 bg-white"
-                                }`}
-                              >
-                                <input
-                                  type="radio"
-                                  name="paymentIntent"
-                                  value="pay_onsite"
-                                  checked={reservationForm.paymentIntent === "pay_onsite"}
-                                  onChange={(e) =>
-                                    setReservationForm((prev) => ({
-                                      ...prev,
-                                      paymentIntent: e.target.value as PaymentIntent,
-                                    }))
-                                  }
-                                  className="mt-1 size-4 text-blue-600 focus:ring-blue-500"
-                                />
-                                <div>
-                                  <p className="text-sm font-medium text-gray-900">
-                                    Ready to Reserve
-                                  </p>
-                                  <p className="text-xs text-gray-500">
-                                    I want to secure my slot and pay during my visit.
-                                  </p>
-                                </div>
-                              </label>
-                            </div>
+    {isTimeSelectOpen && (
+      <div className="absolute z-30 mt-2 max-h-64 w-full overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
+        <div className="max-h-64 overflow-y-auto py-1">
+          {appointmentTimeOptions.map((time) => {
+            const isSelected = reservationForm.appointmentTime === time;
 
-                            {reservationForm.paymentIntent === "pay_later" && (
-                              <div className="mt-4 rounded-2xl border border-green-100 bg-green-50 p-3 text-sm text-green-800">
-                                ✨ We look forward to showing you around! No payment is
-                                required for this visit.
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
+            return (
+              <button
+                key={time}
+                type="button"
+                onClick={() => {
+                  setReservationForm((prev) => ({
+                    ...prev,
+                    appointmentTime: time,
+                  }));
+                  setIsTimeSelectOpen(false);
+                }}
+                className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition ${
+                  isSelected
+                    ? "bg-blue-50 font-medium text-blue-700"
+                    : "text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                <span>{formatTimeLabel(time)}</span>
+                {isSelected ? <Check className="size-4" /> : null}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    )}
+  </div>
+
+  <p className="mt-2 text-xs text-gray-500">
+    Available visiting hours: 9:00 AM to 5:00 PM
+  </p>
+</div>
+
+      <label className="mt-6 mb-2 block text-sm font-medium text-gray-700">
+        What is the goal of your visit?
+      </label>
+
+      <div className="space-y-2">
+        <label
+          className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3 transition ${
+            reservationForm.paymentIntent === "pay_later"
+              ? "border-blue-500 bg-blue-50"
+              : "border-gray-200 bg-white"
+          }`}
+        >
+          <input
+            type="radio"
+            name="paymentIntent"
+            value="pay_later"
+            checked={reservationForm.paymentIntent === "pay_later"}
+            onChange={(e) =>
+              setReservationForm((prev) => ({
+                ...prev,
+                paymentIntent: e.target.value as PaymentIntent,
+              }))
+            }
+            className="mt-1 size-4 text-blue-600 focus:ring-blue-500"
+          />
+          <div>
+            <p className="text-sm font-medium text-gray-900">
+              Book Viewing Only
+            </p>
+            <p className="text-xs text-gray-500">
+              I want to tour the unit first. No payment is required for the visit.
+            </p>
+          </div>
+        </label>
+
+        <label
+          className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3 transition ${
+            reservationForm.paymentIntent === "pay_onsite"
+              ? "border-blue-500 bg-blue-50"
+              : "border-gray-200 bg-white"
+          }`}
+        >
+          <input
+            type="radio"
+            name="paymentIntent"
+            value="pay_onsite"
+            checked={reservationForm.paymentIntent === "pay_onsite"}
+            onChange={(e) =>
+              setReservationForm((prev) => ({
+                ...prev,
+                paymentIntent: e.target.value as PaymentIntent,
+              }))
+            }
+            className="mt-1 size-4 text-blue-600 focus:ring-blue-500"
+          />
+          <div>
+            <p className="text-sm font-medium text-gray-900">
+              Reserve with On-site Visit
+            </p>
+            <p className="text-xs text-gray-500">
+              Submit a reservation request and complete the visit onsite. Approval is still required before payment is finalized.
+            </p>
+          </div>
+        </label>
+      </div>
+
+      {isViewingOnly && (
+        <div className="mt-4 rounded-2xl border border-green-100 bg-green-50 p-3 text-sm text-green-800">
+          Viewing only selected. No payment method is required for this appointment.
+        </div>
+      )}
+    </div>
+  )}
+</div>
 
                       {selectedUnitData.type === "parking_slot" && (
                         <>
@@ -2469,76 +2725,164 @@ const calendarLegend = (
 
                             {showCalendar && (
                               <div className="mt-2 overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 shadow-lg">
-                               <Calendar
-                                tileDisabled={isCalendarTileDisabled}
-                                tileClassName={getCalendarTileClassName}
-                                onChange={(value) => {
-                                  if (Array.isArray(value) && value[0] && value[1]) {
-                                    const start = new Date(value[0]);
-                                    start.setHours(0, 0, 0, 0);
+                                <Calendar
+                                  tileDisabled={isCalendarTileDisabled}
+                                  tileClassName={getCalendarTileClassName}
+                                  onChange={(value) => {
+                                    if (!(value instanceof Date)) return;
 
-                                    const end = new Date(value[1]);
-                                    end.setHours(23, 59, 59, 999);
+                                    const clickedDate = startOfLocalDay(new Date(value));
 
-                                    const startDay = new Date(start);
-                                    startDay.setHours(0, 0, 0, 0);
+                                    const currentStart = reservationForm.startDate
+                                      ? startOfLocalDay(reservationForm.startDate)
+                                      : null;
 
-                                    const endDay = new Date(end);
-                                    endDay.setHours(0, 0, 0, 0);
+                                    const currentEnd = reservationForm.endDate
+                                      ? startOfLocalDay(reservationForm.endDate)
+                                      : null;
 
-                                    const rawDayCount =
-                                      Math.floor(
-                                        (endDay.getTime() - startDay.getTime()) / (1000 * 60 * 60 * 24)
-                                      ) + 1;
+                                    const applyRange = (rangeStart: Date, rangeEnd: Date) => {
+                                      const safeStart = startOfLocalDay(rangeStart);
+                                      const safeEndDay = startOfLocalDay(rangeEnd);
+                                      const adjustedEnd = endOfLocalDay(safeEndDay);
 
-                                    const dayCount = clampNumber(
-                                      rawDayCount,
-                                      RESERVATION_LIMITS.function_hall.minDays,
-                                      RESERVATION_LIMITS.function_hall.maxDays
-                                    );
+                                      const rawDayCount =
+                                        Math.floor(
+                                          (safeEndDay.getTime() - safeStart.getTime()) /
+                                            (1000 * 60 * 60 * 24)
+                                        ) + 1;
 
-                                    const adjustedEnd = new Date(start);
-                                    adjustedEnd.setDate(start.getDate() + dayCount - 1);
-                                    adjustedEnd.setHours(23, 59, 59, 999);
+                                      if (rawDayCount < RESERVATION_LIMITS.function_hall.minDays) {
+                                        setFunctionHallConflictMessage(
+                                          `Minimum reservation is ${RESERVATION_LIMITS.function_hall.minDays} day(s).`
+                                        );
+                                        return false;
+                                      }
 
-                                    const hasConflict = selectedUnitBlockingReservations.some((r) =>
-                                      rangesOverlap(start, adjustedEnd, r.startDate, r.endDate)
-                                    );
+                                      if (rawDayCount > RESERVATION_LIMITS.function_hall.maxDays) {
+                                        setFunctionHallConflictMessage(
+                                          `Maximum reservation is ${RESERVATION_LIMITS.function_hall.maxDays} day(s).`
+                                        );
+                                        return false;
+                                      }
 
-                                    if (hasConflict) {
-                                      setFunctionHallConflictMessage(
-                                        "Please select one continuous available date range. Separate date groups require separate reservations."
+                                      const hasConflict = selectedUnitBlockingReservations.some((r) =>
+                                        rangesOverlap(safeStart, adjustedEnd, r.startDate, r.endDate)
                                       );
+
+                                      if (hasConflict) {
+                                        setFunctionHallConflictMessage(
+                                          "Please select one continuous available date range. Separate date groups require separate reservations."
+                                        );
+                                        return false;
+                                      }
+
+                                      setReservationForm((prev) => ({
+                                        ...prev,
+                                        startDate: safeStart,
+                                        endDate: adjustedEnd,
+                                        duration: rawDayCount,
+                                        durationType: "days",
+                                      }));
+                                      setFunctionHallConflictMessage("");
+                                      return true;
+                                    };
+
+                                    // no selection yet -> start with one day
+                                    if (!currentStart || !currentEnd) {
+                                      setReservationForm((prev) => ({
+                                        ...prev,
+                                        startDate: clickedDate,
+                                        endDate: endOfLocalDay(clickedDate),
+                                        duration: 1,
+                                        durationType: "days",
+                                      }));
+                                      setFunctionHallConflictMessage("");
+                                      setIsSelectingRangeEnd(true);
                                       return;
                                     }
 
-                                    setReservationForm((prev) => ({
-                                      ...prev,
-                                      startDate: start,
-                                      endDate: adjustedEnd,
-                                      duration: dayCount,
-                                      durationType: "days",
-                                    }));
+                                    // currently choosing the second click
+                                    if (isSelectingRangeEnd) {
+                                      const tentativeStart =
+                                        clickedDate.getTime() < currentStart.getTime()
+                                          ? clickedDate
+                                          : currentStart;
 
-                                    setFunctionHallConflictMessage("");
-                                    setShowCalendar(false);
+                                      const tentativeEnd =
+                                        clickedDate.getTime() < currentStart.getTime()
+                                          ? currentStart
+                                          : clickedDate;
+
+                                      const applied = applyRange(tentativeStart, tentativeEnd);
+
+                                      if (applied) {
+                                        setIsSelectingRangeEnd(false);
+                                      }
+                                      return;
+                                    }
+
+                                    // range already exists -> adjust whichever edge is closer
+                                    const distanceToStart = Math.abs(
+                                      clickedDate.getTime() - currentStart.getTime()
+                                    );
+                                    const distanceToEnd = Math.abs(
+                                      clickedDate.getTime() - currentEnd.getTime()
+                                    );
+
+                                    const nextStart =
+                                      distanceToStart <= distanceToEnd ? clickedDate : currentStart;
+
+                                    const nextEnd =
+                                      distanceToStart <= distanceToEnd ? currentEnd : clickedDate;
+
+                                    const normalizedStart =
+                                      nextStart.getTime() <= nextEnd.getTime() ? nextStart : nextEnd;
+                                    const normalizedEnd =
+                                      nextStart.getTime() <= nextEnd.getTime() ? nextEnd : nextStart;
+
+                                    applyRange(normalizedStart, normalizedEnd);
+                                  }}
+                                  value={
+                                    reservationForm.startDate && reservationForm.endDate
+                                      ? [reservationForm.startDate, reservationForm.endDate]
+                                      : reservationForm.startDate ?? undefined
                                   }
-                                }}
-                                value={
-                                  reservationForm.startDate && reservationForm.endDate
-                                    ? [reservationForm.startDate, reservationForm.endDate]
-                                    : undefined
-                                }
-                                selectRange={true}
-                                minDate={getTomorrow()}
-                                defaultActiveStartDate={getTomorrow()}
-                                className="w-full border-0"
-                              />
+                                  selectRange={false}
+                                  minDate={getTomorrow()}
+                                  defaultActiveStartDate={getTomorrow()}
+                                  className="w-full border-0"
+                                />
+
                                 {calendarLegend}
-                                <p className="mt-3 text-xs leading-5 text-amber-700">
-                                  Function hall reservations must be one continuous available date range.
-                                  If you need dates separated by unavailable days, please submit separate reservations.
-                                </p>
+
+                                <div className="mt-3 flex items-center justify-between gap-3">
+                                  <p className="text-xs leading-5 text-amber-700">
+                                    Function hall reservations must be one continuous available date range.
+                                    If you need dates separated by unavailable days, please submit separate reservations.
+                                  </p>
+
+                                  {(reservationForm.startDate || reservationForm.endDate) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setReservationForm((prev) => ({
+                                          ...prev,
+                                          startDate: undefined,
+                                          endDate: undefined,
+                                          duration: 0,
+                                          durationType: "days",
+                                        }));
+                                        setFunctionHallConflictMessage("");
+                                        setIsSelectingRangeEnd(false);
+                                      }}
+                                      className="shrink-0 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 transition hover:bg-red-100"
+                                    >
+                                      Clear dates
+                                    </button>
+                                  )}
+                                </div>
+
                                 {functionHallConflictMessage ? (
                                   <p className="mt-2 text-xs font-medium text-red-600">
                                     {functionHallConflictMessage}
@@ -2622,8 +2966,10 @@ const calendarLegend = (
                               onClick={() => setShowCalendar((s) => !s)}
                               className="flex w-full items-center justify-between rounded-xl border border-gray-300 px-3 py-2 text-left text-sm transition hover:border-blue-400"
                             >
-                              <span className="text-gray-900">
-                                {formatDate(reservationForm.startDate)}
+                              <span className={reservationForm.startDate ? "text-gray-900" : "text-gray-400"}>
+                                {reservationForm.startDate
+                                  ? formatDate(reservationForm.startDate)
+                                  : "Please select lease start date"}
                               </span>
 
                               <CalendarDays className="ml-3 size-4 shrink-0 text-blue-500" />
@@ -2632,11 +2978,7 @@ const calendarLegend = (
                             {showCalendar && (
                               <div className="mt-2 overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 shadow-lg">
                                 <Calendar
-                                  value={
-                                    reservationForm.endDate
-                                      ? formatDate(reservationForm.endDate)
-                                      : ""
-                                  }
+                                  value={reservationForm.startDate ?? undefined}
                                   tileDisabled={isCalendarTileDisabled}
                                   tileClassName={getCalendarTileClassName}
                                   selectRange={false}
@@ -2667,54 +3009,54 @@ const calendarLegend = (
                           </div>
 
                           <div>
-                            <label className="mb-2 mt-4 block text-sm text-gray-700">
-                              Lease Duration (months)
-                            </label>
-                            <input
-                              type="number"
-                              required
-                              min={RESERVATION_LIMITS.rental_space.minMonths}
-                              max={RESERVATION_LIMITS.rental_space.maxMonths}
-                              step={1}
-                              value={reservationForm.duration}
-                              onChange={(e) => {
-                                const parsed = parseInt(e.target.value, 10);
+                          <label className="mb-2 mt-4 block text-sm text-gray-700">
+                            Lease Duration (months)
+                          </label>
+                          <input
+                            type="number"
+                            required
+                            min={RESERVATION_LIMITS.rental_space.minMonths}
+                            max={RESERVATION_LIMITS.rental_space.maxMonths}
+                            step={1}
+                            value={reservationForm.duration}
+                            onChange={(e) => {
+                              const parsed = parseInt(e.target.value, 10);
 
-                                const safeDuration = clampNumber(
-                                  Number.isNaN(parsed)
-                                    ? RESERVATION_LIMITS.rental_space.minMonths
-                                    : parsed,
-                                  RESERVATION_LIMITS.rental_space.minMonths,
-                                  RESERVATION_LIMITS.rental_space.maxMonths
-                                );
+                              const safeDuration = clampNumber(
+                                Number.isNaN(parsed)
+                                  ? RESERVATION_LIMITS.rental_space.minMonths
+                                  : parsed,
+                                RESERVATION_LIMITS.rental_space.minMonths,
+                                RESERVATION_LIMITS.rental_space.maxMonths
+                              );
 
-                                setReservationForm((prev) => {
-                                  const safeStartDate = prev.startDate ?? getTomorrow();
+                              setReservationForm((prev) => {
+                                const safeStartDate = prev.startDate ?? getTomorrow();
 
-                                  return {
-                                    ...prev,
-                                    startDate: safeStartDate,
-                                    duration: safeDuration,
-                                    durationType: "months",
-                                    paymentCycle:
-                                      prev.paymentCycle === "quarterly" && safeDuration < 3
-                                        ? "monthly"
-                                        : prev.paymentCycle,
-                                    endDate: computeEndFromForm(
-                                      safeStartDate,
-                                      safeDuration,
-                                      "months"
-                                    ),
-                                  };
-                                });
-                              }}
-                              className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                            />
-                            <p className="mt-2 text-xs text-gray-500">
-                              Minimum {RESERVATION_LIMITS.rental_space.minMonths} month, maximum{" "}
-                              {RESERVATION_LIMITS.rental_space.maxMonths} months.
-                            </p>
-                          </div>
+                                return {
+                                  ...prev,
+                                  startDate: safeStartDate,
+                                  duration: safeDuration,
+                                  durationType: "months",
+                                  paymentCycle:
+                                  prev.paymentCycle === "quarterly" &&
+                                  safeDuration < RESERVATION_LIMITS.rental_space.minMonths
+                                    ? "monthly"
+                                    : prev.paymentCycle,
+                                  endDate: computeEndFromForm(
+                                    safeStartDate,
+                                    safeDuration,
+                                    "months"
+                                  ),
+                                };
+                              });
+                            }}
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                          />
+                          <p className="mt-2 text-xs text-gray-500">
+                            Minimum 12 months (1 year), maximum {RESERVATION_LIMITS.rental_space.maxMonths} months.
+                          </p>
+                        </div>
 
                           <div className="mt-4">
                             <label className="mb-2 block text-sm text-gray-700">
@@ -2821,7 +3163,7 @@ const calendarLegend = (
                         </>
                       )}
 
-                      {!hidePaymentSection && (
+                      {shouldShowPaymentSection && (
                         <div>
                           <label className="mb-2 block text-sm text-gray-700">
                             Payment Method
@@ -2917,33 +3259,33 @@ const calendarLegend = (
                 
 
                       <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-                        <p className="mb-1 text-sm text-gray-600">Estimated Total</p>
+                        <p className="mb-1 text-sm text-gray-600">
+                          {isViewingOnly ? "Appointment Summary" : "Reservation Summary"}
+                        </p>
+
                         <div className="text-lg font-bold text-gray-900">
-                          {hidePaymentSection
-                            ? "No payment for viewing"
-                            : formatCurrency(estimatedTotal)}
+                          {isViewingOnly ? "No payment required" : formatCurrency(estimatedTotal)}
                         </div>
+
                         <p className="mt-2 text-xs text-gray-500">
-                          {hidePaymentSection
-                            ? "* No payment required for this visit"
-                            : "* Payment required after admin approval"}
+                          {isViewingOnly
+                            ? "* This request is for viewing only and does not require payment."
+                            : "* Reservation requests are subject to admin approval before payment is finalized."}
                         </p>
                       </div>
 
                       <button
                         type="submit"
-                        disabled={
-                          isSubmitting ||
-                          !reservationForm.agreedToPolicies ||
-                          (reservationForm.modeOfVisit === "onsite" &&
-                            (!reservationForm.appointmentDate || !reservationForm.appointmentTime)) ||
-                          showPaymentMethodEmptyState ||
-                          (selectedUnitData.type === "function_hall" &&
-                            (!reservationForm.duration || !!functionHallConflictMessage))
-                        }
+                        disabled={!canSubmit}
                         className="w-full rounded-xl bg-blue-600 px-4 py-3 font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {isSubmitting ? "Submitting..." : "Submit Reservation Request"}
+                        {isSubmitting
+                          ? "Submitting..."
+                          : isViewingOnly
+                            ? "Book Viewing Appointment"
+                            : reservationIntent === "reserve_onsite"
+                              ? "Submit Reservation & Visit Request"
+                              : "Submit Reservation Request"}
                       </button>
                                           </form>
                   </div>

@@ -453,15 +453,16 @@ export default function ClientMessages() {
   const { user } = useAuth();
   const { sendSystemNotification } = useNotifications();
   const {
-    tickets,
-    fetchTickets,
-    getMessagesByTicketId,
-    fetchMessagesByTicketId,
-    createTicket,
-    sendTicketMessage,
-    markTicketResolved,
-    reopenTicket,
-  } = useInquiries();
+  tickets,
+  fetchTickets,
+  getMessagesByTicketId,
+  fetchMessagesByTicketId,
+  createTicket,
+  sendTicketMessage,
+  markTicketResolved,
+  reopenTicket,
+  markTicketRead,
+} = useInquiries();
 
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -498,9 +499,11 @@ export default function ClientMessages() {
   );
 
   useEffect(() => {
-    if (!selectedTicket?.id) return;
-    void fetchMessagesByTicketId(selectedTicket.id);
-  }, [fetchMessagesByTicketId, selectedTicket?.id]);
+  if (!selectedTicket?.id) return;
+
+  void fetchMessagesByTicketId(selectedTicket.id);
+  void markTicketRead(selectedTicket.id, 'customer');
+}, [fetchMessagesByTicketId, markTicketRead, selectedTicket?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -606,47 +609,44 @@ export default function ClientMessages() {
   );
 
   const handleSendReply = useCallback(async () => {
-    if (!selectedTicket || !user || isSendingReply) return;
+  if (!selectedTicket || !user || isSendingReply) return;
 
-    const reply = currentReply.trim();
-    if (!reply) return;
+  const reply = currentReply.trim();
+  if (!reply) return;
 
-    setIsSendingReply(true);
+  setIsSendingReply(true);
 
-    try {
-      await sendTicketMessage(selectedTicket.id, {
-        body: reply,
-        senderType: 'customer',
-        senderUserId: user.id,
-        senderName:
-          [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || null,
-        senderEmail: user.email ?? null,
-      });
+  try {
+    await sendTicketMessage(selectedTicket.id, {
+      body: reply,
+      senderType: 'customer',
+      senderUserId: user.id,
+      senderName:
+        [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || null,
+      senderEmail: user.email ?? null,
+    });
 
-      setReplyDrafts((prev) => ({
-        ...prev,
-        [selectedTicket.id]: '',
-      }));
+    setReplyDrafts((prev) => ({
+      ...prev,
+      [selectedTicket.id]: '',
+    }));
 
-      sendSystemNotification(
-        user.id,
-        'Reply Sent',
-        `Your reply to "${selectedTicket.subject}" has been sent.`
-      );
-
-      void fetchMessagesByTicketId(selectedTicket.id, true);
-    } finally {
-      setIsSendingReply(false);
-    }
-  }, [
-    currentReply,
-    fetchMessagesByTicketId,
-    isSendingReply,
-    selectedTicket,
-    sendSystemNotification,
-    sendTicketMessage,
-    user,
-  ]);
+    sendSystemNotification(
+      user.id,
+      'Reply Sent',
+      `Your reply to "${selectedTicket.subject}" has been sent.`
+    );
+  } finally {
+    setIsSendingReply(false);
+  }
+}, [
+  currentReply,
+  isSendingReply,
+  selectedTicket,
+  sendSystemNotification,
+  sendTicketMessage,
+  user,
+]);
 
   const handleResolve = useCallback(async () => {
     if (!selectedTicket || isUpdatingStatus) return;
@@ -689,7 +689,7 @@ export default function ClientMessages() {
   }, [isUpdatingStatus, reopenTicket, selectedTicket, sendSystemNotification, user]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <div className="flex items-end justify-between gap-4">
           <header>

@@ -287,7 +287,7 @@ const handleHistoryImagesUpload = async (files: FileList | null) => {
 
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
   <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
       <div className="mb-6 flex flex-col gap-3">
         <div>

@@ -57,18 +57,58 @@ export function ContentSettingsProvider({
     refreshContentSettings();
   }, []);
 
+  useEffect(() => {
+  let timer: number | null = null;
+
+  const scheduleRefresh = () => {
+    if (timer) {
+      window.clearTimeout(timer);
+    }
+
+    timer = window.setTimeout(() => {
+      void refreshContentSettings();
+    }, 150);
+  };
+
+  const channel = supabase
+    .channel('site-content-realtime')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'site_content',
+      },
+      () => {
+        scheduleRefresh();
+      }
+    )
+    .subscribe((status) => {
+      if (import.meta.env.DEV) {
+        console.log('Site content realtime status:', status);
+      }
+    });
+
+  return () => {
+    if (timer) {
+      window.clearTimeout(timer);
+    }
+    void supabase.removeChannel(channel);
+  };
+}, []);
+
   const updateContentSettings = async (settings: Partial<ContentSettings>) => {
     const payload: any = {};
 
-    if (settings.hero) payload.hero = settings.hero;
-    if (settings.about) payload.about = settings.about;
-    if (settings.history) payload.history = settings.history;
-    if (settings.featured) payload.featured = settings.featured;
-    if (settings.contact) payload.contact = settings.contact;
-    if (settings.footer) payload.footer = settings.footer;
-    if (settings.menu) payload.menu = settings.menu;
-    if (settings.announcements) payload.announcements = settings.announcements;
-    if (settings.policies !== undefined) payload.policies = settings.policies;
+    if (settings.hero !== undefined) payload.hero = settings.hero;
+if (settings.about !== undefined) payload.about = settings.about;
+if (settings.history !== undefined) payload.history = settings.history;
+if (settings.featured !== undefined) payload.featured = settings.featured;
+if (settings.contact !== undefined) payload.contact = settings.contact;
+if (settings.footer !== undefined) payload.footer = settings.footer;
+if (settings.menu !== undefined) payload.menu = settings.menu;
+if (settings.announcements !== undefined) payload.announcements = settings.announcements;
+if (settings.policies !== undefined) payload.policies = settings.policies;
 
     const targetId = contentSettings.content_id;
 

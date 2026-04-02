@@ -96,6 +96,27 @@ function resolveProofImageSrc(value?: string | null) {
   return data.publicUrl || '';
 }
 
+function resolvePaymentMethodQrSrc(
+  method:
+    | {
+        qrImageUrl?: string | null;
+        qrImagePath?: string | null;
+      }
+    | null
+    | undefined
+) {
+  if (!method) return '';
+
+  const directUrl = method.qrImageUrl?.trim();
+  if (directUrl) return directUrl;
+
+  const path = method.qrImagePath?.trim();
+  if (!path) return '';
+
+  const { data } = supabase.storage.from('payment_method_qr').getPublicUrl(path);
+  return data.publicUrl || '';
+}
+
 function formatFileDate(value?: string | Date | null) {
   const date = getSafeDate(value);
   const yyyy = date.getFullYear();
@@ -169,6 +190,10 @@ export default function ClientPayments() {
   const selectedPaymentMethodConfig = useMemo(() => {
     return getPaymentMethodByCode(paymentForm.method) ?? null;
   }, [getPaymentMethodByCode, paymentForm.method]);
+
+  const selectedPaymentMethodQrSrc = useMemo(() => {
+  return resolvePaymentMethodQrSrc(selectedPaymentMethodConfig);
+}, [selectedPaymentMethodConfig]);
 
   const fullName = useMemo(
     () => `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim(),
@@ -772,7 +797,7 @@ Thank you for your payment.
   const shouldShowOverview = hasPayments || eligibleReservations.length > 0;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
         <header>
           <h1 className={uiTypography.pageTitle}>Payments</h1>
@@ -1382,6 +1407,7 @@ Thank you for your payment.
                       <label className={`${uiTypography.formLabel} mb-2 ml-0`}>
                         Payment Amount (₱)
                       </label>
+                      <div>
                       <div className="relative">
                         <Wallet className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                         <input
@@ -1400,13 +1426,14 @@ Thank you for your payment.
                           className={`w-full rounded-2xl border border-slate-300 py-3 pl-10 pr-4 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
                           placeholder="0.00"
                         />
-                        {selectedReservationData?.unitType === 'rental_space' && (
-                          <p className="mt-2 text-xs text-amber-600">
-                            This payment must cover at least{' '}
-                            {formatCurrency(rentalRequiredPayment)} based on your billing cycle.
-                          </p>
-                        )}
                       </div>
+
+                      {selectedReservationData?.unitType === 'rental_space' && (
+                        <p className="mt-2 text-xs text-amber-600">
+                          This payment must cover at least {formatCurrency(rentalRequiredPayment)} based on your billing cycle.
+                        </p>
+                      )}
+                    </div>
                     </div>
 
                     <div>
@@ -1453,28 +1480,28 @@ Thank you for your payment.
                           )}
                         </div>
 
-                        {selectedPaymentMethodConfig.qrImageUrl && (
-  <div className="mt-4">
-    <button
-      type="button"
-      onClick={() => setViewingImage(selectedPaymentMethodConfig.qrImageUrl || null)}
-      className="group relative block rounded-xl border border-slate-200 bg-white p-2 transition hover:border-sky-300 hover:shadow-sm"
-      title="Click to enlarge QR code"
-    >
-      <img
-        src={selectedPaymentMethodConfig.qrImageUrl}
-        alt={`${selectedPaymentMethodConfig.displayName} QR`}
-        className="h-56 w-56 rounded-lg object-contain"
-        loading="lazy"
-        decoding="async"
-      />
+                        {selectedPaymentMethodQrSrc && (
+                          <div className="mt-4">
+                            <button
+                              type="button"
+                              onClick={() => setViewingImage(selectedPaymentMethodQrSrc)}
+                              className="group relative block rounded-xl border border-slate-200 bg-white p-2 transition hover:border-sky-300 hover:shadow-sm"
+                              title="Click to enlarge QR code"
+                            >
+                              <img
+                                src={selectedPaymentMethodQrSrc}
+                                alt={`${selectedPaymentMethodConfig.displayName} QR`}
+                                className="h-56 w-56 rounded-lg object-contain"
+                                loading="lazy"
+                                decoding="async"
+                              />
 
-      <div className="absolute inset-x-2 bottom-2 rounded-lg bg-slate-900/70 px-3 py-1.5 text-center text-xs font-medium text-white opacity-0 transition group-hover:opacity-100">
-        Click to enlarge
-      </div>
-    </button>
-  </div>
-)}
+                              <div className="absolute inset-x-2 bottom-2 rounded-lg bg-slate-900/70 px-3 py-1.5 text-center text-xs font-medium text-white opacity-0 transition group-hover:opacity-100">
+                                Click to enlarge
+                              </div>
+                            </button>
+                          </div>
+                        )}
 
                         {selectedPaymentMethodConfig.instructions && (
                           <div className="mt-4 rounded-xl bg-white p-3 text-sm text-slate-600">

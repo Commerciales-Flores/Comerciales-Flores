@@ -65,22 +65,38 @@ type PaymentMethodsContextType = {
 const PaymentMethodsContext = createContext<PaymentMethodsContextType | undefined>(undefined);
 
 /**
- * Change this later if you create a dedicated storage bucket for QR codes.
- * Keeping it on property_images makes the first rollout easier.
+ * Centralized bucket for payment method assets
  */
-const PAYMENT_METHODS_BUCKET = 'property_images';
+const PAYMENT_METHODS_BUCKET = 'property_media';
 
+/**
+ * Safely resolve public image URL
+ */
 function getPublicImageUrl(path?: string | null) {
   if (!path) return null;
-  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('blob:')) {
+
+  // already full URL
+  if (
+    path.startsWith('http://') ||
+    path.startsWith('https://') ||
+    path.startsWith('blob:')
+  ) {
     return path;
   }
 
-  const { data } = supabase.storage.from(PAYMENT_METHODS_BUCKET).getPublicUrl(path);
-  return data.publicUrl;
+  const { data } = supabase.storage
+    .from(PAYMENT_METHODS_BUCKET)
+    .getPublicUrl(path);
+
+  return data?.publicUrl || null;
 }
 
+/**
+ * Normalize DB row → UI config
+ */
 function mapPaymentMethodRow(row: any): PaymentMethodConfig {
+  const qrPath = row.qr_image_path ?? null;
+
   return {
     id: row.payment_method_id,
     publicId: row.public_id ?? null,
@@ -91,14 +107,21 @@ function mapPaymentMethodRow(row: any): PaymentMethodConfig {
     mobileNumber: row.mobile_number ?? null,
     bankName: row.bank_name ?? null,
     branchName: row.branch_name ?? null,
-    qrImagePath: row.qr_image_path ?? null,
-    qrImageUrl: getPublicImageUrl(row.qr_image_path),
+    qrImagePath: qrPath,
+    qrImageUrl: getPublicImageUrl(qrPath),
     instructions: row.instructions ?? null,
     isActive: Boolean(row.is_active),
     sortOrder: Number(row.sort_order ?? 0),
     createdAt: row.created_at ?? null,
     updatedAt: row.updated_at ?? null,
   };
+}
+
+function sortPaymentMethods(items: PaymentMethodConfig[]) {
+  return [...items].sort((a, b) => {
+    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+    return a.displayName.localeCompare(b.displayName);
+  });
 }
 
 export function PaymentMethodsProvider({ children }: { children: ReactNode }) {
@@ -129,79 +152,144 @@ export function PaymentMethodsProvider({ children }: { children: ReactNode }) {
     refreshPaymentMethods();
   }, [refreshPaymentMethods]);
 
-  const addPaymentMethod = useCallback(
-    async (payload: PaymentMethodPayload) => {
-      const { error } = await supabase.from('payment_methods').insert([
-        {
-          method_code: payload.methodCode,
-          display_name: payload.displayName.trim(),
-          account_name: payload.accountName?.trim() || null,
-          account_number: payload.accountNumber?.trim() || null,
-          mobile_number: payload.mobileNumber?.trim() || null,
-          bank_name: payload.bankName?.trim() || null,
-          branch_name: payload.branchName?.trim() || null,
-          qr_image_path: payload.qrImagePath?.trim() || null,
-          instructions: payload.instructions?.trim() || null,
-          is_active: payload.isActive,
-          sort_order: Number(payload.sortOrder || 0),
-        },
-      ]);
+  useEffect(() => {
+  const channel = supabase
+    .channel('payment-methods-realtime')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'payment_methods',
+      },
+      (payload) => {
+        const newItem = mapPaymentMethodRow(payload.new);
 
-      if (error) throw error;
-      await refreshPaymentMethods();
-    },
-    [refreshPaymentMethods]
-  );
+        setPaymentMethods((prev) => {
+          if (prev.some((item) => item.id === newItem.id)) return prev;
+          return sortPaymentMethods([...prev, newItem]);
+        });
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'payment_methods',
+      },
+      (payload) => {
+        const updatedItem = mapPaymentMethodRow(payload.new);
+
+        setPaymentMethods((prev) =>
+          sortPaymentMethods(
+            prev.map((item) => (item.id === updatedItem.id ? updatedItem : item))
+          )
+        );
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'payment_methods',
+      },
+      (payload) => {
+        const deletedId = payload.old.payment_method_id as string | undefined;
+        if (!deletedId) return;
+
+        setPaymentMethods((prev) => prev.filter((item) => item.id !== deletedId));
+      }
+    )
+    .subscribe((status) => {
+      if (import.meta.env.DEV) {
+        console.log('Payment methods realtime status:', status);
+      }
+    });
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}, []);
+
+  const addPaymentMethod = useCallback(
+  async (payload: PaymentMethodPayload) => {
+    const { error } = await supabase.from('payment_methods').insert([
+      {
+        method_code: payload.methodCode,
+        display_name: payload.displayName.trim(),
+        account_name: payload.accountName?.trim() || null,
+        account_number: payload.accountNumber?.trim() || null,
+        mobile_number: payload.mobileNumber?.trim() || null,
+        bank_name: payload.bankName?.trim() || null,
+        branch_name: payload.branchName?.trim() || null,
+        qr_image_path: payload.qrImagePath?.trim() || null,
+        instructions: payload.instructions?.trim() || null,
+        is_active: payload.isActive,
+        sort_order: Number(payload.sortOrder || 0),
+      },
+    ]);
+
+    if (error) throw error;
+  },
+  []
+);
 
   const updatePaymentMethod = useCallback(
-    async (id: string, payload: PaymentMethodPayload) => {
-      const { error } = await supabase
-        .from('payment_methods')
-        .update({
-          method_code: payload.methodCode,
-          display_name: payload.displayName.trim(),
-          account_name: payload.accountName?.trim() || null,
-          account_number: payload.accountNumber?.trim() || null,
-          mobile_number: payload.mobileNumber?.trim() || null,
-          bank_name: payload.bankName?.trim() || null,
-          branch_name: payload.branchName?.trim() || null,
-          qr_image_path: payload.qrImagePath?.trim() || null,
-          instructions: payload.instructions?.trim() || null,
-          is_active: payload.isActive,
-          sort_order: Number(payload.sortOrder || 0),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('payment_method_id', id);
+  async (id: string, payload: PaymentMethodPayload) => {
+    const { error } = await supabase
+      .from('payment_methods')
+      .update({
+        method_code: payload.methodCode,
+        display_name: payload.displayName.trim(),
+        account_name: payload.accountName?.trim() || null,
+        account_number: payload.accountNumber?.trim() || null,
+        mobile_number: payload.mobileNumber?.trim() || null,
+        bank_name: payload.bankName?.trim() || null,
+        branch_name: payload.branchName?.trim() || null,
+        qr_image_path: payload.qrImagePath?.trim() || null,
+        instructions: payload.instructions?.trim() || null,
+        is_active: payload.isActive,
+        sort_order: Number(payload.sortOrder || 0),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('payment_method_id', id);
 
-      if (error) throw error;
-      await refreshPaymentMethods();
-    },
-    [refreshPaymentMethods]
-  );
+    if (error) throw error;
+  },
+  []
+);
 
   const deletePaymentMethod = useCallback(
-    async (id: string) => {
-      const { error } = await supabase
-        .from('payment_methods')
-        .delete()
-        .eq('payment_method_id', id);
+  async (id: string) => {
+    const { error } = await supabase
+      .from('payment_methods')
+      .delete()
+      .eq('payment_method_id', id);
 
-      if (error) throw error;
-      await refreshPaymentMethods();
-    },
-    [refreshPaymentMethods]
-  );
+    if (error) throw error;
+  },
+  []
+);
 
+  /**
+   * Upload QR → payment-methods/qr/
+   */
   const uploadPaymentMethodQr = useCallback(async (file: File) => {
     try {
       const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const filePath = `payment-methods/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+      const filePath = `payment-methods/qr/${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}.${ext}`;
 
       const { error } = await supabase.storage
         .from(PAYMENT_METHODS_BUCKET)
         .upload(filePath, file, { upsert: false });
 
       if (error) throw error;
+
       return filePath;
     } catch (error) {
       console.error('Failed to upload payment method QR:', error);
@@ -246,7 +334,7 @@ export function PaymentMethodsProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <PaymentMethodsContext.Provider value={value}>  
+    <PaymentMethodsContext.Provider value={value}>
       {children}
     </PaymentMethodsContext.Provider>
   );

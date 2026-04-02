@@ -32,9 +32,43 @@ const INITIAL_PASSWORD_FORM = {
   confirmPassword: '',
 };
 
+const normalizeName = (value: string) => value.trim().replace(/\s+/g, ' ');
+
+const normalizePhone = (value: string) => {
+  const digits = value.replace(/\D/g, '');
+
+  if (!digits) return '';
+
+  // 09123456789 -> +639123456789
+  if (digits.startsWith('09') && digits.length === 11) {
+    return `+63${digits.slice(1)}`;
+  }
+
+  // 9123456789 -> +639123456789
+  if (digits.startsWith('9') && digits.length === 10) {
+    return `+63${digits}`;
+  }
+
+  // 639123456789 -> +639123456789
+  if (digits.startsWith('639') && digits.length === 12) {
+    return `+${digits}`;
+  }
+
+  // already typed with +63
+  if (value.trim().startsWith('+63') && digits.length === 12) {
+    return `+${digits}`;
+  }
+
+  return '';
+};
+
+const isValidPHPhone = (value: string) => /^\+639\d{9}$/.test(value);
+
 export default function ClientProfile() {
   const {
     user,
+    uploadProfilePicture,
+    deleteProfilePicture, 
     updateProfile,
     changePassword,
     changeEmail,
@@ -48,6 +82,8 @@ export default function ClientProfile() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  const [removingAvatar, setRemovingAvatar] = useState(false);  
 
   const [changingEmail, setChangingEmail] = useState(false);
   const [savingEmail, setSavingEmail] = useState(false);
@@ -83,6 +119,14 @@ export default function ClientProfile() {
       )}&background=0D8ABC&color=fff&size=512`
     );
   }, [user, fullName]);
+
+  const hasCustomAvatar = useMemo(() => {
+  return Boolean(
+    (user as any)?.profilePictureUrl ||
+    (user as any)?.avatarUrl ||
+    (user as any)?.photoURL
+  );
+}, [user]);
 
   const initialProfileForm = useMemo(
   () => ({
@@ -225,14 +269,39 @@ const handleEditCancel = useCallback(() => {
       try {
         setSavingProfile(true);
 
-        await updateProfile({
-          firstName: profileForm.firstName.trim(),
-          lastName: profileForm.lastName.trim(),
-          phone: profileForm.contactNumber.trim(),
-          address: profileForm.address.trim(),
-          latitude: profileForm.latitude ? Number(profileForm.latitude) : null,
-          longitude: profileForm.longitude ? Number(profileForm.longitude) : null,
-        });
+        const cleanedFirstName = normalizeName(profileForm.firstName);
+const cleanedLastName = normalizeName(profileForm.lastName);
+const cleanedPhone = normalizePhone(profileForm.contactNumber);
+const cleanedAddress = profileForm.address.trim();
+
+if (profileForm.contactNumber.trim() && !cleanedPhone) {
+  showMessage('error', 'Please enter a valid Philippine mobile number.');
+  setSavingProfile(false);
+  return;
+}
+
+if (cleanedPhone && !isValidPHPhone(cleanedPhone)) {
+  showMessage('error', 'Please enter a valid Philippine mobile number.');
+  setSavingProfile(false);
+  return;
+}
+
+await updateProfile({
+  firstName: cleanedFirstName,
+  lastName: cleanedLastName,
+  phone: cleanedPhone,
+  address: cleanedAddress,
+  latitude: profileForm.latitude ? Number(profileForm.latitude) : null,
+  longitude: profileForm.longitude ? Number(profileForm.longitude) : null,
+});
+
+setProfileForm((prev) => ({
+  ...prev,
+  firstName: cleanedFirstName,
+  lastName: cleanedLastName,
+  contactNumber: cleanedPhone,
+  address: cleanedAddress,
+}));
 
         setEditing(false);
         showMessage('success', 'Profile information updated!');
@@ -300,7 +369,8 @@ const handleEditCancel = useCallback(() => {
 
     showMessage(
       'success',
-      'Email change started. Please check your new email address for the confirmation link.'
+      result?.message ||
+        'We sent a verification link to your new email address. Your current email stays active until the new address is verified.'
     );
   } catch {
     showMessage('error', 'Failed to start email change.');
@@ -349,39 +419,68 @@ const handleEditCancel = useCallback(() => {
   );
 
   const handleImageChange = useCallback(
-    async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file || uploadingAvatar) return;
+  async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || uploadingAvatar || removingAvatar) return;
 
-      if (!file.type.startsWith('image/')) {
-        showMessage('error', 'Please select a valid image file.');
+    if (!file.type.startsWith('image/')) {
+      showMessage('error', 'Please select a valid image file.');
+      return;
+    }
+
+    try {
+      setUploadingAvatar(true);
+
+      const uploadedUrl = await uploadProfilePicture(file);
+
+      if (!uploadedUrl) {
+        showMessage('error', 'Failed to upload image.');
         return;
       }
 
-      try {
-        setUploadingAvatar(true);
+      showMessage('success', 'Profile picture updated!');
+    } catch {
+      showMessage('error', 'Failed to upload image.');
+    } finally {
+      setUploadingAvatar(false);
 
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = () => reject(new Error('Failed to read image'));
-          reader.readAsDataURL(file);
-        });
-
-        await Promise.resolve(updateProfile({ profilePictureUrl: dataUrl }));
-        showMessage('success', 'Profile picture updated!');
-      } catch {
-        showMessage('error', 'Failed to upload image');
-      } finally {
-        setUploadingAvatar(false);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
       }
-    },
-    [showMessage, updateProfile, uploadingAvatar]
-  );
+    }
+  },
+  [
+    uploadProfilePicture,
+    uploadingAvatar,
+    removingAvatar,
+    showMessage,
+  ]
+);
+
+const handleRemoveImage = useCallback(async () => {
+  if (uploadingAvatar || removingAvatar) return;
+
+  try {
+    setRemovingAvatar(true);
+
+    const success = await deleteProfilePicture();
+
+    if (!success) {
+      showMessage('error', 'Failed to remove profile picture.');
+      return;
+    }
+
+    showMessage('success', 'Profile picture removed.');
+  } catch {
+    showMessage('error', 'Failed to remove profile picture.');
+  } finally {
+    setRemovingAvatar(false);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }
+}, [deleteProfilePicture, removingAvatar, showMessage, uploadingAvatar]);
 
 const handleDeleteAccount = useCallback(async () => {
   try {
@@ -483,7 +582,7 @@ const handleProceedDeletion = useCallback(async () => {
 }, [user, deleting, deletionStatus, showMessage]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
   <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <header className="flex flex-col justify-between gap-4 border-b border-slate-100 pb-6 md:flex-row md:items-end">
           <div>
@@ -523,47 +622,70 @@ const handleProceedDeletion = useCallback(async () => {
               <div className="h-24 bg-gradient-to-r from-slate-900 via-slate-800 to-blue-900" />
 
               <div className="-mt-12 flex flex-col items-center px-6 pb-6 text-center">
-                <div
-                  className={`relative group ${uploadingAvatar ? 'pointer-events-none opacity-70' : ''}`}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <div className="rounded-[1.75rem] bg-white p-1.5 shadow-xl">
-                    {avatarUrl ? (
-                      <img
-                        src={avatarUrl}
-                        alt="Profile"
-                        className="size-28 rounded-[1.35rem] bg-slate-100 object-cover sm:size-32"
-                        loading="lazy"
-                        decoding="async"
-                      />
-                    ) : (
-                      <div className="flex size-28 items-center justify-center rounded-[1.35rem] bg-slate-900 text-3xl font-bold text-white sm:size-32">
-                        {initials}
-                      </div>
-                    )}
-                  </div>
+                <div className="flex flex-col items-center">
+              <div
+                className={`relative group ${
+                  uploadingAvatar || removingAvatar ? 'pointer-events-none opacity-70' : ''
+                }`}
+              >
+                <div className="rounded-[1.75rem] bg-white p-1.5 shadow-xl">
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt="Profile"
+                      className="size-28 rounded-[1.35rem] bg-slate-100 object-cover sm:size-32"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  ) : (
+                    <div className="flex size-28 items-center justify-center rounded-[1.35rem] bg-slate-900 text-3xl font-bold text-white sm:size-32">
+                      {initials}
+                    </div>
+                  )}
+                </div>
 
+                <button
+                  type="button"
+                  disabled={uploadingAvatar || removingAvatar}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="absolute -bottom-2 -right-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg transition-all hover:bg-blue-700 disabled:opacity-60"
+                  aria-label="Change profile photo"
+                >
+                  {uploadingAvatar ? (
+                    <div className="size-5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                  ) : (
+                    <Camera className="size-5" />
+                  )}
+                </button>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImageChange}
+                />
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+
+                {hasCustomAvatar && (
                   <button
                     type="button"
-                    disabled={uploadingAvatar}
-                    className="absolute -bottom-2 -right-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg transition-all hover:bg-blue-700 disabled:opacity-60"
-                    aria-label="Change profile photo"
+                    disabled={uploadingAvatar || removingAvatar}
+                    onClick={() => void handleRemoveImage()}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-60"
                   >
-                    {uploadingAvatar ? (
-                      <div className="size-5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                    {removingAvatar ? (
+                      <div className="size-4 animate-spin rounded-full border-2 border-rose-300 border-t-rose-700" />
                     ) : (
-                      <Camera className="size-5" />
+                      <X className="size-4" />
                     )}
+                    {removingAvatar ? 'Removing...' : 'Remove Photo'}
                   </button>
-
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleImageChange}
-                  />
-                </div>
+                )}
+              </div>
+            </div>
 
                 <h2 className="mt-4 text-xl font-bold text-slate-900">{fullName}</h2>
                 <p className="text-sm text-slate-500">{user?.email || 'No email available'}</p>
@@ -573,8 +695,10 @@ const handleProceedDeletion = useCallback(async () => {
                   Client
                 </div>
 
-                {uploadingAvatar && (
-                  <p className="mt-3 text-xs font-medium text-slate-500">Uploading photo...</p>
+                {(uploadingAvatar || removingAvatar) && (
+                  <p className="mt-3 text-xs font-medium text-slate-500">
+                    {uploadingAvatar ? 'Uploading photo...' : 'Removing photo...'}
+                  </p>
                 )}
 
                 <div className="mt-6 grid w-full grid-cols-2 gap-3">
@@ -848,7 +972,7 @@ const handleProceedDeletion = useCallback(async () => {
         <div className="space-y-4 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
           <p className="text-sm text-slate-600">
             Your current email is <span className="font-semibold text-slate-900">{user?.email || '—'}</span>.
-            The new email will only be used after verification.
+            Your current email stays active until the new email is verified.
           </p>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -904,6 +1028,12 @@ const handleProceedDeletion = useCallback(async () => {
                           icon={<Phone className="size-4" />}
                           value={profileForm.contactNumber}
                           onChange={(v) => handleProfileFieldChange('contactNumber', v)}
+                          onBlur={() =>
+                            handleProfileFieldChange(
+                              'contactNumber',
+                              normalizePhone(profileForm.contactNumber)
+                            )
+                          }
                         />
 
                         <div className="md:col-span-2 space-y-4">
@@ -1240,12 +1370,14 @@ function FormInput({
   icon,
   value,
   onChange,
+  onBlur,
   type = 'text',
 }: {
   label: string;
   icon?: ReactNode;
   value: string;
   onChange: (v: string) => void;
+  onBlur?: () => void;
   type?: string;
 }) {
   return (
@@ -1263,6 +1395,7 @@ function FormInput({
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
           className={`w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 text-sm text-slate-800 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 ${
             icon ? 'pl-10 pr-4' : 'px-4'
           }`}

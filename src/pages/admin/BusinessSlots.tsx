@@ -783,9 +783,19 @@ const [formError, setFormError] = useState<string | null>(null);
       }
 
       const parsedCapacity =
-        unitForm.type === 'function_hall' && unitForm.capacity
-          ? parseInt(unitForm.capacity, 10)
-          : undefined;
+      unitForm.type === 'function_hall' && unitForm.capacity
+        ? parseInt(unitForm.capacity, 10)
+        : undefined;
+
+    // ✅ ADD IT HERE
+    if (unitForm.type === 'function_hall') {
+      if (parsedCapacity === undefined || parsedCapacity <= 0) {
+        setFormError('Function hall capacity is required and must be at least 1.');
+        setIsSubmitting(false);
+        return;
+      }
+    }
+          
 
       const parsedMinimumPaymentPercent =
         unitForm.minimumPaymentPercent === ''
@@ -960,10 +970,10 @@ const [formError, setFormError] = useState<string | null>(null);
 
               />
               <p className="ml-1 text-[11px] text-slate-400">
-                Minimum price is ₱500. 
-                {unitForm.type === 'rental_space' && ' Monthly Rate'}
-                {unitForm.type === 'function_hall' && ' Daily Rate'}
-                {unitForm.type === 'parking_slot' && ' Parking Area Rate (Monthly)'}
+                Minimum price is ₱500.
+                {unitForm.type === 'rental_space' && ' Monthly rate'}
+                {unitForm.type === 'function_hall' && ' Daily rate'}
+                {unitForm.type === 'parking_slot' && ' Base monthly rate for this parking area'}
               </p>
             </div>
 
@@ -972,7 +982,7 @@ const [formError, setFormError] = useState<string | null>(null);
                 htmlFor="minimumPaymentPercent"
                 className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400"
               >
-                Minimum First Payment
+                Minimum Initial Payment
               </label>
               <select
                 id="minimumPaymentPercent"
@@ -993,7 +1003,14 @@ const [formError, setFormError] = useState<string | null>(null);
                 <option value="100">100%</option>
               </select>
               <p className="ml-1 text-[11px] text-slate-400">
-                Required minimum for the first payment only. Later payments use the global system rule (₱500).
+                {unitForm.type === 'rental_space' &&
+                  'Required minimum for the first payment only. Later payments follow the selected billing cycle.'}
+                {unitForm.type === 'function_hall' &&
+                  'Required minimum for the first payment only. Later payments may be completed through flexible partial payments.'}
+                {unitForm.type === 'parking_slot' &&
+                  'Required minimum for the first payment only. Later payments may be completed based on the approved parking dues policy.'}
+                {!unitForm.type &&
+                  'Set the required minimum for the first payment.'}
               </p>
             </div>
 
@@ -1006,14 +1023,14 @@ const [formError, setFormError] = useState<string | null>(null);
                   Capacity
                 </label>
                 <input
-                  id="capacity"
-                  type="number"
-                  min="1"
-                  placeholder="Optional"
-                  value={unitForm.capacity}
-                  onChange={(e) => updateFormField('capacity', e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
-                />
+                    id="capacity"
+                    type="number"
+                    min="1"
+                    required={unitForm.type === 'function_hall'}
+                    placeholder="Enter maximum guests"
+                    value={unitForm.capacity}
+                    onChange={(e) => updateFormField('capacity', e.target.value)}
+                  />
                 <p className="ml-1 text-[11px] text-slate-400">
                   Number of guests the function hall can accommodate.
                 </p>
@@ -2283,6 +2300,10 @@ export default function AdminUnitManagement() {
   const [slotImagePreview, setSlotImagePreview] = useState<string>('');
   const slotFileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [searchTerm, setSearchTerm] = useState('');
+const [typeFilter, setTypeFilter] = useState<'all' | UnitType>('all');
+const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'available' | 'unavailable'>('all');
+
   const selectedUnitToDelete = useMemo(
     () => units.find((unit) => unit.id === unitToDelete) ?? null,
     [units, unitToDelete]
@@ -2330,6 +2351,27 @@ export default function AdminUnitManagement() {
     return stats;
   }, [parkingSlots]);
 
+  const filteredUnits = useMemo(() => {
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+
+  return units.filter((unit) => {
+    const matchesSearch =
+      normalizedSearch === '' ||
+      unit.name.toLowerCase().includes(normalizedSearch) ||
+      (unit.propertyId ?? '').toLowerCase().includes(normalizedSearch) ||
+      (unit.location ?? '').toLowerCase().includes(normalizedSearch);
+
+    const matchesType =
+      typeFilter === 'all' || unit.type === typeFilter;
+
+    const matchesAvailability =
+      availabilityFilter === 'all' ||
+      (availabilityFilter === 'available' && unit.available) ||
+      (availabilityFilter === 'unavailable' && !unit.available);
+
+    return matchesSearch && matchesType && matchesAvailability;
+  });
+}, [units, searchTerm, typeFilter, availabilityFilter]);
   const openAddModal = useCallback(() => {
     setEditingUnitId(null);
     setShowUnitModal(true);
@@ -2596,7 +2638,7 @@ export default function AdminUnitManagement() {
   if (showUnitModal && loadingUnits) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
           <div>
@@ -2627,6 +2669,61 @@ export default function AdminUnitManagement() {
           </button>
         )}
 
+        {!loadingUnits && units.length > 0 && (
+  <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+      <div className="flex-1">
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder="Search by unit name, public ID, or location..."
+          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:w-auto">
+        <select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value as 'all' | UnitType)}
+          className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+        >
+          <option value="all">All Types</option>
+          <option value="rental_space">Rental Space</option>
+          <option value="function_hall">Function Hall</option>
+          <option value="parking_slot">Parking Area</option>
+        </select>
+
+        <select
+          value={availabilityFilter}
+          onChange={(e) =>
+            setAvailabilityFilter(
+              e.target.value as 'all' | 'available' | 'unavailable'
+            )
+          }
+          className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+        >
+          <option value="all">All Status</option>
+          <option value="available">Available</option>
+          <option value="unavailable">Unavailable</option>
+        </select>
+
+        <button
+          type="button"
+          onClick={() => {
+            setSearchTerm('');
+            setTypeFilter('all');
+            setAvailabilityFilter('all');
+          }}
+          className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
+        >
+          Clear
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
         <div className="flex-1">
           {loadingUnits ? (
             <EmptyState
@@ -2645,13 +2742,23 @@ export default function AdminUnitManagement() {
               description="Units will appear here once an administrator adds rentable spaces, halls, or parking areas."
             />
           ) : (
-            <UnitsList
-              units={units}
-              slotStatsByUnit={slotStatsByUnit}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              onManageSlots={openSlotManager}
-            />
+            filteredUnits.length === 0 ? (
+  <div className="rounded-2xl border border-gray-200 bg-white px-6 py-16 shadow-sm">
+    <EmptyState
+      icon={<AlertTriangle className="size-10 text-amber-500" />}
+      title="No matching units found"
+      description="Try adjusting your search, type, or availability filter."
+    />
+  </div>
+) : (
+  <UnitsList
+    units={filteredUnits}
+    slotStatsByUnit={slotStatsByUnit}
+    onEdit={handleEdit}
+    onDelete={handleDelete}
+    onManageSlots={openSlotManager}
+  />
+)
           )}
         </div>
 

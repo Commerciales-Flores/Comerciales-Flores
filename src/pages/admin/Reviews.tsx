@@ -51,7 +51,7 @@ export default function AdminReview() {
   const hasNoReviewContent = !loading && sortedReviews.length === 0;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
   <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <div className="flex items-end justify-between gap-4">
           <header>

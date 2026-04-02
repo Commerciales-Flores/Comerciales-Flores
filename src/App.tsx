@@ -36,7 +36,7 @@ const AdminAudit = lazy(() => import('./pages/admin/Audit'));
 const AdminBusinessSlots = lazy(() => import('./pages/admin/BusinessSlots'));
 const AdminReservations = lazy(() => import('./pages/admin/Reservations'));
 const AdminPayments = lazy(() => import('./pages/admin/Payments'));
-const AdminPaymentMethods = lazy(() => import('./pages/admin/AdminPaymentMethods'));
+const AdminPaymentMethods = lazy(() => import('./components/admin/payment/AdminPaymentMethods'));
 const AdminReview = lazy(() => import('./pages/admin/Reviews'));
 const AdminInquiries = lazy(() => import('./pages/admin/Inquiries'));
 const AdminContent = lazy(() => import('./pages/admin/Content'));

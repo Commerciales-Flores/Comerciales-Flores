@@ -19,28 +19,32 @@ const normalizeEmail = (value: string) => value.trim().toLowerCase();
 const normalizeAddress = (value: string) => value.trim().replace(/\s+/g, ' ');
 
 const normalizePhone = (value: string) => {
-  const raw = value.trim();
-  const digits = raw.replace(/\D/g, '');
+  const digits = value.replace(/\D/g, '');
 
   if (!digits) return '';
 
+  // 09123456789 → +639123456789
   if (digits.startsWith('09') && digits.length === 11) {
     return `+63${digits.slice(1)}`;
   }
 
-  if (digits.startsWith('639') && digits.length === 12) {
-    return `+${digits}`;
-  }
-
+  // 9123456789 → +639123456789
   if (digits.startsWith('9') && digits.length === 10) {
     return `+63${digits}`;
   }
 
-  if (raw.startsWith('+') && digits.length >= 10 && digits.length <= 15) {
+  // 639123456789 → +639123456789
+  if (digits.startsWith('639') && digits.length === 12) {
     return `+${digits}`;
   }
 
-  return raw;
+  // +639123456789 (already correct)
+  if (value.startsWith('+63') && digits.length === 12) {
+    return `+${digits}`;
+  }
+
+  // ❌ INVALID → return empty instead of raw
+  return '';
 };
 
 export default function Register() {
@@ -113,8 +117,8 @@ export default function Register() {
       errs.email = 'Invalid email format.';
     }
 
-    if (cleanedContactNumber && !/^\+\d{10,15}$/.test(cleanedContactNumber)) {
-      errs.contactNumber = 'Invalid phone number.';
+    if (cleanedContactNumber && !/^\+639\d{9}$/.test(cleanedContactNumber)) {
+      errs.contactNumber = 'Invalid Philippine mobile number.';
     }
 
     if (!formData.password) {

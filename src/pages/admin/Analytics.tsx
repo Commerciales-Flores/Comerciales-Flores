@@ -483,7 +483,7 @@ export default function AdminAnalytics() {
   }, [typeDistributionData, exportToCsv]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
   <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
       <div className="flex flex-row items-center justify-between gap-4">
         <div>

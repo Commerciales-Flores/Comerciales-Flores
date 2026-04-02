@@ -35,6 +35,22 @@ interface NotificationsDataContextType {
     amount: number;
   }) => Promise<void>;
 
+
+  sendRefundNotification: (params: {
+  userId: string;
+  reservationPublicId?: string;
+  paymentPublicId?: string;
+  amount: number;
+  notes?: string | null;
+}) => Promise<void>;
+  
+sendPaymentReminderNotification: (params: {
+  userId: string;
+  reservationPublicId: string;
+  remainingBalance: number;
+  endDate: string;
+}) => Promise<void>;
+
   sendOverdueReservationNotification: (params: {
     userId: string;
     reservationPublicId: string;
@@ -86,6 +102,7 @@ function mapNotificationRow(row: any): Notification {
   };
 }
 
+
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
@@ -103,80 +120,147 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setNotifications((data ?? []).map(mapNotificationRow));
   }, []);
 
+  
+
   useEffect(() => {
-    let mounted = true;
+  let mounted = true;
 
-    const loadNotifications = async () => {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('notification_id, user_id, title, message, type, is_read, date')
-        .order('date', { ascending: false });
+  const loadNotifications = async () => {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('notification_id, user_id, title, message, type, is_read, date')
+      .order('date', { ascending: false });
 
-      if (!mounted) return;
+    if (!mounted) return;
 
-      if (error) {
-        console.error('Error fetching notifications:', error);
-        return;
-      }
+    if (error) {
+      console.error('Error fetching notifications:', error);
+      return;
+    }
 
-      setNotifications((data ?? []).map(mapNotificationRow));
-    };
+    setNotifications((data ?? []).map(mapNotificationRow));
+  };
 
-    loadNotifications();
+  void loadNotifications();
 
-    const channel = supabase
-      .channel('notifications-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'notifications' },
-        () => {
-          fetchNotifications();
+  const channel = supabase
+    .channel('notifications-realtime')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'notifications',
+      },
+      (payload) => {
+        if (!mounted) return;
+
+        if (payload.eventType === 'INSERT') {
+          const newNotification = mapNotificationRow(payload.new);
+
+          setNotifications((prev) => {
+            if (prev.some((item) => item.id === newNotification.id)) {
+              return prev;
+            }
+
+            return [newNotification, ...prev];
+          });
+
+          return;
         }
-      )
-      .subscribe();
 
-    return () => {
-      mounted = false;
-      supabase.removeChannel(channel);
-    };
-  }, [fetchNotifications]);
+        if (payload.eventType === 'UPDATE') {
+          const updatedNotification = mapNotificationRow(payload.new);
+
+          setNotifications((prev) =>
+            prev.map((item) =>
+              item.id === updatedNotification.id ? updatedNotification : item
+            )
+          );
+
+          return;
+        }
+
+        if (payload.eventType === 'DELETE') {
+          const deletedId = payload.old.notification_id as string | undefined;
+
+          if (!deletedId) return;
+
+          setNotifications((prev) =>
+            prev.filter((item) => item.id !== deletedId)
+          );
+        }
+      }
+    )
+    .subscribe((status) => {
+      if (import.meta.env.DEV) {
+        console.log('Notifications realtime status:', status);
+      }
+    });
+
+  return () => {
+    mounted = false;
+    void supabase.removeChannel(channel);
+  };
+}, []);
 
   
   const addNotification = useCallback(
-    async (
-      notification: Omit<Notification, 'id' | 'date' | 'read'>
-    ): Promise<void> => {
-      const payload = {
-        user_id: notification.userId,
-        title: notification.title,
-        message: notification.message,
-        type: notification.type,
-        is_read: false,
-        date: new Date().toISOString(),
-      };
+  async (
+    notification: Omit<Notification, 'id' | 'date' | 'read'>
+  ): Promise<void> => {
+    const payload = {
+      user_id: notification.userId,
+      title: notification.title,
+      message: notification.message,
+      type: notification.type,
+      is_read: false,
+      date: new Date().toISOString(),
+    };
 
-      const { data, error } = await supabase
-        .from('notifications')
-        .insert([payload])
-        .select('notification_id, user_id, title, message, type, is_read, date')
-        .single();
+    const { error } = await supabase
+      .from('notifications')
+      .insert([payload]);
 
-      if (error) {
-        console.error('Error inserting notification:', error);
-        return;
-      }
+    if (error) {
+      console.error('Error inserting notification:', error);
+    }
+  },
+  []
+);
 
-      const newNotification = mapNotificationRow(data);
+  const sendRefundNotification = useCallback(
+  async ({
+    userId,
+    reservationPublicId,
+    paymentPublicId,
+    amount,
+    notes,
+  }: {
+    userId: string;
+    reservationPublicId?: string;
+    paymentPublicId?: string;
+    amount: number;
+    notes?: string | null;
+  }): Promise<void> => {
+    const targetLabel =
+      paymentPublicId
+        ? `payment ${paymentPublicId}`
+        : reservationPublicId
+        ? `reservation ${reservationPublicId}`
+        : 'your reservation';
 
-      setNotifications((prev) => {
-        if (prev.some((item) => item.id === newNotification.id)) {
-          return prev;
-        }
-        return [newNotification, ...prev];
-      });
-    },
-    []
-  );
+    await addNotification({
+      userId,
+      title: 'Refund Issued',
+      message: `A refund of ${formatCurrency(amount)} has been successfully processed for ${targetLabel}${
+        notes ? `. Reason: ${notes}` : '.'
+      }`,
+      type: 'payment',
+    });
+  },
+  [addNotification]
+);
 
   const sendPaymentReminderNotification = useCallback(
   async ({
@@ -470,6 +554,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       getNotificationsByUserId,
       sendReservationNotification,
       sendPaymentNotification,
+      sendRefundNotification,
       sendPaymentReminderNotification,
       sendInquiryResponseNotification,
       sendReviewReminderNotification,
@@ -487,6 +572,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       getNotificationsByUserId,
       sendReservationNotification,
       sendPaymentNotification,
+      sendRefundNotification,
       sendPaymentReminderNotification,
       sendInquiryResponseNotification,
       sendReviewReminderNotification,

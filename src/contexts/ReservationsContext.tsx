@@ -22,6 +22,7 @@ type ReservationsPageFilters = {
 
 interface ReservationsContextType {
   reservations: Reservation[];
+  reservationsVersion: number;
   addReservation: (
     reservation: Omit<
       Reservation,
@@ -79,10 +80,20 @@ function isOverdueReservation(reservation: Reservation) {
   );
 }
 
+function sortReservationsByRequestDate(items: Reservation[]) {
+  return [...items].sort(
+    (a, b) =>
+      new Date(b.requestDate ?? 0).getTime() - new Date(a.requestDate ?? 0).getTime()
+  );
+}
+
 export function ReservationsProvider({ children }: { children: ReactNode }) {
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [reservationsVersion, setReservationsVersion] = useState(0);
   const { addAuditLog, ledgers } = useRecords();
   const { user } = useAuth();
+
+  
 
   const getLedgerTotalsByReservationId = useCallback(
     (reservationId: string) => {
@@ -106,26 +117,30 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
       let adjustments = 0;
 
       for (const entry of entries) {
-        switch (entry.entryType) {
-          case 'payment':
-          case 'deposit':
-          case 'balance':
-            paid += entry.amount;
-            break;
-          case 'refund':
-            refunds += entry.amount;
-            break;
-          case 'discount':
-            discounts += entry.amount;
-            break;
-          case 'penalty':
-            penalties += entry.amount;
-            break;
-          case 'adjustment':
-            adjustments += entry.amount;
-            break;
-        }
+  switch (entry.entryType) {
+    case 'payment':
+    case 'balance':
+      paid += entry.amount;
+      break;
+    case 'deposit':
+      if (entry.depositType === 'advance') {
+        paid += entry.amount;
       }
+      break;  
+    case 'refund':
+      refunds += entry.amount;
+      break;
+    case 'discount':
+      discounts += entry.amount;
+      break;
+    case 'penalty':
+      penalties += entry.amount;
+      break;
+    case 'adjustment':
+      adjustments += entry.amount;
+      break;
+  }
+}
 
       const netPaid = paid - refunds - discounts + penalties + adjustments;
 
@@ -164,6 +179,7 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
       startDate: row.start_date,
       endDate: row.end_date,
       duration: row.duration,
+      details: row.details ?? {},
       totalAmount: Number(row.total_amount),
       status: computedStatus,
       notes: row.notes,
@@ -250,6 +266,77 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refreshReservations();
   }, [refreshReservations, ledgers]);
+
+  useEffect(() => {
+  const channel = supabase
+    .channel('reservations-realtime')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'reservations',
+      },
+      (payload) => {
+        const newReservation = mapReservationRow(payload.new);
+
+        setReservations((prev) => {
+          if (prev.some((item) => item.id === newReservation.id)) {
+            return prev;
+          }
+
+          return sortReservationsByRequestDate([newReservation, ...prev]);
+        });
+
+        setReservationsVersion((prev) => prev + 1);
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'reservations',
+      },
+      (payload) => {
+        const updatedReservation = mapReservationRow(payload.new);
+
+        setReservations((prev) =>
+          sortReservationsByRequestDate(
+            prev.map((item) =>
+              item.id === updatedReservation.id ? updatedReservation : item
+            )
+          )
+        );
+
+        setReservationsVersion((prev) => prev + 1);
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'reservations',
+      },
+      (payload) => {
+        const deletedId = payload.old.reservation_id as string | undefined;
+        if (!deletedId) return;
+
+        setReservations((prev) => prev.filter((item) => item.id !== deletedId));
+        setReservationsVersion((prev) => prev + 1);
+      }
+    )
+    .subscribe((status) => {
+      if (import.meta.env.DEV) {
+        console.log('Reservations realtime status:', status);
+      }
+    });
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}, [mapReservationRow]);
 
   const fetchReservationsPage = useCallback(
     async ({
@@ -474,7 +561,6 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
       minimumPaymentPercentSnapshot,
     };
 
-    setReservations((prev) => [newReservation, ...prev]);
 
     try {
       await addAuditLog({
@@ -524,13 +610,31 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
       if (reservationUpdate.visitStatus !== undefined) {
         dbPayload.visit_status = reservationUpdate.visitStatus;
       }
+      if (reservationUpdate.endDate !== undefined) {
+        dbPayload.end_date = reservationUpdate.endDate;
+      }
 
+      if (reservationUpdate.duration !== undefined) {
+        dbPayload.duration = reservationUpdate.duration;
+      }
+
+      if (reservationUpdate.totalAmount !== undefined) {
+        dbPayload.total_amount = reservationUpdate.totalAmount;
+      }
+
+      // structured known fields
       const detailsPatch = buildReservationDetails(reservationUpdate);
-      if (Object.keys(detailsPatch).length > 0) {
-        const existingDetails = buildReservationDetails(existingReservation);
+
+      // raw details override (for extension system, future features)
+      const rawDetails = (reservationUpdate as any).details;
+
+      if (rawDetails !== undefined || Object.keys(detailsPatch).length > 0) {
+        const existingDetails = existingReservation.details ?? {};
+
         dbPayload.details = {
           ...existingDetails,
           ...detailsPatch,
+          ...(rawDetails ?? {}),
         };
       }
 
@@ -544,10 +648,6 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
       if (error) throw error;
 
       const updatedReservation = buildAuditSnapshot(existingReservation, reservationUpdate);
-
-      setReservations((prev) =>
-        prev.map((r) => (r.id === id ? updatedReservation : r))
-      );
 
       const changedFields = getChangedFields(existingReservation, reservationUpdate);
 
@@ -583,7 +683,6 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
 
-      setReservations((prev) => prev.filter((r) => r.id !== id));
 
       try {
         await addAuditLog({
@@ -609,25 +708,27 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<ReservationsContextType>(
-    () => ({
-      reservations,
-      addReservation,
-      updateReservation,
-      deleteReservation,
-      refreshReservations,
-      getReservationsByUserId,
-      fetchReservationsPage,
-    }),
-    [
-      reservations,
-      addReservation,
-      updateReservation,
-      deleteReservation,
-      refreshReservations,
-      getReservationsByUserId,
-      fetchReservationsPage,
-    ]
-  );
+  () => ({
+    reservations,
+    reservationsVersion,
+    addReservation,
+    updateReservation,
+    deleteReservation,
+    refreshReservations,
+    getReservationsByUserId,
+    fetchReservationsPage,
+  }),
+  [
+    reservations,
+    reservationsVersion,
+    addReservation,
+    updateReservation,
+    deleteReservation,
+    refreshReservations,
+    getReservationsByUserId,
+    fetchReservationsPage,
+  ]
+);
 
   return (
     <ReservationsContext.Provider value={value}>

@@ -81,6 +81,62 @@ export function ReviewsProvider({ children }: { children: React.ReactNode }) {
     fetchReviews();
   }, [fetchReviews]);
 
+  useEffect(() => {
+  const channel = supabase
+    .channel('reviews-realtime')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'reviews',
+      },
+      (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const newReview = payload.new as Review;
+
+          setReviews((prev) => {
+            if (prev.some((item) => item.review_id === newReview.review_id)) {
+              return prev;
+            }
+            return [newReview, ...prev];
+          });
+
+          return;
+        }
+
+        if (payload.eventType === 'UPDATE') {
+          const updatedReview = payload.new as Review;
+
+          setReviews((prev) =>
+            prev.map((item) =>
+              item.review_id === updatedReview.review_id ? updatedReview : item
+            )
+          );
+
+          return;
+        }
+
+        if (payload.eventType === 'DELETE') {
+          const deletedId = (payload.old as Review).review_id;
+
+          setReviews((prev) =>
+            prev.filter((item) => item.review_id !== deletedId)
+          );
+        }
+      }
+    )
+    .subscribe((status) => {
+      if (import.meta.env.DEV) {
+        console.log('Reviews realtime status:', status);
+      }
+    });
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}, []);
+
   const createReview = useCallback(async (input: CreateReviewInput) => {
     try {
       setError(null);

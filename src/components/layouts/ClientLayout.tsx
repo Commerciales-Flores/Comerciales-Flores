@@ -46,17 +46,24 @@ const unreadNotifications = useMemo(
   [userNotifications]
 );
 
-const unreadMessages = useMemo(() => {
-  if (!user?.id) return 0;
-
-  return tickets.filter(
-    (ticket) =>
-      ticket.userId === user.id &&
-      ticket.status === 'waiting_for_customer'
-  ).length;
-}, [tickets, user?.id]);
 
   const location = useLocation();
+
+  const unreadMessages = useMemo(() => {
+  if (!user?.id) return 0;
+  if (location.pathname === "/client/messages") return 0;
+
+  return tickets.filter((ticket) => {
+    if (ticket.userId !== user.id) return false;
+
+    const isUnreadForCustomer =
+      ticket.lastMessageBy === "support" &&
+      new Date(ticket.lastMessageAt || 0).getTime() >
+        new Date(ticket.lastReadAtCustomer || 0).getTime();
+
+    return isUnreadForCustomer;
+  }).length;
+}, [location.pathname, tickets, user?.id]);
 
   useEffect(() => {
   if (!user) return;
@@ -164,7 +171,7 @@ const unreadMessages = useMemo(() => {
 
   return (
     <ErrorWrapper validPaths={navItems.map(item => item.to)} allowedRoles={['client']}>
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="min-h-screen flex flex-col bg-white-50">
 
       {/* CLIENT HEADER */}
 <header className="bg-white border-b border-gray-200 sticky top-0 z-50">

@@ -38,6 +38,7 @@ export default function AdminProfile() {
     changePassword,
     changeEmail,
     uploadProfilePicture,
+    deleteProfilePicture,
   } = useAuth();
 
   const [editing, setEditing] = useState(false);
@@ -50,6 +51,7 @@ export default function AdminProfile() {
   const [savingPassword, setSavingPassword] = useState(false);
   const [savingEmail, setSavingEmail] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [removingAvatar, setRemovingAvatar] = useState(false);
 
   const [showEmailPassword, setShowEmailPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -78,6 +80,14 @@ export default function AdminProfile() {
       )}&background=0D8ABC&color=fff&size=512`
     );
   }, [user, fullName]);
+
+  const hasCustomAvatar = useMemo(() => {
+  return Boolean(
+    (user as any)?.profilePictureUrl ||
+    (user as any)?.avatarUrl ||
+    (user as any)?.photoURL
+  );
+}, [user]);
 
   const initialProfileForm = useMemo(
     () => ({
@@ -340,8 +350,33 @@ export default function AdminProfile() {
     [showMessage, updateProfile, uploadProfilePicture, uploadingAvatar]
   );
 
+  const handleRemoveImage = useCallback(async () => {
+  if (uploadingAvatar || removingAvatar) return;
+
+  try {
+    setRemovingAvatar(true);
+
+    const success = await deleteProfilePicture();
+
+    if (!success) {
+      showMessage('error', 'Failed to remove profile picture.');
+      return;
+    }
+
+    showMessage('success', 'Profile picture removed.');
+  } catch {
+    showMessage('error', 'Failed to remove profile picture.');
+  } finally {
+    setRemovingAvatar(false);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }
+}, [deleteProfilePicture, removingAvatar, showMessage, uploadingAvatar]);
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <header className="flex flex-col justify-between gap-4 border-b border-slate-100 pb-6 md:flex-row md:items-end">
           <div>
@@ -381,69 +416,93 @@ export default function AdminProfile() {
               <div className="h-24 bg-gradient-to-r from-slate-900 via-slate-800 to-blue-900" />
 
               <div className="-mt-12 flex flex-col items-center px-6 pb-6 text-center">
-                <div
-                  className={`relative group ${uploadingAvatar ? 'pointer-events-none opacity-70' : ''}`}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <div className="rounded-[1.75rem] bg-white p-1.5 shadow-xl">
-                    {avatarUrl ? (
-                      <img
-                        src={avatarUrl}
-                        alt="Profile"
-                        className="size-28 rounded-[1.35rem] bg-slate-100 object-cover sm:size-32"
-                        loading="lazy"
-                        decoding="async"
-                      />
-                    ) : (
-                      <div className="flex size-28 items-center justify-center rounded-[1.35rem] bg-slate-900 text-3xl font-bold text-white sm:size-32">
-                        {initials}
-                      </div>
-                    )}
-                  </div>
+  <div className="flex flex-col items-center">
+    <div
+      className={`relative group ${
+        uploadingAvatar || removingAvatar ? 'pointer-events-none opacity-70' : ''
+      }`}
+    >
+      <div className="rounded-[1.75rem] bg-white p-1.5 shadow-xl">
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt="Profile"
+            className="size-28 rounded-[1.35rem] bg-slate-100 object-cover sm:size-32"
+            loading="lazy"
+            decoding="async"
+          />
+        ) : (
+          <div className="flex size-28 items-center justify-center rounded-[1.35rem] bg-slate-900 text-3xl font-bold text-white sm:size-32">
+            {initials}
+          </div>
+        )}
+      </div>
 
-                  <button
-                    type="button"
-                    disabled={uploadingAvatar}
-                    className="absolute -bottom-2 -right-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg transition-all hover:bg-blue-700 disabled:opacity-60"
-                    aria-label="Change profile photo"
-                  >
-                    {uploadingAvatar ? (
-                      <div className="size-5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                    ) : (
-                      <Camera className="size-5" />
-                    )}
-                  </button>
+      <button
+        type="button"
+        disabled={uploadingAvatar || removingAvatar}
+        onClick={() => fileInputRef.current?.click()}
+        className="absolute -bottom-2 -right-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg transition-all hover:bg-blue-700 disabled:opacity-60"
+        aria-label="Change profile photo"
+      >
+        {uploadingAvatar ? (
+          <div className="size-5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+        ) : (
+          <Camera className="size-5" />
+        )}
+      </button>
 
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleImageChange}
-                  />
-                </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleImageChange}
+      />
+    </div>
 
-                <h2 className="mt-4 text-xl font-bold text-slate-900">{fullName}</h2>
-                <p className="text-sm text-slate-500">{user?.email || 'No email available'}</p>
+    <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+      {hasCustomAvatar && (
+        <button
+          type="button"
+          disabled={uploadingAvatar || removingAvatar}
+          onClick={() => void handleRemoveImage()}
+          className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-60"
+        >
+          {removingAvatar ? (
+            <div className="size-4 animate-spin rounded-full border-2 border-rose-300 border-t-rose-700" />
+          ) : (
+            <X className="size-4" />
+          )}
+          {removingAvatar ? 'Removing...' : 'Remove Photo'}
+        </button>
+      )}
+    </div>
+  </div>
 
-                <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-blue-700">
-                  <ShieldCheck className="size-3.5" />
-                  Administrator
-                </div>
+  <h2 className="mt-4 text-xl font-bold text-slate-900">{fullName}</h2>
+  <p className="text-sm text-slate-500">{user?.email || 'No email available'}</p>
 
-                {uploadingAvatar && (
-                  <p className="mt-3 text-xs font-medium text-slate-500">Uploading photo...</p>
-                )}
+  <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-blue-700">
+    <ShieldCheck className="size-3.5" />
+    Administrator
+  </div>
 
-                <div className="mt-6 grid w-full grid-cols-2 gap-3">
-                  <MiniStat label="Account Type" value="Administrator" variant="blue" />
-                  <MiniStat
-                    label="Status"
-                    value={user?.isActive === false ? 'Inactive' : 'Active'}
-                    variant={user?.isActive === false ? 'rose' : 'emerald'}
-                  />
-                </div>
-              </div>
+  {(uploadingAvatar || removingAvatar) && (
+    <p className="mt-3 text-xs font-medium text-slate-500">
+      {uploadingAvatar ? 'Uploading photo...' : 'Removing photo...'}
+    </p>
+  )}
+
+  <div className="mt-6 grid w-full grid-cols-2 gap-3">
+    <MiniStat label="Account Type" value="Administrator" variant="blue" />
+    <MiniStat
+      label="Status"
+      value={user?.isActive === false ? 'Inactive' : 'Active'}
+      variant={user?.isActive === false ? 'rose' : 'emerald'}
+    />
+  </div>
+</div>
             </section>
 
             <section className="rounded-2xl bg-slate-900 p-6 text-white shadow-lg">

@@ -32,6 +32,8 @@ export type SupportTicket = {
   lastMessageBy: SupportSenderType;
   resolvedAt?: string | null;
   resolvedByUser: boolean;
+  lastReadAtCustomer?: string | null;
+  lastReadAtSupport?: string | null;
 };
 
 export type SupportMessage = {
@@ -68,6 +70,7 @@ interface InquiriesContextType {
   tickets: SupportTicket[];
   messages: SupportMessage[];
   isLoadingMessages: boolean;
+  isLoadingTickets: boolean;
   fetchTickets: (userId?: string) => Promise<SupportTicket[]>;
   createTicket: (input: CreateTicketInput) => Promise<SupportTicket>;
   sendTicketMessage: (
@@ -76,7 +79,14 @@ interface InquiriesContextType {
   ) => Promise<{ ticket: SupportTicket; message: SupportMessage }>;
   markTicketResolved: (ticketId: string) => Promise<SupportTicket>;
   reopenTicket: (ticketId: string) => Promise<SupportTicket>;
-  fetchMessagesByTicketId: (ticketId: string, force?: boolean) => Promise<SupportMessage[]>;
+  markTicketRead: (
+    ticketId: string,
+    reader: 'customer' | 'support'
+  ) => Promise<void>;
+  fetchMessagesByTicketId: (
+    ticketId: string,
+    force?: boolean
+  ) => Promise<SupportMessage[]>;
   getMessagesByTicketId: (ticketId: string) => SupportMessage[];
   hydrateTicketMessages: (ticketId: string, nextMessages: SupportMessage[]) => void;
   clearTicketMessages: (ticketId?: string) => void;
@@ -88,6 +98,15 @@ function getTimestamp(value?: string | null) {
   if (!value) return 0;
   const time = new Date(value).getTime();
   return Number.isNaN(time) ? 0 : time;
+}
+
+function pickLatestTimestamp(
+  current?: string | null,
+  incoming?: string | null
+): string | null {
+  return getTimestamp(current) >= getTimestamp(incoming)
+    ? current ?? null
+    : incoming ?? null;
 }
 
 function mapTicket(row: any): SupportTicket {
@@ -106,6 +125,8 @@ function mapTicket(row: any): SupportTicket {
     lastMessageBy: (row.last_message_by ?? 'customer') as SupportSenderType,
     resolvedAt: row.resolved_at ?? null,
     resolvedByUser: Boolean(row.resolved_by_user),
+    lastReadAtCustomer: row.last_read_at_customer ?? null,
+    lastReadAtSupport: row.last_read_at_support ?? null,
   };
 }
 
@@ -129,11 +150,18 @@ function sortMessagesByCreatedAtAsc(items: SupportMessage[]) {
   );
 }
 
+function sortTicketsByLatest(items: SupportTicket[]) {
+  return [...items].sort(
+    (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
+  );
+}
+
 export function InquiriesProvider({ children }: { children: ReactNode }) {
   const [messagesByTicketId, setMessagesByTicketId] = useState<
     Record<string, SupportMessage[]>
   >({});
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [isLoadingTickets, setIsLoadingTickets] = useState(false);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
 
   const loadedTicketIdsRef = useRef<Set<string>>(new Set());
@@ -193,51 +221,48 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
     [messagesByTicketId]
   );
 
-  const [isLoadingTickets, setIsLoadingTickets] = useState(false);
-
   const fetchTickets = useCallback(async (userId?: string): Promise<SupportTicket[]> => {
-  setIsLoadingTickets(true);
+    setIsLoadingTickets(true);
 
-  try {
-    let query = supabase
-      .from('support_tickets')
-      .select(`
-        ticket_id,
-        public_id,
-        user_id,
-        guest_email,
-        guest_first_name,
-        guest_last_name,
-        subject,
-        status,
-        created_at,
-        updated_at,
-        last_message_at,
-        last_message_by,
-        resolved_at,
-        resolved_by_user
-      `)
-      .order('last_message_at', { ascending: false });
+    try {
+      let query = supabase
+        .from('support_tickets')
+        .select(`
+          ticket_id,
+          public_id,
+          user_id,
+          guest_email,
+          guest_first_name,
+          guest_last_name,
+          subject,
+          status,
+          created_at,
+          updated_at,
+          last_message_at,
+          last_message_by,
+          resolved_at,
+          resolved_by_user,
+          last_read_at_customer,
+          last_read_at_support
+        `)
+        .order('last_message_at', { ascending: false });
 
-    if (userId) {
-      query = query.eq('user_id', userId);
+      if (userId) {
+        query = query.eq('user_id', userId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+
+      const nextTickets = sortTicketsByLatest((data ?? []).map(mapTicket));
+      setTickets(nextTickets);
+
+      return nextTickets;
+    } finally {
+      setIsLoadingTickets(false);
     }
-
-    const { data, error } = await query;
-
-    if (error) throw error;
-
-    const nextTickets = (data ?? []).map(mapTicket).sort(
-      (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
-    );
-
-    setTickets(nextTickets);
-
-    return nextTickets;
-  } finally {
-    setIsLoadingTickets(false);
-  }
-}, []);
+  }, []);
 
   const hydrateTicketMessages = useCallback((ticketId: string, nextMessages: SupportMessage[]) => {
     setMessagesByTicketId((prev) => ({
@@ -275,6 +300,10 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
     const trimmedSubject = input.subject.trim();
     const trimmedMessage = input.message.trim();
 
+    if (!trimmedSubject || !trimmedMessage) {
+      throw new Error('Subject and first message are required.');
+    }
+
     let resolvedUserId = input.userId ?? null;
 
     if (!resolvedUserId && trimmedEmail) {
@@ -308,6 +337,10 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
       last_message_by: senderType,
       resolved_at: null,
       resolved_by_user: false,
+      last_read_at_customer:
+        senderType === 'customer' ? now : null,
+      last_read_at_support:
+        senderType === 'support' ? now : null,
     };
 
     const { data: ticketData, error: ticketError } = await supabase
@@ -318,36 +351,41 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
 
     if (ticketError) throw ticketError;
 
-    const messagePayload = {
-      ticket_id: ticketData.ticket_id,
-      sender_type: senderType,
-      sender_user_id: senderType === 'support' ? null : resolvedUserId,
-      sender_name:
-        senderType === 'support'
-          ? 'Support Team'
-          : [trimmedFirstName, trimmedLastName].filter(Boolean).join(' ').trim() || null,
-      sender_email: trimmedEmail,
-      body: trimmedMessage,
-      created_at: now,
-      is_internal: false,
-    };
+    const newTicket = mapTicket(ticketData);
+
+    const displayName =
+      senderType === 'support'
+        ? 'Support Team'
+        : [trimmedFirstName, trimmedLastName].filter(Boolean).join(' ').trim() || null;
 
     const { data: messageData, error: messageError } = await supabase
       .from('support_messages')
-      .insert([messagePayload])
+      .insert([
+        {
+          ticket_id: newTicket.id,
+          sender_type: senderType,
+          sender_user_id: resolvedUserId,
+          sender_name: displayName,
+          sender_email: trimmedEmail,
+          body: trimmedMessage,
+          created_at: now,
+          is_internal: false,
+        },
+      ])
       .select()
       .single();
 
-    if (messageError) throw messageError;
+    if (messageError) {
+      await supabase.from('support_tickets').delete().eq('ticket_id', newTicket.id);
+      throw messageError;
+    }
 
-    const newTicket = mapTicket(ticketData);
     const newMessage = mapMessage(messageData);
 
-    setTickets((prev) =>
-      [newTicket, ...prev].sort(
-        (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
-      )
-    );
+    setTickets((prev) => {
+      if (prev.some((ticket) => ticket.id === newTicket.id)) return prev;
+      return sortTicketsByLatest([newTicket, ...prev]);
+    });
 
     setMessagesByTicketId((prev) => ({
       ...prev,
@@ -366,6 +404,10 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
     ): Promise<{ ticket: SupportTicket; message: SupportMessage }> => {
       const now = new Date().toISOString();
       const trimmedBody = input.body.trim();
+
+      if (!trimmedBody) {
+        throw new Error('Message body is required.');
+      }
 
       const { data: messageData, error: messageError } = await supabase
         .from('support_messages')
@@ -392,16 +434,30 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
       const nextStatus: SupportTicketStatus =
         input.senderType === 'support' ? 'waiting_for_customer' : 'waiting_for_support';
 
+      const ticketUpdate =
+        input.senderType === 'support'
+          ? {
+              status: nextStatus,
+              updated_at: now,
+              last_message_at: now,
+              last_message_by: input.senderType,
+              resolved_at: null,
+              resolved_by_user: false,
+              last_read_at_support: now,
+            }
+          : {
+              status: nextStatus,
+              updated_at: now,
+              last_message_at: now,
+              last_message_by: input.senderType,
+              resolved_at: null,
+              resolved_by_user: false,
+              last_read_at_customer: now,
+            };
+
       const { data: ticketData, error: ticketError } = await supabase
         .from('support_tickets')
-        .update({
-          status: nextStatus,
-          updated_at: now,
-          last_message_at: now,
-          last_message_by: input.senderType,
-          resolved_at: null,
-          resolved_by_user: false,
-        })
+        .update(ticketUpdate)
         .eq('ticket_id', ticketId)
         .select()
         .single();
@@ -412,8 +468,22 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
       const updatedTicket = mapTicket(ticketData);
 
       setTickets((prev) =>
-        [...prev.map((ticket) => (ticket.id === ticketId ? updatedTicket : ticket))].sort(
-          (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
+        sortTicketsByLatest(
+          prev.map((ticket) => {
+            if (ticket.id !== ticketId) return ticket;
+
+            return {
+              ...updatedTicket,
+              lastReadAtCustomer: pickLatestTimestamp(
+                ticket.lastReadAtCustomer,
+                updatedTicket.lastReadAtCustomer
+              ),
+              lastReadAtSupport: pickLatestTimestamp(
+                ticket.lastReadAtSupport,
+                updatedTicket.lastReadAtSupport
+              ),
+            };
+          })
         )
       );
 
@@ -421,6 +491,11 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
 
       setMessagesByTicketId((prev) => {
         const existing = prev[ticketId] ?? [];
+
+        if (existing.some((message) => message.id === newMessage.id)) {
+          return prev;
+        }
+
         return {
           ...prev,
           [ticketId]: sortMessagesByCreatedAtAsc([...existing, newMessage]),
@@ -436,71 +511,157 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
   );
 
   const markTicketResolved = useCallback(async (ticketId: string): Promise<SupportTicket> => {
-  const now = new Date().toISOString();
+    const now = new Date().toISOString();
 
-  const { data, error } = await supabase
-    .from('support_tickets')
-    .update({
-      status: 'resolved',
-      updated_at: now,
-      resolved_at: now,
-      resolved_by_user: true,
-    })
-    .eq('ticket_id', ticketId)
-    .select()
-    .single();
+    const { data, error } = await supabase
+      .from('support_tickets')
+      .update({
+        status: 'resolved',
+        updated_at: now,
+        resolved_at: now,
+        resolved_by_user: true,
+      })
+      .eq('ticket_id', ticketId)
+      .select()
+      .single();
 
-  if (error) throw error;
+    if (error) throw error;
 
-  const updatedTicket = mapTicket(data);
+    const updatedTicket = mapTicket(data);
 
-  setTickets((prev) =>
-    [...prev.map((ticket) => (ticket.id === ticketId ? updatedTicket : ticket))].sort(
-      (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
-    )
-  );
+    setTickets((prev) =>
+      sortTicketsByLatest(
+        prev.map((ticket) => {
+          if (ticket.id !== ticketId) return ticket;
 
-  return updatedTicket;
-}, []);
+          return {
+            ...updatedTicket,
+            lastReadAtCustomer: pickLatestTimestamp(
+              ticket.lastReadAtCustomer,
+              updatedTicket.lastReadAtCustomer
+            ),
+            lastReadAtSupport: pickLatestTimestamp(
+              ticket.lastReadAtSupport,
+              updatedTicket.lastReadAtSupport
+            ),
+          };
+        })
+      )
+    );
+
+    return updatedTicket;
+  }, []);
 
   const reopenTicket = useCallback(async (ticketId: string): Promise<SupportTicket> => {
-  const now = new Date().toISOString();
+    const now = new Date().toISOString();
 
-  const { data, error } = await supabase
-    .from('support_tickets')
-    .update({
-      status: 'waiting_for_support',
-      updated_at: now,
-      resolved_at: null,
-      resolved_by_user: false,
-    })
-    .eq('ticket_id', ticketId)
-    .select()
-    .single();
+    const { data, error } = await supabase
+      .from('support_tickets')
+      .update({
+        status: 'waiting_for_support',
+        updated_at: now,
+        resolved_at: null,
+        resolved_by_user: false,
+      })
+      .eq('ticket_id', ticketId)
+      .select()
+      .single();
 
-  if (error) throw error;
+    if (error) throw error;
 
-  const updatedTicket = mapTicket(data);
+    const updatedTicket = mapTicket(data);
 
-  setTickets((prev) =>
-    [...prev.map((ticket) => (ticket.id === ticketId ? updatedTicket : ticket))].sort(
-      (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
-    )
+    setTickets((prev) =>
+      sortTicketsByLatest(
+        prev.map((ticket) => {
+          if (ticket.id !== ticketId) return ticket;
+
+          return {
+            ...updatedTicket,
+            lastReadAtCustomer: pickLatestTimestamp(
+              ticket.lastReadAtCustomer,
+              updatedTicket.lastReadAtCustomer
+            ),
+            lastReadAtSupport: pickLatestTimestamp(
+              ticket.lastReadAtSupport,
+              updatedTicket.lastReadAtSupport
+            ),
+          };
+        })
+      )
+    );
+
+    return updatedTicket;
+  }, []);
+
+  const markTicketRead = useCallback(
+    async (ticketId: string, reader: 'customer' | 'support'): Promise<void> => {
+      if (!ticketId) return;
+
+      const currentTicket = tickets.find((ticket) => ticket.id === ticketId);
+      if (!currentTicket) return;
+
+      const existingReadAt =
+        reader === 'customer'
+          ? currentTicket.lastReadAtCustomer
+          : currentTicket.lastReadAtSupport;
+
+      if (getTimestamp(existingReadAt) >= getTimestamp(currentTicket.lastMessageAt)) {
+        return;
+      }
+
+      const now = new Date().toISOString();
+      const column =
+        reader === 'customer' ? 'last_read_at_customer' : 'last_read_at_support';
+
+      setTickets((prev) =>
+        prev.map((ticket) => {
+          if (ticket.id !== ticketId) return ticket;
+
+          return {
+            ...ticket,
+            lastReadAtCustomer:
+              reader === 'customer'
+                ? pickLatestTimestamp(ticket.lastReadAtCustomer, now)
+                : ticket.lastReadAtCustomer ?? null,
+            lastReadAtSupport:
+              reader === 'support'
+                ? pickLatestTimestamp(ticket.lastReadAtSupport, now)
+                : ticket.lastReadAtSupport ?? null,
+          };
+        })
+      );
+
+      const { error } = await supabase
+        .from('support_tickets')
+        .update({
+          [column]: now,
+          updated_at: now,
+        })
+        .eq('ticket_id', ticketId);
+
+      if (error) {
+        console.error('Failed to mark ticket as read:', error);
+        await fetchTickets();
+      }
+    },
+    [fetchTickets, tickets]
   );
 
-  return updatedTicket;
-}, []);
+  const messages = useMemo(
+    () =>
+      Object.values(messagesByTicketId)
+        .flat()
+        .sort((a, b) => getTimestamp(a.createdAt) - getTimestamp(b.createdAt)),
+    [messagesByTicketId]
+  );
 
   const getMessagesByTicketId = useCallback(
     (ticketId: string) => messagesByTicketId[ticketId] ?? [],
     [messagesByTicketId]
   );
 
-  const messages = useMemo(() => {
-    return sortMessagesByCreatedAtAsc(Object.values(messagesByTicketId).flat());
-  }, [messagesByTicketId]);
-
-  const value = useMemo(
+  const value = useMemo<InquiriesContextType>(
     () => ({
       tickets,
       messages,
@@ -511,6 +672,7 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
       sendTicketMessage,
       markTicketResolved,
       reopenTicket,
+      markTicketRead,
       fetchMessagesByTicketId,
       getMessagesByTicketId,
       hydrateTicketMessages,
@@ -526,6 +688,7 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
       sendTicketMessage,
       markTicketResolved,
       reopenTicket,
+      markTicketRead,
       fetchMessagesByTicketId,
       getMessagesByTicketId,
       hydrateTicketMessages,
@@ -534,105 +697,132 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-  const channel = supabase
-    .channel('support-realtime')
+    const channel = supabase
+      .channel('support-realtime')
 
-    // ✅ TICKETS (status changes, new tickets, etc.)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'support_tickets',
-      },
-      async () => {
-        try {
-          const { data, error } = await supabase
-            .from('support_tickets')
-            .select(`
-              ticket_id,
-              public_id,
-              user_id,
-              guest_email,
-              guest_first_name,
-              guest_last_name,
-              subject,
-              status,
-              created_at,
-              updated_at,
-              last_message_at,
-              last_message_by,
-              resolved_at,
-              resolved_by_user
-            `)
-            .order('last_message_at', { ascending: false });
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'support_tickets',
+        },
+        (payload) => {
+          const event = payload.eventType;
 
-          if (error) throw error;
+          if (event === 'INSERT') {
+            const newTicket = mapTicket(payload.new);
 
-          const nextTickets = (data ?? []).map(mapTicket).sort(
-            (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
-          );
+            setTickets((prev) => {
+              if (prev.some((ticket) => ticket.id === newTicket.id)) {
+                return prev;
+              }
 
-          setTickets(nextTickets);
-        } catch (err) {
-          console.error('Realtime tickets error:', err);
+              return sortTicketsByLatest([newTicket, ...prev]);
+            });
+
+            return;
+          }
+
+          if (event === 'UPDATE') {
+            const updatedTicket = mapTicket(payload.new);
+
+            setTickets((prev) =>
+              sortTicketsByLatest(
+                prev.map((ticket) => {
+                  if (ticket.id !== updatedTicket.id) return ticket;
+
+                  return {
+                    ...updatedTicket,
+                    lastReadAtCustomer: pickLatestTimestamp(
+                      ticket.lastReadAtCustomer,
+                      updatedTicket.lastReadAtCustomer
+                    ),
+                    lastReadAtSupport: pickLatestTimestamp(
+                      ticket.lastReadAtSupport,
+                      updatedTicket.lastReadAtSupport
+                    ),
+                  };
+                })
+              )
+            );
+
+            return;
+          }
+
+          if (event === 'DELETE') {
+            const deletedId = payload.old.ticket_id;
+
+            setTickets((prev) => prev.filter((ticket) => ticket.id !== deletedId));
+            setMessagesByTicketId((prev) => {
+              const next = { ...prev };
+              delete next[deletedId];
+              return next;
+            });
+            loadedTicketIdsRef.current.delete(deletedId);
+            loadingTicketIdsRef.current.delete(deletedId);
+          }
         }
-      }
-    )
+      )
 
-    // ✅ MESSAGES (new replies)
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'support_messages',
-      },
-      async (payload) => {
-        try {
-          const ticketId = (payload.new as any)?.ticket_id;
-          if (!ticketId) return;
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'support_messages',
+        },
+        (payload) => {
+          const newMessage = mapMessage(payload.new);
+          const ticketId = newMessage.ticketId;
 
-          const { data, error } = await supabase
-            .from('support_messages')
-            .select(`
-              support_message_id,
-              ticket_id,
-              sender_type,
-              sender_user_id,
-              sender_name,
-              sender_email,
-              body,
-              created_at,
-              is_internal
-            `)
-            .eq('ticket_id', ticketId)
-            .order('created_at', { ascending: true });
+          setMessagesByTicketId((prev) => {
+            const existing = prev[ticketId] ?? [];
 
-          if (error) throw error;
+            if (existing.some((message) => message.id === newMessage.id)) {
+              return prev;
+            }
 
-          const nextMessages = sortMessagesByCreatedAtAsc(
-            (data ?? []).map(mapMessage)
-          );
-
-          setMessagesByTicketId((prev) => ({
-            ...prev,
-            [ticketId]: nextMessages,
-          }));
+            return {
+              ...prev,
+              [ticketId]: sortMessagesByCreatedAtAsc([...existing, newMessage]),
+            };
+          });
 
           loadedTicketIdsRef.current.add(ticketId);
-        } catch (err) {
-          console.error('Realtime messages error:', err);
+
+          setTickets((prev) =>
+            sortTicketsByLatest(
+              prev.map((ticket) => {
+                if (ticket.id !== ticketId) return ticket;
+
+                const nextStatus: SupportTicketStatus =
+                  newMessage.senderType === 'support'
+                    ? 'waiting_for_customer'
+                    : 'waiting_for_support';
+
+                return {
+                  ...ticket,
+                  lastMessageAt: newMessage.createdAt,
+                  lastMessageBy: newMessage.senderType,
+                  status: nextStatus,
+                };
+              })
+            )
+          );
         }
-      }
-    )
+      )
 
-    .subscribe();
+      .subscribe((status) => {
+        if (import.meta.env.DEV) {
+          console.log('Support realtime status:', status);
+        }
+      });
 
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}, []);
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, []);
 
   return <InquiriesContext.Provider value={value}>{children}</InquiriesContext.Provider>;
 }

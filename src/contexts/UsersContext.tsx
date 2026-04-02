@@ -5,6 +5,7 @@ import {
   useState,
   useCallback,
   useRef,
+  useEffect,
   type ReactNode,
 } from 'react';
 import supabase from '../supabaseClient';
@@ -19,6 +20,8 @@ type UsersPageFilters = {
 interface UsersContextType {
   users: User[];
   isLoadingUsers: boolean;
+  version: number;
+  specialUserRequestsCount: number;
   getUserById: (id: string) => User | undefined;
   refreshUsers: (force?: boolean) => Promise<void>;
   fetchUsersPage: (filters: UsersPageFilters) => Promise<{
@@ -53,6 +56,13 @@ function mapUserRow(row: any): User {
     addressConfirmedAt: row.address_confirmed_at ?? null,
     createdAt: row.created_at ?? undefined,
   };
+}
+
+function sortUsersByCreatedAt(items: User[]) {
+  return [...items].sort(
+    (a, b) =>
+      new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
+  );
 }
 
 const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
@@ -99,6 +109,7 @@ function getDeactivationRuleState(params: {
 export function UsersProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+  const [version, setVersion] = useState(0);
 
   const refreshUsersPromiseRef = useRef<Promise<void> | null>(null);
   const hasLoadedUsersRef = useRef(false);
@@ -111,10 +122,56 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     usersPageCacheRef.current.clear();
   }, []);
 
+  const specialUserRequestsCount = useMemo(() => {
+  return users.filter(
+    (user: any) => user?.deletionStatus === 'pending'
+  ).length;
+}, [users]);
+
   const clearUsersCache = useCallback(() => {
     hasLoadedUsersRef.current = false;
     clearUsersPageCache();
   }, [clearUsersPageCache]);
+
+  const refreshDeletionStateForUser = useCallback(async (userId: string) => {
+  const existingUser = users.find((user) => user.id === userId);
+  if (!existingUser) return;
+
+  const { data: deletionRequest, error } = await supabase
+    .from('account_deletion_requests')
+    .select(`
+      user_id,
+      status,
+      request_reason
+    `)
+    .eq('user_id', userId)
+    .order('requested_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error loading deletion request for user:', error);
+    return;
+  }
+
+  setUsers((prev) =>
+    sortUsersByCreatedAt(
+      prev.map((user) => {
+        if (user.id !== userId) return user;
+
+        return {
+          ...user,
+          deletionRequested: deletionRequest?.status === 'pending',
+          deletionStatus: deletionRequest?.status ?? null,
+          deletionRequestReason: deletionRequest?.request_reason ?? null,
+        };
+      })
+    )
+  );
+
+  clearUsersPageCache();
+  setVersion((v) => v + 1);
+}, [clearUsersPageCache, users]);
 
   const refreshUsers = useCallback(
     async (force = false): Promise<void> => {
@@ -163,7 +220,43 @@ export function UsersProvider({ children }: { children: ReactNode }) {
             return;
           }
 
-          setUsers((data ?? []).map(mapUserRow));
+          const rows = data ?? [];
+const userIds = rows.map((row) => row.user_id);
+
+const { data: deletionRequests, error: deletionError } = userIds.length
+  ? await supabase
+      .from('account_deletion_requests')
+      .select(`
+        user_id,
+        status,
+        request_reason
+      `)
+      .in('user_id', userIds)
+  : { data: [], error: null };
+
+          if (deletionError) {
+            console.error('Error loading deletion requests:', deletionError);
+          }
+
+          const deletionRequestMap = new Map<string, any>();
+          deletionRequests?.forEach((request) => {
+            deletionRequestMap.set(request.user_id, request);
+          });
+
+          setUsers(
+            rows.map((row) => {
+              const mapped = mapUserRow(row);
+              const deletionRequest = deletionRequestMap.get(row.user_id) ?? null;
+
+              return {
+                ...mapped,
+                deletionRequested: deletionRequest?.status === 'pending',
+                deletionStatus: deletionRequest?.status ?? null,
+                deletionRequestReason: deletionRequest?.request_reason ?? null,
+              };
+            })
+          );
+
           hasLoadedUsersRef.current = true;
         } finally {
           setIsLoadingUsers(false);
@@ -176,6 +269,20 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     },
     [users.length]
   );
+
+  const realtimeBumpTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const bumpVersionDebounced = useCallback(() => {
+    if (realtimeBumpTimeoutRef.current) {
+      clearTimeout(realtimeBumpTimeoutRef.current);
+    }
+
+    realtimeBumpTimeoutRef.current = setTimeout(() => {
+      clearUsersCache();
+      setVersion((v) => v + 1);
+      realtimeBumpTimeoutRef.current = null;
+    }, 200);
+  }, [clearUsersCache]);
 
   const fetchUsersPage = useCallback(
     async ({
@@ -401,6 +508,8 @@ export function UsersProvider({ children }: { children: ReactNode }) {
   () => ({
     users,
     isLoadingUsers,
+    version,
+    specialUserRequestsCount,
     getUserById,
     refreshUsers,
     fetchUsersPage,
@@ -410,6 +519,8 @@ export function UsersProvider({ children }: { children: ReactNode }) {
   [
     users,
     isLoadingUsers,
+    version,
+    specialUserRequestsCount,
     getUserById,
     refreshUsers,
     fetchUsersPage,
@@ -417,6 +528,64 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     clearUsersCache,
   ]
 );
+
+useEffect(() => {
+  const channel = supabase
+    .channel('admin-users-realtime')
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'users',
+      },
+      () => {
+        bumpVersionDebounced();
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'reservations',
+      },
+      () => {
+        bumpVersionDebounced();
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'account_deletion_requests',
+      },
+      async (payload) => {
+        const nextRow = payload.new as { user_id?: string } | null;
+        const oldRow = payload.old as { user_id?: string } | null;
+        const userId = nextRow?.user_id ?? oldRow?.user_id;
+
+        if (!userId) return;
+
+        await refreshDeletionStateForUser(userId);
+      }
+    )
+    .subscribe((status) => {
+      if (import.meta.env.DEV) {
+        console.log('admin-users-realtime:', status);
+      }
+    });
+
+  return () => {
+    if (realtimeBumpTimeoutRef.current) {
+      clearTimeout(realtimeBumpTimeoutRef.current);
+      realtimeBumpTimeoutRef.current = null;
+    }
+
+    void supabase.removeChannel(channel);
+  };
+}, [bumpVersionDebounced, refreshDeletionStateForUser]);
 
   return <UsersContext.Provider value={value}>{children}</UsersContext.Provider>;
 }

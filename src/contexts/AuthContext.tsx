@@ -51,6 +51,7 @@ interface AuthContextType {
   authActionPending: boolean;
   formKey: number;
   setFormKey: React.Dispatch<React.SetStateAction<number>>;
+  deleteProfilePicture: () => Promise<boolean>;
   showSessionWarning: boolean;
   sessionCountdown: number;
   extendSession: () => void;
@@ -241,6 +242,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logoutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  
+
+
+  const OAUTH_PENDING_KEY = 'oauth:pending-provider';
+  const OAUTH_LOGIN_REQUEST_KEY = 'oauth:login-request-id';
+
+  const isOAuthFlowPending = () => {
+    return sessionStorage.getItem(OAUTH_PENDING_KEY) !== null;
+  };
+
+  const setOAuthFlowPending = (provider: 'google' | 'facebook') => {
+    sessionStorage.setItem(OAUTH_PENDING_KEY, provider);
+  };
+
+  const clearOAuthFlowPending = () => {
+    sessionStorage.removeItem(OAUTH_PENDING_KEY);
+    sessionStorage.removeItem(OAUTH_LOGIN_REQUEST_KEY);
+  };
+  
   const USER_SELECT = `
     user_id,
     public_id,
@@ -273,7 +293,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const displayName =
       [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || 'User';
 
-    localStorage.setItem(
+    sessionStorage.setItem(
       LAST_LOGIN_USER_KEY,
       JSON.stringify({
         name: displayName,
@@ -281,6 +301,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
     );
   }, []);
+
+  const AVATAR_BUCKET = 'avatars';
+
+const getStoragePathFromAvatarUrl = useCallback((url?: string | null) => {
+  if (!url) return null;
+
+  try {
+    const parsed = new URL(url);
+    const marker = `/storage/v1/object/public/${AVATAR_BUCKET}/`;
+
+    const index = parsed.pathname.indexOf(marker);
+    if (index === -1) return null;
+
+    return decodeURIComponent(parsed.pathname.slice(index + marker.length));
+  } catch {
+    return null;
+  }
+}, []);
+
+const deleteProfilePicture = useCallback(async (): Promise<boolean> => {
+  if (!user || authActionPending) return false;
+
+  setAuthActionPending(true);
+
+  try {
+    const oldPath = getStoragePathFromAvatarUrl(user.profilePictureUrl);
+
+    if (oldPath) {
+      const { error: storageError } = await supabase.storage
+        .from(AVATAR_BUCKET)
+        .remove([oldPath]);
+
+      if (storageError) {
+        console.error('Avatar delete failed:', storageError.message);
+        return false;
+      }
+    }
+
+    const { error: profileError } = await supabase
+      .from('users')
+      .update({ profile_picture_url: null })
+      .eq('user_id', user.id);
+
+    if (profileError) {
+      console.error('Failed to clear avatar URL:', profileError.message);
+      return false;
+    }
+
+    persistUserSession({
+      ...user,
+      profilePictureUrl: undefined,
+    });
+
+    return true;
+  } catch (err) {
+    console.error('Unexpected avatar delete error:', err);
+    return false;
+  } finally {
+    setAuthActionPending(false);
+  }
+}, [authActionPending, getStoragePathFromAvatarUrl, persistUserSession, user]);
 
   const clearSessionTimers = useCallback(() => {
     if (warningTimeoutRef.current) {
@@ -312,7 +393,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSessionCountdown(0);
 
       if (options?.clearGreeting) {
-        localStorage.removeItem(LAST_LOGIN_USER_KEY);
+        sessionStorage.removeItem(LAST_LOGIN_USER_KEY);
       }
     },
     [clearSessionTimers]
@@ -461,6 +542,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (!session?.user) {
           clearUserSession();
+          pendingDeviceVerificationRef.current = false;
+          clearOAuthFlowPending();
+
+          // 🔴 Also reset active user ref
+          activeUserIdRef.current = null;
+
+          return;
+        }
+
+        if (isOAuthFlowPending()) {
+          pendingDeviceVerificationRef.current = true;
           return;
         }
 
@@ -559,11 +651,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           if (!session?.user) return;
 
+          const oauthPending = isOAuthFlowPending();
+
+          if (oauthPending) {
+            pendingDeviceVerificationRef.current = true;
+          }
+
           // 🚫 Prevent premature session persistence during device check
-          if (pendingDeviceVerificationRef.current) return;
+          if (pendingDeviceVerificationRef.current) {
+            return;
+          }
 
           // If same user already in memory, skip expensive resync
-          if (activeUserIdRef.current === session.user.id) return;
+          if (activeUserIdRef.current === session.user.id && user) return;
 
           const profile = await fetchOrCreateUserProfile(session.user);
 
@@ -614,6 +714,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     showIndicator,
     touchLastLogin,
   ]);
+
+  
 
   // --- INACTIVITY TIMER ---
   useEffect(() => {
@@ -708,6 +810,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, clearSessionTimers, sessionResetKey]);
 
 
+
   const verifyTurnstileToken = useCallback(
   async (token?: string): Promise<boolean> => {
     if (!token) return false;
@@ -784,6 +887,11 @@ const login = useCallback(
       if (!isTurnstileValid) {
         return { success: false, error: 'verification_failed' };
       }
+
+
+if (!isTurnstileValid) {
+  return { success: false, error: 'verification_failed' };
+}
 
       // ✅ 2. Lock check
       const { data: lockData } = await supabase.rpc('check_login_lock', {
@@ -920,50 +1028,58 @@ const login = useCallback(
   ]
 );
   const loginWithGoogle = useCallback(async () => {
-    if (authActionPending) return;
+  if (authActionPending) return;
 
-    setAuthActionPending(true);
-    oauthAuditPendingRef.current = 'google';
+  setAuthActionPending(true);
+  oauthAuditPendingRef.current = 'google';
+  pendingDeviceVerificationRef.current = true;
+  setOAuthFlowPending('google');
 
-    try {
-      await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/login`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
+  try {
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/login`,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'select_account consent',
         },
-      });
-    } catch (err) {
-      oauthAuditPendingRef.current = null;
-      console.error('Google login failed:', err);
-    } finally {
-      setAuthActionPending(false);
-    }
-  }, [authActionPending]);
+      },
+    });
+  } catch (err) {
+    oauthAuditPendingRef.current = null;
+    pendingDeviceVerificationRef.current = false;
+    clearOAuthFlowPending();
+    console.error('Google login failed:', err);
+  } finally {
+    setAuthActionPending(false);
+  }
+}, [authActionPending]);
 
   const loginWithFacebook = useCallback(async () => {
-    if (authActionPending) return;
+  if (authActionPending) return;
 
-    setAuthActionPending(true);
-    oauthAuditPendingRef.current = 'facebook';
+  setAuthActionPending(true);
+  oauthAuditPendingRef.current = 'facebook';
+  pendingDeviceVerificationRef.current = true;
+  setOAuthFlowPending('facebook');
 
-    try {
-      await supabase.auth.signInWithOAuth({
-        provider: 'facebook',
-        options: {
-          redirectTo: `${window.location.origin}/login`,
-        },
-      });
-    } catch (err) {
-      oauthAuditPendingRef.current = null;
-      console.error('Facebook login failed:', err);
-    } finally {
-      setAuthActionPending(false);
-    }
-  }, [authActionPending]);
+  try {
+    await supabase.auth.signInWithOAuth({
+      provider: 'facebook',
+      options: {
+        redirectTo: `${window.location.origin}/login`,
+      },
+    });
+  } catch (err) {
+    oauthAuditPendingRef.current = null;
+    pendingDeviceVerificationRef.current = false;
+    clearOAuthFlowPending();
+    console.error('Facebook login failed:', err);
+  } finally {
+    setAuthActionPending(false);
+  }
+}, [authActionPending]);
 
   const register = useCallback(
     async (
@@ -1082,6 +1198,78 @@ const login = useCallback(
     [addAuthAuditLog, clearUserSession, showIndicator, user?.email]
   );
 
+    useEffect(() => {
+  if (!user?.id) return;
+
+  let isHandlingForcedLogout = false;
+
+  const channel = supabase
+    .channel(`users-self-${user.id}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'users',
+        filter: `user_id=eq.${user.id}`,
+      },
+      async (payload) => {
+        const nextRow =
+          payload.eventType === 'DELETE'
+            ? null
+            : (payload.new as Record<string, any> | null);
+
+        if (!nextRow) {
+          if (!isHandlingForcedLogout) {
+            isHandlingForcedLogout = true;
+            await logout('Your account is no longer available.', {
+              clearGreeting: true,
+              redirectToLogin: true,
+            });
+          }
+          return;
+        }
+
+        const nextUser = mapProfileToUser(nextRow);
+
+        // keep local session/user in sync immediately
+        persistUserSession(nextUser);
+
+        // deactivated by admin
+        if (nextUser.isActive === false) {
+          if (!isHandlingForcedLogout) {
+            isHandlingForcedLogout = true;
+            await logout('Your account has been deactivated.', {
+              clearGreeting: true,
+              redirectToLogin: true,
+            });
+          }
+          return;
+        }
+
+        // role changed while signed in
+        if (user.role !== nextUser.role) {
+          const nextPath =
+            nextUser.role === 'admin' ? '/admin/dashboard' : '/client/dashboard';
+
+          if (window.location.pathname !== nextPath) {
+            window.history.replaceState(null, '', nextPath);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }
+        }
+      }
+    )
+    .subscribe((status) => {
+      if (import.meta.env.DEV) {
+        console.log(`Realtime self-user channel [${user.id}]:`, status);
+      }
+    });
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}, [user?.id, user?.role, logout, persistUserSession]);
+
   const updateProfile = useCallback(
   async (userData: Partial<User>): Promise<boolean> => {
     if (!user || authActionPending) return false;
@@ -1109,32 +1297,6 @@ const login = useCallback(
 
       if (userData.profilePictureUrl !== undefined) {
         dbPayload.profile_picture_url = userData.profilePictureUrl;
-      }
-
-      const nextEmail =
-        userData.email !== undefined ? normalizeEmail(userData.email) : user.email;
-      const currentEmail = normalizeEmail(user.email);
-
-      const isEmailChanged =
-        userData.email !== undefined && nextEmail !== currentEmail;
-
-      if (isEmailChanged) {
-        const { error: authEmailError } = await supabase.auth.updateUser(
-        { email: nextEmail },
-        {
-          emailRedirectTo: `${window.location.origin}/login`,
-        }
-      );
-
-        if (authEmailError) {
-          console.error('Email update failed:', authEmailError.message);
-          return false;
-        }
-
-        showIndicator(
-          'A confirmation link has been sent to your new email address. Please verify it before the change takes effect.',
-          'security'
-        );
       }
 
       if (Object.keys(dbPayload).length > 0) {
@@ -1208,6 +1370,7 @@ const login = useCallback(
   const changeEmail = useCallback(
   async ({
     newEmail,
+    currentPassword,
   }: {
     newEmail: string;
     currentPassword: string;
@@ -1221,30 +1384,57 @@ const login = useCallback(
     try {
       const normalizedEmail = normalizeEmail(newEmail);
 
-      const { error } = await supabase.auth.updateUser(
-        { email: normalizedEmail },
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      const accessToken = session?.access_token;
+
+      if (sessionError || !accessToken) {
+        return {
+          success: false,
+          message: 'Your session is no longer valid. Please sign in again.',
+        };
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/request-email-change`,
         {
-          emailRedirectTo: `${window.location.origin}/login`,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({
+            newEmail: normalizedEmail,
+            currentPassword,
+          }),
         }
       );
 
-      if (error) {
-        console.error('Email change error:', error);
+      const payload = await response.json().catch(() => null);
 
+      if (!response.ok || !payload?.success) {
         return {
           success: false,
-          message: 'Unable to process email change request. Please try again',
+          message:
+            payload?.error ||
+            payload?.message ||
+            'Unable to process email change request.',
         };
       }
 
       showIndicator(
-        'A confirmation link has been sent to your new email. Please verify it to complete the change.',
+        payload?.message ||
+          'We sent a verification link to your new email address.',
         'security'
       );
 
       return {
         success: true,
-        message: 'Verification email sent.',
+        message: payload?.message,
       };
     } catch (err) {
       console.error('Email change error:', err);
@@ -1288,117 +1478,152 @@ const login = useCallback(
 );
 
   const uploadProfilePicture = useCallback(
-    async (file: File): Promise<string | null> => {
-      if (!user || authActionPending) return null;
+  async (file: File): Promise<string | null> => {
+    if (!user || authActionPending) return null;
 
-      setAuthActionPending(true);
+    setAuthActionPending(true);
 
-      try {
-        if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
-          console.error('Invalid avatar type.');
-          return null;
-        }
-
-        if (file.size > MAX_AVATAR_SIZE) {
-          console.error('Avatar exceeds maximum allowed size.');
-          return null;
-        }
-
-        const mimeToExt: Record<string, string> = {
-          'image/jpeg': 'jpg',
-          'image/png': 'png',
-          'image/webp': 'webp',
-        };
-
-        const fileExt = mimeToExt[file.type] ?? 'bin';
-        const fileName = `${user.id}/${crypto.randomUUID()}.${fileExt}`;
-
-        const { error } = await supabase.storage
-          .from('avatars')
-          .upload(fileName, file, { upsert: false });
-
-        if (error) {
-          console.error('Avatar upload failed:', error.message);
-          return null;
-        }
-
-        const publicUrl = supabase.storage.from('avatars').getPublicUrl(fileName).data.publicUrl;
-        return publicUrl;
-      } catch (err) {
-        console.error('Unexpected avatar upload error:', err);
+    try {
+      if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
+        console.error('Invalid avatar type.');
         return null;
-      } finally {
-        setAuthActionPending(false);
       }
-    },
-    [authActionPending, user]
-  );
+
+      if (file.size > MAX_AVATAR_SIZE) {
+        console.error('Avatar exceeds maximum allowed size.');
+        return null;
+      }
+
+      const mimeToExt: Record<string, string> = {
+        'image/jpeg': 'jpg',
+        'image/png': 'png',
+        'image/webp': 'webp',
+      };
+
+      const fileExt = mimeToExt[file.type] ?? 'bin';
+      const newPath = `${user.id}/avatar.${fileExt}`;
+
+      // remove old avatar first if it exists and is different
+      const oldPath = getStoragePathFromAvatarUrl(user.profilePictureUrl);
+      if (oldPath && oldPath !== newPath) {
+        const { error: removeOldError } = await supabase.storage
+          .from(AVATAR_BUCKET)
+          .remove([oldPath]);
+
+        if (removeOldError) {
+          console.error('Old avatar cleanup failed:', removeOldError.message);
+        }
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from(AVATAR_BUCKET)
+        .upload(newPath, file, {
+          upsert: true,
+          contentType: file.type,
+          cacheControl: '3600',
+        });
+
+      if (uploadError) {
+        console.error('Avatar upload failed:', uploadError.message);
+        return null;
+      }
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(newPath);
+
+      const { error: profileError } = await supabase
+        .from('users')
+        .update({ profile_picture_url: publicUrl })
+        .eq('user_id', user.id);
+
+      if (profileError) {
+        console.error('Failed to save avatar URL:', profileError.message);
+
+        // rollback uploaded file if DB update fails
+        await supabase.storage.from(AVATAR_BUCKET).remove([newPath]);
+        return null;
+      }
+
+      persistUserSession({
+        ...user,
+        profilePictureUrl: publicUrl,
+      });
+
+      return publicUrl;
+    } catch (err) {
+      console.error('Unexpected avatar upload error:', err);
+      return null;
+    } finally {
+      setAuthActionPending(false);
+    }
+  },
+  [
+    authActionPending,
+    getStoragePathFromAvatarUrl,
+    persistUserSession,
+    user,
+  ]
+);
 
   const deleteAccount = useCallback(
   async (userId: string): Promise<{ success: boolean; reason?: string }> => {
     try {
-      // 🔒 Only allow self-delete
-      if (user?.id !== userId) {
+      if (!user?.id || user.id !== userId) {
         return {
           success: false,
           reason: 'You are not authorized to delete this account.',
         };
       }
 
-      // 🔍 Check active reservation
-      const { data: activeReservation, error: reservationError } = await supabase
-        .from('reservations')
-        .select('reservation_id')
-        .eq('user_id', userId)
-        .in('status', ['approved', 'confirmed'])
-        .limit(1)
-        .maybeSingle();
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      if (reservationError) {
-        console.error('Reservation check failed:', reservationError);
-        return { success: false, reason: 'Failed to validate account status.' };
-      }
+      const accessToken = session?.access_token;
 
-      if (activeReservation) {
+      if (sessionError || !accessToken) {
         return {
           success: false,
-          reason:
-            'Account cannot be deleted because you have an active reservation or ongoing occupancy.',
+          reason: 'Your session is no longer valid. Please sign in again and retry.',
         };
       }
 
-      // 🔍 Check recent login (optional but consistent)
-      const { data: userRow } = await supabase
-        .from('users')
-        .select('last_login')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (userRow?.last_login) {
-        const lastLogin = new Date(userRow.last_login);
-        const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
-
-        if (Date.now() - lastLogin.getTime() < THIRTY_DAYS) {
-          return {
-            success: false,
-            reason:
-              'Account cannot be deleted because it has recent login activity.',
-          };
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${accessToken}`,
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ userId }),
         }
+      );
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.success) {
+        return {
+          success: false,
+          reason: payload?.reason || 'Failed to permanently delete your account.',
+        };
       }
 
-      // 🚨 CRITICAL: delete auth user (this deletes public.users via cascade)
-      const { error: authError } = await supabase.auth.admin.deleteUser(userId);
+      await supabase.auth.signOut();
 
-      if (authError) {
-        console.error('Auth deletion failed:', authError);
-        return { success: false, reason: 'Failed to delete account.' };
-      }
-
-      return { success: true };
+      return {
+        success: true,
+        reason: payload?.reason || 'Account deleted successfully.',
+      };
     } catch (error) {
       console.error('Delete account error:', error);
-      return { success: false, reason: 'Unexpected error occurred.' };
+      return {
+        success: false,
+        reason: 'Unexpected error occurred while deleting the account.',
+      };
     }
   },
   [user]
@@ -1418,6 +1643,7 @@ const login = useCallback(
         login,
         loginWithGoogle,
         loginWithFacebook,
+        deleteProfilePicture,
         register,
         logout,
         updateProfile,

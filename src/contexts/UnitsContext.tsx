@@ -37,6 +37,9 @@ const UNIT_CONFIG: Record<
   },
 };
 
+const PROPERTY_MEDIA_BUCKET = 'property_media';
+const UNIT_CONTRACTS_BUCKET = 'unit_contracts';
+
 interface AddParkingSlotPayload {
   unitId: string;
   slotCode: string;
@@ -59,11 +62,14 @@ interface UpdateParkingSlotPayload {
 
 interface UnitsContextType {
   units: Unit[];
+  unitsVersion: number;
   parkingSlots: ParkingSlot[];
   loadingUnits: boolean;
   locationOptions: string[];
   defaultLocation: string;
-  addUnit: (unit: Omit<Unit, 'id' | 'property' | 'images'> & { images?: string[] }) => Promise<void>;
+  addUnit: (
+    unit: Omit<Unit, 'id' | 'property' | 'images'> & { images?: string[] }
+  ) => Promise<void>;
   updateUnit: (id: string, unit: Partial<Unit>) => Promise<void>;
   deleteUnit: (id: string) => Promise<void>;
   uploadUnitImage: (file: File) => Promise<string | null>;
@@ -94,7 +100,7 @@ function getPublicId(type: UnitType, uuid: string) {
 }
 
 function getPublicImageUrl(path: string) {
-  const { data } = supabase.storage.from('property_media').getPublicUrl(path);
+  const { data } = supabase.storage.from(PROPERTY_MEDIA_BUCKET).getPublicUrl(path);
   return data.publicUrl;
 }
 
@@ -107,175 +113,556 @@ function mapParkingSlotRow(row: any): ParkingSlot {
     status: row.status,
     vehicleType: row.vehicle_type,
     imagePath: row.image_url,
-    imageUrl: row.image_url || null,
+    imageUrl: row.image_url ? getPublicImageUrl(row.image_url) : null,
     notes: row.notes,
   };
 }
 
 async function removeStorageFile(bucket: string, path?: string | null) {
   if (!path) return;
-
   const { error } = await supabase.storage.from(bucket).remove([path]);
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
 }
 
+async function removeStorageFiles(bucket: string, paths?: Array<string | null | undefined>) {
+  const cleanPaths = (paths ?? []).filter((path): path is string => Boolean(path?.trim()));
+  if (cleanPaths.length === 0) return;
+
+  const { error } = await supabase.storage.from(bucket).remove(cleanPaths);
+  if (error) throw error;
+}
+
+function getRemovedPaths(previous: string[] = [], next: string[] = []) {
+  const nextSet = new Set(next);
+  return previous.filter((path) => !nextSet.has(path));
+}
+
+function sortUnits(items: Unit[]) {
+  return [...items].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function sortParkingSlots(items: ParkingSlot[]) {
+  return [...items].sort((a, b) => a.slotCode.localeCompare(b.slotCode));
+}
+
+type SpecificUnitRow = {
+  unit_id: string;
+  title: string | null;
+  description: string | null;
+  policies: string | null;
+  features: string[] | null;
+  capacity?: number | null;
+};
 
 export function UnitsProvider({ children }: { children: ReactNode }) {
   const [units, setUnits] = useState<Unit[]>([]);
   const [parkingSlots, setParkingSlots] = useState<ParkingSlot[]>([]);
   const [loadingUnits, setLoadingUnits] = useState(false);
+  const [unitsVersion, setUnitsVersion] = useState(0);
 
   const { addAuditLog } = useRecords();
   const { user } = useAuth();
 
- const refreshUnits = useCallback(async () => {
-  setLoadingUnits(true);
+  const mapBaseUnitRow = useCallback((base: any): Unit => {
+  const resolvedType = base.unit_type as UnitType;
 
-  try {
-    const { data: baseUnits, error: baseError } = await supabase
-      .from('units')
-      .select(`
-        unit_id,
-        public_id,
-        unit_type,
-        title,
-        is_available,
-        price,
-        location,
-        images,
-        videos,
-        minimum_payment_percent,
-        contract_file_path,
-        contract_file_name
-      `);
+  const imagePaths: string[] = Array.isArray(base.images)
+    ? base.images.filter((path: unknown): path is string => typeof path === 'string' && path.length > 0)
+    : [];
 
-    if (baseError) throw baseError;
+  const videoPaths: string[] = Array.isArray(base.videos)
+    ? base.videos.filter((path: unknown): path is string => typeof path === 'string' && path.length > 0)
+    : [];
 
-    const [rentalRes, functionRes, parkingRes, parkingSlotsRes] = await Promise.all([
-      supabase.from('rental_units').select('unit_id, title, description, policies, features'),
-      supabase.from('function_units').select('unit_id, title, description, policies, features, capacity'),
-      supabase.from('parking_units').select('unit_id, title, description, policies, features'),
-      supabase
-        .from('parking_slots')
-        .select('slot_id, unit_id, slot_code, label, status, vehicle_type, image_url, notes')
-        .order('slot_code', { ascending: true }),
-    ]);
+  return {
+    id: base.unit_id,
+    propertyId: base.public_id || getPublicId(resolvedType, base.unit_id),
+    name: base.title || '',
+    type: resolvedType,
+    description: '',
+    price: Number(base.price || 0),
+    imagePaths,
+    images:
+      imagePaths.length > 0
+        ? imagePaths.map((path: string) => getPublicImageUrl(path))
+        : [DEFAULT_UNIT_IMAGE],
+    videoPaths,
+    videos: videoPaths.map((path: string) => getPublicImageUrl(path)),
+    policies: '',
+    capacity: undefined,
+    available: Boolean(base.is_available),
+    features: [],
+    location: base.location || DEFAULT_LOCATION,
+    property: null,
+    minimumPaymentPercent: base.minimum_payment_percent ?? null,
+    contractFilePath: base.contract_file_path ?? null,
+    contractFileName: base.contract_file_name ?? null,
+  };
+}, []);
 
-    if (rentalRes.error) console.error('rental_units error:', rentalRes.error);
-    if (functionRes.error) console.error('function_units error:', functionRes.error);
-    if (parkingRes.error) console.error('parking_units error:', parkingRes.error);
-    if (parkingSlotsRes.error) console.error('parking_slots error:', parkingSlotsRes.error);
+  const refreshUnits = useCallback(async () => {
+    setLoadingUnits(true);
 
-    const rentalUnits = rentalRes.data ?? [];
-    const functionUnits = functionRes.data ?? [];
-    const parkingUnits = parkingRes.data ?? [];
-    const slotRows = parkingSlotsRes.data ?? [];
+    try {
+      const { data: baseUnits, error: baseError } = await supabase
+        .from('units')
+        .select(`
+          unit_id,
+          public_id,
+          unit_type,
+          title,
+          is_available,
+          price,
+          location,
+          images,
+          videos,
+          minimum_payment_percent,
+          contract_file_path,
+          contract_file_name
+        `);
 
-    const { data: activeParking } = await supabase
-      .from('reservations')
-      .select(`
-        user_id,
-        start_date,
-        details,
-        users (
-          first_name,
-          last_name,
-          public_id
-        )
-      `)
-      .eq('unit_type', 'parking_slot')
-      .in('status', ['approved', 'confirmed']);
+      if (baseError) throw baseError;
 
-    const combinedUnits: Unit[] = (baseUnits ?? []).map((base) => {
-      let specific:
-        | {
-            unit_id: string;
-            title: string | null;
-            description: string | null;
-            policies: string | null;
-            features: string[] | null;
-            capacity?: number | null;
-          }
-        | null = null;
+      const [rentalRes, functionRes, parkingRes, parkingSlotsRes] = await Promise.all([
+        supabase.from('rental_units').select('unit_id, title, description, policies, features'),
+        supabase.from('function_units').select('unit_id, title, description, policies, features, capacity'),
+        supabase.from('parking_units').select('unit_id, title, description, policies, features'),
+        supabase
+          .from('parking_slots')
+          .select('slot_id, unit_id, slot_code, label, status, vehicle_type, image_url, notes')
+          .order('slot_code', { ascending: true }),
+      ]);
 
-      if (base.unit_type === 'rental_space') {
-        specific = rentalUnits.find((item) => item.unit_id === base.unit_id) ?? null;
-      } else if (base.unit_type === 'function_hall') {
-        specific = functionUnits.find((item) => item.unit_id === base.unit_id) ?? null;
-      } else if (base.unit_type === 'parking_slot') {
-        specific = parkingUnits.find((item) => item.unit_id === base.unit_id) ?? null;
-      }
+      if (rentalRes.error) console.error('rental_units error:', rentalRes.error);
+      if (functionRes.error) console.error('function_units error:', functionRes.error);
+      if (parkingRes.error) console.error('parking_units error:', parkingRes.error);
+      if (parkingSlotsRes.error) console.error('parking_slots error:', parkingSlotsRes.error);
 
-      const resolvedType = base.unit_type as UnitType;
-      const imagePaths = Array.isArray(base.images) ? base.images.filter(Boolean) : [];
-      const videoPaths = Array.isArray(base.videos) ? base.videos.filter(Boolean) : [];
-      return {
-        id: base.unit_id,
-        propertyId: base.public_id || getPublicId(resolvedType, base.unit_id),
-        name: base.title || specific?.title || '',
-        type: resolvedType,
-        description: specific?.description || '',
-        price: Number(base.price || 0),
-        imagePaths,
-        images:
-          imagePaths.length > 0
-            ? imagePaths.map((path) => getPublicImageUrl(path))
-            : [DEFAULT_UNIT_IMAGE],
-        videos: videoPaths.map((path) => getPublicImageUrl(path)),
-        policies: specific?.policies || '',
-        capacity:
-          resolvedType === 'function_hall'
-            ? Number(specific?.capacity || 0) || undefined
-            : undefined,
-        available: Boolean(base.is_available),
-        features: Array.isArray(specific?.features) ? specific.features : [],
-        location: base.location || DEFAULT_LOCATION,
-        property: null,
-        minimumPaymentPercent: base.minimum_payment_percent ?? null,
-        contractFilePath: base.contract_file_path ?? null,
-        contractFileName: base.contract_file_name ?? null,
-      };
-    });
+      const rentalUnits = rentalRes.data ?? [];
+      const functionUnits = functionRes.data ?? [];
+      const parkingUnits = parkingRes.data ?? [];
+      const slotRows = parkingSlotsRes.data ?? [];
 
-    setUnits(combinedUnits);
-    const mappedSlots = slotRows.map((slot) => {
-    const occupancy = activeParking?.find(
-      (r) => r.details?.slotId === slot.slot_id
-    );
+      const { data: activeParking } = await supabase
+        .from('reservations')
+        .select(`
+          user_id,
+          start_date,
+          details,
+          users (
+            first_name,
+            last_name,
+            public_id
+          )
+        `)
+        .eq('unit_type', 'parking_slot')
+        .in('status', ['approved', 'confirmed']);
 
+      const combinedUnits: Unit[] = (baseUnits ?? []).map((base) => {
+        let specific:
+          | {
+              unit_id: string;
+              title: string | null;
+              description: string | null;
+              policies: string | null;
+              features: string[] | null;
+              capacity?: number | null;
+            }
+          | null = null;
+
+        if (base.unit_type === 'rental_space') {
+          specific = rentalUnits.find((item) => item.unit_id === base.unit_id) ?? null;
+        } else if (base.unit_type === 'function_hall') {
+          specific = functionUnits.find((item) => item.unit_id === base.unit_id) ?? null;
+        } else if (base.unit_type === 'parking_slot') {
+          specific = parkingUnits.find((item) => item.unit_id === base.unit_id) ?? null;
+        }
+
+        const resolvedType = base.unit_type as UnitType;
+        const imagePaths = Array.isArray(base.images) ? base.images.filter(Boolean) : [];
+        const videoPaths = Array.isArray(base.videos) ? base.videos.filter(Boolean) : [];
+
+        return {
+          id: base.unit_id,
+          propertyId: base.public_id || getPublicId(resolvedType, base.unit_id),
+          name: base.title || specific?.title || '',
+          type: resolvedType,
+          description: specific?.description || '',
+          price: Number(base.price || 0),
+          imagePaths,
+          images:
+            imagePaths.length > 0
+              ? imagePaths.map((path) => getPublicImageUrl(path))
+              : [DEFAULT_UNIT_IMAGE],
+          videoPaths,
+          videos: videoPaths.map((path) => getPublicImageUrl(path)),
+          policies: specific?.policies || '',
+          capacity:
+            resolvedType === 'function_hall'
+              ? Number(specific?.capacity || 0) || undefined
+              : undefined,
+          available: Boolean(base.is_available),
+          features: Array.isArray(specific?.features) ? specific.features : [],
+          location: base.location || DEFAULT_LOCATION,
+          property: null,
+          minimumPaymentPercent: base.minimum_payment_percent ?? null,
+          contractFilePath: base.contract_file_path ?? null,
+          contractFileName: base.contract_file_name ?? null,
+        };
+      });
+
+      setUnits(combinedUnits);
+
+      const mappedSlots = slotRows.map((slot) => {
+        const occupancy = activeParking?.find((r) => r.details?.slotId === slot.slot_id);
+        const userInfo = occupancy?.users?.[0];
+
+        return {
+          ...mapParkingSlotRow(slot),
+          isOccupied: !!occupancy,
+          occupiedByUserId: occupancy?.user_id ?? null,
+          occupiedByName: userInfo
+            ? `${userInfo.first_name ?? ''} ${userInfo.last_name ?? ''}`.trim()
+            : null,
+          occupiedByPublicId: userInfo?.public_id ?? null,
+          occupiedSince: occupancy?.start_date ?? null,
+        };
+      });
+
+      setParkingSlots(mappedSlots);
+    } catch (error) {
+      console.error('Error loading base units from Supabase:', error);
+      setUnits([]);
+      setParkingSlots([]);
+    } finally {
+      setLoadingUnits(false);
+    }
+  }, []);
+
+  const refreshSpecificUnitDetails = useCallback(async (unitId: string) => {
+  const { data: base, error: baseError } = await supabase
+    .from('units')
+    .select(`
+      unit_id,
+      public_id,
+      unit_type,
+      title,
+      is_available,
+      price,
+      location,
+      images,
+      videos,
+      minimum_payment_percent,
+      contract_file_path,
+      contract_file_name
+    `)
+    .eq('unit_id', unitId)
+    .maybeSingle();
+
+  if (baseError) {
+    console.error('Error loading base unit:', baseError);
+    return;
+  }
+
+  if (!base) {
+    setUnits((prev) => prev.filter((unit) => unit.id !== unitId));
+    setParkingSlots((prev) => prev.filter((slot) => slot.unitId !== unitId));
+    return;
+  }
+
+  const resolvedType = base.unit_type as UnitType;
+  const specificTable = getUnitConfig(resolvedType).table;
+
+  let specificRow: SpecificUnitRow | null = null;
+
+  if (resolvedType === 'function_hall') {
+    const { data, error } = await supabase
+      .from(specificTable)
+      .select('unit_id, title, description, policies, features, capacity')
+      .eq('unit_id', unitId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error loading specific unit details:', error);
+    } else {
+      specificRow = (data as SpecificUnitRow | null) ?? null;
+    }
+  } else {
+    const { data, error } = await supabase
+      .from(specificTable)
+      .select('unit_id, title, description, policies, features')
+      .eq('unit_id', unitId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error loading specific unit details:', error);
+    } else {
+      specificRow = (data as SpecificUnitRow | null) ?? null;
+    }
+  }
+
+  const imagePaths: string[] = Array.isArray(base.images)
+    ? base.images.filter((path: unknown): path is string => typeof path === 'string' && path.length > 0)
+    : [];
+
+  const videoPaths: string[] = Array.isArray(base.videos)
+    ? base.videos.filter((path: unknown): path is string => typeof path === 'string' && path.length > 0)
+    : [];
+
+  const nextUnit: Unit = {
+    id: base.unit_id,
+    propertyId: base.public_id || getPublicId(resolvedType, base.unit_id),
+    name: base.title || specificRow?.title || '',
+    type: resolvedType,
+    description: specificRow?.description || '',
+    price: Number(base.price || 0),
+    imagePaths,
+    images:
+      imagePaths.length > 0
+        ? imagePaths.map((path: string) => getPublicImageUrl(path))
+        : [DEFAULT_UNIT_IMAGE],
+    videoPaths,
+    videos: videoPaths.map((path: string) => getPublicImageUrl(path)),
+    policies: specificRow?.policies || '',
+    capacity:
+      resolvedType === 'function_hall'
+        ? Number(specificRow?.capacity || 0) || undefined
+        : undefined,
+    available: Boolean(base.is_available),
+    features: Array.isArray(specificRow?.features) ? specificRow.features : [],
+    location: base.location || DEFAULT_LOCATION,
+    property: null,
+    minimumPaymentPercent: base.minimum_payment_percent ?? null,
+    contractFilePath: base.contract_file_path ?? null,
+    contractFileName: base.contract_file_name ?? null,
+  };
+
+  setUnits((prev) => {
+    const exists = prev.some((unit) => unit.id === unitId);
+    const next = exists
+      ? prev.map((unit) => (unit.id === unitId ? nextUnit : unit))
+      : [...prev, nextUnit];
+
+    return sortUnits(next);
+  });
+}, []);
+
+const refreshParkingSlotsForUnit = useCallback(async (unitId: string) => {
+  const { data: slotRows, error: slotsError } = await supabase
+    .from('parking_slots')
+    .select('slot_id, unit_id, slot_code, label, status, vehicle_type, image_url, notes')
+    .eq('unit_id', unitId)
+    .order('slot_code', { ascending: true });
+
+  if (slotsError) {
+    console.error('Error loading parking slots for unit:', slotsError);
+    return;
+  }
+
+  const { data: activeParking, error: occupancyError } = await supabase
+    .from('reservations')
+    .select(`
+      user_id,
+      start_date,
+      details,
+      users (
+        first_name,
+        last_name,
+        public_id
+      )
+    `)
+    .eq('unit_type', 'parking_slot')
+    .in('status', ['approved', 'confirmed']);
+
+  if (occupancyError) {
+    console.error('Error loading parking occupancy:', occupancyError);
+  }
+
+  const mappedSlots = (slotRows ?? []).map((slot) => {
+    const occupancy = activeParking?.find((r) => r.details?.slotId === slot.slot_id);
     const userInfo = occupancy?.users?.[0];
 
     return {
       ...mapParkingSlotRow(slot),
       isOccupied: !!occupancy,
-
       occupiedByUserId: occupancy?.user_id ?? null,
-
       occupiedByName: userInfo
         ? `${userInfo.first_name ?? ''} ${userInfo.last_name ?? ''}`.trim()
         : null,
-
       occupiedByPublicId: userInfo?.public_id ?? null,
-
       occupiedSince: occupancy?.start_date ?? null,
     };
   });
 
-  setParkingSlots(mappedSlots);
-  } catch (error) {
-    console.error('Error loading base units from Supabase:', error);
-    setUnits([]);
-    setParkingSlots([]);
-  } finally {
-    setLoadingUnits(false);
-  }
+  setParkingSlots((prev) => {
+    const others = prev.filter((slot) => slot.unitId !== unitId);
+    return sortParkingSlots([...others, ...mappedSlots]);
+  });
 }, []);
 
   useEffect(() => {
     void refreshUnits();
   }, [refreshUnits]);
+
+  useEffect(() => {
+  const channel = supabase
+    .channel('units-realtime')
+
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'units' },
+      async (payload) => {
+        const baseUnit = mapBaseUnitRow(payload.new);
+
+        setUnits((prev) => {
+          if (prev.some((unit) => unit.id === baseUnit.id)) return prev;
+          return sortUnits([...prev, baseUnit]);
+        });
+
+        await refreshSpecificUnitDetails(baseUnit.id);
+
+        if (baseUnit.type === 'parking_slot') {
+          await refreshParkingSlotsForUnit(baseUnit.id);
+        }
+
+        setUnitsVersion((prev) => prev + 1);
+      }
+    )
+
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'units' },
+      async (payload) => {
+        const updatedBase = mapBaseUnitRow(payload.new);
+
+        setUnits((prev) =>
+          sortUnits(
+            prev.map((unit) => (unit.id === updatedBase.id ? { ...unit, ...updatedBase } : unit))
+          )
+        );
+
+        await refreshSpecificUnitDetails(updatedBase.id);
+
+        if (updatedBase.type === 'parking_slot') {
+          await refreshParkingSlotsForUnit(updatedBase.id);
+        }
+
+        setUnitsVersion((prev) => prev + 1);
+      }
+    )
+
+    .on(
+      'postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'units' },
+      (payload) => {
+        const deletedId = payload.old.unit_id as string | undefined;
+        if (!deletedId) return;
+
+        setUnits((prev) => prev.filter((unit) => unit.id !== deletedId));
+        setParkingSlots((prev) => prev.filter((slot) => slot.unitId !== deletedId));
+        setUnitsVersion((prev) => prev + 1);
+      }
+    )
+
+    .on(
+  'postgres_changes',
+  { event: '*', schema: 'public', table: 'rental_units' },
+  async (payload) => {
+    const nextRow = payload.new as { unit_id?: string } | null;
+    const oldRow = payload.old as { unit_id?: string } | null;
+    const unitId = nextRow?.unit_id ?? oldRow?.unit_id;
+
+    if (!unitId) return;
+
+    await refreshSpecificUnitDetails(unitId);
+    setUnitsVersion((prev) => prev + 1);
+  }
+)
+
+.on(
+  'postgres_changes',
+  { event: '*', schema: 'public', table: 'parking_units' },
+  async (payload) => {
+    const nextRow = payload.new as { unit_id?: string } | null;
+    const oldRow = payload.old as { unit_id?: string } | null;
+    const unitId = nextRow?.unit_id ?? oldRow?.unit_id;
+
+    if (!unitId) return;
+
+    await refreshSpecificUnitDetails(unitId);
+    await refreshParkingSlotsForUnit(unitId);
+    setUnitsVersion((prev) => prev + 1);
+  }
+)
+
+.on(
+  'postgres_changes',
+  { event: '*', schema: 'public', table: 'function_units' },
+  async (payload) => {
+    const nextRow = payload.new as { unit_id?: string } | null;
+    const oldRow = payload.old as { unit_id?: string } | null;
+    const unitId = nextRow?.unit_id ?? oldRow?.unit_id;
+
+    if (!unitId) return;
+
+    await refreshSpecificUnitDetails(unitId);
+    setUnitsVersion((prev) => prev + 1);
+  }
+)
+
+    .on(
+  'postgres_changes',
+  { event: '*', schema: 'public', table: 'parking_slots' },
+  async (payload) => {
+    const nextRow = payload.new as { unit_id?: string } | null;
+    const oldRow = payload.old as { unit_id?: string } | null;
+    const unitId = nextRow?.unit_id ?? oldRow?.unit_id;
+
+    if (!unitId) return;
+
+    await refreshParkingSlotsForUnit(unitId);
+    setUnitsVersion((prev) => prev + 1);
+  }
+)
+
+    .on(
+  'postgres_changes',
+  { event: '*', schema: 'public', table: 'reservations' },
+  async (payload) => {
+    const nextRow = payload.new as { unit_type?: string } | null;
+    const oldRow = payload.old as { unit_type?: string } | null;
+    const unitType = nextRow?.unit_type ?? oldRow?.unit_type;
+
+    if (unitType !== 'parking_slot') return;
+
+    const { data: parkingUnitIds, error } = await supabase
+      .from('units')
+      .select('unit_id')
+      .eq('unit_type', 'parking_slot');
+
+    if (error) {
+      console.error('Error loading parking unit ids for occupancy refresh:', error);
+      return;
+    }
+
+    for (const row of parkingUnitIds ?? []) {
+      await refreshParkingSlotsForUnit(row.unit_id);
+    }
+
+    setUnitsVersion((prev) => prev + 1);
+  }
+)
+
+    .subscribe((status) => {
+      if (import.meta.env.DEV) {
+        console.log('Units realtime status:', status);
+      }
+    });
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}, [mapBaseUnitRow, refreshParkingSlotsForUnit, refreshSpecificUnitDetails]);
 
   const uploadUnitImage = useCallback(async (file: File): Promise<string | null> => {
     try {
@@ -284,7 +671,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
       const filePath = `units/images/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from('property_media')
+        .from(PROPERTY_MEDIA_BUCKET)
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
@@ -297,55 +684,55 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const uploadUnitVideo = useCallback(async (file: File): Promise<string | null> => {
-  try {
-    const fileExt = file.name.split('.').pop()?.toLowerCase() || 'mp4';
-    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
-    const filePath = `units/videos/${fileName}`;
-
-    const { error } = await supabase.storage
-      .from('property_media')
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: false,
-        contentType: file.type || 'video/mp4',
-      });
-
-    if (error) throw error;
-    return filePath;
-  } catch (error) {
-    console.error('Error uploading unit video:', error);
-    return null;
-  }
-}, []);
-
-  const uploadUnitContract = useCallback(
-  async (file: File): Promise<{ path: string; name: string } | null> => {
     try {
-      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'pdf';
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'mp4';
       const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
-      const filePath = `contracts/${fileName}`;
+      const filePath = `units/videos/${fileName}`;
 
       const { error } = await supabase.storage
-        .from('unit_contracts')
+        .from(PROPERTY_MEDIA_BUCKET)
         .upload(filePath, file, {
           cacheControl: '3600',
           upsert: false,
-          contentType: file.type || 'application/pdf',
+          contentType: file.type || 'video/mp4',
         });
 
       if (error) throw error;
-
-      return {
-        path: filePath,
-        name: file.name,
-      };
+      return filePath;
     } catch (error) {
-      console.error('Error uploading contract:', error);
+      console.error('Error uploading unit video:', error);
       return null;
     }
-  },
-  []
-);
+  }, []);
+
+  const uploadUnitContract = useCallback(
+    async (file: File): Promise<{ path: string; name: string } | null> => {
+      try {
+        const fileExt = file.name.split('.').pop()?.toLowerCase() || 'pdf';
+        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+        const filePath = `contracts/${fileName}`;
+
+        const { error } = await supabase.storage
+          .from(UNIT_CONTRACTS_BUCKET)
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false,
+            contentType: file.type || 'application/pdf',
+          });
+
+        if (error) throw error;
+
+        return {
+          path: filePath,
+          name: file.name,
+        };
+      } catch (error) {
+        console.error('Error uploading contract:', error);
+        return null;
+      }
+    },
+    []
+  );
 
   const addUnit = useCallback(
     async (
@@ -362,8 +749,8 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
           : Array.isArray(unitData.images)
             ? unitData.images
             : [];
-          
-         const videoPaths = Array.isArray(unitData.videoPaths)
+
+        const videoPaths = Array.isArray(unitData.videoPaths)
           ? unitData.videoPaths
           : Array.isArray(unitData.videos)
             ? unitData.videos
@@ -409,8 +796,6 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
           throw specificError;
         }
 
-        await refreshUnits();
-
         const createdUnit: Unit = {
           id: newUnitId,
           propertyId: publicId,
@@ -423,6 +808,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
             imagePaths.length > 0
               ? imagePaths.map((path) => getPublicImageUrl(path))
               : [DEFAULT_UNIT_IMAGE],
+          videoPaths,
           videos: videoPaths.map((path) => getPublicImageUrl(path)),
           policies: unitData.policies,
           capacity: unitData.type === 'function_hall' ? unitData.capacity : undefined,
@@ -457,7 +843,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         throw error;
       }
     },
-    [addAuditLog, refreshUnits, user?.id]
+    [addAuditLog, user?.id]
   );
 
   const updateUnit = useCallback(
@@ -477,10 +863,29 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
           oldContractPath &&
           oldContractPath !== nextContractPath;
 
+        const previousImagePaths = existingUnit.imagePaths ?? [];
+        const nextImagePaths =
+          unitUpdate.imagePaths !== undefined ? unitUpdate.imagePaths : previousImagePaths;
+
+        const previousVideoPaths = existingUnit.videoPaths ?? [];
+        const nextVideoPaths =
+          unitUpdate.videoPaths !== undefined ? unitUpdate.videoPaths : previousVideoPaths;
+
+        const removedImagePaths =
+          unitUpdate.imagePaths !== undefined
+            ? getRemovedPaths(previousImagePaths, nextImagePaths)
+            : [];
+
+        const removedVideoPaths =
+          unitUpdate.videoPaths !== undefined
+            ? getRemovedPaths(previousVideoPaths, nextVideoPaths)
+            : [];
+
         const basePayload: Record<string, unknown> = {};
 
         if (unitUpdate.name !== undefined) basePayload.title = unitUpdate.name;
         if (unitUpdate.available !== undefined) basePayload.is_available = unitUpdate.available;
+        if (unitUpdate.price !== undefined) basePayload.price = unitUpdate.price;
         if (unitUpdate.minimumPaymentPercent !== undefined) {
           basePayload.minimum_payment_percent = unitUpdate.minimumPaymentPercent;
         }
@@ -496,7 +901,6 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         if (unitUpdate.contractFilePath !== undefined) {
           basePayload.contract_file_path = unitUpdate.contractFilePath;
         }
-
         if (unitUpdate.contractFileName !== undefined) {
           basePayload.contract_file_name = unitUpdate.contractFileName;
         }
@@ -506,9 +910,25 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
           if (error) throw error;
         }
 
+        if (removedImagePaths.length > 0) {
+          try {
+            await removeStorageFiles(PROPERTY_MEDIA_BUCKET, removedImagePaths);
+          } catch (storageError) {
+            console.error('Failed to remove replaced unit images:', storageError);
+          }
+        }
+
+        if (removedVideoPaths.length > 0) {
+          try {
+            await removeStorageFiles(PROPERTY_MEDIA_BUCKET, removedVideoPaths);
+          } catch (storageError) {
+            console.error('Failed to remove replaced unit videos:', storageError);
+          }
+        }
+
         if (shouldDeletePreviousContract) {
           try {
-            await removeStorageFile('unit_contracts', oldContractPath);
+            await removeStorageFile(UNIT_CONTRACTS_BUCKET, oldContractPath);
           } catch (storageError) {
             console.error('Failed to remove previous contract file:', storageError);
           }
@@ -529,34 +949,36 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
 
         if (Object.keys(specificPayload).length > 0) {
           const tableName = getUnitConfig(existingUnit.type).table;
-          const { error } = await supabase.from(tableName).update(specificPayload).eq('unit_id', id);
+          const { error } = await supabase
+            .from(tableName)
+            .update(specificPayload)
+            .eq('unit_id', id);
+
           if (error) throw error;
         }
 
-       const sanitizedUpdate: Partial<Unit> = {
-        ...unitUpdate,
-        ...(unitUpdate.location !== undefined
-          ? { location: getSafeLocation(unitUpdate.location) }
-          : {}),
-        ...(unitUpdate.imagePaths !== undefined
-          ? {
-              images:
-                unitUpdate.imagePaths.length > 0
-                  ? unitUpdate.imagePaths.map((path) => getPublicImageUrl(path))
-                  : [DEFAULT_UNIT_IMAGE],
-            }
-          : {}),
-        ...(unitUpdate.videoPaths !== undefined
-          ? {
-              videos: unitUpdate.videoPaths.map((path) => getPublicImageUrl(path)),
-            }
-          : {}),
-      };
+        const sanitizedUpdate: Partial<Unit> = {
+          ...unitUpdate,
+          ...(unitUpdate.location !== undefined
+            ? { location: getSafeLocation(unitUpdate.location) }
+            : {}),
+          ...(unitUpdate.imagePaths !== undefined
+            ? {
+                images:
+                  unitUpdate.imagePaths.length > 0
+                    ? unitUpdate.imagePaths.map((path) => getPublicImageUrl(path))
+                    : [DEFAULT_UNIT_IMAGE],
+              }
+            : {}),
+          ...(unitUpdate.videoPaths !== undefined
+            ? {
+                videos: unitUpdate.videoPaths.map((path) => getPublicImageUrl(path)),
+              }
+            : {}),
+        };
 
         const updatedUnit = buildAuditSnapshot(existingUnit, sanitizedUpdate);
         const changedFields = getChangedFields(existingUnit, sanitizedUpdate);
-
-        await refreshUnits();
 
         if (changedFields.length === 0) return;
 
@@ -582,7 +1004,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         throw error;
       }
     },
-    [addAuditLog, refreshUnits, units, user?.id]
+    [addAuditLog, units, user?.id]
   );
 
   const deleteUnit = useCallback(
@@ -591,7 +1013,14 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         const existingUnit = units.find((unit) => unit.id === id);
         if (!existingUnit) return;
 
-        const contractPathToDelete = existingUnit.contractFilePath ?? null; 
+        const contractPathToDelete = existingUnit.contractFilePath ?? null;
+        const imagePathsToDelete = existingUnit.imagePaths ?? [];
+        const videoPathsToDelete = existingUnit.videoPaths ?? [];
+
+        const slotImagesToDelete = parkingSlots
+          .filter((slot) => slot.unitId === id)
+          .map((slot) => slot.imagePath)
+          .filter((path): path is string => Boolean(path));
 
         if (existingUnit.type === 'parking_slot') {
           const { error: slotDeleteError } = await supabase
@@ -610,9 +1039,33 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         const { error: baseError } = await supabase.from('units').delete().eq('unit_id', id);
         if (baseError) throw baseError;
 
+        if (imagePathsToDelete.length > 0) {
+          try {
+            await removeStorageFiles(PROPERTY_MEDIA_BUCKET, imagePathsToDelete);
+          } catch (storageError) {
+            console.error('Failed to remove unit images during unit deletion:', storageError);
+          }
+        }
+
+        if (videoPathsToDelete.length > 0) {
+          try {
+            await removeStorageFiles(PROPERTY_MEDIA_BUCKET, videoPathsToDelete);
+          } catch (storageError) {
+            console.error('Failed to remove unit videos during unit deletion:', storageError);
+          }
+        }
+
+        if (slotImagesToDelete.length > 0) {
+          try {
+            await removeStorageFiles(PROPERTY_MEDIA_BUCKET, slotImagesToDelete);
+          } catch (storageError) {
+            console.error('Failed to remove parking slot images during unit deletion:', storageError);
+          }
+        }
+
         if (contractPathToDelete) {
           try {
-            await removeStorageFile('unit_contracts', contractPathToDelete);
+            await removeStorageFile(UNIT_CONTRACTS_BUCKET, contractPathToDelete);
           } catch (storageError) {
             console.error('Failed to remove contract file during unit deletion:', storageError);
           }
@@ -643,7 +1096,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         throw error;
       }
     },
-    [addAuditLog, units, user?.id]
+    [addAuditLog, parkingSlots, units, user?.id]
   );
 
   const getUnitById = useCallback(
@@ -680,8 +1133,6 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         const { error } = await supabase.from('parking_slots').insert([payload]);
         if (error) throw error;
 
-        await refreshUnits();
-
         if (user?.id) {
           try {
             await addAuditLog({
@@ -712,14 +1163,29 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         const existingSlot = parkingSlots.find((slot) => slot.id === slotId);
         if (!existingSlot) return;
 
+        const oldImagePath = existingSlot.imagePath ?? null;
+        const nextImagePath =
+          slotUpdate.imagePath !== undefined ? slotUpdate.imagePath?.trim() || null : oldImagePath;
+
+        const shouldDeletePreviousImage =
+          slotUpdate.imagePath !== undefined &&
+          oldImagePath &&
+          oldImagePath !== nextImagePath;
+
         const payload: Record<string, unknown> = {};
 
         if (slotUpdate.unitId !== undefined) payload.unit_id = slotUpdate.unitId;
-        if (slotUpdate.slotCode !== undefined) payload.slot_code = slotUpdate.slotCode.trim().toUpperCase();
+        if (slotUpdate.slotCode !== undefined) {
+          payload.slot_code = slotUpdate.slotCode.trim().toUpperCase();
+        }
         if (slotUpdate.label !== undefined) payload.label = slotUpdate.label.trim() || null;
         if (slotUpdate.status !== undefined) payload.status = slotUpdate.status;
-        if (slotUpdate.vehicleType !== undefined) payload.vehicle_type = slotUpdate.vehicleType.trim() || null;
-        if (slotUpdate.imagePath !== undefined) payload.image_url = slotUpdate.imagePath.trim() || null;
+        if (slotUpdate.vehicleType !== undefined) {
+          payload.vehicle_type = slotUpdate.vehicleType.trim() || null;
+        }
+        if (slotUpdate.imagePath !== undefined) {
+          payload.image_url = slotUpdate.imagePath.trim() || null;
+        }
         if (slotUpdate.notes !== undefined) payload.notes = slotUpdate.notes.trim() || null;
 
         if (Object.keys(payload).length === 0) return;
@@ -731,7 +1197,13 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
 
         if (error) throw error;
 
-        await refreshUnits();
+        if (shouldDeletePreviousImage) {
+          try {
+            await removeStorageFile(PROPERTY_MEDIA_BUCKET, oldImagePath);
+          } catch (storageError) {
+            console.error('Failed to remove previous parking slot image:', storageError);
+          }
+        }
 
         if (user?.id) {
           try {
@@ -763,14 +1235,18 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         const existingSlot = parkingSlots.find((slot) => slot.id === slotId);
         if (!existingSlot) return;
 
-        const { error } = await supabase
-          .from('parking_slots')
-          .delete()
-          .eq('slot_id', slotId);
+        const slotImagePath = existingSlot.imagePath ?? null;
 
+        const { error } = await supabase.from('parking_slots').delete().eq('slot_id', slotId);
         if (error) throw error;
 
-        setParkingSlots((prev) => prev.filter((slot) => slot.id !== slotId));
+        if (slotImagePath) {
+          try {
+            await removeStorageFile(PROPERTY_MEDIA_BUCKET, slotImagePath);
+          } catch (storageError) {
+            console.error('Failed to remove parking slot image during slot deletion:', storageError);
+          }
+        }
 
         if (user?.id) {
           try {
@@ -799,6 +1275,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       units,
+      unitsVersion,
       parkingSlots,
       loadingUnits,
       locationOptions: LOCATION_OPTIONS,
@@ -819,6 +1296,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
     }),
     [
       units,
+      unitsVersion,
       parkingSlots,
       loadingUnits,
       addUnit,

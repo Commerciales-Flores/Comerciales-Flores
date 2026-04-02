@@ -8,6 +8,11 @@ import { DataTable, DataCell, ActionCell } from '../../components/common/DataTab
 import TableBadge from '../../components/common/TableBadge';
 import { formatDateTime, formatDate } from '../../utils/date';
 import { useLocation } from 'react-router-dom';
+import AdminFilterBar, {
+  FILTER_BUTTON_CLASS,
+  FILTER_SELECT_CLASS,
+} from '../../components/common/AdminFilterBar';
+import { AdminFilterGroup } from '../../components/common/AdminFilterGroup';
 import {
   Search,
   Eye,
@@ -164,7 +169,7 @@ function NoCustomerResults() {
       </div>
       <h3 className="text-lg font-bold text-gray-900">No matching customers found</h3>
       <p className="mt-1 max-w-sm text-sm text-gray-500">
-        Try adjusting your search by name, email, user ID, or activity status.
+        Try adjusting your search or filters by name, email, user ID, account status, or deletion request status.
       </p>
     </motion.div>
   );
@@ -262,7 +267,7 @@ function StatusBadge({
 }
 
 export default function AdminCustomers() {
-  const { fetchUsersPage, updateUserStatus, clearUsersCache } = useUsers();
+  const { fetchUsersPage, updateUserStatus, clearUsersCache, version } = useUsers();
   const { user } = useAuth();
   const { sendDeletionStatusNotification } = useNotifications();
 
@@ -273,6 +278,14 @@ export default function AdminCustomers() {
   const [pageSize] = useState(25);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [accountFilter, setAccountFilter] = useState<'all' | 'active' | 'inactive'>('all');
+const [deletionFilter, setDeletionFilter] = useState<
+  'all' | 'pending' | 'approved' | 'rejected' | 'none'
+>('all');
+const [businessFilter, setBusinessFilter] = useState<
+  'all' | 'occupied' | 'upcoming' | 'unpaid'
+>('all');
+const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [confirmDeactivateId, setConfirmDeactivateId] = useState<string | null>(null);
@@ -299,18 +312,63 @@ export default function AdminCustomers() {
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 250);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
+
+  const filteredRows = useMemo(() => {
+  return rows.filter((row) => {
+    const matchesAccount =
+      accountFilter === 'all' ||
+      (accountFilter === 'active' && !!row.is_active) ||
+      (accountFilter === 'inactive' && !row.is_active);
+
+    const matchesDeletion =
+      deletionFilter === 'all' ||
+      (deletionFilter === 'pending' && row.deletionStatus === 'pending') ||
+      (deletionFilter === 'approved' && row.deletionStatus === 'approved') ||
+      (deletionFilter === 'rejected' && row.deletionStatus === 'rejected') ||
+      (deletionFilter === 'none' && !row.deletionStatus);
+
+    const matchesBusiness =
+      businessFilter === 'all' ||
+      (businessFilter === 'occupied' && !!row.hasActiveOccupancy) ||
+      (businessFilter === 'upcoming' && !!row.hasUpcomingBooking) ||
+      (businessFilter === 'unpaid' && !!row.hasUnpaidBalance);
+
+    return matchesAccount && matchesDeletion && matchesBusiness;
+  });
+}, [rows, accountFilter, deletionFilter, businessFilter]);
+
+
+const confirmTarget = useMemo(
+  () =>
+    confirmDeactivateId
+      ? filteredRows.find((r) => r.id === confirmDeactivateId) ??
+        rows.find((r) => r.id === confirmDeactivateId) ??
+        null
+      : null,
+  [filteredRows, rows, confirmDeactivateId]
+);
+  const hasActiveSearch = debouncedSearchTerm.trim() !== '';
+const hasActiveFilters =
+  accountFilter !== 'all' ||
+  deletionFilter !== 'all' ||
+  businessFilter !== 'all';
+
+const hasNoCustomers = !loading && !hasActiveSearch && !hasActiveFilters && totalCount === 0;
+const hasNoSearchResults =
+  !loading && (hasActiveSearch || hasActiveFilters) && filteredRows.length === 0;
+
+  const shouldShowFilters =
+  !loading && (!hasNoCustomers || hasActiveSearch || hasActiveFilters);
+
   const customer = useMemo(
-    () => (selectedCustomer ? rows.find((c) => c.id === selectedCustomer) ?? null : null),
-    [rows, selectedCustomer]
-  );
-
-  const confirmTarget = useMemo(
-    () => (confirmDeactivateId ? rows.find((r) => r.id === confirmDeactivateId) ?? null : null),
-    [rows, confirmDeactivateId]
-  );
-
-  const hasNoCustomers = !loading && totalCount === 0;
-  const hasNoSearchResults = !loading && totalCount > 0 && rows.length === 0;
+  () =>
+    selectedCustomer
+      ? filteredRows.find((c) => c.id === selectedCustomer) ??
+        rows.find((c) => c.id === selectedCustomer) ??
+        null
+      : null,
+  [filteredRows, rows, selectedCustomer]
+);
 
   const passwordScore = useMemo(
     () => getPasswordScore(newCustomer.password),
@@ -684,8 +742,8 @@ export default function AdminCustomers() {
   }, [page]);
 
   useEffect(() => {
-    setPage(1);
-  }, [debouncedSearchTerm]);
+  setPage(1);
+}, [debouncedSearchTerm, accountFilter, deletionFilter, businessFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -723,7 +781,7 @@ export default function AdminCustomers() {
     return () => {
       cancelled = true;
     };
-  }, [location.key, fetchUsersPage, page, pageSize, debouncedSearchTerm]);
+  }, [location.key, fetchUsersPage, page, pageSize, debouncedSearchTerm, version]);
 
   useEffect(() => {
     if (!confirmDeactivateId) return;
@@ -747,7 +805,7 @@ export default function AdminCustomers() {
   }, [rows, deletionDecisionState.target]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>
@@ -768,20 +826,81 @@ export default function AdminCustomers() {
           </button>
         </div>
 
-        {!loading && !hasNoCustomers && (
-          <div className="sticky top-0 z-20 rounded-2xl border border-gray-200 bg-white p-2 shadow-sm">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search by name, email, ID, or business status..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full rounded-xl border-none bg-gray-50 py-3 pl-11 pr-4 text-sm outline-none transition-all focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+        {shouldShowFilters && (
+  <AdminFilterBar
+    searchTerm={searchTerm}
+    onSearchChange={setSearchTerm}
+    placeholder="Search by name, email, ID, or business status..."
+    showMobileFilters={showMobileFilters}
+    onToggleMobileFilters={() => setShowMobileFilters((prev) => !prev)}
+    filters={
+      <AdminFilterGroup align="between">
+        <div className="grid w-full grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+          <select
+            value={accountFilter}
+            onChange={(e) =>
+              setAccountFilter(e.target.value as 'all' | 'active' | 'inactive')
+            }
+            className={FILTER_SELECT_CLASS}
+          >
+            <option value="all">All Accounts</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+
+          <select
+            value={deletionFilter}
+            onChange={(e) =>
+              setDeletionFilter(
+                e.target.value as 'all' | 'pending' | 'approved' | 'rejected' | 'none'
+              )
+            }
+            className={FILTER_SELECT_CLASS}
+          >
+            <option value="all">All Requests</option>
+            <option value="pending">Pending Deletion</option>
+            <option value="approved">Approved Deletion</option>
+            <option value="rejected">Rejected Deletion</option>
+            <option value="none">No Request</option>
+          </select>
+
+          <select
+            value={businessFilter}
+            onChange={(e) =>
+              setBusinessFilter(
+                e.target.value as 'all' | 'occupied' | 'upcoming' | 'unpaid'
+              )
+            }
+            className={FILTER_SELECT_CLASS}
+          >
+            <option value="all">All Business Status</option>
+            <option value="occupied">Occupied</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="unpaid">Unpaid</option>
+          </select>
+        </div>
+
+        {(hasActiveSearch || hasActiveFilters) && (
+          <div className="flex w-full justify-end lg:w-auto">
+            <button
+              type="button"
+              onClick={() => {
+                setSearchTerm('');
+                setAccountFilter('all');
+                setDeletionFilter('all');
+                setBusinessFilter('all');
+                setShowMobileFilters(false);
+              }}
+              className={FILTER_BUTTON_CLASS}
+            >
+              Clear
+            </button>
           </div>
         )}
+      </AdminFilterGroup>
+    }
+  />
+)}
 
         <div className="grid grid-cols-1 gap-4 lg:hidden">
           {loading ? (
@@ -805,7 +924,7 @@ export default function AdminCustomers() {
               <NoCustomerResults />
             </div>
           ) : (
-            rows.map((c) => (
+            filteredRows.map((c) => (
               <div
                 key={c.id}
                 className="flex cursor-pointer items-center justify-between rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors active:bg-gray-50"
@@ -867,185 +986,183 @@ export default function AdminCustomers() {
         </div>
 
         <div className="hidden lg:block">
-          {loading ? (
-            <EmptyState
-              icon={
-                <div className="flex items-center justify-center">
-                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
-                </div>
-              }
-              title="Loading customers..."
-              description="Fetching customer data, activity, and account status. This may take a few seconds on first load, but will be faster next time."
-            />
-          ) : hasNoCustomers ? (
-            <EmptyState
-              icon={<Inbox className="size-10 text-blue-500" />}
-              title="No active customers yet"
-              description="Customer accounts will appear here once users register or are added by an administrator."
-            />
-          ) : (
-            <DataTable
-              headers={[
-                'Customer',
-                'User ID',
-                'Email',
-                'Contact',
-                'Last Login',
-                'Business',
-                'Account',
-                'Actions',
-              ]}
-            >
-              {hasNoSearchResults ? (
-                <tr>
-                  <td colSpan={8} className="px-6 py-20 text-center">
-                    <NoCustomerResults />
-                  </td>
-                </tr>
-              ) : (
-                rows.map((c) => (
-                  <tr key={c.id} className="transition-colors hover:bg-gray-50/70">
-                    <DataCell
-                      value={
-                        <div>
-                          <p className="break-words font-semibold text-gray-900">
-                            {c.firstName} {c.lastName}
-                          </p>
-                        </div>
-                      }
-                    />
-
-                    <DataCell value={c.publicId ?? c.id} mono />
-                    <DataCell value={c.email} />
-                    <DataCell value={c.contactNumber} />
-                    <DataCell value={formatLastLogin(c.lastLogin)} />
-
-                    <DataCell
-                      value={
-                        <div className="flex flex-wrap gap-2">
-                          {c.hasActiveOccupancy ? (
-                            <TableBadge className="bg-amber-100 text-amber-700">
-                              Occupied
-                            </TableBadge>
-                          ) : (
-                            <TableBadge className="bg-gray-100 text-gray-600">
-                              No occupancy
-                            </TableBadge>
-                          )}
-
-                          {c.hasUpcomingBooking && (
-                            <TableBadge className="bg-blue-100 text-blue-700">
-                              Upcoming
-                            </TableBadge>
-                          )}
-
-                          {c.hasUnpaidBalance && (
-                            <TableBadge className="bg-rose-100 text-rose-700">Unpaid</TableBadge>
-                          )}
-                        </div>
-                      }
-                    />
-
-                    <DataCell
-                      nowrap
-                      value={
-                        <div className="flex flex-wrap gap-2">
-                          <TableBadge
-                            className={
-                              c.is_active
-                                ? 'bg-green-100 text-green-700'
-                                : 'bg-red-100 text-red-700'
-                            }
-                          >
-                            {c.is_active ? 'Active' : 'Inactive'}
-                          </TableBadge>
-
-                          {c.deletionStatus === 'pending' && (
-                            <TableBadge className="bg-purple-100 text-purple-700">
-                              Pending
-                            </TableBadge>
-                          )}
-
-                          {c.deletionStatus === 'approved' && (
-                            <TableBadge className="bg-emerald-100 text-emerald-700">
-                              Approved
-                            </TableBadge>
-                          )}
-
-                          {c.deletionStatus === 'rejected' && (
-                            <TableBadge className="bg-slate-100 text-slate-700">
-                              Rejected
-                            </TableBadge>
-                          )}
-                        </div>
-                      }
-                    />
-
-                    <ActionCell>
-                      <button
-                        onClick={() => setSelectedCustomer(c.id)}
-                        className="flex h-8 w-8 items-center justify-center rounded-md text-blue-600 hover:bg-blue-100"
-                        title="View details"
-                      >
-                        <Eye size={16} />
-                      </button>
-
-                      <button
-                        onClick={() => void handleExportCustomer(c)}
-                        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-600 hover:bg-blue-100"
-                        title="Export customer"
-                      >
-                        <Download size={16} />
-                      </button>
-
-                      {c.deletionStatus === 'pending' ? (
-                      <>
-                        <button
-                          onClick={() => openDeletionDecisionModal(c, 'approve')}
-                          disabled={isSubmittingDeletionDecision}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-indigo-600 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
-                          title="Approve deletion"
-                        >
-                          <Check size={16} />
-                        </button>
-
-                        <button
-                          onClick={() => openDeletionDecisionModal(c, 'reject')}
-                          disabled={isSubmittingDeletionDecision}
-                          className="flex h-8 w-8 items-center justify-center rounded-md text-slate-600 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
-                          title="Reject deletion"
-                        >
-                          <X size={16} />
-                        </button>
-                      </>
-                    ) : c.deletionStatus === 'approved' ? (
-                      <span className="inline-flex h-8 items-center rounded-md px-2 text-[11px] font-bold text-emerald-700">
-                        Awaiting user deletion
-                      </span>
-                    ) : c.is_active ? (
-                      <button
-                        onClick={() => requestDeactivate(c)}
-                        className="flex h-8 w-8 items-center justify-center rounded-md text-red-500 hover:bg-red-50"
-                        title="Deactivate account"
-                      >
-                        <UserX size={16} />
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => void toggleStatus(c.id, true)}
-                        className="flex h-8 w-8 items-center justify-center rounded-md text-green-600 hover:bg-green-50"
-                        title="Reactivate account"
-                      >
-                        <RotateCcw size={16} />
-                      </button>
-                    )}
-                    </ActionCell>
-                  </tr>
-                ))
-              )}
-            </DataTable>
-          )}
+  {loading ? (
+    <EmptyState
+      icon={
+        <div className="flex items-center justify-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
         </div>
+      }
+      title="Loading customers..."
+      description="Fetching customer data, activity, and account status. This may take a few seconds on first load, but will be faster next time."
+    />
+  ) : hasNoCustomers ? (
+    <EmptyState
+      icon={<Inbox className="size-10 text-blue-500" />}
+      title="No active customers yet"
+      description="Customer accounts will appear here once users register or are added by an administrator."
+    />
+  ) : hasNoSearchResults ? (
+    <div className="rounded-2xl border border-gray-200 bg-white px-6 py-20 shadow-sm">
+      <NoCustomerResults />
+    </div>
+  ) : (
+    <DataTable
+      headers={[
+        'Customer',
+        'User ID',
+        'Email',
+        'Contact',
+        'Last Login',
+        'Business',
+        'Account',
+        'Actions',
+      ]}
+    >
+      {filteredRows.map((c) => (
+        <tr key={c.id} className="transition-colors hover:bg-gray-50/70">
+          <DataCell
+            value={
+              <div>
+                <p className="break-words font-semibold text-gray-900">
+                  {c.firstName} {c.lastName}
+                </p>
+              </div>
+            }
+          />
+
+          <DataCell value={c.publicId ?? c.id} mono />
+          <DataCell value={c.email} />
+          <DataCell value={c.contactNumber} />
+          <DataCell value={formatLastLogin(c.lastLogin)} />
+
+          <DataCell
+            value={
+              <div className="flex flex-wrap gap-2">
+                {c.hasActiveOccupancy ? (
+                  <TableBadge className="bg-amber-100 text-amber-700">
+                    Occupied
+                  </TableBadge>
+                ) : (
+                  <TableBadge className="bg-gray-100 text-gray-600">
+                    No occupancy
+                  </TableBadge>
+                )}
+
+                {c.hasUpcomingBooking && (
+                  <TableBadge className="bg-blue-100 text-blue-700">
+                    Upcoming
+                  </TableBadge>
+                )}
+
+                {c.hasUnpaidBalance && (
+                  <TableBadge className="bg-rose-100 text-rose-700">
+                    Unpaid
+                  </TableBadge>
+                )}
+              </div>
+            }
+          />
+
+          <DataCell
+            nowrap
+            value={
+              <div className="flex flex-wrap gap-2">
+                <TableBadge
+                  className={
+                    c.is_active
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-red-100 text-red-700'
+                  }
+                >
+                  {c.is_active ? 'Active' : 'Inactive'}
+                </TableBadge>
+
+                {c.deletionStatus === 'pending' && (
+                  <TableBadge className="bg-purple-100 text-purple-700">
+                    Pending
+                  </TableBadge>
+                )}
+
+                {c.deletionStatus === 'approved' && (
+                  <TableBadge className="bg-emerald-100 text-emerald-700">
+                    Approved
+                  </TableBadge>
+                )}
+
+                {c.deletionStatus === 'rejected' && (
+                  <TableBadge className="bg-slate-100 text-slate-700">
+                    Rejected
+                  </TableBadge>
+                )}
+              </div>
+            }
+          />
+
+          <ActionCell>
+            <button
+              onClick={() => setSelectedCustomer(c.id)}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-blue-600 hover:bg-blue-100"
+              title="View details"
+            >
+              <Eye size={16} />
+            </button>
+
+            <button
+              onClick={() => void handleExportCustomer(c)}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-slate-600 hover:bg-blue-100"
+              title="Export customer"
+            >
+              <Download size={16} />
+            </button>
+
+            {c.deletionStatus === 'pending' ? (
+              <>
+                <button
+                  onClick={() => openDeletionDecisionModal(c, 'approve')}
+                  disabled={isSubmittingDeletionDecision}
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-indigo-600 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Approve deletion"
+                >
+                  <Check size={16} />
+                </button>
+
+                <button
+                  onClick={() => openDeletionDecisionModal(c, 'reject')}
+                  disabled={isSubmittingDeletionDecision}
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-slate-600 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Reject deletion"
+                >
+                  <X size={16} />
+                </button>
+              </>
+            ) : c.deletionStatus === 'approved' ? (
+              <span className="inline-flex h-8 items-center rounded-md px-2 text-[11px] font-bold text-emerald-700">
+                Awaiting user deletion
+              </span>
+            ) : c.is_active ? (
+              <button
+                onClick={() => requestDeactivate(c)}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-red-500 hover:bg-red-50"
+                title="Deactivate account"
+              >
+                <UserX size={16} />
+              </button>
+            ) : (
+              <button
+                onClick={() => void toggleStatus(c.id, true)}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-green-600 hover:bg-green-50"
+                title="Reactivate account"
+              >
+                <RotateCcw size={16} />
+              </button>
+            )}
+          </ActionCell>
+        </tr>
+      ))}
+    </DataTable>
+  )}
+</div>
 
         {!loading && !hasNoCustomers && totalPages > 1 && (
           <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">

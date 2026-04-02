@@ -59,6 +59,8 @@ export default function Login() {
     loading,
   } = useAuth();
 
+  const DISABLE_TURNSTILE = import.meta.env.DEV;
+
   const navigate = useNavigate();
   const location = useLocation();
   const { showIndicator } = useIndicator();
@@ -80,6 +82,9 @@ export default function Login() {
   const [recoveryLoading, setRecoveryLoading] = useState(false);
 
   const [turnstileToken, setTurnstileToken] = useState('');
+
+  const OAUTH_PENDING_KEY = 'oauth:pending-provider';
+  const OAUTH_LOGIN_REQUEST_KEY = 'oauth:login-request-id';
 
   const [pendingApproval, setPendingApproval] = useState<{
     loginRequestId: string;
@@ -108,57 +113,90 @@ const registerEmail = useMemo(
 
   useEffect(() => {
   const handleOAuthDeviceCheck = async () => {
-    if (!user || loading || oauthChecked) return;
+    if (loading || oauthChecked) return;
+
+    const pendingProvider = sessionStorage.getItem(OAUTH_PENDING_KEY);
+    if (!pendingProvider) {
+      setOauthChecked(true);
+      return;
+    }
+
+    if (!user) {
+      return;
+    }
 
     try {
-      const deviceFingerprint = localStorage.getItem('device_fingerprint');
+      const fingerprint = localStorage.getItem('device_fingerprint');
 
-      if (!deviceFingerprint) return;
+      if (!fingerprint) {
+        setError('Device fingerprint not found. Please try signing in again.');
+        await supabase.auth.signOut();
+        sessionStorage.removeItem(OAUTH_PENDING_KEY);
+        setOauthChecked(true);
+        return;
+      }
 
       const { data, error } = await supabase.functions.invoke(
         'check-device-and-send-verification',
         {
           body: {
             userId: user.id,
-            deviceFingerprint,
+            deviceFingerprint: fingerprint,
             userAgent: navigator.userAgent,
-            rememberDevice: true, // OAuth = always trusted intent
+            rememberDevice: true,
           },
         }
       );
 
       if (error) {
         console.error('OAuth device check failed:', error);
+        setError('We could not verify this browser right now. Please try again.');
+        await supabase.auth.signOut();
+        sessionStorage.removeItem(OAUTH_PENDING_KEY);
+        setOauthChecked(true);
         return;
       }
 
-      // 🚨 NOT TRUSTED → trigger approval flow
       if (!data?.trusted) {
+        if (data?.loginRequestId) {
+          sessionStorage.setItem(OAUTH_LOGIN_REQUEST_KEY, data.loginRequestId);
+        }
+
         setPendingApproval({
           loginRequestId: data?.loginRequestId,
           expiresAt: data?.expiresAt,
         });
 
-        showIndicator(
-          `New device approval required for ${user.email}`,
-          'security'
+        setApprovalMessage(
+          'This browser is not trusted yet. We sent a device approval email. Approve the sign-in from your email, then return to this browser.'
         );
 
-        // 🚨 VERY IMPORTANT: sign out until approved
+        showIndicator(`New device approval required for ${user.email}`, 'security');
+
         await supabase.auth.signOut();
+
+        window.location.replace('/login');
+
+        return;
       }
+
+      sessionStorage.removeItem(OAUTH_PENDING_KEY);
+      sessionStorage.removeItem(OAUTH_LOGIN_REQUEST_KEY);
+      setOauthChecked(true);
     } catch (err) {
       console.error('OAuth device check error:', err);
-    } finally {
+      setError('We could not complete OAuth sign-in. Please try again.');
+      await supabase.auth.signOut();
+      sessionStorage.removeItem(OAUTH_PENDING_KEY);
       setOauthChecked(true);
     }
   };
 
-  handleOAuthDeviceCheck();
+  void handleOAuthDeviceCheck();
 }, [user, loading, oauthChecked, showIndicator]);
 
   useEffect(() => {
-    const raw = localStorage.getItem('lastLoginUser');
+    const raw = sessionStorage.getItem('lastLoginUser');
 
     if (!raw) {
       setPreviousUser(null);
@@ -192,15 +230,15 @@ const registerEmail = useMemo(
   useEffect(() => {
   if (loading) return;
   if (!user) return;
-
-  // 🚨 Wait for OAuth check first
   if (!oauthChecked) return;
 
-  navigate(
-    user.role === 'admin' ? '/admin/dashboard' : '/client/dashboard',
-    { replace: true }
-  );
-}, [user, loading, navigate, oauthChecked]);
+  const pendingProvider = sessionStorage.getItem(OAUTH_PENDING_KEY);
+  if (pendingProvider) return;
+
+  navigate(user.role === 'admin' ? '/admin/dashboard' : '/client/dashboard', {
+    replace: true,
+  });
+}, [user, loading, oauthChecked, navigate]);
 
   useEffect(() => {
   if (!user) {
@@ -241,17 +279,12 @@ useEffect(() => {
         setApprovalMessage('Sign-in approved. Finishing login...');
         setPendingApproval(null);
 
-        // ✅ refresh auth session
+        sessionStorage.removeItem(OAUTH_PENDING_KEY);
+        sessionStorage.removeItem(OAUTH_LOGIN_REQUEST_KEY);
+
         await supabase.auth.refreshSession();
 
-        // ✅ small delay to allow AuthContext to update
-        setTimeout(() => {
-          if (user?.role === 'admin') {
-            navigate('/admin/dashboard');
-          } else {
-            navigate('/client/dashboard');
-          }
-        }, 150);
+        setOauthChecked(true);
       }
     } catch (err) {
       if (!cancelled) {
@@ -260,10 +293,8 @@ useEffect(() => {
     }
   };
 
-  // ✅ ONLY run once initially
-  completeApprovedLogin();
+  void completeApprovedLogin();
 
-  // ⚡ ONLY realtime (NO polling)
   const channel = supabase
     .channel(`login-approval-${pendingApproval.loginRequestId}`)
     .on(
@@ -291,7 +322,7 @@ useEffect(() => {
     cancelled = true;
     void supabase.removeChannel(channel);
   };
-}, [pendingApproval, navigate]);
+}, [pendingApproval]);
 
 useEffect(() => {
   const raw = sessionStorage.getItem(LOGIN_COOLDOWN_KEY);
@@ -382,14 +413,24 @@ useEffect(() => {
 
   setError('');
 
-  if (!turnstileToken) {
+  // if (!turnstileToken) {
+  //   setError('Please complete the verification challenge.');
+  //   return;
+  // }
+
+  if (!DISABLE_TURNSTILE && !turnstileToken) {
     setError('Please complete the verification challenge.');
     return;
   }
 
+  // const result = await login(formData.email.trim(), formData.password, {
+  //   rememberDevice,
+  //   turnstileToken,
+  // });
+
   const result = await login(formData.email.trim(), formData.password, {
     rememberDevice,
-    turnstileToken,
+    turnstileToken: DISABLE_TURNSTILE ? undefined : turnstileToken,
   });
 
   if (!result.success) {
@@ -400,10 +441,22 @@ useEffect(() => {
     result.error === 'rate_limited' ||
     result.error === 'device_check_failed';
 
+  // if (shouldResetTurnstile) {
+  //   setTurnstileToken('');
+  //   window.turnstile?.reset?.();
+  // }
+
   if (shouldResetTurnstile) {
-    setTurnstileToken('');
-    window.turnstile?.reset?.();
+  setTurnstileToken('');
+
+  if (!DISABLE_TURNSTILE && window.turnstile?.reset) {
+  try {
+    window.turnstile.reset();
+  } catch {
+    // no widget mounted
   }
+}
+}
 
   switch (result.error) {
     case 'busy':
@@ -740,6 +793,10 @@ useEffect(() => {
                   </div>
 
                   <TurnstileWidget onToken={setTurnstileToken} />
+
+                  {/* {!DISABLE_TURNSTILE && (
+                    <TurnstileWidget onToken={setTurnstileToken} />
+                  )} */}
 
                   <button
                     type="submit"

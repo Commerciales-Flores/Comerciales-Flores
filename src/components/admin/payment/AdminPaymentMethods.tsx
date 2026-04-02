@@ -1,12 +1,12 @@
 import { useMemo, useState, useCallback } from 'react';
 import { CreditCard, Landmark, Plus, QrCode, Wallet } from 'lucide-react';
-import EmptyState from '../../components/common/EmptyState';
+import EmptyState from '../../common/EmptyState';
 import {
   usePaymentMethods,
   type PaymentMethodConfig,
-} from '../../contexts/PaymentMethodsContext';
-import PaymentMethodModal from '../../components/admin/payment/PaymentMethodModal';
-import PaymentMethodCard from '../../components/admin/payment/PaymentMethodCard';
+} from '../../../contexts/PaymentMethodsContext';
+import PaymentMethodModal from './PaymentMethodModal';
+import PaymentMethodCard from './PaymentMethodCard';
 
 
 export default function AdminPaymentMethods() {
@@ -90,7 +90,7 @@ export default function AdminPaymentMethods() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>

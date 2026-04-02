@@ -22,19 +22,41 @@ Deno.serve(async (req) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
     const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const authHeader = req.headers.get('Authorization');
 
-    if (!supabaseUrl || !supabaseServiceRoleKey) {
+    if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
       return jsonResponse(
-        {
-          success: false,
-          error: 'Missing Supabase environment configuration.',
-        },
+        { success: false, error: 'Missing Supabase environment configuration.' },
         500
       );
     }
 
+    if (!authHeader) {
+      return jsonResponse(
+        { success: false, error: 'Missing authorization header.' },
+        401
+      );
+    }
+
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
     const adminClient = createClient(supabaseUrl, supabaseServiceRoleKey);
+
+    const {
+      data: { user },
+      error: authError,
+    } = await userClient.auth.getUser();
+
+    if (authError || !user) {
+      return jsonResponse(
+        { success: false, error: 'Unauthorized request.' },
+        401
+      );
+    }
 
     const body = await req.json().catch(() => null);
     const loginRequestId = String(body?.loginRequestId ?? '').trim();
@@ -42,10 +64,7 @@ Deno.serve(async (req) => {
 
     if (!loginRequestId || !deviceFingerprint) {
       return jsonResponse(
-        {
-          success: false,
-          error: 'Missing login request data.',
-        },
+        { success: false, error: 'Missing login request data.' },
         400
       );
     }
@@ -69,20 +88,21 @@ Deno.serve(async (req) => {
 
     if (!verification) {
       return jsonResponse(
-        {
-          success: false,
-          error: 'Login request not found.',
-        },
+        { success: false, error: 'Login request not found.' },
         404
+      );
+    }
+
+    if (verification.user_id !== user.id) {
+      return jsonResponse(
+        { success: false, error: 'Login request does not match the signed-in user.' },
+        403
       );
     }
 
     if (new Date(verification.expires_at).getTime() < Date.now()) {
       return jsonResponse(
-        {
-          success: false,
-          error: 'Verification request expired.',
-        },
+        { success: false, error: 'Verification request expired.' },
         410
       );
     }

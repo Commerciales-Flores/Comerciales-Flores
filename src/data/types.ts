@@ -27,6 +27,27 @@ export type OverdueReason =
 
 export type ParkingSlotStatus = 'active' | 'inactive' | 'maintenance';
 
+export interface ReservationDetails {
+  paymentCycle?: PaymentCycle;
+  businessType?: string;
+  eventPurpose?: string;
+  attendees?: number;
+  slotId?: string;
+  slotName?: string;
+  vehicleType?: string;
+  plateNumber?: string;
+  durationType?: 'hours' | 'days' | 'months' | 'years';
+
+  // 🔥 Extension system
+  extensionRequested?: boolean;
+  extensionMonths?: number;
+  extensionRequestedAt?: string;
+  extensionApprovedAt?: string;
+  extensionApprovedMonths?: number;
+  extensionRejectedAt?: string;
+  extensionRejectedMonths?: number;
+}
+
 export interface ParkingSlot {
   id: string;
   unitId: string;
@@ -41,6 +62,7 @@ export interface ParkingSlot {
   isOccupied?: boolean;
   occupiedByUserId?: string | null;
   occupiedByName?: string | null;
+  occupiedByPublicId?: string | null;
   occupiedSince?: string | null;
 }
 
@@ -101,6 +123,8 @@ export interface Reservation {
   slotName?: string;
   location?: string;
 
+   details?: ReservationDetails;
+
   minimumPaymentPercentSnapshot?: number | null;
 
   confirmedVisitDate?: string | null;
@@ -128,6 +152,8 @@ export interface Payment {
 
   paymentMethodId?: string | null;
 paymentMethodSnapshot?: Record<string, any> | null;
+
+category?: 'payment' | 'advance_deposit' | 'security_deposit';
 }
 
 export interface LedgerEntry {
@@ -136,6 +162,7 @@ export interface LedgerEntry {
   publicId?: string;
   reservationId: string | null;
   paymentId: string | null;
+  depositType?: 'security' | 'advance';
   entryType:
     | 'payment'
     | 'deposit'

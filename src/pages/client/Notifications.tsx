@@ -427,46 +427,53 @@ export default function ClientNotifications() {
   }, [sortedNotifications]);
 
   useEffect(() => {
-    if (selectionMode && selectedNotifs.size === 0) {
-      setSelectionMode(false);
-    }
-  }, [selectionMode, selectedNotifs]);
+    setVisibleCount(NOTIFICATIONS_PAGE_SIZE);
+  }, [filter]);
+
+  const NOTIFICATIONS_PAGE_SIZE = 20;
+  const [visibleCount, setVisibleCount] = useState(NOTIFICATIONS_PAGE_SIZE);
+
 
   const unreadCount = useMemo(
     () => sortedNotifications.reduce((count, notif) => count + (notif.read ? 0 : 1), 0),
     [sortedNotifications]
   );
 
-  const groupedNotifications = useMemo(() => {
-    const filtered = sortedNotifications.filter((notification) =>
-      filter === 'all' ? true : notification.type === filter
-    );
-
-    const groups: Record<'Today' | 'Yesterday' | 'Earlier', Notification[]> = {
-      Today: [],
-      Yesterday: [],
-      Earlier: [],
-    };
-
-    for (const notification of filtered) {
-      const group = getNotificationGroup(notification.date) as
-        | 'Today'
-        | 'Yesterday'
-        | 'Earlier';
-      groups[group].push(notification);
-    }
-
-    return [
-      { group: 'Today' as const, items: groups.Today },
-      { group: 'Yesterday' as const, items: groups.Yesterday },
-      { group: 'Earlier' as const, items: groups.Earlier },
-    ];
-  }, [sortedNotifications, filter]);
-
-  const filteredCount = useMemo(
-    () => groupedNotifications.reduce((sum, group) => sum + group.items.length, 0),
-    [groupedNotifications]
+  const filteredNotifications = useMemo(() => {
+  return sortedNotifications.filter((notification) =>
+    filter === 'all' ? true : notification.type === filter
   );
+}, [sortedNotifications, filter]);
+
+const visibleNotifications = useMemo(() => {
+  return filteredNotifications.slice(0, visibleCount);
+}, [filteredNotifications, visibleCount]);
+
+const groupedNotifications = useMemo(() => {
+  const groups: Record<'Today' | 'Yesterday' | 'Earlier', Notification[]> = {
+    Today: [],
+    Yesterday: [],
+    Earlier: [],
+  };
+
+  for (const notification of visibleNotifications) {
+    const group = getNotificationGroup(notification.date) as
+      | 'Today'
+      | 'Yesterday'
+      | 'Earlier';
+
+    groups[group].push(notification);
+  }
+
+  return [
+    { group: 'Today' as const, items: groups.Today },
+    { group: 'Yesterday' as const, items: groups.Yesterday },
+    { group: 'Earlier' as const, items: groups.Earlier },
+  ];
+}, [visibleNotifications]);
+
+  const filteredCount = filteredNotifications.length;
+  const hasMoreNotifications = visibleCount < filteredCount;
 
   const clearSelection = useCallback(() => {
     setSelectionMode(false);
@@ -540,7 +547,7 @@ export default function ClientNotifications() {
   const selectedCount = selectedNotifs.size;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <div className="flex items-end justify-between gap-4">
           <header>
@@ -654,6 +661,18 @@ export default function ClientNotifications() {
                   </div>
                 )
             )
+            
+          )}
+
+          {filteredCount > 0 && hasMoreNotifications && (
+            <div className="flex justify-center pt-2">
+              <button
+                onClick={() => setVisibleCount((prev) => prev + NOTIFICATIONS_PAGE_SIZE)}
+                className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+              >
+                Load More
+              </button>
+            </div>
           )}
         </div>
 

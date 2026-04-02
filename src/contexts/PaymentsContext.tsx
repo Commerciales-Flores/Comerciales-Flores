@@ -13,6 +13,7 @@ import type {
   PaymentMethod,
   PaymentStatus,
   PaymentCycle,
+  LedgerEntry,
 } from '../data/types';
 import { useReservations } from './ReservationsContext';
 import { useRecords } from './RecordsContext';
@@ -26,8 +27,11 @@ type PaymentsPageFilters = {
   searchTerm?: string;
 };
 
+type PaymentCategory = 'payment' | 'advance_deposit' | 'security_deposit';
+
 interface PaymentsContextType {
   payments: Payment[];
+  paymentsVersion: number;
   addPayment: (
     payment: Omit<Payment, 'id' | 'createdAt' | 'updatedAt' | 'date'>
   ) => Promise<string>;
@@ -67,7 +71,12 @@ function mapPaymentRow(row: any): Payment {
     updatedAt: row.updated_at,
     paymentMethodId: row.payment_method_id ?? null,
     paymentMethodSnapshot: row.payment_method_snapshot ?? null,
+    category: (row.category ?? 'payment') as PaymentCategory,
   };
+}
+
+function allowsPartialPayments(unitType?: string | null) {
+  return unitType === 'function_hall' || unitType === 'parking_slot';
 }
 
 function normalizeSearchTerm(value: string) {
@@ -78,8 +87,6 @@ function clampMoney(value: number) {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Number(value));
 }
-
-const MIN_SUBSEQUENT_PAYMENT_AMOUNT = 500;
 
 function getMinimumPaymentPercent(reservation: {
   minimumPaymentPercentSnapshot?: number | null;
@@ -132,7 +139,9 @@ function validateMinimumFirstPayment(params: {
 
     if (submittedAmount < minimumRequired) {
       throw new Error(
-        `First payment must be at least ${minimumPercent}% of the total amount (₱${minimumRequired.toFixed(2)}).`
+        `First payment must be at least ${minimumPercent}% of the total amount (₱${minimumRequired.toFixed(
+          2
+        )}).`
       );
     }
   };
@@ -154,11 +163,12 @@ function validateScheduledSubsequentPayment(params: {
 
     if (remaining <= 0) return;
 
-    // Keep existing logic for non-rental units
-    if (params.unitType !== 'rental_space') {
+    const isPartialAllowed = allowsPartialPayments(params.unitType);
+
+    if (isPartialAllowed) {
       if (isFirstPayment) return;
 
-      const minimumRequired = Math.min(MIN_SUBSEQUENT_PAYMENT_AMOUNT, remaining);
+      const minimumRequired = Math.min(remaining, totalAmount * 0.05);
 
       if (submittedAmount < minimumRequired) {
         throw new Error(
@@ -169,7 +179,6 @@ function validateScheduledSubsequentPayment(params: {
       return;
     }
 
-    // Rental-space schedule enforcement
     const duration = Math.max(1, Number(params.duration ?? 1));
     const cycle: PaymentCycle = params.paymentCycle ?? 'monthly';
     const monthlyAmount = duration > 0 ? totalAmount / duration : totalAmount;
@@ -191,7 +200,9 @@ function validateScheduledSubsequentPayment(params: {
     if (submittedAmount < minimumRequired) {
       if (cycle === 'full') {
         throw new Error(
-          `Full payment is required for this rental reservation (₱${minimumRequired.toFixed(2)}).`
+          `Full payment is required for this rental reservation (₱${minimumRequired.toFixed(
+            2
+          )}).`
         );
       }
 
@@ -204,8 +215,45 @@ function validateScheduledSubsequentPayment(params: {
   };
 }
 
+function isDepositCategory(category?: PaymentCategory | null) {
+  return category === 'advance_deposit' || category === 'security_deposit';
+}
+
+function getLedgerMeaningFromCategory(category?: PaymentCategory | null): {
+  entryType: LedgerEntry['entryType'];
+  depositType?: LedgerEntry['depositType'];
+} {
+  if (category === 'advance_deposit') {
+    return {
+      entryType: 'deposit',
+      depositType: 'advance',
+    };
+  }
+
+  if (category === 'security_deposit') {
+    return {
+      entryType: 'deposit',
+      depositType: 'security',
+    };
+  }
+
+  return {
+    entryType: 'payment',
+    depositType: undefined,
+  };
+}
+
+function sortPaymentsByCreatedAt(items: Payment[]) {
+  return [...items].sort(
+    (a, b) =>
+      new Date(b.createdAt ?? b.date ?? 0).getTime() -
+      new Date(a.createdAt ?? a.date ?? 0).getTime()
+  );
+}
+
 export function PaymentsProvider({ children }: { children: ReactNode }) {
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [paymentsVersion, setPaymentsVersion] = useState(0);
   const { reservations, refreshReservations } = useReservations();
   const { addAuditLog, addLedgerEntry } = useRecords();
   const { user } = useAuth();
@@ -214,7 +262,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
     const { data, error } = await supabase
       .from('payments')
       .select(
-        'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot'
+        'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category'
       )
       .order('created_at', { ascending: false });
 
@@ -228,12 +276,83 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    setPayments((data ?? []).map(mapPaymentRow));
+    setPayments(sortPaymentsByCreatedAt((data ?? []).map(mapPaymentRow)));
   }, []);
 
   useEffect(() => {
     void refreshPayments();
   }, [refreshPayments]);
+
+  useEffect(() => {
+  const channel = supabase
+    .channel('payments-realtime')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'payments',
+      },
+      (payload) => {
+        const newPayment = mapPaymentRow(payload.new);
+
+        setPayments((prev) => {
+          if (prev.some((item) => item.id === newPayment.id)) {
+            return prev;
+          }
+
+          return sortPaymentsByCreatedAt([newPayment, ...prev]);
+        });
+
+        setPaymentsVersion((prev) => prev + 1);
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'payments',
+      },
+      (payload) => {
+        const updatedPayment = mapPaymentRow(payload.new);
+
+        setPayments((prev) =>
+          sortPaymentsByCreatedAt(
+            prev.map((item) =>
+              item.id === updatedPayment.id ? updatedPayment : item
+            )
+          )
+        );
+
+        setPaymentsVersion((prev) => prev + 1);
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'payments',
+      },
+      (payload) => {
+        const deletedId = payload.old.payment_id as string | undefined;
+        if (!deletedId) return;
+
+        setPayments((prev) => prev.filter((item) => item.id !== deletedId));
+        setPaymentsVersion((prev) => prev + 1);
+      }
+    )
+    .subscribe((status) => {
+      if (import.meta.env.DEV) {
+        console.log('Payments realtime status:', status);
+      }
+    });
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}, []);
 
   const fetchPaymentsPage = useCallback(
     async ({
@@ -248,7 +367,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       let query = supabase
         .from('payments')
         .select(
-          'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot',
+          'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category',
           { count: 'exact' }
         )
         .order('date', { ascending: false });
@@ -266,6 +385,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
             `user_id.ilike.%${trimmedSearch}%`,
             `notes.ilike.%${trimmedSearch}%`,
             `method.ilike.%${trimmedSearch}%`,
+            `category.ilike.%${trimmedSearch}%`,
           ].join(',')
         );
       }
@@ -288,7 +408,9 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
   const uploadPaymentProof = useCallback(async (file: File): Promise<string | null> => {
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const fileName = `${Date.now()}-${Math.random()
+        .toString(36)
+        .substring(2)}.${fileExt}`;
       const filePath = `receipts/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
@@ -310,7 +432,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
     async (reservationId: string): Promise<number> => {
       const { data: ledgerRows, error } = await supabase
         .from('ledger')
-        .select('entry_type, amount')
+        .select('entry_type, deposit_type, amount')
         .eq('reservation_id', reservationId);
 
       if (error) throw error;
@@ -326,9 +448,13 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
 
         switch (row.entry_type) {
           case 'payment':
-          case 'deposit':
           case 'balance':
             paid += amount;
+            break;
+          case 'deposit':
+            if (row.deposit_type === 'advance') {
+              paid += amount;
+            }
             break;
           case 'refund':
             refunds += amount;
@@ -380,6 +506,9 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
         throw new Error('Reservation not found for this payment.');
       }
 
+      const category = (paymentData.category ?? 'payment') as PaymentCategory;
+      const depositPayment = isDepositCategory(category);
+
       const ledgerPaid = await getReservationLedgerNetPaid(reservation.id);
       const submittedAmount = clampMoney(Number(paymentData.amount));
       const remaining = clampMoney(Number(reservation.totalAmount) - ledgerPaid);
@@ -402,12 +531,14 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
         throw new Error('Payment amount must be greater than zero.');
       }
 
-      if (submittedAmount > remaining) {
+      if (!depositPayment && submittedAmount > remaining) {
         throw new Error('Payment amount cannot exceed the remaining balance.');
       }
 
-      enforceMinimumFirstPayment(submittedAmount);
-      enforceScheduledSubsequentPayment(submittedAmount);
+      if (!depositPayment) {
+        enforceMinimumFirstPayment(submittedAmount);
+        enforceScheduledSubsequentPayment(submittedAmount);
+      }
 
       const { data, error } = await supabase
         .from('payments')
@@ -423,10 +554,11 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
             notes: paymentData.notes,
             payment_method_id: paymentData.paymentMethodId ?? null,
             payment_method_snapshot: paymentData.paymentMethodSnapshot ?? null,
+            category,
           },
         ])
         .select(
-          'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot'
+          'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category'
         )
         .single();
 
@@ -435,38 +567,52 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       const newPayment = mapPaymentRow(data);
 
       if (newPayment.status === 'paid') {
-        const refreshedLedgerPaid = await getReservationLedgerNetPaid(newPayment.reservationId);
-        const remainingAtApproval = clampMoney(
-          Number(reservation.totalAmount) - refreshedLedgerPaid
-        );
+        let approvedAmount = clampMoney(newPayment.amount);
 
-        const approvedAmount = Math.min(clampMoney(newPayment.amount), remainingAtApproval);
+        if (!depositPayment) {
+          const refreshedLedgerPaid = await getReservationLedgerNetPaid(
+            newPayment.reservationId
+          );
+          const remainingAtApproval = clampMoney(
+            Number(reservation.totalAmount) - refreshedLedgerPaid
+          );
 
-        if (approvedAmount <= 0) {
-          throw new Error('This reservation no longer has an outstanding balance.');
+          approvedAmount = Math.min(clampMoney(newPayment.amount), remainingAtApproval);
+
+          if (approvedAmount <= 0) {
+            throw new Error('This reservation no longer has an outstanding balance.');
+          }
+
+          if (approvedAmount !== newPayment.amount) {
+            const { error: adjustError } = await supabase
+              .from('payments')
+              .update({ amount: approvedAmount })
+              .eq('payment_id', newPayment.id);
+
+            if (adjustError) throw adjustError;
+
+            newPayment.amount = approvedAmount;
+          }
         }
 
-        if (approvedAmount !== newPayment.amount) {
-          const { error: adjustError } = await supabase
-            .from('payments')
-            .update({ amount: approvedAmount })
-            .eq('payment_id', newPayment.id);
-
-          if (adjustError) throw adjustError;
-
-          newPayment.amount = approvedAmount;
-        }
+        const { entryType, depositType } = getLedgerMeaningFromCategory(category);
 
         await addLedgerEntry({
           userId: newPayment.userId,
           reservationId: newPayment.reservationId,
           paymentId: newPayment.id,
-          entryType: 'payment',
+          entryType,
+          depositType,
           amount: newPayment.amount,
           method: newPayment.method,
           status: 'verified',
           referenceNo: null,
-          description: `Payment for reservation ${newPayment.publicId ?? newPayment.id}`,
+          description:
+            category === 'security_deposit'
+              ? `Security deposit for ${newPayment.publicId ?? newPayment.id}`
+              : category === 'advance_deposit'
+              ? `Advance deposit for ${newPayment.publicId ?? newPayment.id}`
+              : `Payment for reservation ${newPayment.publicId ?? newPayment.id}`,
           notes: newPayment.notes ?? null,
           recordedAt: newPayment.date,
           createdAt: new Date().toISOString(),
@@ -487,14 +633,15 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
             beforeValue: null,
             afterValue: newPayment,
             changedFields: Object.keys(newPayment),
-            notes: `Created payment ${newPayment.publicId ?? newPayment.id} for reservation ${newPayment.reservationId}`,
+            notes: `Created ${category} ${newPayment.publicId ?? newPayment.id} for reservation ${
+              newPayment.reservationId
+            }`,
           });
         } catch (auditError) {
           console.error('Failed to audit payment creation:', auditError);
         }
       }
 
-      await refreshPayments();
       return newPayment.id;
     },
     [
@@ -517,6 +664,12 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       if (!reservation) {
         throw new Error('Reservation not found for this payment.');
       }
+
+      const existingCategory = (existingPayment.category ?? 'payment') as PaymentCategory;
+      const nextCategory = (paymentUpdate.category ??
+        existingPayment.category ??
+        'payment') as PaymentCategory;
+      const isDeposit = isDepositCategory(nextCategory);
 
       const isApprovingNow =
         existingPayment.status !== 'paid' && paymentUpdate.status === 'paid';
@@ -563,7 +716,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
         paymentCycle: reservation.paymentCycle ?? null,
       });
 
-      if (nextStatus === 'paid') {
+      if (nextStatus === 'paid' && !isDeposit) {
         const isAlreadyCountedAsPaid = existingPayment.status === 'paid';
 
         if (!isAlreadyCountedAsPaid) {
@@ -578,7 +731,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      if (isApprovingNow) {
+      if (isApprovingNow && !isDeposit) {
         const remaining = clampMoney(Number(reservation.totalAmount) - ledgerPaid);
 
         if (remaining <= 0) {
@@ -592,7 +745,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
         updated_at: new Date().toISOString(),
       };
 
-      if (paymentUpdate.amount !== undefined || isApprovingNow) {
+      if (paymentUpdate.amount !== undefined || (isApprovingNow && !isDeposit)) {
         updatePayload.amount = sanitizedAmount;
       }
 
@@ -620,12 +773,16 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
         updatePayload.payment_method_snapshot = paymentUpdate.paymentMethodSnapshot;
       }
 
+      if (paymentUpdate.category !== undefined) {
+        updatePayload.category = paymentUpdate.category;
+      }
+
       const { data, error } = await supabase
         .from('payments')
         .update(updatePayload)
         .eq('payment_id', id)
         .select(
-          'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot'
+          'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category'
         )
         .single();
 
@@ -636,7 +793,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       const updatedPaymentForAudit = buildAuditSnapshot(existingPayment, {
         ...paymentUpdate,
         amount:
-          paymentUpdate.amount !== undefined || isApprovingNow
+          paymentUpdate.amount !== undefined || (isApprovingNow && !isDeposit)
             ? sanitizedAmount
             : existingPayment.amount,
       });
@@ -644,7 +801,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       const changedFields = getChangedFields(existingPayment, {
         ...paymentUpdate,
         amount:
-          paymentUpdate.amount !== undefined || isApprovingNow
+          paymentUpdate.amount !== undefined || (isApprovingNow && !isDeposit)
             ? sanitizedAmount
             : existingPayment.amount,
       });
@@ -675,16 +832,24 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
         }
 
         if (!existingLedgerCheck.data) {
+          const { entryType, depositType } = getLedgerMeaningFromCategory(nextCategory);
+
           await addLedgerEntry({
             userId: finalPayment.userId,
             reservationId: finalPayment.reservationId,
             paymentId: finalPayment.id,
-            entryType: 'payment',
+            entryType,
+            depositType,
             amount: finalPayment.amount,
             method: finalPayment.method,
             status: 'verified',
             referenceNo: null,
-            description: `Payment for reservation ${finalPayment.publicId ?? finalPayment.id}`,
+            description:
+              nextCategory === 'security_deposit'
+                ? `Security deposit for ${finalPayment.publicId ?? finalPayment.id}`
+                : nextCategory === 'advance_deposit'
+                ? `Advance deposit for ${finalPayment.publicId ?? finalPayment.id}`
+                : `Payment for reservation ${finalPayment.publicId ?? finalPayment.id}`,
             notes: finalPayment.notes ?? null,
             recordedAt: new Date().toISOString(),
             createdAt: new Date().toISOString(),
@@ -708,19 +873,18 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
             changedFields,
             notes:
               action === 'PAYMENT_APPROVED'
-                ? `Approved payment ${existingPayment.publicId ?? id}`
+                ? `Approved ${nextCategory} ${existingPayment.publicId ?? id}`
                 : action === 'PAYMENT_REJECTED'
-                  ? `Rejected payment ${existingPayment.publicId ?? id}`
-                  : action === 'PAYMENT_PROOF_UPLOADED'
-                    ? `Uploaded proof for payment ${existingPayment.publicId ?? id}`
-                    : `Updated payment ${existingPayment.publicId ?? id}`,
+                ? `Rejected ${existingCategory} ${existingPayment.publicId ?? id}`
+                : action === 'PAYMENT_PROOF_UPLOADED'
+                ? `Uploaded proof for ${existingCategory} ${existingPayment.publicId ?? id}`
+                : `Updated ${existingCategory} ${existingPayment.publicId ?? id}`,
           });
         } catch (auditError) {
           console.error('Failed to audit payment update:', auditError);
         }
       }
 
-      await refreshPayments();
     },
     [
       addAuditLog,
@@ -761,17 +925,8 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
         throw new Error('Reservation not found.');
       }
 
-      const netPaid = await getReservationLedgerNetPaid(reservationId);
-
-      if (netPaid <= 0) {
-        throw new Error('No refundable balance available.');
-      }
-
-      if (refundAmount > netPaid) {
-        throw new Error(`Refund cannot exceed ₱${netPaid.toFixed(2)}.`);
-      }
-
       let linkedPayment: Payment | undefined;
+      let refundableLimit = 0;
 
       if (paymentId) {
         linkedPayment = payments.find((p) => p.id === paymentId);
@@ -780,23 +935,84 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
           throw new Error('Linked payment not found.');
         }
 
+        if (linkedPayment.reservationId !== reservationId) {
+          throw new Error('The selected payment does not belong to this reservation.');
+        }
+
         if (linkedPayment.status !== 'paid') {
           throw new Error('Only approved payments can be refunded.');
         }
+
+        const { data: refundRows, error: refundRowsError } = await supabase
+          .from('ledger')
+          .select('amount')
+          .eq('reservation_id', reservationId)
+          .eq('payment_id', paymentId)
+          .eq('entry_type', 'refund');
+
+        if (refundRowsError) throw refundRowsError;
+
+        const alreadyRefundedForPayment = (refundRows ?? []).reduce(
+          (sum, row) => sum + Number(row.amount ?? 0),
+          0
+        );
+
+        refundableLimit = Math.max(
+          0,
+          Number(linkedPayment.amount) - alreadyRefundedForPayment
+        );
+
+        if (refundableLimit <= 0) {
+          throw new Error('This payment has already been fully refunded.');
+        }
+
+        if (refundAmount > refundableLimit) {
+          throw new Error(
+            `Refund cannot exceed the remaining refundable amount for this payment (₱${refundableLimit.toFixed(
+              2
+            )}).`
+          );
+        }
+      } else {
+        const netPaid = await getReservationLedgerNetPaid(reservationId);
+
+        if (netPaid <= 0) {
+          throw new Error('No refundable balance available.');
+        }
+
+        refundableLimit = netPaid;
+
+        if (refundAmount > refundableLimit) {
+          throw new Error(`Refund cannot exceed ₱${refundableLimit.toFixed(2)}.`);
+        }
       }
+
+      const linkedCategory = (linkedPayment?.category ?? 'payment') as PaymentCategory;
+
+      const description = linkedPayment
+        ? linkedCategory === 'security_deposit'
+          ? `Refund for security deposit ${linkedPayment.publicId ?? linkedPayment.id}`
+          : linkedCategory === 'advance_deposit'
+          ? `Refund for advance deposit ${linkedPayment.publicId ?? linkedPayment.id}`
+          : `Refund for payment ${linkedPayment.publicId ?? linkedPayment.id}`
+        : `Refund for reservation ${reservation.publicId ?? reservation.id}`;
 
       await addLedgerEntry({
         userId: reservation.userId,
         reservationId,
         paymentId: paymentId ?? null,
         entryType: 'refund',
+        depositType:
+          linkedCategory === 'security_deposit'
+            ? 'security'
+            : linkedCategory === 'advance_deposit'
+            ? 'advance'
+            : undefined,
         amount: refundAmount,
         method: method ?? linkedPayment?.method ?? null,
         status: 'verified',
         referenceNo,
-        description: linkedPayment
-          ? `Refund for payment ${linkedPayment.publicId ?? linkedPayment.id}`
-          : `Refund for reservation ${reservation.publicId ?? reservation.id}`,
+        description,
         notes,
         recordedAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
@@ -804,9 +1020,42 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
       });
 
       await recalculateReservationPaidAmount(reservationId);
-      await refreshPayments();
+
+      if (user?.id) {
+        try {
+          await addAuditLog({
+            userId: user.id,
+            action: 'PAYMENT_REFUNDED',
+            targetTable: 'payments',
+            targetId: paymentId ?? reservationId,
+            targetPublicId:
+              linkedPayment?.publicId || reservation.publicId || undefined,
+            beforeValue: linkedPayment ?? null,
+            afterValue: {
+              reservationId,
+              paymentId: paymentId ?? null,
+              refundAmount,
+              method: method ?? linkedPayment?.method ?? null,
+              notes,
+              referenceNo,
+            },
+            changedFields: ['refund'],
+            notes: linkedPayment
+              ? `Issued refund of ₱${refundAmount.toFixed(2)} for ${
+                  linkedPayment.category ?? 'payment'
+                } ${linkedPayment.publicId ?? linkedPayment.id}`
+              : `Issued refund of ₱${refundAmount.toFixed(2)} for reservation ${
+                  reservation.publicId ?? reservation.id
+                }`,
+          });
+        } catch (auditError) {
+          console.error('Failed to audit refund:', auditError);
+        }
+      }
+
     },
     [
+      addAuditLog,
       addLedgerEntry,
       getReservationLedgerNetPaid,
       payments,
@@ -825,6 +1074,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
   const value = useMemo<PaymentsContextType>(
     () => ({
       payments,
+      paymentsVersion,
       addPayment,
       updatePayment,
       uploadPaymentProof,
@@ -835,6 +1085,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
     }),
     [
       payments,
+      paymentsVersion,
       addPayment,
       updatePayment,
       uploadPaymentProof,
