@@ -45,15 +45,14 @@ const FacebookLogo = () => (
   </svg>
 );
 
-const [authNotice, setAuthNotice] = useState<{
+
+export default function Login() {
+  const [oauthChecked, setOauthChecked] = useState(false);
+  const [authNotice, setAuthNotice] = useState<{
   code: string;
   email: string;
   provider: string;
 } | null>(null);
-
-
-export default function Login() {
-  const [oauthChecked, setOauthChecked] = useState(false);
   const {
     login,
     recoverPassword,
