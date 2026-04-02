@@ -145,7 +145,7 @@ const NotificationCard = React.memo(function NotificationCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       onClick={() => onOpen(notification)}
-      className={`relative flex cursor-pointer items-start gap-4 rounded-2xl border p-4 transition-all ${
+      className={`relative flex cursor-pointer items-start gap-3 sm:gap-4 rounded-2xl border p-4 sm:p-5 transition-all ${
         isSelected
           ? 'border-blue-500 bg-blue-50/30'
           : notification.read
@@ -156,7 +156,7 @@ const NotificationCard = React.memo(function NotificationCard({
       {selectionMode && (
         <div className="pt-1">
           <div
-            className={`flex size-5 items-center justify-center rounded-md border-2 transition-colors ${
+            className={`flex size-5 sm:size-6 items-center justify-center rounded-md border-2 transition-colors ${
               isSelected
                 ? 'border-blue-600 bg-blue-600'
                 : 'border-gray-300 bg-white'
@@ -181,12 +181,12 @@ const NotificationCard = React.memo(function NotificationCard({
             {notification.title || 'Untitled notification'}
           </h3>
 
-          <span className="shrink-0 text-[11px] text-gray-400">
+          <span className="shrink-0 text-xs sm:text-sm text-gray-400">
             {formatDate(notification.date)}
           </span>
         </div>
 
-        <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">
+        <p className="mt-0.5 line-clamp-2 text-sm text-gray-500">
           {notification.message || 'No message content.'}
         </p>
       </div>
@@ -268,7 +268,7 @@ const FilterBottomSheet = React.memo(function FilterBottomSheet({
                   <button
                     key={type}
                     onClick={() => onSelect(type)}
-                    className={`w-full rounded-2xl p-4 text-left font-semibold capitalize transition ${
+                    className={`w-full rounded-2xl p-4 text-left text-sm font-semibold capitalize transition ${
                       filter === type
                         ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200'
                         : 'bg-gray-50 text-gray-600'
@@ -331,7 +331,7 @@ const QuickViewPanel = React.memo(function QuickViewPanel({
 
                   <div>
                     <p
-                      className={`text-xs font-bold uppercase tracking-widest ${
+                      className={`text-xs sm:text-sm font-bold uppercase tracking-widest ${
                         getNotificationColor(notification.type).text
                       }`}
                     >
@@ -373,8 +373,7 @@ const QuickViewPanel = React.memo(function QuickViewPanel({
             <div className="bg-white p-6">
               <button
                 onClick={onClose}
-                className="w-full rounded-2xl bg-blue-600 py-3.5 font-semibold text-white transition hover:bg-blue-700 active:scale-95"
-              >
+className="w-full rounded-2xl bg-blue-600 py-3.5 font-semibold text-white transition hover:bg-blue-700 active:scale-95 min-h-[44px]"              >
                 Close Notification
               </button>
             </div>
@@ -554,7 +553,7 @@ const groupedNotifications = useMemo(() => {
             <h1 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">
               Notifications
             </h1>
-            <p className="mt-0.5 text-xs text-gray-500 sm:text-sm">
+            <p className="mt-1 text-sm text-gray-500">
               {!hasNotifications
                 ? 'All caught up!'
                 : `${unreadCount} unread message${unreadCount === 1 ? '' : 's'}.`}
@@ -566,7 +565,7 @@ const groupedNotifications = useMemo(() => {
               <>
                 <button
                   onClick={() => setShowFilterMenu(true)}
-                  className="rounded-xl border border-gray-200 bg-white p-2.5 shadow-sm transition active:scale-95 md:hidden"
+                  className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition active:scale-95 md:hidden"
                 >
                   <Filter className="size-5 text-gray-600" />
                 </button>
@@ -574,7 +573,7 @@ const groupedNotifications = useMemo(() => {
                 {unreadCount > 0 && userId && (
                   <button
                     onClick={handleMarkAllRead}
-                    className="rounded-lg bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-600 transition hover:bg-blue-100"
+                    className="rounded-lg bg-blue-50 px-4 py-2 text-sm min-h-[40px] font-semibold text-blue-600 transition hover:bg-blue-100"
                   >
                     Mark all as read
                   </button>
@@ -582,7 +581,7 @@ const groupedNotifications = useMemo(() => {
 
                 <button
                   onClick={() => setSelectionMode(true)}
-                  className="flex items-center gap-2 rounded-lg bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-600 transition hover:bg-blue-100"
+                  className="flex items-center gap-2 rounded-lg bg-blue-50 px-4 py-2 text-sm min-h-[40px] font-semibold text-blue-600 transition hover:bg-blue-100"
                 >
                   <ListChecks className="size-4" />
                   <span className="hidden sm:inline">Select</span>
@@ -632,8 +631,7 @@ const groupedNotifications = useMemo(() => {
     <div className="mt-4 flex justify-center">
       <button
         onClick={() => setFilter('all')}
-        className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-      >
+className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 min-h-[40px]"      >
         Clear Filter
       </button>
     </div>
@@ -643,7 +641,7 @@ const groupedNotifications = useMemo(() => {
               ({ group, items }) =>
                 items.length > 0 && (
                   <div key={group} className="space-y-4">
-                    <h4 className="px-1 text-xs font-bold uppercase tracking-widest text-gray-400">
+                    <h4 className="px-1 text-xs sm:text-sm font-bold uppercase tracking-widest text-gray-400">
                       {group}
                     </h4>
 
@@ -668,8 +666,7 @@ const groupedNotifications = useMemo(() => {
             <div className="flex justify-center pt-2">
               <button
                 onClick={() => setVisibleCount((prev) => prev + NOTIFICATIONS_PAGE_SIZE)}
-                className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
-              >
+className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 min-h-[40px]"              >
                 Load More
               </button>
             </div>
@@ -682,8 +679,7 @@ const groupedNotifications = useMemo(() => {
               initial={{ y: 100, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 100, opacity: 0 }}
-              className="fixed bottom-6 left-1/2 z-[80] flex w-[90%] max-w-md -translate-x-1/2 items-center justify-between rounded-2xl bg-gray-900 p-4 text-white shadow-2xl"
-            >
+className="fixed bottom-5 left-1/2 z-[80] flex w-[92%] max-w-md -translate-x-1/2 items-center justify-between rounded-2xl bg-gray-900 p-4 text-white shadow-2xl"            >
               <span className="pl-2 text-sm font-bold">
                 {selectedCount} selected
               </span>
@@ -691,7 +687,7 @@ const groupedNotifications = useMemo(() => {
               <div className="flex gap-2">
                 <button
                   onClick={handleBulkMarkRead}
-                  className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold transition hover:bg-white/20"
+                  className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-xs sm:text-sm font-bold transition hover:bg-white/20"
                 >
                   <CheckCheck className="size-4" />
                   Mark Read
@@ -699,7 +695,7 @@ const groupedNotifications = useMemo(() => {
 
                 <button
                   onClick={handleBulkDelete}
-                  className="flex items-center gap-2 rounded-xl bg-red-500 px-3 py-2 text-xs font-bold transition hover:bg-red-600"
+                  className="flex items-center gap-2 rounded-xl bg-red-500 px-3 py-2 text-xs sm:text-sm font-bold transition hover:bg-red-600"
                 >
                   <Trash2 className="size-4" />
                   Delete

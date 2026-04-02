@@ -906,46 +906,6 @@ const getCalendarTileClassName = useCallback(
     return media.length > 0 ? media : [FALLBACK_IMAGE];
   }, [selectedUnitData]);
 
-//   const updateDuration = useCallback(
-//   (nextValue: number) => {
-//     if (!selectedUnitData) return;
-
-//     const bounds = getDurationBounds(
-//       selectedUnitData.type,
-//       reservationForm.durationType
-//     );
-
-//     const safeDuration = clampNumber(nextValue, bounds.min, bounds.max);  
-
-//     setReservationForm((prev) => {
-//       if (selectedUnitData.type === "function_hall") {
-//         const nextEnd = new Date(startOfLocalDay(prev.startDate));
-//         nextEnd.setDate(nextEnd.getDate() + safeDuration - 1);
-
-//         const nextRange = buildFunctionHallRange(prev.startDate, nextEnd);
-
-//         return {
-//           ...prev,
-//           duration: nextRange.duration,
-//           durationType: nextRange.durationType,
-//           startDate: nextRange.startDate,
-//           endDate: nextRange.endDate,
-//         };
-//       }
-
-//       return {
-//         ...prev,
-//         duration: safeDuration,
-//         endDate: computeEndFromForm(prev.startDate, safeDuration, prev.durationType),
-//       };
-//     });
-
-//     if (selectedUnitData.type === "function_hall") {
-//       setFunctionHallConflictMessage("");
-//     }
-//   },
-//   [selectedUnitData, reservationForm.durationType]
-// );
 
 useEffect(() => {
   if (!selectedUnitData) return;
@@ -1797,7 +1757,7 @@ const calendarLegend = (
           <h1 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">
             Browse units
           </h1>
-          <p className="mt-0.5 text-xs text-gray-500 sm:text-sm">
+          <p className="mt-0.5 text-sm text-gray-500">
             Secure a space or book an appointment for a tour
           </p>
         </header>
@@ -1840,7 +1800,7 @@ const calendarLegend = (
               <select
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value as UnitType | "all")}
-                className="rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                className="rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
               >
                 <option value="all">All Types</option>
                 <option value="rental_space">Rental Spaces</option>
@@ -1851,7 +1811,7 @@ const calendarLegend = (
               <select
                 value={priceRange}
                 onChange={(e) => setPriceRange(e.target.value as PriceRange)}
-                className="rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                className="rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
               >
                 {PRICE_RANGE_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -1863,7 +1823,7 @@ const calendarLegend = (
               <select
                 value={filterLocation}
                 onChange={(e) => setFilterLocation(e.target.value)}
-                className="rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                className="rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
               >
                 {locations.map((loc) => (
                   <option key={loc} value={loc}>
@@ -2056,7 +2016,7 @@ const calendarLegend = (
               className="absolute inset-0 bg-black/30"
               onClick={() => setShowFilterModal(false)}
             />
-            <div className="relative max-h-[80vh] w-full overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl">
+            <div className="relative max-h-[85vh] w-full overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-gray-900">Filters</h3>
                 <button onClick={() => setShowFilterModal(false)} type="button">
@@ -2071,7 +2031,7 @@ const calendarLegend = (
                 <select
                   value={filterType}
                   onChange={(e) => setFilterType(e.target.value as UnitType | "all")}
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                 >
                   <option value="all">All Types</option>
                   <option value="rental_space">Rental Spaces</option>
@@ -2087,7 +2047,7 @@ const calendarLegend = (
                 <select
                   value={priceRange}
                   onChange={(e) => setPriceRange(e.target.value as PriceRange)}
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                 >
                   {PRICE_RANGE_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -2104,7 +2064,7 @@ const calendarLegend = (
                 <select
                   value={filterLocation}
                   onChange={(e) => setFilterLocation(e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                 >
                   {locations.map((loc) => (
                     <option key={loc} value={loc}>
@@ -2129,7 +2089,7 @@ const calendarLegend = (
           <div className="fixed inset-0 z-50 bg-black/40 p-4 sm:p-6">
             <div className="flex h-full items-center justify-center">
               <div
-                className={`flex max-h-[92vh] w-full flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ${
+                className={`flex max-h-[95vh] w-full flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ${
                   reservationSuccess ? 'max-w-md' : 'max-w-5xl'
                 }`}
               >
@@ -2331,13 +2291,13 @@ const calendarLegend = (
                           </span>
                         </div>
                         {selectedUnitData.minimumPaymentPercent && (
-                          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-xs text-amber-800">
                             Minimum initial payment:{" "}
                             <strong>{selectedUnitData.minimumPaymentPercent}%</strong> of total amount.
                           </div>
                         )}
 
-                        <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                        <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-xs text-gray-600">
                           {selectedUnitData.type === "rental_space" &&
                             "Payments follow your selected billing cycle."}
                           {selectedUnitData.type === "function_hall" &&
@@ -2367,7 +2327,7 @@ const calendarLegend = (
     <select
       value={reservationForm.modeOfVisit}
       onChange={(e) => handleModeChange(e.target.value as VisitMode)}
-      className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+      className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
     >
       <option value="online">Reserve Online</option>
       <option value="onsite">Visit On-site First</option>
@@ -2392,7 +2352,7 @@ const calendarLegend = (
                 : undefined,
             }))
           }
-          className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
         />
       </div>
 
@@ -2405,7 +2365,7 @@ const calendarLegend = (
     <button
       type="button"
       onClick={() => setIsTimeSelectOpen((prev) => !prev)}
-      className="flex w-full items-center justify-between rounded-xl border border-gray-300 bg-white px-3 py-2 text-left outline-none transition hover:border-blue-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+      className="flex w-full items-center justify-between rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-left outline-none transition hover:border-blue-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
     >
       <span
         className={
@@ -2441,7 +2401,7 @@ const calendarLegend = (
                   }));
                   setIsTimeSelectOpen(false);
                 }}
-                className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition ${
+                className={`flex w-full items-center justify-between px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-left text-sm transition ${
                   isSelected
                     ? "bg-blue-50 font-medium text-blue-700"
                     : "text-gray-700 hover:bg-gray-50"
@@ -2552,7 +2512,7 @@ const calendarLegend = (
                             <button
                               type="button"
                               onClick={() => setShowCalendar((s) => !s)}
-                              className="flex w-full items-center justify-between rounded-xl border border-gray-300 px-3 py-2 text-left text-sm transition hover:border-blue-400"
+                              className="flex w-full items-center justify-between rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-left text-sm transition hover:border-blue-400"
                             >
                               <span>
                                 {`${formatDate(reservationForm.startDate)} - ${formatDate(reservationForm.endDate)}`}
@@ -2595,7 +2555,7 @@ const calendarLegend = (
                               type="text"
                               readOnly
                               value={`${reservationForm.duration} month(s)`}
-                              className="w-full rounded-xl border border-gray-300 bg-gray-100 px-3 py-2"
+                              className="w-full rounded-xl border border-gray-300 bg-gray-100 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base"
                             />
                           </div>
 
@@ -2632,7 +2592,7 @@ const calendarLegend = (
                                   <button
                                     type="button"
                                     onClick={() => setIsSlotPanelOpen(true)}
-                                    className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
+                                    className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm font-medium text-blue-700 transition hover:bg-blue-100"
                                   >
                                     Change
                                   </button>
@@ -2671,7 +2631,7 @@ const calendarLegend = (
                                   vehicleType: e.target.value,
                                 }))
                               }
-                              className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                               placeholder="e.g., Sedan, SUV, Motorcycle"
                             />
                           </div>
@@ -2690,7 +2650,7 @@ const calendarLegend = (
                                   plateNumber: e.target.value.toUpperCase(),
                                 }))
                               }
-                              className="w-full rounded-xl border border-gray-300 px-3 py-2 uppercase outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base uppercase outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                               placeholder="ABC 1234"
                             />
                           </div>
@@ -2707,7 +2667,7 @@ const calendarLegend = (
                             <button
                               type="button"
                               onClick={() => setShowCalendar((s) => !s)}
-                              className="flex w-full items-center justify-between rounded-xl border border-gray-300 px-3 py-2 text-left text-sm transition hover:border-blue-400"
+                              className="flex w-full items-center justify-between rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-left text-sm transition hover:border-blue-400"
                             >
                               <span className={reservationForm.startDate && reservationForm.endDate && reservationForm.duration > 0
                                 ? "text-gray-900"
@@ -2876,7 +2836,7 @@ const calendarLegend = (
                                         setFunctionHallConflictMessage("");
                                         setIsSelectingRangeEnd(false);
                                       }}
-                                      className="shrink-0 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 transition hover:bg-red-100"
+                                      className="shrink-0 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-xs font-medium text-red-700 transition hover:bg-red-100"
                                     >
                                       Clear dates
                                     </button>
@@ -2904,7 +2864,7 @@ const calendarLegend = (
                                     : ""
                                 }
                                 placeholder="Duration will appear here"
-                                className="w-full rounded-xl border border-gray-300 bg-gray-100 px-3 py-2"
+                                className="w-full rounded-xl border border-gray-300 bg-gray-100 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base"
                               />
                             </div>
                           </div>
@@ -2923,7 +2883,7 @@ const calendarLegend = (
                                   eventPurpose: e.target.value,
                                 }))
                               }
-                              className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                               placeholder="e.g., Wedding, Conference, Birthday"
                             />
                           </div>
@@ -2948,7 +2908,7 @@ const calendarLegend = (
                                   attendees: e.target.value,
                                 }))
                               }
-                              className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                             />
                           </div>
                         </>
@@ -2964,7 +2924,7 @@ const calendarLegend = (
                             <button
                               type="button"
                               onClick={() => setShowCalendar((s) => !s)}
-                              className="flex w-full items-center justify-between rounded-xl border border-gray-300 px-3 py-2 text-left text-sm transition hover:border-blue-400"
+                              className="flex w-full items-center justify-between rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-left text-sm transition hover:border-blue-400"
                             >
                               <span className={reservationForm.startDate ? "text-gray-900" : "text-gray-400"}>
                                 {reservationForm.startDate
@@ -3051,7 +3011,7 @@ const calendarLegend = (
                                 };
                               });
                             }}
-                            className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                           />
                           <p className="mt-2 text-xs text-gray-500">
                             Minimum 12 months (1 year), maximum {RESERVATION_LIMITS.rental_space.maxMonths} months.
@@ -3066,7 +3026,7 @@ const calendarLegend = (
                               type="text"
                               readOnly
                               value={formatDate(reservationForm.endDate)}
-                              className="w-full rounded-xl border border-gray-300 bg-gray-100 px-3 py-2"
+                              className="w-full rounded-xl border border-gray-300 bg-gray-100 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base"
                             />
                           </div>
 
@@ -3088,7 +3048,7 @@ const calendarLegend = (
                                   paymentCycle: nextCycle,
                                 }));
                               }}
-                              className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                             >
                               <option value="monthly">Monthly Installments</option>
                               <option
@@ -3156,7 +3116,7 @@ const calendarLegend = (
                                   businessType: e.target.value,
                                 }))
                               }
-                              className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                               placeholder="e.g., Retail, Office, Restaurant"
                             />
                           </div>
@@ -3178,7 +3138,7 @@ const calendarLegend = (
                                   paymentMethod: e.target.value as PaymentMethod,
                                 }))
                               }
-                              className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                             >
                               {activePaymentMethods.map((method) => (
                                 <option key={method.id} value={method.methodCode}>
@@ -3207,7 +3167,7 @@ const calendarLegend = (
                             }))
                           }
                           rows={3}
-                          className="w-full rounded-xl border border-gray-300 px-3 py-2 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                           placeholder="Any special requests or requirements"
                         />
                       </div>
@@ -3232,7 +3192,7 @@ const calendarLegend = (
                                 window.open(data.publicUrl, "_blank", "noopener,noreferrer");
                               }
                             }}
-                            className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100"
+                            className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm font-medium text-blue-700 transition hover:bg-blue-100"
                           >
                             View Contract PDF
                           </button>

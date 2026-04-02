@@ -89,7 +89,7 @@ const TicketListItem = React.memo(function TicketListItem({
     <button
       type="button"
       onClick={() => onSelect(ticket.id)}
-      className={`w-full rounded-2xl border p-5 text-left transition-all ${
+      className={`w-full rounded-2xl border p-4 sm:p-5 text-left transition-all ${
         isSelected
           ? 'border-blue-500 bg-white ring-4 ring-blue-50 shadow-sm'
           : 'border-gray-100 bg-white hover:border-gray-300'
@@ -97,12 +97,12 @@ const TicketListItem = React.memo(function TicketListItem({
     >
       <div className="mb-2 flex items-start justify-between gap-3">
         <span
-          className={`rounded-lg border px-2 py-0.5 text-[10px] font-black uppercase ${style.bg} ${style.text} ${style.border}`}
+          className={`rounded-lg border px-2 py-0.5 text-xs font-black uppercase ${style.bg} ${style.text} ${style.border}`}
         >
           {style.label}
         </span>
 
-        <span className="shrink-0 text-[11px] text-gray-400">
+        <span className="shrink-0 text-xs sm:text-sm text-gray-400">
           {formatDate(ticket.lastMessageAt || ticket.createdAt)}
         </span>
       </div>
@@ -111,9 +111,9 @@ const TicketListItem = React.memo(function TicketListItem({
         {ticket.subject}
       </h3>
 
-      <p className="line-clamp-2 text-xs text-gray-500">{preview}</p>
+      <p className="line-clamp-2 text-sm text-gray-500">{preview}</p>
 
-      <div className="mt-3 flex items-center gap-2 text-[11px] text-gray-400">
+      <div className="mt-3 flex items-center gap-2 text-xs sm:text-sm text-gray-400">
         <span className="font-mono">
           {ticket.publicId ?? `#${ticket.id.slice(-6).toUpperCase()}`}
         </span>
@@ -161,7 +161,7 @@ const TicketDetail = React.memo(function TicketDetail({
       exit={{ opacity: 0, x: 20 }}
       className="flex h-full flex-1 flex-col overflow-hidden border-none bg-white lg:rounded-[32px] lg:border lg:border-gray-100"
     >
-      <div className="flex shrink-0 items-center justify-between border-b border-gray-100 p-4 lg:p-6">
+      <div className="flex shrink-0 items-center justify-between border-b border-gray-100 p-4 sm:p-5 lg:p-6">
         <div className="flex items-center gap-4">
           <button
             type="button"
@@ -172,16 +172,16 @@ const TicketDetail = React.memo(function TicketDetail({
           </button>
 
           <div>
-            <h2 className="text-base font-bold leading-tight text-gray-900 lg:text-lg">
+            <h2 className="text-base font-bold leading-tight text-gray-900 sm:text-lg">
               {ticket.subject}
             </h2>
 
             <div className="mt-0.5 flex flex-wrap items-center gap-2">
-              <span className={`text-[10px] font-bold uppercase ${style.text}`}>
+              <span className={`text-xs font-bold uppercase ${style.text}`}>
                 {style.label}
               </span>
 
-              <span className="hidden font-mono text-[10px] text-gray-400 sm:inline">
+              <span className="hidden font-mono text-xs text-gray-400 sm:inline">
                 • {ticket.publicId ?? `#${ticket.id.slice(-6).toUpperCase()}`}
               </span>
             </div>
@@ -218,7 +218,7 @@ const TicketDetail = React.memo(function TicketDetail({
                 }`}
               >
                 <span
-                  className={`mb-2 text-[10px] font-bold uppercase ${
+                  className={`mb-2 text-xs font-bold uppercase ${
                     isCurrentUserMessage
                       ? 'text-blue-500'
                       : isSupportMessage
@@ -234,7 +234,7 @@ const TicketDetail = React.memo(function TicketDetail({
                 </span>
 
                 <div
-                  className={`max-w-[90%] rounded-2xl p-4 shadow-sm ${
+                  className={`max-w-[92%] sm:max-w-[80%] rounded-2xl p-4 shadow-sm ${
                     isCurrentUserMessage
                       ? 'rounded-tr-none bg-blue-600 text-white'
                       : 'rounded-tl-none border border-gray-200 bg-gray-100 text-gray-800'
@@ -243,7 +243,7 @@ const TicketDetail = React.memo(function TicketDetail({
                   <p className="whitespace-pre-wrap text-sm">{message.body}</p>
                 </div>
 
-                <span className="mt-2 text-[10px] text-gray-400">
+                <span className="mt-2 text-xs text-gray-400">
                   {isCurrentUserMessage ? 'You' : 'Support Team'} •{' '}
                   {formatDateTime(message.createdAt)}
                 </span>
@@ -261,7 +261,7 @@ const TicketDetail = React.memo(function TicketDetail({
             <Clock className="size-5 shrink-0" />
             <div>
               <p className="text-xs font-semibold">Waiting for support</p>
-              <p className="text-[11px] text-amber-700">
+              <p className="text-xs sm:text-sm text-amber-700">
                 Our support team will reply here once they review your message.
               </p>
             </div>
@@ -271,7 +271,7 @@ const TicketDetail = React.memo(function TicketDetail({
             <CheckCircle className="size-5 shrink-0" />
             <div>
               <p className="text-xs font-semibold">Support replied</p>
-              <p className="text-[11px] text-blue-700">
+              <p className="text-xs sm:text-sm text-blue-700">
                 You can reply back here or mark this ticket as resolved.
               </p>
             </div>
@@ -298,8 +298,7 @@ const TicketDetail = React.memo(function TicketDetail({
               rows={4}
               value={replyDraft}
               onChange={(e) => onReplyChange(e.target.value)}
-              className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500"
-              placeholder="Write your reply here..."
+className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500 sm:text-base"              placeholder="Write your reply here..."
             />
 
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
@@ -307,7 +306,7 @@ const TicketDetail = React.memo(function TicketDetail({
                 type="button"
                 onClick={onResolve}
                 disabled={isUpdatingStatus}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-bold text-green-700 transition-all hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-bold min-h-[44px] text-green-700 transition-all hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <CheckCircle className="size-4" />
                 {isUpdatingStatus ? 'Updating...' : 'Mark as Resolved'}
@@ -317,7 +316,7 @@ const TicketDetail = React.memo(function TicketDetail({
                 type="button"
                 onClick={onSendReply}
                 disabled={isSendingReply || !replyDraft.trim()}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-blue-100 transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold min-h-[44px] text-white shadow-lg shadow-blue-100 transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <Send className="size-4" />
                 {isSendingReply ? 'Sending...' : 'Send Reply'}
@@ -398,7 +397,7 @@ const TicketComposerModal = React.memo(function TicketComposerModal({
             ) : (
               <form onSubmit={onSubmit} className="space-y-4 p-6">
                 <div>
-                  <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-gray-400">
+                  <label className="mb-2 block text-xs font-black uppercase tracking-widest text-gray-400">
                     Subject
                   </label>
 
@@ -413,7 +412,7 @@ const TicketComposerModal = React.memo(function TicketComposerModal({
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-[10px] font-black uppercase tracking-widest text-gray-400">
+                  <label className="mb-2 block text-xs font-black uppercase tracking-widest text-gray-400">
                     Message
                   </label>
 
@@ -696,7 +695,7 @@ export default function ClientMessages() {
             <h1 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">
               Messages
             </h1>
-            <p className="mt-0.5 text-xs text-gray-500 sm:text-sm">
+            <p className="mt-1 text-sm text-gray-500">
               Track your support tickets and continue the conversation here.
             </p>
           </header>
@@ -784,7 +783,7 @@ export default function ClientMessages() {
         <button
           type="button"
           onClick={openModal}
-          className="fixed bottom-6 right-6 z-50 flex size-16 items-center justify-center rounded-full border-4 border-white bg-blue-600 text-white shadow-2xl transition-all hover:scale-110 active:scale-95 md:hidden"
+          className="fixed bottom-5 right-5 z-50 flex size-14 sm:size-16 items-center justify-center rounded-full border-4 border-white bg-blue-600 text-white shadow-2xl transition-all hover:scale-110 active:scale-95 md:hidden"
         >
           <PlusCircle className="size-8" />
         </button>

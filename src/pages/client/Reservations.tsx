@@ -134,7 +134,7 @@ function ReservationFilterTabs({
         >
           <span>{status}</span>
           <span
-            className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+            className={`rounded-full px-2 py-0.5 text-xs sm:text-sm font-bold ${
               filter === status ? 'bg-blue-50 text-blue-600' : 'bg-white text-gray-500'
             }`}
           >
@@ -207,7 +207,7 @@ function ReservationFilterBottomSheet({
                   >
                     <span>{status}</span>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                      className={`rounded-full px-2 py-0.5 text-xs sm:text-sm font-bold ${
                         filter === status
                           ? 'bg-blue-100 text-blue-700'
                           : 'bg-white text-gray-500'
@@ -387,13 +387,13 @@ export default function ClientReservations() {
 
   return (
     <div className="bg-white min-h-screen">
-      <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex flex-col gap-6">
-        <div className="flex justify-between items-end gap-4">
+      <div className="mx-auto flex max-w-7xl flex-col gap-5 p-4 sm:gap-6 sm:p-6 lg:p-8">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <header>
-            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
+            <h1 className="text-xl font-bold text-gray-900 tracking-tight sm:text-2xl">
               My Reservations
             </h1>
-            <p className="mt-0.5 text-xs text-gray-500 sm:text-sm">
+            <p className="mt-1 text-sm text-gray-500">
               View and manage your reservation requests
             </p>
           </header>
@@ -401,7 +401,7 @@ export default function ClientReservations() {
           {userReservations.length > 0 && (
             <button
               onClick={() => setShowFilterMenu(true)}
-              className="rounded-xl border border-gray-200 bg-white p-2.5 shadow-sm transition active:scale-95 md:hidden"
+              className="rounded-xl border border-gray-200 bg-white p-3 min-h-[44px] shadow-sm transition active:scale-95 md:hidden"
             >
               <Filter className="size-5 text-gray-600" />
             </button>
@@ -500,7 +500,7 @@ export default function ClientReservations() {
                               </span>
 
                               <p
-                                className={`${uiTypography.helperText} mt-1 truncate text-gray-400 text-[11px]`}
+                                className={`${uiTypography.helperText} mt-1 truncate text-gray-400 text-xs sm:text-sm`}
                               >
                                 ID: {reservation.publicId || reservation.id}
                               </p>
@@ -508,13 +508,13 @@ export default function ClientReservations() {
 
                             <div className="flex flex-wrap justify-end gap-2">
                               <span
-                                className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] ${uiTypography.buttonTextBold} shadow-sm ${STATUS_COLORS[status]}`}
+                                className={`shrink-0 rounded-full border px-2 py-0.5 text-xs sm:text-sm ${uiTypography.buttonTextBold} shadow-sm ${STATUS_COLORS[status]}`}
                               >
                                 {STATUS_ICONS[status]} {status.toUpperCase()}
                               </span>
 
                               {extensionDetails && (
-                                <span className="shrink-0 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700 shadow-sm">
+                                <span className="shrink-0 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs sm:text-sm font-bold text-indigo-700 shadow-sm">
                                   EXTENSION REQUESTED
                                 </span>
                               )}
@@ -522,7 +522,7 @@ export default function ClientReservations() {
                           </div>
 
                           <h3
-                            className={`${uiTypography.cardTitle} truncate text-[15px] sm:text-base text-gray-900`}
+                            className={`${uiTypography.cardTitle} truncate text-base sm:text-lg text-gray-900`}
                           >
                             {reservation.unitName}
                           </h3>
@@ -550,7 +550,7 @@ export default function ClientReservations() {
                       <div className="grid grid-cols-3 gap-2 rounded-xl border border-gray-100 bg-gray-50/80 p-2.5">
                         <div>
                           <p
-                            className={`${uiTypography.miniStatLabel} mb-1 text-gray-500 text-[10px]`}
+                            className={`${uiTypography.miniStatLabel} mb-1 text-gray-500 text-xs`}
                           >
                             Start
                           </p>
@@ -563,7 +563,7 @@ export default function ClientReservations() {
 
                         <div className="border-x border-gray-200 px-2">
                           <p
-                            className={`${uiTypography.miniStatLabel} mb-1 text-gray-500 text-[10px]`}
+                            className={`${uiTypography.miniStatLabel} mb-1 text-gray-500 text-xs`}
                           >
                             End
                           </p>
@@ -576,7 +576,7 @@ export default function ClientReservations() {
 
                         <div className="pl-1">
                           <p
-                            className={`${uiTypography.miniStatLabel} mb-1 text-gray-500 text-[10px]`}
+                            className={`${uiTypography.miniStatLabel} mb-1 text-gray-500 text-xs`}
                           >
                             Duration
                           </p>
@@ -612,7 +612,7 @@ export default function ClientReservations() {
                                     Reservation Details
                                   </p>
                                   <p
-                                    className={`${uiTypography.helperText} mt-0.5 text-[11px] text-gray-400`}
+                                    className={`${uiTypography.helperText} mt-0.5 text-xs sm:text-sm text-gray-400`}
                                   >
                                     View visit mode, payment method, purpose, notes, and more
                                   </p>
@@ -742,7 +742,7 @@ export default function ClientReservations() {
                                             <Notebook className="size-4 text-blue-600 mt-0.5" />
                                             <div>
                                               <p
-                                                className={`${uiTypography.miniStatLabel} text-blue-700 text-[10px]`}
+                                                className={`${uiTypography.miniStatLabel} text-blue-700 text-xs`}
                                               >
                                                 Notes
                                               </p>
@@ -802,7 +802,7 @@ export default function ClientReservations() {
                                             <Calendar className="size-4 text-indigo-600 mt-0.5" />
                                             <div>
                                               <p
-                                                className={`${uiTypography.miniStatLabel} text-indigo-700 text-[10px]`}
+                                                className={`${uiTypography.miniStatLabel} text-indigo-700 text-xs`}
                                               >
                                                 Extension Request
                                               </p>
@@ -829,7 +829,7 @@ export default function ClientReservations() {
                               <div className="mb-3 grid grid-cols-3 gap-2">
                                 <div className="text-center sm:text-left">
                                   <p
-                                    className={`${uiTypography.miniStatLabel} mb-0.5 text-gray-500 text-[10px]`}
+                                    className={`${uiTypography.miniStatLabel} mb-0.5 text-gray-500 text-xs`}
                                   >
                                     Total
                                   </p>
@@ -842,7 +842,7 @@ export default function ClientReservations() {
 
                                 <div className="text-center sm:text-left">
                                   <p
-                                    className={`${uiTypography.miniStatLabel} mb-0.5 text-gray-500 text-[10px]`}
+                                    className={`${uiTypography.miniStatLabel} mb-0.5 text-gray-500 text-xs`}
                                   >
                                     Paid
                                   </p>
@@ -855,7 +855,7 @@ export default function ClientReservations() {
 
                                 <div className="text-center sm:text-left">
                                   <p
-                                    className={`${uiTypography.miniStatLabel} mb-0.5 text-gray-500 text-[10px]`}
+                                    className={`${uiTypography.miniStatLabel} mb-0.5 text-gray-500 text-xs`}
                                   >
                                     Balance
                                   </p>
@@ -872,7 +872,7 @@ export default function ClientReservations() {
                               {['approved', 'confirmed', 'completed'].includes(reservation.status) && (
                                 <div className="mb-3">
                                   <div
-                                    className={`${uiTypography.helperText} flex justify-between text-gray-500 mb-1 text-[11px]`}
+                                    className={`${uiTypography.helperText} flex justify-between text-gray-500 mb-1 text-xs sm:text-sm`}
                                   >
                                     <span>Payment Progress</span>
                                     <span>{paymentProgress.toFixed(0)}%</span>
@@ -935,7 +935,7 @@ export default function ClientReservations() {
                               <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                   <div>
-                                    <p className="text-[10px] font-semibold uppercase tracking-wide text-indigo-700">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
                                       Reservation Extension
                                     </p>
                                     <p className={`${uiTypography.bodyText} mt-1 text-[13px] sm:text-sm text-indigo-700`}>
@@ -946,7 +946,7 @@ export default function ClientReservations() {
                                   <button
                                     type="button"
                                     onClick={() => openExtensionModal(reservation.id)}
-                                    className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700"
+                                    className="rounded-xl bg-indigo-600 px-4 py-2.5 min-h-[44px] text-sm font-semibold text-white transition hover:bg-indigo-700"
                                   >
                                     Request Extension
                                   </button>
@@ -955,7 +955,7 @@ export default function ClientReservations() {
                             )}
 
                             <div className="flex flex-col items-start justify-between gap-2 pt-1 sm:flex-row sm:items-center">
-                              <span className={`${uiTypography.helperText} text-gray-400 text-[11px]`}>
+                              <span className={`${uiTypography.helperText} text-gray-400 text-xs sm:text-sm`}>
                                 Requested {formatDate(reservation.requestDate)}
                               </span>
 
@@ -964,7 +964,7 @@ export default function ClientReservations() {
                                   onClick={() =>
                                     handleDeleteReservation(reservation.id, reservation.unitName)
                                   }
-                                  className={`w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 bg-red-600 text-white text-[13px] sm:text-sm ${uiTypography.buttonText} rounded-xl hover:bg-red-700 transition-colors shadow-sm`}
+                                  className={`w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 min-h-[44px] bg-red-600 text-white text-[13px] sm:text-sm ${uiTypography.buttonText} rounded-xl hover:bg-red-700 transition-colors shadow-sm`}
                                 >
                                   Cancel Reservation
                                 </button>
@@ -1043,7 +1043,7 @@ export default function ClientReservations() {
                         min={1}
                         value={extensionMonths}
                         onChange={(e) => setExtensionMonths(e.target.value)}
-                        className="w-full rounded-2xl border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+                        className="w-full rounded-2xl border border-gray-300 px-4 py-3 min-h-[44px] text-sm outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
                         placeholder="Enter number of months"
                       />
                     </div>

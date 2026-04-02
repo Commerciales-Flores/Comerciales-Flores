@@ -801,7 +801,7 @@ Thank you for your payment.
       <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
         <header>
           <h1 className={uiTypography.pageTitle}>Payments</h1>
-          <p className={uiTypography.pageDescription}>
+          <p className={`${uiTypography.pageDescription} mt-1`}>
             View balances, track progress, submit payments, and download invoices.
           </p>
         </header>
@@ -826,7 +826,7 @@ Thank you for your payment.
         </div>
       </div>
 
-      <div className="rounded-[24px] border border-amber-100 bg-gradient-to-br from-amber-50 to-white p-4 shadow-sm">
+      <div className="rounded-[24px] border border-amber-100 bg-gradient-to-br from-amber-50 to-white p-4 sm:p-5 shadow-sm">
         <div className="flex items-start justify-between">
           <div>
             <p className={`${uiTypography.miniStatLabel} text-amber-700/80`}>
@@ -842,7 +842,7 @@ Thank you for your payment.
         </div>
       </div>
 
-      <div className="rounded-[24px] border border-rose-100 bg-gradient-to-br from-rose-50 to-white p-4 shadow-sm">
+      <div className="rounded-[24px] border border-rose-100 bg-gradient-to-br from-rose-50 to-white p-4 sm:p-5 shadow-sm">
         <div className="flex items-start justify-between">
           <div>
             <p className={`${uiTypography.miniStatLabel} text-rose-700/80`}>
@@ -858,7 +858,7 @@ Thank you for your payment.
         </div>
       </div>
 
-      <div className="rounded-[24px] border border-sky-100 bg-gradient-to-br from-sky-50 to-white p-4 shadow-sm">
+      <div className="rounded-[24px] border border-sky-100 bg-gradient-to-br from-sky-50 to-white p-4 sm:p-5 shadow-sm">
         <div className="flex items-start justify-between">
           <div>
             <p className={`${uiTypography.miniStatLabel} text-sky-700/80`}>
@@ -925,7 +925,7 @@ Thank you for your payment.
 
                       <button
                         onClick={() => handleMakePayment(reservation.id)}
-                        className={`inline-flex shrink-0 items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-green-500 px-4 py-2.5 text-white transition hover:opacity-95 ${uiTypography.buttonText}`}
+                        className={`inline-flex shrink-0 items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-green-500 px-4 py-2.5 min-h-[44px] text-white transition hover:opacity-95 ${uiTypography.buttonText}`}
                       >
                         <Plus className="size-4" />
                         Pay
@@ -950,7 +950,7 @@ Thank you for your payment.
                       </div>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-3 gap-3">
+                    <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-3">
                       <div className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
                         <p className={`${uiTypography.infoBlockLabel} text-slate-400`}>Total</p>
                         <p className={`${uiTypography.infoBlockValue} text-slate-900`}>
@@ -995,7 +995,7 @@ Thank you for your payment.
                   </p>
                 </div>
 
-                <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
+                <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
                   <div className="relative w-full lg:w-80">
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                     <input
@@ -1003,13 +1003,13 @@ Thank you for your payment.
                       placeholder="Search by reservation, amount, method..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className={`w-full rounded-2xl border border-slate-300 bg-white py-3 pl-10 pr-4 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
+                      className={`w-full rounded-2xl border border-slate-300 bg-white py-3 pl-10 pr-4 text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
                     />
                   </div>
 
                   <button
                     onClick={handleExportCSV}
-                    className={`inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-700 px-4 py-3 text-white transition hover:opacity-95 ${uiTypography.buttonText}`}
+                    className={`inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-700 px-4 py-3 min-h-[44px] text-white transition hover:opacity-95 ${uiTypography.buttonText}`}
                   >
                     <FileDown className="size-4" />
                     Export CSV
@@ -1044,10 +1044,10 @@ Thank you for your payment.
                       key={payment.id}
                       className="overflow-hidden rounded-[26px] border border-slate-200 bg-gradient-to-br from-white via-white to-slate-50 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                     >
-                      <div className="border-b border-slate-100 bg-gradient-to-r from-white to-slate-50 px-5 py-4 sm:px-6">
+                      <div className="border-b border-slate-100 bg-gradient-to-r from-white to-slate-50 px-5 py-4 sm:px-6 gap-3">
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                               <span
                                 className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 ${uiTypography.badgeLabel} ${
                                   PAYMENT_STATUS_COLORS[
@@ -1125,7 +1125,7 @@ Thank you for your payment.
             <button
               type="button"
               onClick={() => setViewingImage(proofSrc)}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm min-h-[40px] font-medium text-slate-700 transition hover:bg-slate-50"
             >
               <Eye className="size-4" />
               Proof
@@ -1137,7 +1137,7 @@ Thank you for your payment.
           <button
             type="button"
             onClick={() => handleDownloadInvoice(payment)}
-            className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition ${
+            className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm min-h-[40px] font-medium transition ${
               ledgerEntry
                 ? 'bg-slate-900 text-white hover:bg-slate-800'
                 : 'cursor-not-allowed bg-slate-200 text-slate-500'
@@ -1151,7 +1151,7 @@ Thank you for your payment.
 
       <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
         <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+          <p className="text-xs sm:text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">
             Reservation Payment Progress
           </p>
           <div className="inline-flex items-center gap-1 text-sm font-semibold text-slate-700">
@@ -1169,7 +1169,7 @@ Thank you for your payment.
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+            <p className="text-xs sm:text-sm font-semibold uppercase tracking-[0.12em] text-slate-400">
               Total Bill
             </p>
             <p className="mt-1 text-base font-semibold text-slate-900">
@@ -1178,7 +1178,7 @@ Thank you for your payment.
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+            <p className="text-xs sm:text-sm font-semibold uppercase tracking-[0.12em] text-slate-400">
               Paid To Date
             </p>
             <p className="mt-1 text-base font-semibold text-emerald-600">
@@ -1187,7 +1187,7 @@ Thank you for your payment.
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+            <p className="text-xs sm:text-sm font-semibold uppercase tracking-[0.12em] text-slate-400">
               Remaining
             </p>
             <p className="mt-1 text-base font-semibold text-rose-600">
@@ -1199,7 +1199,7 @@ Thank you for your payment.
     </div>
 
     <div className="rounded-[24px] border border-slate-200 bg-white p-4">
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+      <p className="text-xs sm:text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">
         Payment Details
       </p>
 
@@ -1252,7 +1252,7 @@ Thank you for your payment.
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
             Notes
           </p>
-          <p className="mt-2 text-sm leading-6 text-slate-600">{payment.notes}</p>
+          <p className="mt-2 text-sm sm:text-base leading-6 text-slate-600">{payment.notes}</p>
         </div>
       )}
     </div>
@@ -1273,7 +1273,7 @@ Thank you for your payment.
                 <div className="mt-5 flex justify-center">
                   <button
                     onClick={() => setSearchQuery('')}
-                    className={`inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-slate-700 transition hover:bg-slate-50 ${uiTypography.buttonText}`}
+                    className={`inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 min-h-[44px] text-slate-700 transition hover:bg-slate-50 ${uiTypography.buttonText}`}
                   >
                     Clear Search
                   </button>
@@ -1295,7 +1295,7 @@ Thank you for your payment.
             onClick={resetPaymentModalState}
           >
             <div
-              className={`flex max-h-[92vh] w-full flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl ${
+              className={`flex max-h-[95vh] w-full flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl ${
                 paymentSuccess ? 'max-w-sm' : 'max-w-lg'
               }`}
               onClick={(e) => e.stopPropagation()}
@@ -1423,7 +1423,7 @@ Thank you for your payment.
                               amount: e.target.value,
                             }))
                           }
-                          className={`w-full rounded-2xl border border-slate-300 py-3 pl-10 pr-4 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
+                          className={`w-full rounded-2xl border border-slate-300 py-3 pl-10 pr-4 text-sm sm:text-base outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
                           placeholder="0.00"
                         />
                       </div>
@@ -1520,7 +1520,7 @@ Thank you for your payment.
                       {!proofPreviewUrl ? (
                         <label
                           htmlFor="file-upload"
-                          className="flex min-h-[172px] w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-[24px] border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center transition hover:border-sky-400 hover:bg-sky-50/50"
+                          className="flex min-h-[180px] w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-[24px] border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center transition hover:border-sky-400 hover:bg-sky-50/50"
                         >
                           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-sky-600 shadow-sm ring-1 ring-slate-200">
                             <ImageIcon className="size-6" />
@@ -1565,7 +1565,7 @@ Thank you for your payment.
                                 <button
                                   type="button"
                                   onClick={() => setViewingImage(proofPreviewUrl)}
-                                  className={`inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-slate-700 transition hover:bg-slate-50 ${uiTypography.buttonText}`}
+                                  className={`inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 min-h-[40px] text-slate-700 transition hover:bg-slate-50 ${uiTypography.buttonText}`}
                                 >
                                   <Eye className="size-3.5" />
                                   Preview
@@ -1574,7 +1574,7 @@ Thank you for your payment.
                                 <button
                                   type="button"
                                   onClick={handleRemoveImage}
-                                  className={`inline-flex items-center gap-2 rounded-xl bg-rose-600 px-3 py-2 text-white transition hover:bg-rose-700 ${uiTypography.buttonText}`}
+                                  className={`inline-flex items-center gap-2 rounded-xl bg-rose-600 px-3 py-2 min-h-[40px] text-white transition hover:bg-rose-700 ${uiTypography.buttonText}`}
                                 >
                                   <Trash2 className="size-3.5" />
                                   Remove
@@ -1613,7 +1613,7 @@ Thank you for your payment.
                     <button
                       type="button"
                       onClick={resetPaymentModalState}
-                      className={`flex-1 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-700 transition hover:bg-slate-50 ${uiTypography.buttonText}`}
+                      className={`flex-1 rounded-2xl border border-slate-300 bg-white px-4 py-3 min-h-[44px] text-slate-700 transition hover:bg-slate-50 ${uiTypography.buttonText}`}
                     >
                       Cancel
                     </button>
@@ -1621,7 +1621,7 @@ Thank you for your payment.
                       type="submit"
                       form="payment-form"
                       disabled={isSubmitting}
-                      className={`flex-1 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-700 px-4 py-3 text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60 ${uiTypography.buttonText}`}
+                      className={`flex-1 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-700 px-4 py-3 min-h-[44px] text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60 ${uiTypography.buttonText}`}
                     >
                       {isSubmitting ? 'Submitting...' : 'Submit Payment'}
                     </button>

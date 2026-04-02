@@ -9,6 +9,43 @@ import EmptyState from '../../components/common/EmptyState';
 import ReviewCard from '../../components/reviews/ReviewCard';
 import { formatDate } from '../../utils/date';
 
+type ReviewStatCardProps = {
+  label: string;
+  value: string | number;
+  icon: React.ReactNode;
+  tone?: 'blue' | 'amber' | 'violet';
+};
+
+function ReviewStatCard({
+  label,
+  value,
+  icon,
+  tone = 'blue',
+}: ReviewStatCardProps) {
+  const toneClasses = {
+    blue: 'bg-blue-50 text-blue-600',
+    amber: 'bg-amber-50 text-amber-600',
+    violet: 'bg-violet-50 text-violet-600',
+  }[tone];
+
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500">
+            {label}
+          </p>
+          <p className="mt-2 text-xl font-semibold tracking-tight text-gray-900 sm:text-2xl">
+            {value}
+          </p>
+        </div>
+
+        <div className={`rounded-xl p-2.5 ${toneClasses}`}>{icon}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function Review() {
   const { user } = useAuth();
   const { getReservationsByUserId, units } = useData();
@@ -87,13 +124,13 @@ export default function Review() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
-        <div className="flex justify-between items-end gap-4">
+      <div className="mx-auto flex max-w-7xl flex-col gap-5 p-4 sm:gap-6 sm:p-6 lg:p-8">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <header>
-            <h1 className="text-2xl font-bold tracking-tight text-gray-900">
+            <h1 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">
               My Reviews
             </h1>
-            <p className="mt-0.5 text-xs text-gray-500 sm:text-sm">
+            <p className="mt-1 text-sm text-gray-500">
               Manage your feedback and keep track of units waiting for a review
             </p>
           </header>
@@ -101,61 +138,38 @@ export default function Review() {
 
         {!hasNoReviewContent && (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">
-                    Total Reviews
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold tracking-tight text-gray-900">
-                    {reviewStats.totalReviews}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-blue-50 p-2.5 text-blue-600">
-                  <MessageSquare className="size-5" />
-                </div>
-              </div>
-            </div>
+            <ReviewStatCard
+              label="Total Reviews"
+              value={reviewStats.totalReviews}
+              icon={<MessageSquare className="size-5" />}
+              tone="blue"
+            />
 
-            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">
-                    Average Rating
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold tracking-tight text-gray-900">
-                    {reviewStats.averageRating > 0
-                      ? reviewStats.averageRating.toFixed(1)
-                      : '0.0'}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-amber-50 p-2.5 text-amber-600">
-                  <Star className="size-5" />
-                </div>
-              </div>
-            </div>
+            <ReviewStatCard
+              label="Average Rating"
+              value={
+                reviewStats.averageRating > 0
+                  ? reviewStats.averageRating.toFixed(1)
+                  : '0.0'
+              }
+              icon={<Star className="size-5" />}
+              tone="amber"
+            />
 
-            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:col-span-2 xl:col-span-1">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">
-                    Pending Reviews
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold tracking-tight text-gray-900">
-                    {reviewStats.pendingCount}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-violet-50 p-2.5 text-violet-600">
-                  <PenSquare className="size-5" />
-                </div>
-              </div>
+            <div className="sm:col-span-2 xl:col-span-1">
+              <ReviewStatCard
+                label="Pending Reviews"
+                value={reviewStats.pendingCount}
+                icon={<PenSquare className="size-5" />}
+                tone="violet"
+              />
             </div>
           </div>
         )}
 
         {loading ? (
-          <div className="rounded-2xl sm:rounded-3xl border border-gray-100 bg-white p-6 shadow-sm">
-            <p className="text-sm text-gray-500">Loading reviews...</p>
+          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm sm:rounded-3xl">
+            <p className="text-sm text-gray-500 sm:text-base">Loading reviews...</p>
           </div>
         ) : hasNoReviewContent ? (
           <motion.div
@@ -171,7 +185,7 @@ export default function Review() {
           </motion.div>
         ) : (
           <>
-            <div className="rounded-2xl sm:rounded-3xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+            <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm sm:rounded-3xl">
               <div className="border-b border-gray-100 px-5 py-4 sm:px-6">
                 <h2 className="text-base font-semibold text-gray-900">
                   Pending Reviews
@@ -181,9 +195,9 @@ export default function Review() {
                 </p>
               </div>
 
-              <div className="p-5 sm:p-6">
+              <div className="p-4 sm:p-6">
                 {pendingReviews.length === 0 ? (
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-gray-500 sm:text-base">
                     No pending reviews right now.
                   </p>
                 ) : (
@@ -201,15 +215,15 @@ export default function Review() {
                         >
                           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                             <div className="min-w-0">
-                              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-blue-600">
+                              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-600">
                                 Ready for review
                               </span>
 
-                              <h3 className="mt-1 text-base font-semibold text-gray-900">
+                              <h3 className="mt-1 text-base font-semibold text-gray-900 sm:text-lg">
                                 {reservation.unitName}
                               </h3>
 
-                              <div className="mt-2 space-y-1 text-sm text-gray-500">
+                              <div className="mt-2 space-y-1 text-sm text-gray-500 sm:text-base">
                                 <p>Ended on {formatDate(reservation.endDate)}</p>
                                 <p>{unit?.location || 'Location unavailable'}</p>
                               </div>
@@ -226,7 +240,7 @@ export default function Review() {
                                 });
                                 setIsReviewModalOpen(true);
                               }}
-                              className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 sm:w-auto"
+                              className="min-h-[44px] w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 sm:w-auto"
                             >
                               Leave Review
                             </button>
@@ -237,19 +251,19 @@ export default function Review() {
                   </div>
                 )}
               </div>
-            </div>
+            </section>
 
-            <div className="rounded-2xl sm:rounded-3xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+            <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm sm:rounded-3xl">
               <button
                 type="button"
                 onClick={() => setShowSubmitted((prev) => !prev)}
-                className="flex w-full items-center justify-between px-5 py-4 text-left transition hover:bg-gray-50 sm:px-6"
+                className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-gray-50 sm:px-6"
               >
-                <div>
+                <div className="min-w-0">
                   <h2 className="text-base font-semibold text-gray-900">
                     Submitted Reviews
                   </h2>
-                  <p className="mt-1 text-sm text-gray-500">
+                  <p className="mt-1 text-sm text-gray-500 sm:text-base">
                     View the feedback you’ve already shared
                   </p>
                 </div>
@@ -257,7 +271,7 @@ export default function Review() {
                 <motion.div
                   animate={{ rotate: showSubmitted ? 180 : 0 }}
                   transition={{ duration: 0.2 }}
-                  className="rounded-lg bg-gray-100 p-1.5"
+                  className="shrink-0 rounded-lg bg-gray-100 p-1.5"
                 >
                   <ChevronDown className="size-4 text-gray-500" />
                 </motion.div>
@@ -274,7 +288,7 @@ export default function Review() {
                   >
                     <div className="border-t border-gray-100 p-5 sm:p-6">
                       {userReviews.length === 0 ? (
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm text-gray-500 sm:text-base">
                           You haven’t submitted any reviews yet.
                         </p>
                       ) : (
@@ -307,7 +321,7 @@ export default function Review() {
                   setSelectedPendingReview(null);
                 }}
               />
-            </div>
+            </section>
           </>
         )}
       </div>

@@ -56,13 +56,15 @@ const DashboardStatCard = memo(function DashboardStatCard({
   icon,
 }: DashboardStatCardProps) {
   return (
-    <div className="bg-white p-4 sm:p-5 min-h-[100px] rounded-xl border border-gray-200 shadow-sm flex flex-col justify-between">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-medium text-gray-500">{label}</p>
-        {icon}
+    <div className="flex min-h-[104px] flex-col justify-between rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:min-h-[112px] sm:p-5">
+      <div className="mb-2 flex items-center justify-between gap-3 sm:mb-3">
+        <p className="text-xs font-medium text-gray-500 sm:text-sm">{label}</p>
+        <div className="shrink-0">{icon}</div>
       </div>
 
-      <p className="text-2xl font-bold text-gray-900">{value}</p>
+      <p className="break-words text-xl font-bold leading-tight text-gray-900 sm:text-2xl">
+        {value}
+      </p>
     </div>
   );
 });
@@ -81,16 +83,16 @@ const SectionHeader = memo(function SectionHeader({
   subtitle,
 }: SectionHeaderProps) {
   return (
-    <div className="mb-3 flex items-start justify-between gap-3">
-      <div>
+    <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="min-w-0">
         <h2 className={SECTION_TITLE_CLASS}>{title}</h2>
-        {subtitle ? <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p> : null}
+        {subtitle ? <p className="mt-0.5 text-sm text-gray-500">{subtitle}</p> : null}
       </div>
 
       {actionLabel && actionTo ? (
         <Link
           to={actionTo}
-          className={`inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5 text-[10px] sm:text-xs ${uiTypography.buttonText} text-blue-700 transition hover:bg-blue-100`}
+          className={`inline-flex min-h-[40px] w-fit items-center gap-1.5 rounded-full bg-blue-50 px-3.5 py-2 text-xs ${uiTypography.buttonText} text-blue-700 transition hover:bg-blue-100 sm:min-h-0 sm:px-3 sm:py-1.5`}
         >
           {actionLabel}
           <ArrowRight className="size-3.5" />
@@ -116,19 +118,19 @@ export function EmptyState({
   actionTo,
 }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-10 text-center">
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-10 text-center">
       <div className="mb-3 text-gray-400">{icon}</div>
 
-      <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
+      <h3 className="text-sm font-semibold text-gray-800 sm:text-base">{title}</h3>
 
       {description && (
-        <p className="mt-1 max-w-[260px] text-xs text-gray-500">{description}</p>
+        <p className="mt-1 max-w-[280px] text-sm text-gray-500">{description}</p>
       )}
 
       {actionLabel && actionTo && (
         <Link
           to={actionTo}
-          className="mt-4 text-xs font-medium text-blue-600 hover:underline"
+          className="mt-4 text-sm font-medium text-blue-600 hover:underline"
         >
           {actionLabel}
         </Link>
@@ -136,7 +138,6 @@ export function EmptyState({
     </div>
   );
 }
-
 export default function ClientDashboard() {
   const { user } = useAuth();
   const { getReservationsByUserId, getPaymentsByUserId, notifications } = useData();
@@ -273,23 +274,23 @@ export default function ClientDashboard() {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             <Link
               to="/client/properties"
-              className={`rounded-xl bg-blue-600 px-4 py-2.5 text-xs ${uiTypography.buttonText} text-white shadow-sm transition hover:bg-blue-700`}
+              className={`inline-flex min-h-[44px] items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm ${uiTypography.buttonText} text-white shadow-sm transition hover:bg-blue-700 sm:min-h-0 sm:text-xs`}
             >
               Browse Properties
             </Link>
             <Link
               to="/client/reservations"
-              className={`rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-xs ${uiTypography.buttonText} text-gray-700 transition hover:bg-gray-50`}
+              className={`inline-flex min-h-[44px] items-center justify-center rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm ${uiTypography.buttonText} text-gray-700 transition hover:bg-gray-50 sm:min-h-0 sm:text-xs`}
             >
               My Reservations
             </Link>
           </div>
         </header>
 
-        <div className="mb-6 grid grid-cols-2 gap-4 xl:grid-cols-5">
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-5">
           <DashboardStatCard
             label="Reservations"
             value={dashboard.totalReservations}
@@ -343,45 +344,46 @@ export default function ClientDashboard() {
                           className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm transition hover:shadow-md"
                         >
                           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p
-                                  className={`${uiTypography.infoBlockValue} truncate text-gray-900`}
-                                >
-                                  {reservation.unitName}
-                                </p>
-                                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
-                                  Balance Due
-                                </span>
-                              </div>
+  <div className="min-w-0">
+    <div className="flex flex-wrap items-center gap-2">
+      <p
+        title={reservation.unitName}
+        className={`${uiTypography.infoBlockValue} truncate text-sm text-gray-900 sm:text-base`}
+      >
+        {reservation.unitName}
+      </p>
+      <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-amber-700">
+        Balance Due
+      </span>
+    </div>
 
-                              <p className="mt-1 text-[11px] text-gray-500">
-                                Reservation ID: {reservation?.publicId || '—'}
-                              </p>
-                              <p className="mt-1 text-[11px] text-gray-500">
-                                Requested {formatDate(reservation.requestDate)}
-                              </p>
-                            </div>
+    <p className="mt-1 text-sm text-gray-500">
+      Reservation ID: {reservation?.publicId || '—'}
+    </p>
+    <p className="mt-1 text-sm text-gray-500">
+      Requested {formatDate(reservation.requestDate)}
+    </p>
+  </div>
 
-                            <div className="flex items-center justify-between gap-3 sm:block sm:text-right">
-                              <div>
-                                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-400">
-                                  Outstanding
-                                </p>
-                                <p className="mt-1 text-lg font-bold text-rose-600">
-                                  {formatCurrency(balance)}
-                                </p>
-                              </div>
+  <div className="flex flex-col gap-3 sm:block sm:text-right">
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-400">
+        Outstanding
+      </p>
+      <p className="mt-1 text-lg font-bold text-rose-600">
+        {formatCurrency(balance)}
+      </p>
+    </div>
 
-                              <Link
-                                to="/client/payments"
-                                className={`mt-3 inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-2 text-[10px] ${uiTypography.buttonText} text-white transition hover:bg-blue-700`}
-                              >
-                                Pay Now
-                                <ArrowRight className="size-3.5" />
-                              </Link>
-                            </div>
-                          </div>
+    <Link
+      to="/client/payments"
+      className={`inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2.5 text-xs ${uiTypography.buttonText} text-white transition hover:bg-blue-700 sm:mt-3 sm:min-h-0 sm:px-3.5 sm:py-2`}
+    >
+      Pay Now
+      <ArrowRight className="size-3.5" />
+    </Link>
+  </div>
+</div>
                         </div>
                       );
                     })}
@@ -419,46 +421,47 @@ export default function ClientDashboard() {
                   <div className="space-y-3">
                     {dashboard.recentReservations.map((reservation) => (
                       <div
-                        key={reservation.id}
-                        className="flex items-center justify-between gap-4 rounded-2xl border border-gray-100 bg-gray-50/70 p-4 transition hover:border-gray-200 hover:bg-white"
-                      >
-                        <div className="flex min-w-0 items-center gap-4">
-                          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-white ring-1 ring-gray-200">
-                            <Calendar className="size-5 text-blue-600" />
-                          </div>
+  key={reservation.id}
+  className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-gray-50/70 p-4 transition hover:border-gray-200 hover:bg-white sm:flex-row sm:items-center sm:justify-between"
+>
+  <div className="flex min-w-0 items-center gap-4">
+    <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-white ring-1 ring-gray-200">
+      <Calendar className="size-5 text-blue-600" />
+    </div>
 
-                          <div className="min-w-0">
-                            <p
-                              className={`${uiTypography.infoBlockValue} truncate text-gray-900`}
-                            >
-                              {reservation.unitName}
-                            </p>
-                            <p
-                              className={`${uiTypography.helperText} mt-1 italic text-gray-500`}
-                            >
-                              Requested {formatDate(reservation.requestDate)}
-                            </p>
-                          </div>
-                        </div>
+    <div className="min-w-0">
+      <p
+        title={reservation.unitName}
+        className={`${uiTypography.infoBlockValue} truncate text-sm text-gray-900 sm:text-base`}
+      >
+        {reservation.unitName}
+      </p>
+      <p
+        className={`${uiTypography.helperText} mt-1 text-sm italic text-gray-500`}
+      >
+        Requested {formatDate(reservation.requestDate)}
+      </p>
+    </div>
+  </div>
 
-                        <div className="flex shrink-0 flex-col items-end gap-2 text-right">
-                          <span
-                            className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] ${getReservationStatusClass(
-                              reservation.status
-                            )}`}
-                          >
-                            {reservation.status ?? 'unknown'}
-                          </span>
+  <div className="flex flex-col gap-2 sm:items-end sm:text-right">
+    <span
+      className={`w-fit rounded-full px-3 py-1 text-xs font-bold uppercase tracking-[0.12em] ${getReservationStatusClass(
+        reservation.status
+      )}`}
+    >
+      {reservation.status ?? 'unknown'}
+    </span>
 
-                          <Link
-                            to="/client/reservations"
-                            className={`inline-flex items-center gap-1 ${uiTypography.buttonText} text-[10px] text-blue-600 hover:underline`}
-                          >
-                            View Details
-                            <ArrowRight className="size-3.5" />
-                          </Link>
-                        </div>
-                      </div>
+    <Link
+      to="/client/reservations"
+      className={`inline-flex min-h-[40px] items-center gap-1 text-xs ${uiTypography.buttonText} text-blue-600 hover:underline`}
+    >
+      View Details
+      <ArrowRight className="size-3.5" />
+    </Link>
+  </div>
+</div>
                     ))}
                   </div>
                 )}
@@ -488,7 +491,7 @@ export default function ClientDashboard() {
                           key={msg.id}
                           className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4"
                         >
-                          <p className="mb-1 text-[10px] text-gray-400">
+                          <p className="mb-1 text-xs text-gray-400">
                             {formatDate(msg.createdAt)}
                           </p>
 
@@ -497,11 +500,11 @@ export default function ClientDashboard() {
                           </p>
 
                           <div className="mt-3 rounded-xl border border-blue-100 bg-white p-3">
-                            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
-                              Admin Reply
+                            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-blue-700">
+                                Admin Reply
                             </p>
 
-                            <p className="text-[11px] leading-relaxed text-gray-700">
+                            <p className="text-sm leading-relaxed text-gray-700">
                               {msg.body}
                             </p>
                           </div>
@@ -511,13 +514,13 @@ export default function ClientDashboard() {
                   </div>
                 ) : (
                   <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 py-8 text-center">
-                    <p className="text-[11px] italic text-gray-400">No new messages</p>
+                    <p className="text-sm italic text-gray-400">No new messages</p>
                   </div>
                 )}
 
                 <Link
                   to="/client/messages"
-                  className={`mt-4 block text-center text-[10px] ${uiTypography.buttonTextBold} text-indigo-600 hover:underline`}
+                  className={`mt-4 block text-center text-xs ${uiTypography.buttonTextBold} text-indigo-600 hover:underline`}
                 >
                   GO TO INBOX
                 </Link>
@@ -526,13 +529,13 @@ export default function ClientDashboard() {
 
             <section className="rounded-2xl bg-gray-900 p-4 text-white shadow-sm">
               <div className="mb-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">
                   ALERTS
                 </p>
-                <h2 className="mt-1 text-sm font-semibold text-white">
+                <h2 className="mt-1 text-base font-semibold text-white">
                   Notifications & Updates
                 </h2>
-                <p className="mt-1 text-xs text-gray-400">
+                <p className="mt-1 text-sm text-gray-400">
                   Important updates about your reservations and payments.
                 </p>
               </div>
@@ -545,11 +548,11 @@ export default function ClientDashboard() {
                         key={notification.id}
                         className="rounded-2xl border border-gray-800 bg-white/5 p-3"
                       >
-                        <p className="text-[12px] leading-relaxed text-white">
+                        <p className="text-sm leading-relaxed text-white">
                           {notification.message}
                         </p>
 
-                        <p className="mt-2 text-[11px] text-gray-500">
+                        <p className="mt-2 text-xs text-gray-500">
                           {formatDateTime(notification.date)}
                         </p>
                       </div>

@@ -583,11 +583,11 @@ const handleProceedDeletion = useCallback(async () => {
 
   return (
     <div className="min-h-screen bg-white">
-  <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
+  <div className="mx-auto flex max-w-7xl flex-col gap-5 p-4 sm:gap-6 sm:p-6 lg:p-8">
         <header className="flex flex-col justify-between gap-4 border-b border-slate-100 pb-6 md:flex-row md:items-end">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-gray-900">Account Settings</h1>
-            <p className="mt-0.5 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-gray-500">
               Manage your identity and security preferences.
             </p>
           </div>
@@ -674,8 +674,7 @@ const handleProceedDeletion = useCallback(async () => {
                     type="button"
                     disabled={uploadingAvatar || removingAvatar}
                     onClick={() => void handleRemoveImage()}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-60"
-                  >
+className="inline-flex min-h-[44px] items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-60"                  >
                     {removingAvatar ? (
                       <div className="size-4 animate-spin rounded-full border-2 border-rose-300 border-t-rose-700" />
                     ) : (
@@ -690,7 +689,7 @@ const handleProceedDeletion = useCallback(async () => {
                 <h2 className="mt-4 text-xl font-bold text-slate-900">{fullName}</h2>
                 <p className="text-sm text-slate-500">{user?.email || 'No email available'}</p>
 
-                <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-blue-700">
+                <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs sm:text-sm font-bold uppercase tracking-widest text-blue-700">
                   <ShieldCheck className="size-3.5" />
                   Client
                 </div>
@@ -755,7 +754,7 @@ const handleProceedDeletion = useCallback(async () => {
 
             <section className="rounded-[2rem] border border-rose-200 bg-white p-6 shadow-sm">
               <h3 className="text-sm font-bold text-rose-700">Danger Zone</h3>
-              <p className="mt-1 text-[11px] font-bold uppercase tracking-widest text-rose-400">
+              <p className="mt-1 text-xs sm:text-sm font-bold uppercase tracking-widest text-rose-400">
                 Permanent Action
               </p>
               <p className="mt-3 text-sm leading-relaxed text-slate-500">
@@ -768,7 +767,7 @@ const handleProceedDeletion = useCallback(async () => {
 
               {deletionStatus === 'pending' && (
                 <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-amber-700">
+                  <p className="text-xs sm:text-sm font-bold uppercase tracking-widest text-amber-700">
                     Pending Review
                   </p>
                   <p className="mt-1 text-sm text-amber-800">
@@ -779,7 +778,7 @@ const handleProceedDeletion = useCallback(async () => {
 
               {deletionStatus === 'approved' && (
                 <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-700">
+                  <p className="text-xs sm:text-sm font-bold uppercase tracking-widest text-emerald-700">
                     Request Approved
                   </p>
                   <p className="mt-1 text-sm text-emerald-800">
@@ -790,7 +789,7 @@ const handleProceedDeletion = useCallback(async () => {
 
               {deletionStatus === 'rejected' && (
                 <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-700">
+                  <p className="text-xs sm:text-sm font-bold uppercase tracking-widest text-slate-700">
                     Request Rejected
                   </p>
                   <p className="mt-1 text-sm text-slate-700">
@@ -801,7 +800,7 @@ const handleProceedDeletion = useCallback(async () => {
 
               {deletionStatus === 'completed' && (
                 <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-700">
+                  <p className="text-xs sm:text-sm font-bold uppercase tracking-widest text-slate-700">
                     Deletion Completed
                   </p>
                   <p className="mt-1 text-sm text-slate-700">
@@ -819,8 +818,7 @@ const handleProceedDeletion = useCallback(async () => {
                   deletionStatus === 'completed'
                 }
                 onClick={() => setShowDeleteConfirm(true)}
-                className={`mt-5 w-full rounded-2xl border px-4 py-3 text-sm font-semibold transition-all ${
-                  deletionStatus === 'pending'
+className={`mt-5 w-full rounded-2xl border px-4 py-3 text-sm font-semibold min-h-[44px] transition-all ${                  deletionStatus === 'pending'
                     ? 'cursor-not-allowed border-amber-200 bg-amber-50 text-amber-700'
                     : deletionStatus === 'approved'
                       ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
@@ -926,7 +924,7 @@ const handleProceedDeletion = useCallback(async () => {
                         />
 
                         <div className="space-y-3 md:col-span-2">
-  <label className="ml-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+  <label className="ml-1 block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-500">
     Email
   </label>
 
@@ -951,7 +949,7 @@ const handleProceedDeletion = useCallback(async () => {
       }
       setChangingEmail((prev) => !prev);
     }}
-      className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-bold transition ${
+      className={`shrink-0 rounded-xl border px-3.5 py-2.5 text-xs font-bold min-h-[40px] transition ${
         changingEmail
           ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
           : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
@@ -1012,8 +1010,7 @@ const handleProceedDeletion = useCallback(async () => {
               type="button"
               onClick={() => void handleEmailSubmit()}
               disabled={savingEmail}
-              className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 disabled:opacity-50"
-            >
+className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 disabled:opacity-50 min-h-[44px]"            >
               {savingEmail ? 'Submitting...' : 'Send Verification'}
             </button>
           </div>
@@ -1038,7 +1035,7 @@ const handleProceedDeletion = useCallback(async () => {
 
                         <div className="md:col-span-2 space-y-4">
                           <div className="space-y-1.5">
-                            <label className="ml-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                            <label className="ml-1 block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-500">
                               Location Status
                             </label>
 
@@ -1126,7 +1123,7 @@ const handleProceedDeletion = useCallback(async () => {
                 <button
                   type="button"
                   onClick={() => (changingPassword ? handlePasswordCancel() : setChangingPassword(true))}
-                  className={`inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold shadow-sm transition-all ${
+                  className={`inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm min-h-[40px] font-semibold shadow-sm transition-all ${
                     changingPassword
                       ? 'border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 active:scale-95'
                       : 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95'
@@ -1261,8 +1258,7 @@ const handleProceedDeletion = useCallback(async () => {
                     type="button"
                     disabled={deleting}
                     onClick={() => setShowDeleteConfirm(false)}
-                    className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
-                  >
+className="flex-1 rounded-2xl border border-slate-200 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 min-h-[44px]"                  >
                     Cancel
                   </button>
 
@@ -1270,8 +1266,7 @@ const handleProceedDeletion = useCallback(async () => {
                     type="button"
                     disabled={deleting}
                     onClick={deletionStatus === 'approved' ? handleProceedDeletion : handleDeleteAccount}
-                    className="flex-1 rounded-2xl bg-red-600 py-3 text-sm font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
-                  >
+className="flex-1 rounded-2xl bg-red-600 py-3 text-sm font-bold text-white transition hover:bg-red-700 disabled:opacity-60 min-h-[44px]"                  >
                     {deleting
                       ? deletionStatus === 'approved'
                         ? 'Deleting...'
@@ -1382,7 +1377,7 @@ function FormInput({
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="ml-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+      <label className="ml-1 block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-500">
         {label}
       </label>
 
@@ -1420,7 +1415,7 @@ function PasswordInput({
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="ml-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+      <label className="ml-1 block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-500">
         {label}
       </label>
 
