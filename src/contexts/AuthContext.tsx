@@ -126,13 +126,6 @@ type AuthNotice = {
   createdAt: string;
 };
 
-const setAuthNotice = useCallback((notice: AuthNotice) => {
-  sessionStorage.setItem(AUTH_NOTICE_KEY, JSON.stringify(notice));
-}, []);
-
-const clearAuthNotice = useCallback(() => {
-  sessionStorage.removeItem(AUTH_NOTICE_KEY);
-}, []);
 
 const getAuthRedirectUrl = (path: string) =>
   `${window.location.origin}${path}`;
@@ -246,6 +239,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [sessionResetKey, setSessionResetKey] = useState(0);
 
   const { showIndicator } = useIndicator();
+  const setAuthNotice = useCallback((notice: AuthNotice) => {
+    sessionStorage.setItem(AUTH_NOTICE_KEY, JSON.stringify(notice));
+  }, []);
+
+  const clearAuthNotice = useCallback(() => {
+    sessionStorage.removeItem(AUTH_NOTICE_KEY);
+  }, []);
 
   const isMountedRef = useRef(true);
   const bootstrappedRef = useRef(false);
