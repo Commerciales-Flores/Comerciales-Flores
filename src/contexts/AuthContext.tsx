@@ -117,6 +117,23 @@ const LAST_LOGIN_USER_KEY = 'lastLoginUser';
 const LOGOUT_BROADCAST_KEY = 'auth:logout';
 const RESET_PASSWORD_PATH = '/reset-password';
 
+const AUTH_NOTICE_KEY = 'auth:notice';
+
+type AuthNotice = {
+  code: 'oauth_same_email_existing_account';
+  email: string;
+  provider: string;
+  createdAt: string;
+};
+
+const setAuthNotice = useCallback((notice: AuthNotice) => {
+  sessionStorage.setItem(AUTH_NOTICE_KEY, JSON.stringify(notice));
+}, []);
+
+const clearAuthNotice = useCallback(() => {
+  sessionStorage.removeItem(AUTH_NOTICE_KEY);
+}, []);
+
 const getAuthRedirectUrl = (path: string) =>
   `${window.location.origin}${path}`;
 
@@ -467,64 +484,93 @@ const deleteProfilePicture = useCallback(async (): Promise<boolean> => {
   }, []);
 
   const fetchOrCreateUserProfile = useCallback(
-    async (authUser: any): Promise<User | null> => {
-      if (!authUser?.id) return null;
+  async (authUser: any): Promise<User | null> => {
+    if (!authUser?.id) return null;
 
-      try {
-        let { data, error } = await supabase
+    try {
+      let { data, error } = await supabase
+        .from('users')
+        .select(USER_SELECT)
+        .eq('user_id', authUser.id)
+        .maybeSingle();
+
+      if (!data) {
+        const meta = authUser.user_metadata ?? {};
+        const fullName = meta.full_name || meta.name || '';
+        const parts = fullName.trim().split(' ').filter(Boolean);
+
+        const firstName = normalizeName(meta.first_name || parts[0] || '');
+        const lastName = normalizeName(meta.last_name || parts.slice(1).join(' ') || '');
+        const email = normalizeEmail(authUser.email ?? '');
+        const phone = normalizePhone(meta.phone || '');
+        const address = normalizeAddress(meta.address || '');
+
+        const { data: existingByEmail, error: existingByEmailError } = await supabase
           .from('users')
           .select(USER_SELECT)
-          .eq('user_id', authUser.id)
+          .eq('email', email)
           .maybeSingle();
 
-        if (!data) {
-          const meta = authUser.user_metadata ?? {};
-          const fullName = meta.full_name || meta.name || '';
-          const parts = fullName.trim().split(' ').filter(Boolean);
-
-          const firstName = normalizeName(meta.first_name || parts[0] || '');
-          const lastName = normalizeName(meta.last_name || parts.slice(1).join(' ') || '');
-          const email = normalizeEmail(authUser.email ?? '');
-          const phone = normalizePhone(meta.phone || '');
-          const address = normalizeAddress(meta.address || '');
-
-          const insertResult = await supabase
-            .from('users')
-            .insert({
-              user_id: authUser.id,
-              email,
-              first_name: firstName,
-              last_name: lastName,
-              role: 'client',
-              phone,
-              address,
-              is_active: true,
-              profile_picture_url: meta.avatar_url || meta.picture || null,
-            })
-            .select(USER_SELECT)
-            .single();
-
-          data = insertResult.data;
-          error = insertResult.error;
-        }
-
-        if (error || !data) {
-          console.error('Failed to fetch/create user profile:', error);
+        if (existingByEmailError) {
+          console.error('Failed to check existing profile by email:', existingByEmailError);
           return null;
         }
 
-        if (data.is_active === false) {
+        if (existingByEmail && existingByEmail.user_id !== authUser.id) {
+          const providerLabel = getAuthProviderLabel(authUser);
+
+          setAuthNotice({
+            code: 'oauth_same_email_existing_account',
+            email,
+            provider: providerLabel,
+            createdAt: new Date().toISOString(),
+          });
+
+          console.warn(
+            'OAuth email matches an existing account. Refusing to create duplicate profile.'
+          );
+
           return null;
         }
 
-        return mapProfileToUser(data);
-      } catch (error) {
-        console.error('Unexpected profile bootstrap error:', error);
+        const insertResult = await supabase
+          .from('users')
+          .insert({
+            user_id: authUser.id,
+            email,
+            first_name: firstName,
+            last_name: lastName,
+            role: 'client',
+            phone,
+            address,
+            is_active: true,
+            profile_picture_url: meta.avatar_url || meta.picture || null,
+          })
+          .select(USER_SELECT)
+          .single();
+
+        data = insertResult.data;
+        error = insertResult.error;
+      }
+
+      if (error || !data) {
+        console.error('Failed to fetch/create user profile:', error);
         return null;
       }
-    },
-    []
-  );
+
+      if (data.is_active === false) {
+        return null;
+      }
+
+      clearAuthNotice();
+      return mapProfileToUser(data);
+    } catch (error) {
+      console.error('Unexpected profile bootstrap error:', error);
+      return null;
+    }
+  },
+  [clearAuthNotice, getAuthProviderLabel, setAuthNotice]
+);
 
   // --- INITIAL APP BOOTSTRAP ---
   useEffect(() => {
@@ -551,22 +597,35 @@ const deleteProfilePicture = useCallback(async (): Promise<boolean> => {
           return;
         }
 
-        if (isOAuthFlowPending()) {
-          pendingDeviceVerificationRef.current = true;
-          return;
-        }
+        const oauthPending = isOAuthFlowPending();
 
-        const profile = await fetchOrCreateUserProfile(session.user);
+const profile = await fetchOrCreateUserProfile(session.user);
 
-        if (!isMountedRef.current) return;
+if (!isMountedRef.current) return;
 
-        if (!profile) {
-          await supabase.auth.signOut();
-          clearUserSession({ clearGreeting: true });
-          return;
-        }
-        pendingDeviceVerificationRef.current = false;
-        persistUserSession(profile);
+if (!profile) {
+  await supabase.auth.signOut();
+  clearUserSession({ clearGreeting: true });
+  clearOAuthFlowPending();
+  return;
+}
+
+pendingDeviceVerificationRef.current = false;
+persistUserSession(profile);
+
+if (oauthPending) {
+  const providerLabel = getAuthProviderLabel(session.user);
+
+  void addAuthAuditLog({
+    userId: session.user.id,
+    action: 'LOGIN',
+    changedFields: ['last_login'],
+    notes: `User login via ${providerLabel}`,
+  });
+
+  void touchLastLogin(session.user.id);
+  clearOAuthFlowPending();
+}
       } catch (error) {
         console.error('Session init failed:', error);
         if (isMountedRef.current) {
@@ -653,12 +712,9 @@ const deleteProfilePicture = useCallback(async (): Promise<boolean> => {
 
           const oauthPending = isOAuthFlowPending();
 
-          if (oauthPending) {
-            pendingDeviceVerificationRef.current = true;
-          }
-
-          // 🚫 Prevent premature session persistence during device check
-          if (pendingDeviceVerificationRef.current) {
+          // Only block email/password flow while device verification is in progress.
+          // OAuth should not be blocked here.
+          if (pendingDeviceVerificationRef.current && !oauthPending) {
             return;
           }
 
@@ -681,10 +737,11 @@ const deleteProfilePicture = useCallback(async (): Promise<boolean> => {
           persistUserSession(profile);
 
           const providerLabel = getAuthProviderLabel(session.user);
+
           if (
-            oauthAuditPendingRef.current &&
-            (oauthAuditPendingRef.current === 'google' ||
-              oauthAuditPendingRef.current === 'facebook')
+            oauthPending ||
+            oauthAuditPendingRef.current === 'google' ||
+            oauthAuditPendingRef.current === 'facebook'
           ) {
             void addAuthAuditLog({
               userId: session.user.id,
@@ -695,6 +752,7 @@ const deleteProfilePicture = useCallback(async (): Promise<boolean> => {
 
             void touchLastLogin(session.user.id);
             oauthAuditPendingRef.current = null;
+            clearOAuthFlowPending();
           }
         } catch (error) {
           console.error('onAuthStateChange error:', error);
@@ -879,6 +937,7 @@ const login = useCallback(
     setAuthActionPending(true);
 
     try {
+      clearAuthNotice();
       const normalizedEmail = normalizeEmail(email);
 
       // ✅ 1. Turnstile first (keep security)
@@ -1031,8 +1090,8 @@ if (!isTurnstileValid) {
   if (authActionPending) return;
 
   setAuthActionPending(true);
+  clearAuthNotice();
   oauthAuditPendingRef.current = 'google';
-  pendingDeviceVerificationRef.current = true;
   setOAuthFlowPending('google');
 
   try {
@@ -1054,14 +1113,14 @@ if (!isTurnstileValid) {
   } finally {
     setAuthActionPending(false);
   }
-}, [authActionPending]);
+}, [authActionPending, clearAuthNotice]);
 
   const loginWithFacebook = useCallback(async () => {
   if (authActionPending) return;
 
   setAuthActionPending(true);
+  clearAuthNotice();
   oauthAuditPendingRef.current = 'facebook';
-  pendingDeviceVerificationRef.current = true;
   setOAuthFlowPending('facebook');
 
   try {
@@ -1079,7 +1138,7 @@ if (!isTurnstileValid) {
   } finally {
     setAuthActionPending(false);
   }
-}, [authActionPending]);
+}, [authActionPending, clearAuthNotice]);
 
   const register = useCallback(
     async (

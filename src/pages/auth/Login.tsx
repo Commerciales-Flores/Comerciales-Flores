@@ -45,6 +45,12 @@ const FacebookLogo = () => (
   </svg>
 );
 
+const [authNotice, setAuthNotice] = useState<{
+  code: string;
+  email: string;
+  provider: string;
+} | null>(null);
+
 
 export default function Login() {
   const [oauthChecked, setOauthChecked] = useState(false);
@@ -194,6 +200,27 @@ const registerEmail = useMemo(
 
   void handleOAuthDeviceCheck();
 }, [user, loading, oauthChecked, showIndicator]);
+
+useEffect(() => {
+  const raw = sessionStorage.getItem('auth:notice');
+
+  if (!raw) return;
+
+  try {
+    const parsed = JSON.parse(raw);
+
+    setAuthNotice({
+      code: parsed.code,
+      email: parsed.email,
+      provider: parsed.provider,
+    });
+
+    // optional: clear immediately so it doesn't persist forever
+    sessionStorage.removeItem('auth:notice');
+  } catch {
+    sessionStorage.removeItem('auth:notice');
+  }
+}, []);
 
   useEffect(() => {
     const raw = sessionStorage.getItem('lastLoginUser');
@@ -674,6 +701,21 @@ useEffect(() => {
               <SuccessState message={registerMessage} email={registerEmail} />
             ) : (
               <>
+              {authNotice?.code === 'oauth_same_email_existing_account' && (
+              <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs font-bold animate-in fade-in slide-in-from-top-1">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="size-4 mt-0.5 shrink-0" />
+                  <div className="leading-relaxed">
+                    <p>
+                      An account with <span className="font-extrabold">{authNotice.email}</span> already exists.
+                    </p>
+                    <p className="mt-1 text-[11px] font-medium text-amber-700">
+                      Please sign in using your email and password, or use the same login method you used before.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
                 {error && (
                   <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-xl flex items-center gap-3 text-rose-700 text-xs font-bold animate-in fade-in slide-in-from-top-1">
                     <AlertCircle className="size-4 shrink-0" />
@@ -849,7 +891,7 @@ useEffect(() => {
             {!registerMessage && (
               
               <div className="mt-12 text-center space-y-3">
-                <p className="text-slate-500 text-sm font-medium">
+                <p className="text-slate-500 text-sm font-medium">  
                   Don&apos;t have an account?{' '}
                   <Link to="/register" className="text-blue-600 font-bold hover:underline">
                     Sign up
