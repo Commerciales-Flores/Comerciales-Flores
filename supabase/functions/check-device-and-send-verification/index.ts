@@ -17,9 +17,7 @@ function jsonResponse(body: unknown, status = 200) {
 
 function getClientIp(req: Request) {
   const cfConnectingIp = req.headers.get('cf-connecting-ip');
-  if (cfConnectingIp?.trim()) {
-    return cfConnectingIp.trim();
-  }
+  if (cfConnectingIp?.trim()) return cfConnectingIp.trim();
 
   const forwardedFor = req.headers.get('x-forwarded-for');
   if (forwardedFor) {
@@ -28,14 +26,10 @@ function getClientIp(req: Request) {
   }
 
   const realIp = req.headers.get('x-real-ip');
-  if (realIp?.trim()) {
-    return realIp.trim();
-  }
+  if (realIp?.trim()) return realIp.trim();
 
   const flyClientIp = req.headers.get('fly-client-ip');
-  if (flyClientIp?.trim()) {
-    return flyClientIp.trim();
-  }
+  if (flyClientIp?.trim()) return flyClientIp.trim();
 
   return null;
 }
@@ -141,70 +135,69 @@ function buildInfoRow(label: string, value: string) {
   `;
 }
 
-async function resolveIpLocation(ip: string | null) {
+type ResolvedLocation = {
+  ipAddress: string | null;
+  locationLabel: string;
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  timezone: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  isp: string | null;
+  asn: string | null;
+  isProxy: boolean;
+  isVpn: boolean;
+  isHosting: boolean;
+  confidence: number;
+  source: string;
+};
+
+function fallbackLocation(
+  ip: string | null,
+  source: string,
+  confidence: number
+): ResolvedLocation {
+  return {
+    ipAddress: ip,
+    locationLabel: 'Unknown location',
+    city: null,
+    region: null,
+    country: null,
+    timezone: null,
+    latitude: null,
+    longitude: null,
+    isp: null,
+    asn: null,
+    isProxy: false,
+    isVpn: false,
+    isHosting: false,
+    confidence,
+    source,
+  };
+}
+
+async function resolveIpLocation(ip: string | null): Promise<ResolvedLocation> {
   if (!ip) {
-    return {
-      ipAddress: null,
-      locationLabel: 'Unknown location',
-      city: null,
-      region: null,
-      country: null,
-      timezone: null,
-      latitude: null,
-      longitude: null,
-      isp: null,
-      asn: null,
-      isProxy: false,
-      isVpn: false,
-      isHosting: false,
-      confidence: 0,
-      source: 'none',
-    };
+    return fallbackLocation(null, 'none', 0);
   }
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1500);
+
   try {
-    const res = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}`);
+    const res = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}`, {
+      signal: controller.signal,
+    });
 
     if (!res.ok) {
-      return {
-        ipAddress: ip,
-        locationLabel: 'Unknown location',
-        city: null,
-        region: null,
-        country: null,
-        timezone: null,
-        latitude: null,
-        longitude: null,
-        isp: null,
-        asn: null,
-        isProxy: false,
-        isVpn: false,
-        isHosting: false,
-        confidence: 10,
-        source: 'ipwho.is',
-      };
+      return fallbackLocation(ip, 'ipwho.is', 10);
     }
 
     const geo = await res.json();
 
     if (!geo?.success) {
-      return {
-        ipAddress: ip,
-        locationLabel: 'Unknown location',
-        city: null,
-        region: null,
-        country: null,
-        timezone: null,
-        latitude: null,
-        longitude: null,
-        isp: null,
-        asn: null,
-        isProxy: false,
-        isVpn: false,
-        isHosting: false,
-        confidence: 10,
-        source: 'ipwho.is',
-      };
+      return fallbackLocation(ip, 'ipwho.is', 10);
     }
 
     const city = geo.city ?? null;
@@ -227,8 +220,6 @@ async function resolveIpLocation(ip: string | null) {
     if (timezone) confidence += 5;
     if (isp) confidence += 5;
 
-    confidence = Math.max(0, Math.min(100, confidence));
-
     return {
       ipAddress: ip,
       locationLabel,
@@ -243,27 +234,13 @@ async function resolveIpLocation(ip: string | null) {
       isProxy: Boolean(geo.security?.proxy),
       isVpn: Boolean(geo.security?.vpn),
       isHosting: Boolean(geo.security?.hosting),
-      confidence,
+      confidence: Math.max(0, Math.min(100, confidence)),
       source: 'ipwho.is',
     };
   } catch {
-    return {
-      ipAddress: ip,
-      locationLabel: 'Unknown location',
-      city: null,
-      region: null,
-      country: null,
-      timezone: null,
-      latitude: null,
-      longitude: null,
-      isp: null,
-      asn: null,
-      isProxy: false,
-      isVpn: false,
-      isHosting: false,
-      confidence: 5,
-      source: 'lookup_failed',
-    };
+    return fallbackLocation(ip, 'lookup_failed', 5);
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -410,6 +387,200 @@ function buildCountryAlertEmail(options: {
   });
 }
 
+async function processTrustedDeviceLogin(params: {
+  adminClient: ReturnType<typeof createClient>;
+  trustedDevice: any;
+  user: any;
+  ipAddress: string | null;
+  userAgent: string | null;
+  deviceName: string | null;
+  resendApiKey: string | undefined;
+}) {
+  const {
+    adminClient,
+    trustedDevice,
+    user,
+    ipAddress,
+    userAgent,
+    deviceName,
+    resendApiKey,
+  } = params;
+
+  const location = await resolveIpLocation(ipAddress);
+  const nowIso = new Date().toISOString();
+
+  const previousCountry = trustedDevice.location_country ?? null;
+  const previousCity = trustedDevice.location_city ?? null;
+  const previousTimezone = trustedDevice.location_timezone ?? null;
+  const previousIp = trustedDevice.last_ip ?? null;
+  const previousIsp = trustedDevice.network_isp ?? null;
+  const previousAsn = trustedDevice.network_asn ?? null;
+
+  const currentCountry = location.country ?? null;
+  const currentCity = location.city ?? null;
+  const currentTimezone = location.timezone ?? null;
+  const currentIp = ipAddress ?? null;
+  const currentIsp = location.isp ?? null;
+  const currentAsn = location.asn ?? null;
+
+  const countryChanged = Boolean(
+    previousCountry &&
+      currentCountry &&
+      previousCountry.toLowerCase() !== currentCountry.toLowerCase()
+  );
+
+  const cityChanged = Boolean(
+    previousCity &&
+      currentCity &&
+      previousCity.toLowerCase() !== currentCity.toLowerCase()
+  );
+
+  const timezoneChanged = Boolean(
+    previousTimezone &&
+      currentTimezone &&
+      previousTimezone.toLowerCase() !== currentTimezone.toLowerCase()
+  );
+
+  const ipChanged = Boolean(previousIp && currentIp && previousIp !== currentIp);
+
+  const ispChanged = Boolean(
+    previousIsp &&
+      currentIsp &&
+      previousIsp.toLowerCase() !== currentIsp.toLowerCase()
+  );
+
+  const asnChanged = Boolean(
+    previousAsn &&
+      currentAsn &&
+      String(previousAsn).toLowerCase() !== String(currentAsn).toLowerCase()
+  );
+
+  let riskScore = 0;
+  if (countryChanged) riskScore += 70;
+  if (!countryChanged && cityChanged) riskScore += 20;
+  if (timezoneChanged) riskScore += 10;
+  if (ipChanged) riskScore += 10;
+  if (ispChanged) riskScore += 10;
+  if (asnChanged) riskScore += 10;
+  if (location.isVpn) riskScore += 25;
+  if (location.isProxy) riskScore += 25;
+  if (location.isHosting) riskScore += 20;
+
+  const shouldSendCountryAlert = riskScore >= 70 && countryChanged;
+  const shouldFlagSuspicious = riskScore >= 30;
+
+  const suspiciousParts: string[] = [];
+  if (countryChanged) {
+    suspiciousParts.push(`country changed from ${previousCountry} to ${currentCountry}`);
+  } else if (cityChanged) {
+    suspiciousParts.push(`city changed from ${previousCity} to ${currentCity}`);
+  }
+  if (timezoneChanged) suspiciousParts.push('timezone changed');
+  if (ipChanged) suspiciousParts.push('IP changed');
+  if (ispChanged) suspiciousParts.push('ISP changed');
+  if (asnChanged) suspiciousParts.push('ASN changed');
+  if (location.isVpn) suspiciousParts.push('VPN detected');
+  if (location.isProxy) suspiciousParts.push('proxy detected');
+  if (location.isHosting) suspiciousParts.push('hosting network detected');
+
+  const suspiciousReason = suspiciousParts.length > 0 ? suspiciousParts.join('; ') : null;
+
+  const lastAlertAt = trustedDevice.last_location_alert_at
+    ? new Date(trustedDevice.last_location_alert_at).getTime()
+    : null;
+
+  const canSendAnotherCountryAlert =
+    !lastAlertAt || Date.now() - lastAlertAt > 6 * 60 * 60 * 1000;
+
+  const willSendCountryAlert =
+    shouldSendCountryAlert && Boolean(user.email) && canSendAnotherCountryAlert;
+
+  const updates: Record<string, unknown> = {
+    user_agent: userAgent,
+    device_name: deviceName,
+    last_ip: currentIp,
+    last_seen_at: nowIso,
+    location_checked_at: nowIso,
+    country_change_detected: countryChanged,
+    city_change_detected: !countryChanged && cityChanged,
+    suspicious_login: shouldFlagSuspicious,
+    suspicious_reason: suspiciousReason,
+    country_changed_at: countryChanged ? nowIso : null,
+    city_changed_at: !countryChanged && cityChanged ? nowIso : null,
+    last_location_alert_at: willSendCountryAlert
+      ? nowIso
+      : trustedDevice.last_location_alert_at,
+    is_proxy: location.isProxy,
+    is_vpn: location.isVpn,
+    is_hosting: location.isHosting,
+    location_confidence: location.confidence,
+    location_source: location.source,
+  };
+
+  if (location.locationLabel) updates.location_label = location.locationLabel;
+  if (location.city) updates.location_city = location.city;
+  if (location.region) updates.location_region = location.region;
+  if (location.country) updates.location_country = location.country;
+  if (location.timezone) updates.location_timezone = location.timezone;
+  if (location.latitude !== null) updates.location_latitude = location.latitude;
+  if (location.longitude !== null) updates.location_longitude = location.longitude;
+  if (location.isp) updates.network_isp = location.isp;
+  if (location.asn) updates.network_asn = location.asn;
+
+  const { error: trustedUpdateError } = await adminClient
+    .from('trusted_devices')
+    .update(updates)
+    .eq('trusted_device_id', trustedDevice.trusted_device_id);
+
+  if (trustedUpdateError) {
+    console.error('Trusted device update failed:', trustedUpdateError.message);
+    return;
+  }
+
+  if (willSendCountryAlert && resendApiKey && user.email) {
+    const countryAlertHtml = buildCountryAlertEmail({
+      previousCountry,
+      currentLocationLabel: location.locationLabel,
+      currentCountry,
+      deviceName,
+      currentIp,
+      nowIso,
+    });
+
+    const emailResult = await sendEmail({
+      resendApiKey,
+      to: user.email,
+      subject: 'Security alert: sign-in from a different country',
+      html: countryAlertHtml,
+    });
+
+    console.log('COUNTRY ALERT STATUS:', emailResult.status);
+    console.log('COUNTRY ALERT RESPONSE:', emailResult.data);
+  }
+
+  if (willSendCountryAlert) {
+    await adminClient.from('audit_log').insert({
+      user_id: user.id,
+      action: 'DEVICE_LOCATION_COUNTRY_CHANGED',
+      target_table: 'trusted_devices',
+      target_id: trustedDevice.trusted_device_id,
+      changed_fields: ['location_country', 'last_location_alert_at'],
+      timestamp: nowIso,
+      notes: suspiciousReason ?? 'Trusted device country changed',
+    });
+  } else if (shouldFlagSuspicious) {
+    await adminClient.from('audit_log').insert({
+      user_id: user.id,
+      action: 'DEVICE_LOCATION_SUSPICIOUS',
+      target_table: 'trusted_devices',
+      target_id: trustedDevice.trusted_device_id,
+      changed_fields: ['location_city', 'last_ip', 'suspicious_login'],
+      timestamp: nowIso,
+      notes: suspiciousReason ?? 'Suspicious location pattern detected',
+    });
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -467,7 +638,6 @@ Deno.serve(async (req) => {
     }
 
     const ipAddress = getClientIp(req);
-    const location = await resolveIpLocation(ipAddress);
 
     const { data: trustedDevice, error: trustedDeviceError } = await adminClient
       .from('trusted_devices')
@@ -510,186 +680,24 @@ Deno.serve(async (req) => {
     }
 
     if (trustedDevice?.is_trusted) {
-      const nowIso = new Date().toISOString();
-
-      const previousCountry = trustedDevice.location_country ?? null;
-      const previousCity = trustedDevice.location_city ?? null;
-      const previousTimezone = trustedDevice.location_timezone ?? null;
-      const previousIp = trustedDevice.last_ip ?? null;
-      const previousIsp = trustedDevice.network_isp ?? null;
-      const previousAsn = trustedDevice.network_asn ?? null;
-
-      const currentCountry = location.country ?? null;
-      const currentCity = location.city ?? null;
-      const currentTimezone = location.timezone ?? null;
-      const currentIp = ipAddress ?? null;
-      const currentIsp = location.isp ?? null;
-      const currentAsn = location.asn ?? null;
-
-      const countryChanged = Boolean(
-        previousCountry &&
-          currentCountry &&
-          previousCountry.toLowerCase() !== currentCountry.toLowerCase()
-      );
-
-      const cityChanged = Boolean(
-        previousCity &&
-          currentCity &&
-          previousCity.toLowerCase() !== currentCity.toLowerCase()
-      );
-
-      const timezoneChanged = Boolean(
-        previousTimezone &&
-          currentTimezone &&
-          previousTimezone.toLowerCase() !== currentTimezone.toLowerCase()
-      );
-
-      const ipChanged = Boolean(previousIp && currentIp && previousIp !== currentIp);
-
-      const ispChanged = Boolean(
-        previousIsp &&
-          currentIsp &&
-          previousIsp.toLowerCase() !== currentIsp.toLowerCase()
-      );
-
-      const asnChanged = Boolean(
-        previousAsn &&
-          currentAsn &&
-          String(previousAsn).toLowerCase() !== String(currentAsn).toLowerCase()
-      );
-
-      let riskScore = 0;
-
-      if (countryChanged) riskScore += 70;
-      if (!countryChanged && cityChanged) riskScore += 20;
-      if (timezoneChanged) riskScore += 10;
-      if (ipChanged) riskScore += 10;
-      if (ispChanged) riskScore += 10;
-      if (asnChanged) riskScore += 10;
-      if (location.isVpn) riskScore += 25;
-      if (location.isProxy) riskScore += 25;
-      if (location.isHosting) riskScore += 20;
-
-      const shouldSendCountryAlert = riskScore >= 70 && countryChanged;
-      const shouldFlagSuspicious = riskScore >= 30;
-
-      const suspiciousParts: string[] = [];
-
-      if (countryChanged) {
-        suspiciousParts.push(`country changed from ${previousCountry} to ${currentCountry}`);
-      } else if (cityChanged) {
-        suspiciousParts.push(`city changed from ${previousCity} to ${currentCity}`);
-      }
-
-      if (timezoneChanged) suspiciousParts.push('timezone changed');
-      if (ipChanged) suspiciousParts.push('IP changed');
-      if (ispChanged) suspiciousParts.push('ISP changed');
-      if (asnChanged) suspiciousParts.push('ASN changed');
-      if (location.isVpn) suspiciousParts.push('VPN detected');
-      if (location.isProxy) suspiciousParts.push('proxy detected');
-      if (location.isHosting) suspiciousParts.push('hosting network detected');
-
-      const suspiciousReason = suspiciousParts.length > 0 ? suspiciousParts.join('; ') : null;
-
-      const lastAlertAt = trustedDevice.last_location_alert_at
-        ? new Date(trustedDevice.last_location_alert_at).getTime()
-        : null;
-
-      const canSendAnotherCountryAlert =
-        !lastAlertAt || Date.now() - lastAlertAt > 6 * 60 * 60 * 1000;
-
-      const willSendCountryAlert =
-        shouldSendCountryAlert && Boolean(user.email) && canSendAnotherCountryAlert;
-
-      const updates: Record<string, unknown> = {
-        user_agent: userAgent,
-        device_name: deviceName,
-        last_ip: currentIp,
-        last_seen_at: nowIso,
-        location_checked_at: nowIso,
-        country_change_detected: countryChanged,
-        city_change_detected: !countryChanged && cityChanged,
-        suspicious_login: shouldFlagSuspicious,
-        suspicious_reason: suspiciousReason,
-        country_changed_at: countryChanged ? nowIso : null,
-        city_changed_at: !countryChanged && cityChanged ? nowIso : null,
-        last_location_alert_at: willSendCountryAlert
-          ? nowIso
-          : trustedDevice.last_location_alert_at,
-        is_proxy: location.isProxy,
-        is_vpn: location.isVpn,
-        is_hosting: location.isHosting,
-        location_confidence: location.confidence,
-        location_source: location.source,
-      };
-
-      if (location.locationLabel) updates.location_label = location.locationLabel;
-      if (location.city) updates.location_city = location.city;
-      if (location.region) updates.location_region = location.region;
-      if (location.country) updates.location_country = location.country;
-      if (location.timezone) updates.location_timezone = location.timezone;
-      if (location.latitude !== null) updates.location_latitude = location.latitude;
-      if (location.longitude !== null) updates.location_longitude = location.longitude;
-      if (location.isp) updates.network_isp = location.isp;
-      if (location.asn) updates.network_asn = location.asn;
-
-      const { error: trustedUpdateError } = await adminClient
-        .from('trusted_devices')
-        .update(updates)
-        .eq('trusted_device_id', trustedDevice.trusted_device_id);
-
-      if (trustedUpdateError) {
-        return jsonResponse(
-          { trusted: false, error: trustedUpdateError.message },
-          500
-        );
-      }
-
-      if (willSendCountryAlert && resendApiKey && user.email) {
-        const countryAlertHtml = buildCountryAlertEmail({
-          previousCountry,
-          currentLocationLabel: location.locationLabel,
-          currentCountry,
+      EdgeRuntime.waitUntil(
+        processTrustedDeviceLogin({
+          adminClient,
+          trustedDevice,
+          user,
+          ipAddress,
+          userAgent,
           deviceName,
-          currentIp,
-          nowIso,
-        });
-
-        const emailResult = await sendEmail({
           resendApiKey,
-          to: user.email,
-          subject: 'Security alert: sign-in from a different country',
-          html: countryAlertHtml,
-        });
-
-        console.log('COUNTRY ALERT STATUS:', emailResult.status);
-        console.log('COUNTRY ALERT RESPONSE:', emailResult.data);
-      }
-
-      if (willSendCountryAlert) {
-        await adminClient.from('audit_log').insert({
-          user_id: user.id,
-          action: 'DEVICE_LOCATION_COUNTRY_CHANGED',
-          target_table: 'trusted_devices',
-          target_id: trustedDevice.trusted_device_id,
-          changed_fields: ['location_country', 'last_location_alert_at'],
-          timestamp: nowIso,
-          notes: suspiciousReason ?? 'Trusted device country changed',
-        });
-      } else if (shouldFlagSuspicious) {
-        await adminClient.from('audit_log').insert({
-          user_id: user.id,
-          action: 'DEVICE_LOCATION_SUSPICIOUS',
-          target_table: 'trusted_devices',
-          target_id: trustedDevice.trusted_device_id,
-          changed_fields: ['location_city', 'last_ip', 'suspicious_login'],
-          timestamp: nowIso,
-          notes: suspiciousReason ?? 'Suspicious location pattern detected',
-        });
-      }
+        }).catch((error) => {
+          console.error('Trusted device background task failed:', error);
+        })
+      );
 
       return jsonResponse({ trusted: true }, 200);
     }
+
+    const location = await resolveIpLocation(ipAddress);
 
     const token = crypto.randomUUID() + crypto.randomUUID().replaceAll('-', '');
     const loginRequestId = crypto.randomUUID();
