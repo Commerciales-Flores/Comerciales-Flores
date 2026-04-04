@@ -248,6 +248,8 @@ const USER_SELECT = `
   `;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+
+  const t0 = performance.now();
   const [user, setUser] = useState<User | null>(null);
 
   // Only for initial app bootstrap
@@ -947,15 +949,20 @@ const login = useCallback(
       clearAuthNotice();
       const normalizedEmail = normalizeEmail(email);
 
-      const isTurnstileValid = await verifyTurnstileToken(options?.turnstileToken);
+      const [isTurnstileValid, lockResult] = await Promise.all([
+        verifyTurnstileToken(options?.turnstileToken),
+        supabase.rpc('check_login_lock', {
+          p_email: normalizedEmail,
+        }),
+      ]);
+
+      console.log('login step: precheck', Math.round(performance.now() - t0), 'ms');
 
       if (!isTurnstileValid) {
         return { success: false, error: 'verification_failed' };
       }
 
-      const { data: lockData } = await supabase.rpc('check_login_lock', {
-        p_email: normalizedEmail,
-      });
+      const lockData = lockResult.data;
 
       if (Array.isArray(lockData) && lockData[0]?.is_locked) {
         return {
@@ -972,6 +979,8 @@ const login = useCallback(
         password,
       });
 
+      console.log('login step: signInWithPassword', Math.round(performance.now() - t0), 'ms');
+
       if (error || !data.user) {
         pendingDeviceVerificationRef.current = false;
 
@@ -984,68 +993,80 @@ const login = useCallback(
       }
 
       const accessToken = data.session?.access_token;
-      if (!accessToken) {
-        pendingDeviceVerificationRef.current = false;
-        await supabase.auth.signOut();
-        return { success: false, error: 'device_check_failed' };
-      }
+if (!accessToken) {
+  pendingDeviceVerificationRef.current = false;
+  await supabase.auth.signOut();
+  return { success: false, error: 'device_check_failed' };
+}
 
-      const fingerprint = getDeviceFingerprint();
+const fingerprint = getDeviceFingerprint();
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-device-and-send-verification`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            deviceFingerprint: fingerprint,
-            userAgent: navigator.userAgent,
-            rememberDevice: Boolean(options?.rememberDevice),
-          }),
-        }
-      );
+const deviceCheckPromise = fetch(
+  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-device-and-send-verification`,
+  {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      deviceFingerprint: fingerprint,
+      userAgent: navigator.userAgent,
+      rememberDevice: Boolean(options?.rememberDevice),
+    }),
+  }
+).then(async (response) => {
+  let payload: any = null;
 
-      let deviceCheck: any = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
 
-      try {
-        deviceCheck = await response.json();
-      } catch {
-        deviceCheck = null;
-      }
+  return {
+    ok: response.ok,
+    payload,
+  };
+});
 
-      if (!response.ok) {
-        pendingDeviceVerificationRef.current = false;
-        await supabase.auth.signOut();
-        return { success: false, error: 'device_check_failed' };
-      }
+const profilePromise = fetchOrCreateUserProfile(data.user);
 
-      if (!deviceCheck?.trusted) {
-        pendingDeviceVerificationRef.current = false;
-        await supabase.auth.signOut();
+const [{ ok, payload: deviceCheck }, profile] = await Promise.all([
+  deviceCheckPromise,
+  profilePromise,
+]);
 
-        return {
-          success: false,
-          error: 'unverified_device',
-          loginRequestId: deviceCheck?.loginRequestId,
-          expiresAt: deviceCheck?.expiresAt,
-        };
-      }
+console.log('login step: device + profile', Math.round(performance.now() - t0), 'ms');
 
-      const profile = await fetchOrCreateUserProfile(data.user);
+if (!ok) {
+  pendingDeviceVerificationRef.current = false;
+  await supabase.auth.signOut();
+  return { success: false, error: 'device_check_failed' };
+}
 
-      if (!profile) {
-        pendingDeviceVerificationRef.current = false;
-        await supabase.auth.signOut();
+if (!deviceCheck?.trusted) {
+  pendingDeviceVerificationRef.current = false;
+  await supabase.auth.signOut();
 
-        return {
-          success: false,
-          error: 'account_inactive',
-        };
-      }
+  return {
+    success: false,
+    error: 'unverified_device',
+    loginRequestId: deviceCheck?.loginRequestId,
+    expiresAt: deviceCheck?.expiresAt,
+  };
+}
+
+if (!profile) {
+  pendingDeviceVerificationRef.current = false;
+  await supabase.auth.signOut();
+
+  return {
+    success: false,
+    error: 'account_inactive',
+  };
+}
 
       pendingDeviceVerificationRef.current = false;
       persistUserSession(profile);
@@ -1061,7 +1082,7 @@ const login = useCallback(
       void supabase.functions.invoke('record-login-context', {
         body: { email: normalizedEmail },
       });
-
+      console.log('login total', Math.round(performance.now() - t0), 'ms');
       return { success: true };
     } catch (err) {
       pendingDeviceVerificationRef.current = false;

@@ -183,7 +183,8 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
   const [unitsVersion, setUnitsVersion] = useState(0);
 
   const parkingSlotsRef = useRef<ParkingSlot[]>([]);
-  const refreshTimersRef = useRef<Map<string, number>>(new Map());
+const refreshTimersRef = useRef<Map<string, number>>(new Map());
+const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
 
   const { addAuditLog } = useRecords();
   const { user } = useAuth();
@@ -590,43 +591,44 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'units' },
         async (payload) => {
-          const baseUnit = mapBaseUnitRow(payload.new);
+          const baseUnit = payload.new as { unit_id: string; unit_type: UnitType };
 
-          setUnits((prev) => {
-            if (prev.some((unit) => unit.id === baseUnit.id)) return prev;
-            return sortUnits([...prev, baseUnit]);
-          });
+          await refreshSpecificUnitDetails(baseUnit.unit_id);
 
-          await refreshSpecificUnitDetails(baseUnit.id);
-
-          if (baseUnit.type === 'parking_slot') {
-            queueParkingUnitRefresh(baseUnit.id);
+          if (baseUnit.unit_type === 'parking_slot') {
+            queueParkingUnitRefresh(baseUnit.unit_id);
           }
 
           setUnitsVersion((prev) => prev + 1);
         }
       )
       .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'units' },
-        async (payload) => {
-          const updatedBase = mapBaseUnitRow(payload.new);
+  'postgres_changes',
+  { event: 'INSERT', schema: 'public', table: 'units' },
+  async (payload) => {
+    const inserted = payload.new as {
+      unit_id: string;
+      unit_type: UnitType;
+    };
 
-          setUnits((prev) =>
-            sortUnits(
-              prev.map((unit) => (unit.id === updatedBase.id ? { ...unit, ...updatedBase } : unit))
-            )
-          );
+    const unitId = inserted.unit_id;
+    const unitType = inserted.unit_type;
 
-          await refreshSpecificUnitDetails(updatedBase.id);
+    recentUnitInsertionsRef.current.set(unitId, Date.now());
 
-          if (updatedBase.type === 'parking_slot') {
-            queueParkingUnitRefresh(updatedBase.id);
-          }
+    await refreshSpecificUnitDetails(unitId);
 
-          setUnitsVersion((prev) => prev + 1);
-        }
-      )
+    if (unitType === 'parking_slot') {
+      queueParkingUnitRefresh(unitId);
+    }
+
+    setUnitsVersion((prev) => prev + 1);
+
+    window.setTimeout(() => {
+      recentUnitInsertionsRef.current.delete(unitId);
+    }, 800);
+  }
+)
       .on(
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'units' },
@@ -640,48 +642,54 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         }
       )
       .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'rental_units' },
-        async (payload) => {
-          const nextRow = payload.new as { unit_id?: string } | null;
-          const oldRow = payload.old as { unit_id?: string } | null;
-          const unitId = nextRow?.unit_id ?? oldRow?.unit_id;
+  'postgres_changes',
+  { event: '*', schema: 'public', table: 'rental_units' },
+  async (payload) => {
+    const nextRow = payload.new as { unit_id?: string } | null;
+    const oldRow = payload.old as { unit_id?: string } | null;
+    const unitId = nextRow?.unit_id ?? oldRow?.unit_id;
 
-          if (!unitId) return;
+    if (!unitId) return;
 
-          await refreshSpecificUnitDetails(unitId);
-          setUnitsVersion((prev) => prev + 1);
-        }
-      )
+    if (recentUnitInsertionsRef.current.has(unitId)) return;
+
+    await refreshSpecificUnitDetails(unitId);
+    setUnitsVersion((prev) => prev + 1);
+  }
+)
       .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'parking_units' },
-        async (payload) => {
-          const nextRow = payload.new as { unit_id?: string } | null;
-          const oldRow = payload.old as { unit_id?: string } | null;
-          const unitId = nextRow?.unit_id ?? oldRow?.unit_id;
+  'postgres_changes',
+  { event: '*', schema: 'public', table: 'parking_units' },
+  async (payload) => {
+    const nextRow = payload.new as { unit_id?: string } | null;
+    const oldRow = payload.old as { unit_id?: string } | null;
+    const unitId = nextRow?.unit_id ?? oldRow?.unit_id;
 
-          if (!unitId) return;
+    if (!unitId) return;
 
-          await refreshSpecificUnitDetails(unitId);
-          queueParkingUnitRefresh(unitId);
-          setUnitsVersion((prev) => prev + 1);
-        }
-      )
+    if (recentUnitInsertionsRef.current.has(unitId)) return;
+
+    await refreshSpecificUnitDetails(unitId);
+    queueParkingUnitRefresh(unitId);
+    setUnitsVersion((prev) => prev + 1);
+  }
+)
       .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'function_units' },
-        async (payload) => {
-          const nextRow = payload.new as { unit_id?: string } | null;
-          const oldRow = payload.old as { unit_id?: string } | null;
-          const unitId = nextRow?.unit_id ?? oldRow?.unit_id;
+  'postgres_changes',
+  { event: '*', schema: 'public', table: 'function_units' },
+  async (payload) => {
+    const nextRow = payload.new as { unit_id?: string } | null;
+    const oldRow = payload.old as { unit_id?: string } | null;
+    const unitId = nextRow?.unit_id ?? oldRow?.unit_id;
 
-          if (!unitId) return;
+    if (!unitId) return;
 
-          await refreshSpecificUnitDetails(unitId);
-          setUnitsVersion((prev) => prev + 1);
-        }
-      )
+    if (recentUnitInsertionsRef.current.has(unitId)) return;
+
+    await refreshSpecificUnitDetails(unitId);
+    setUnitsVersion((prev) => prev + 1);
+  }
+) 
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'parking_slots' },
@@ -733,6 +741,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
     return () => {
       refreshTimersRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
       refreshTimersRef.current.clear();
+      recentUnitInsertionsRef.current.clear();
       void supabase.removeChannel(channel);
     };
   }, [

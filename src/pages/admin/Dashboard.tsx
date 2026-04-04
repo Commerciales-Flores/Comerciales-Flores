@@ -264,7 +264,7 @@ export default function AdminDashboard() {
       r.modeOfVisit === 'onsite' &&
       (r.visitStatus ?? 'requested') === 'requested'
   )
-  .slice(0, 4);
+  .slice(0, 3);
 
   const dashboardData = useMemo(() => {
     const now = new Date();
@@ -282,7 +282,7 @@ export default function AdminDashboard() {
 
     const recentInquiries = (tickets ?? [])
       .filter((t) => t.status === 'waiting_for_support')
-      .slice(0, 4)
+      .slice(0, 2)
       .map((t) => ({
         id: t.id,
         subject: t.subject,
@@ -295,7 +295,7 @@ export default function AdminDashboard() {
         unitName: string;
       }
     > = (reviews ?? [])
-      .slice(0, 4)
+      .slice(0, 2)
       .map((review: ReviewRow) => {
         const matchedUnit = units.find((unit) => unit.id === review.unit_id);
 
