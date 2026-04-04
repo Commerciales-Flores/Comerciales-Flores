@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useData } from '../../contexts/DataContext';
+import { useAdminData } from '../../contexts/AdminDataContext';
 import { usePayments } from '../../contexts/PaymentsContext';
 import type { PaymentMethod } from '../../data/types';
 import { formatCurrency } from '../../utils/currency';
@@ -23,7 +23,7 @@ export default function AdminPaymentForm({
   reservationId,
   onComplete,
 }: AdminPaymentFormProps) {
-  const { reservations } = useData();
+  const { reservations } = useAdminData();
   const { addPayment } = usePayments();
 
   const reservation = reservations.find((r) => r.id === reservationId);

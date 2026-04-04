@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { useData } from '../../contexts/DataContext';
+import { useAdminData } from '../../contexts/AdminDataContext';
 import { useReservations } from '../../contexts/ReservationsContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { DataTable, DataCell, ActionCell } from '../../components/common/DataTable';
@@ -194,7 +194,7 @@ function useDebouncedValue<T>(value: T, delay = 250) {
 }
 
 export default function AdminReservations() {
-  const { updateReservation, getUnitById, loadingUnits } = useData();
+  const { updateReservation, getUnitById, loadingUnits } = useAdminData();
   const { users, isLoadingUsers, refreshUsers, getUserById } = useUsers();
   const { fetchReservationsPage, reservationsVersion } = useReservations();
   const {

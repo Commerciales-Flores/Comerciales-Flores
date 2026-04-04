@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
-import { useData } from "../../contexts/DataContext";
+import { useClientData } from "../../contexts/ClientDataContext";
 import type { UnitType } from "../../contexts/DataContext";
 import { motion } from "framer-motion";
 import { useAuth } from "../../contexts/AuthContext";
@@ -703,7 +703,7 @@ if (activeOtherReservation) {
 
 export default function ClientUnits() {
   const { user } = useAuth();
-  const { addReservation, reservations } = useData();
+  const { addReservation, reservations } = useClientData();
   const { reviews } = useReviews();
   const { units, parkingSlots } = useUnits();
   const { sendSystemNotification } = useNotifications();

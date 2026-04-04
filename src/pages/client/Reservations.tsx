@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useData } from '../../contexts/DataContext';
+import { useClientData } from '../../contexts/ClientDataContext';
 import { useReservations } from '../../contexts/ReservationsContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatDate } from '../../utils/date';

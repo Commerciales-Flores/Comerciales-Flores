@@ -278,32 +278,31 @@ serve(async (req) => {
       )
     }
 
-    const { error: publicDeleteError } = await admin
-      .from('users')
-      .delete()
-      .eq('user_id', requestedUserId)
+    const { error: publicDeleteError } = await admin.rpc('delete_user_safe', {
+  p_user_id: requestedUserId,
+})
 
-    if (publicDeleteError) {
-      return jsonResponse(
-        {
-          success: false,
-          reason: publicDeleteError.message || 'Failed to delete public user profile.',
-        },
-        500
-      )
-    }
+if (publicDeleteError) {
+  return jsonResponse(
+    {
+      success: false,
+      reason: publicDeleteError.message || 'Failed to delete public user profile.',
+    },
+    500
+  )
+}
 
-    const { error: deleteAuthError } = await admin.auth.admin.deleteUser(requestedUserId)
+const { error: deleteAuthError } = await admin.auth.admin.deleteUser(requestedUserId)
 
-    if (deleteAuthError) {
-      return jsonResponse(
-        {
-          success: false,
-          reason: deleteAuthError.message || 'Failed to delete auth account.',
-        },
-        500
-      )
-    }
+if (deleteAuthError) {
+  return jsonResponse(
+    {
+      success: false,
+      reason: deleteAuthError.message || 'Failed to delete auth account.',
+    },
+    500
+  )
+}
 
     const { error: requestCompleteError } = await admin
       .from('account_deletion_requests')

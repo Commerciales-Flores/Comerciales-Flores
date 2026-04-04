@@ -17,7 +17,7 @@ import {
   X,
 } from 'lucide-react';
 
-import { useData } from '../../contexts/DataContext';
+import { useAdminData } from '../../contexts/AdminDataContext';
 import { useUnits } from '../../contexts/UnitsContext';
 import { usePaymentMethods } from '../../contexts/PaymentMethodsContext';
 import type {
@@ -316,7 +316,7 @@ export default function AdminReservationForm({
   unitId,
   onComplete,
 }: AdminReservationFormProps) {
-  const { reservations, users, addReservation } = useData();
+  const { reservations, users, addReservation } = useAdminData();
   const { units, parkingSlots } = useUnits();
   const { activePaymentMethods } = usePaymentMethods();
 

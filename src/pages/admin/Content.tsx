@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, type ReactNode } from 'react';
-import { useData } from '../../contexts/DataContext';
+import { useAdminData } from '../../contexts/AdminDataContext';
 import supabase from '../../supabaseClient';
 import {
   Save,
@@ -29,7 +29,7 @@ type EditableSection =
   | null;
 
 export default function AdminContent() {
-  const { contentSettings, updateContentSettings } = useData();
+  const { contentSettings, updateContentSettings } = useAdminData();
 
   const [activeSection, setActiveSection] = useState<EditableSection>(null);
   const [newAnnouncement, setNewAnnouncement] = useState('');

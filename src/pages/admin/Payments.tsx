@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useData } from '../../contexts/DataContext';
+import { useAdminData } from '../../contexts/AdminDataContext';
 import { DataTable, DataCell, ActionCell } from '../../components/common/DataTable';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { usePayments } from '../../contexts/PaymentsContext';
@@ -95,7 +95,7 @@ function useDebouncedValue<T>(value: T, delay = 250) {
 }
 
 export default function AdminPayments() {
-  const { reservations, getUserById, loadingUnits } = useData();
+  const { reservations, getUserById, loadingUnits } = useAdminData();
   const { sendPaymentNotification, sendRefundNotification } = useNotifications();
   const { fetchPaymentsPage, updatePayment, issueRefund, paymentsVersion } = usePayments();
   const { ledgers, ledgerVersion } = useRecords();

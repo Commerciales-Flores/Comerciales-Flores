@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { useData } from '../../contexts/DataContext';
+import { useAdminData } from '../../contexts/AdminDataContext';
 import { useReviews } from '../../contexts/ReviewsContext';
 import { useUsers } from '../../contexts/UsersContext';
 import { useInquiries } from '../../contexts/InquiriesContext';
@@ -223,7 +223,7 @@ const getWatchlistBadgeClass = (reason: WatchlistItem['reason']) => {
 };
 
 export default function AdminDashboard() {
-  const { reservations, payments, units, auditLogs } = useData();
+  const { reservations, payments, units, auditLogs } = useAdminData();
   const { tickets } = useInquiries();
   const { reviews } = useReviews();
   const { fetchUsersPage } = useUsers();

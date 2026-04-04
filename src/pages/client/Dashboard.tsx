@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '../../contexts/AuthContext';
-import { useData } from '../../contexts/DataContext';
+import { useClientData } from '../../contexts/ClientDataContext';
 import {
   useInquiries,
   type SupportMessage,
@@ -140,7 +140,7 @@ export function EmptyState({
 }
 export default function ClientDashboard() {
   const { user } = useAuth();
-  const { getReservationsByUserId, getPaymentsByUserId, notifications } = useData();
+  const { getReservationsByUserId, getPaymentsByUserId, notifications } = useClientData();
   const { tickets, messages, fetchTickets } = useInquiries();
 
   const userId = user?.id ?? '';

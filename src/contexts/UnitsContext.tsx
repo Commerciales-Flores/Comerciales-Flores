@@ -5,6 +5,7 @@ import {
   useMemo,
   useState,
   useCallback,
+  useRef,
   type ReactNode,
 } from 'react';
 import supabase from '../supabaseClient';
@@ -86,6 +87,15 @@ interface UnitsContextType {
 
 const UnitsContext = createContext<UnitsContextType | undefined>(undefined);
 
+type SpecificUnitRow = {
+  unit_id: string;
+  title: string | null;
+  description: string | null;
+  policies: string | null;
+  features: string[] | null;
+  capacity?: number | null;
+};
+
 function getSafeLocation(location?: string) {
   return LOCATION_OPTIONS.includes(location || '') ? location! : DEFAULT_LOCATION;
 }
@@ -118,6 +128,23 @@ function mapParkingSlotRow(row: any): ParkingSlot {
   };
 }
 
+function toUnitMap<T extends { unit_id: string }>(rows: T[] | null | undefined) {
+  return new Map((rows ?? []).map((row) => [row.unit_id, row]));
+}
+
+function toOccupancyMap(rows: any[] | null | undefined) {
+  const map = new Map<string, any>();
+
+  for (const row of rows ?? []) {
+    const slotId = row?.details?.slotId;
+    if (slotId) {
+      map.set(slotId, row);
+    }
+  }
+
+  return map;
+}
+
 async function removeStorageFile(bucket: string, path?: string | null) {
   if (!path) return;
   const { error } = await supabase.storage.from(bucket).remove([path]);
@@ -145,14 +172,9 @@ function sortParkingSlots(items: ParkingSlot[]) {
   return [...items].sort((a, b) => a.slotCode.localeCompare(b.slotCode));
 }
 
-type SpecificUnitRow = {
-  unit_id: string;
-  title: string | null;
-  description: string | null;
-  policies: string | null;
-  features: string[] | null;
-  capacity?: number | null;
-};
+function extractSlotId(row: any): string | null {
+  return row?.details?.slotId ?? null;
+}
 
 export function UnitsProvider({ children }: { children: ReactNode }) {
   const [units, setUnits] = useState<Unit[]>([]);
@@ -160,90 +182,80 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
   const [loadingUnits, setLoadingUnits] = useState(false);
   const [unitsVersion, setUnitsVersion] = useState(0);
 
+  const parkingSlotsRef = useRef<ParkingSlot[]>([]);
+  const refreshTimersRef = useRef<Map<string, number>>(new Map());
+
   const { addAuditLog } = useRecords();
   const { user } = useAuth();
 
+  useEffect(() => {
+    parkingSlotsRef.current = parkingSlots;
+  }, [parkingSlots]);
+
   const mapBaseUnitRow = useCallback((base: any): Unit => {
-  const resolvedType = base.unit_type as UnitType;
+    const resolvedType = base.unit_type as UnitType;
 
-  const imagePaths: string[] = Array.isArray(base.images)
-    ? base.images.filter((path: unknown): path is string => typeof path === 'string' && path.length > 0)
-    : [];
+    const imagePaths: string[] = Array.isArray(base.images)
+      ? base.images.filter(
+          (path: unknown): path is string =>
+            typeof path === 'string' && path.length > 0
+        )
+      : [];
 
-  const videoPaths: string[] = Array.isArray(base.videos)
-    ? base.videos.filter((path: unknown): path is string => typeof path === 'string' && path.length > 0)
-    : [];
+    const videoPaths: string[] = Array.isArray(base.videos)
+      ? base.videos.filter(
+          (path: unknown): path is string =>
+            typeof path === 'string' && path.length > 0
+        )
+      : [];
 
-  return {
-    id: base.unit_id,
-    propertyId: base.public_id || getPublicId(resolvedType, base.unit_id),
-    name: base.title || '',
-    type: resolvedType,
-    description: '',
-    price: Number(base.price || 0),
-    imagePaths,
-    images:
-      imagePaths.length > 0
-        ? imagePaths.map((path: string) => getPublicImageUrl(path))
-        : [DEFAULT_UNIT_IMAGE],
-    videoPaths,
-    videos: videoPaths.map((path: string) => getPublicImageUrl(path)),
-    policies: '',
-    capacity: undefined,
-    available: Boolean(base.is_available),
-    features: [],
-    location: base.location || DEFAULT_LOCATION,
-    property: null,
-    minimumPaymentPercent: base.minimum_payment_percent ?? null,
-    contractFilePath: base.contract_file_path ?? null,
-    contractFileName: base.contract_file_name ?? null,
-  };
-}, []);
+    return {
+      id: base.unit_id,
+      propertyId: base.public_id || getPublicId(resolvedType, base.unit_id),
+      name: base.title || '',
+      type: resolvedType,
+      description: '',
+      price: Number(base.price || 0),
+      imagePaths,
+      images:
+        imagePaths.length > 0
+          ? imagePaths.map((path: string) => getPublicImageUrl(path))
+          : [DEFAULT_UNIT_IMAGE],
+      videoPaths,
+      videos: videoPaths.map((path: string) => getPublicImageUrl(path)),
+      policies: '',
+      capacity: undefined,
+      available: Boolean(base.is_available),
+      features: [],
+      location: base.location || DEFAULT_LOCATION,
+      property: null,
+      minimumPaymentPercent: base.minimum_payment_percent ?? null,
+      contractFilePath: base.contract_file_path ?? null,
+      contractFileName: base.contract_file_name ?? null,
+    };
+  }, []);
 
-  const refreshUnits = useCallback(async () => {
-    setLoadingUnits(true);
+  const refreshParkingSlotsForUnit = useCallback(async (unitId: string) => {
+    const { data: slotRows, error: slotsError } = await supabase
+      .from('parking_slots')
+      .select('slot_id, unit_id, slot_code, label, status, vehicle_type, image_url, notes')
+      .eq('unit_id', unitId)
+      .order('slot_code', { ascending: true });
 
-    try {
-      const { data: baseUnits, error: baseError } = await supabase
-        .from('units')
-        .select(`
-          unit_id,
-          public_id,
-          unit_type,
-          title,
-          is_available,
-          price,
-          location,
-          images,
-          videos,
-          minimum_payment_percent,
-          contract_file_path,
-          contract_file_name
-        `);
+    if (slotsError) {
+      console.error('Error loading parking slots for unit:', slotsError);
+      return;
+    }
 
-      if (baseError) throw baseError;
+    const slotIds = (slotRows ?? []).map((slot) => slot.slot_id);
+    let occupancyRows: any[] = [];
 
-      const [rentalRes, functionRes, parkingRes, parkingSlotsRes] = await Promise.all([
-        supabase.from('rental_units').select('unit_id, title, description, policies, features'),
-        supabase.from('function_units').select('unit_id, title, description, policies, features, capacity'),
-        supabase.from('parking_units').select('unit_id, title, description, policies, features'),
-        supabase
-          .from('parking_slots')
-          .select('slot_id, unit_id, slot_code, label, status, vehicle_type, image_url, notes')
-          .order('slot_code', { ascending: true }),
-      ]);
+    if (slotIds.length > 0) {
+      const occupancyFilter = slotIds
+        .map((slotId) => `details->>slotId.eq.${slotId}`)
+        .join(',');
 
-      if (rentalRes.error) console.error('rental_units error:', rentalRes.error);
-      if (functionRes.error) console.error('function_units error:', functionRes.error);
-      if (parkingRes.error) console.error('parking_units error:', parkingRes.error);
-      if (parkingSlotsRes.error) console.error('parking_slots error:', parkingSlotsRes.error);
-
-      const rentalUnits = rentalRes.data ?? [];
-      const functionUnits = functionRes.data ?? [];
-      const parkingUnits = parkingRes.data ?? [];
-      const slotRows = parkingSlotsRes.data ?? [];
-
-      const { data: activeParking } = await supabase
+      const { data, error: occupancyError } = await supabase
         .from('reservations')
         .select(`
           user_id,
@@ -256,31 +268,260 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
           )
         `)
         .eq('unit_type', 'parking_slot')
-        .in('status', ['approved', 'confirmed']);
+        .in('status', ['approved', 'confirmed'])
+        .or(occupancyFilter);
 
-      const combinedUnits: Unit[] = (baseUnits ?? []).map((base) => {
-        let specific:
-          | {
-              unit_id: string;
-              title: string | null;
-              description: string | null;
-              policies: string | null;
-              features: string[] | null;
-              capacity?: number | null;
-            }
-          | null = null;
+      if (occupancyError) {
+        console.error('Error loading parking occupancy:', occupancyError);
+      } else {
+        occupancyRows = data ?? [];
+      }
+    }
 
-        if (base.unit_type === 'rental_space') {
-          specific = rentalUnits.find((item) => item.unit_id === base.unit_id) ?? null;
-        } else if (base.unit_type === 'function_hall') {
-          specific = functionUnits.find((item) => item.unit_id === base.unit_id) ?? null;
-        } else if (base.unit_type === 'parking_slot') {
-          specific = parkingUnits.find((item) => item.unit_id === base.unit_id) ?? null;
-        }
+    const occupancyMap = toOccupancyMap(occupancyRows);
 
+    const mappedSlots = (slotRows ?? []).map((slot) => {
+      const occupancy = occupancyMap.get(slot.slot_id);
+      const userInfo = occupancy?.users?.[0];
+
+      return {
+        ...mapParkingSlotRow(slot),
+        isOccupied: Boolean(occupancy),
+        occupiedByUserId: occupancy?.user_id ?? null,
+        occupiedByName: userInfo
+          ? `${userInfo.first_name ?? ''} ${userInfo.last_name ?? ''}`.trim()
+          : null,
+        occupiedByPublicId: userInfo?.public_id ?? null,
+        occupiedSince: occupancy?.start_date ?? null,
+      };
+    });
+
+    setParkingSlots((prev) => {
+      const others = prev.filter((slot) => slot.unitId !== unitId);
+      return sortParkingSlots([...others, ...mappedSlots]);
+    });
+  }, []);
+
+  const queueParkingUnitRefresh = useCallback(
+    (unitId: string) => {
+      const existing = refreshTimersRef.current.get(unitId);
+      if (existing) {
+        window.clearTimeout(existing);
+      }
+
+      const timeoutId = window.setTimeout(async () => {
+        refreshTimersRef.current.delete(unitId);
+        await refreshParkingSlotsForUnit(unitId);
+        setUnitsVersion((prev) => prev + 1);
+      }, 150);
+
+      refreshTimersRef.current.set(unitId, timeoutId);
+    },
+    [refreshParkingSlotsForUnit]
+  );
+
+  const refreshSpecificUnitDetails = useCallback(async (unitId: string) => {
+    const { data: base, error: baseError } = await supabase
+      .from('units')
+      .select(`
+        unit_id,
+        public_id,
+        unit_type,
+        title,
+        is_available,
+        price,
+        location,
+        images,
+        videos,
+        minimum_payment_percent,
+        contract_file_path,
+        contract_file_name
+      `)
+      .eq('unit_id', unitId)
+      .maybeSingle();
+
+    if (baseError) {
+      console.error('Error loading base unit:', baseError);
+      return;
+    }
+
+    if (!base) {
+      setUnits((prev) => prev.filter((unit) => unit.id !== unitId));
+      setParkingSlots((prev) => prev.filter((slot) => slot.unitId !== unitId));
+      return;
+    }
+
+    const resolvedType = base.unit_type as UnitType;
+    const specificTable = getUnitConfig(resolvedType).table;
+
+    let specificRow: SpecificUnitRow | null = null;
+
+    if (resolvedType === 'function_hall') {
+      const { data, error } = await supabase
+        .from(specificTable)
+        .select('unit_id, title, description, policies, features, capacity')
+        .eq('unit_id', unitId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error loading specific unit details:', error);
+      } else {
+        specificRow = (data as SpecificUnitRow | null) ?? null;
+      }
+    } else {
+      const { data, error } = await supabase
+        .from(specificTable)
+        .select('unit_id, title, description, policies, features')
+        .eq('unit_id', unitId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error loading specific unit details:', error);
+      } else {
+        specificRow = (data as SpecificUnitRow | null) ?? null;
+      }
+    }
+
+    const imagePaths: string[] = Array.isArray(base.images)
+      ? base.images.filter(
+          (path: unknown): path is string =>
+            typeof path === 'string' && path.length > 0
+        )
+      : [];
+
+    const videoPaths: string[] = Array.isArray(base.videos)
+      ? base.videos.filter(
+          (path: unknown): path is string =>
+            typeof path === 'string' && path.length > 0
+        )
+      : [];
+
+    const nextUnit: Unit = {
+      id: base.unit_id,
+      propertyId: base.public_id || getPublicId(resolvedType, base.unit_id),
+      name: base.title || specificRow?.title || '',
+      type: resolvedType,
+      description: specificRow?.description || '',
+      price: Number(base.price || 0),
+      imagePaths,
+      images:
+        imagePaths.length > 0
+          ? imagePaths.map((path: string) => getPublicImageUrl(path))
+          : [DEFAULT_UNIT_IMAGE],
+      videoPaths,
+      videos: videoPaths.map((path: string) => getPublicImageUrl(path)),
+      policies: specificRow?.policies || '',
+      capacity:
+        resolvedType === 'function_hall'
+          ? Number(specificRow?.capacity || 0) || undefined
+          : undefined,
+      available: Boolean(base.is_available),
+      features: Array.isArray(specificRow?.features) ? specificRow.features : [],
+      location: base.location || DEFAULT_LOCATION,
+      property: null,
+      minimumPaymentPercent: base.minimum_payment_percent ?? null,
+      contractFilePath: base.contract_file_path ?? null,
+      contractFileName: base.contract_file_name ?? null,
+    };
+
+    setUnits((prev) => {
+      const exists = prev.some((unit) => unit.id === unitId);
+      const next = exists
+        ? prev.map((unit) => (unit.id === unitId ? nextUnit : unit))
+        : [...prev, nextUnit];
+
+      return sortUnits(next);
+    });
+  }, []);
+
+  const refreshUnits = useCallback(async () => {
+    setLoadingUnits(true);
+
+    try {
+      const [
+        baseRes,
+        rentalRes,
+        functionRes,
+        parkingRes,
+        parkingSlotsRes,
+        activeParkingRes,
+      ] = await Promise.all([
+        supabase.from('units').select(`
+          unit_id,
+          public_id,
+          unit_type,
+          title,
+          is_available,
+          price,
+          location,
+          images,
+          videos,
+          minimum_payment_percent,
+          contract_file_path,
+          contract_file_name
+        `),
+        supabase.from('rental_units').select('unit_id, title, description, policies, features'),
+        supabase.from('function_units').select(
+          'unit_id, title, description, policies, features, capacity'
+        ),
+        supabase.from('parking_units').select('unit_id, title, description, policies, features'),
+        supabase
+          .from('parking_slots')
+          .select('slot_id, unit_id, slot_code, label, status, vehicle_type, image_url, notes')
+          .order('slot_code', { ascending: true }),
+        supabase
+          .from('reservations')
+          .select(`
+            user_id,
+            start_date,
+            details,
+            users (
+              first_name,
+              last_name,
+              public_id
+            )
+          `)
+          .eq('unit_type', 'parking_slot')
+          .in('status', ['approved', 'confirmed']),
+      ]);
+
+      if (baseRes.error) throw baseRes.error;
+      if (rentalRes.error) console.error('rental_units error:', rentalRes.error);
+      if (functionRes.error) console.error('function_units error:', functionRes.error);
+      if (parkingRes.error) console.error('parking_units error:', parkingRes.error);
+      if (parkingSlotsRes.error) console.error('parking_slots error:', parkingSlotsRes.error);
+      if (activeParkingRes.error) {
+        console.error('reservations occupancy error:', activeParkingRes.error);
+      }
+
+      const rentalMap = toUnitMap(rentalRes.data);
+      const functionMap = toUnitMap(functionRes.data);
+      const parkingMap = toUnitMap(parkingRes.data);
+      const occupancyBySlotId = toOccupancyMap(activeParkingRes.data);
+
+      const combinedUnits: Unit[] = (baseRes.data ?? []).map((base) => {
         const resolvedType = base.unit_type as UnitType;
-        const imagePaths = Array.isArray(base.images) ? base.images.filter(Boolean) : [];
-        const videoPaths = Array.isArray(base.videos) ? base.videos.filter(Boolean) : [];
+
+        const specific =
+          resolvedType === 'rental_space'
+            ? rentalMap.get(base.unit_id)
+            : resolvedType === 'function_hall'
+              ? functionMap.get(base.unit_id)
+              : parkingMap.get(base.unit_id);
+
+        const imagePaths: string[] = Array.isArray(base.images)
+          ? base.images.filter(
+              (path: unknown): path is string =>
+                typeof path === 'string' && path.length > 0
+            )
+          : [];
+
+        const videoPaths: string[] = Array.isArray(base.videos)
+          ? base.videos.filter(
+              (path: unknown): path is string =>
+                typeof path === 'string' && path.length > 0
+            )
+          : [];
 
         return {
           id: base.unit_id,
@@ -299,7 +540,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
           policies: specific?.policies || '',
           capacity:
             resolvedType === 'function_hall'
-              ? Number(specific?.capacity || 0) || undefined
+              ? Number((specific as SpecificUnitRow | undefined)?.capacity || 0) || undefined
               : undefined,
           available: Boolean(base.is_available),
           features: Array.isArray(specific?.features) ? specific.features : [],
@@ -311,15 +552,13 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         };
       });
 
-      setUnits(combinedUnits);
-
-      const mappedSlots = slotRows.map((slot) => {
-        const occupancy = activeParking?.find((r) => r.details?.slotId === slot.slot_id);
+      const mappedSlots: ParkingSlot[] = (parkingSlotsRes.data ?? []).map((slot) => {
+        const occupancy = occupancyBySlotId.get(slot.slot_id);
         const userInfo = occupancy?.users?.[0];
 
         return {
           ...mapParkingSlotRow(slot),
-          isOccupied: !!occupancy,
+          isOccupied: Boolean(occupancy),
           occupiedByUserId: occupancy?.user_id ?? null,
           occupiedByName: userInfo
             ? `${userInfo.first_name ?? ''} ${userInfo.last_name ?? ''}`.trim()
@@ -329,7 +568,8 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         };
       });
 
-      setParkingSlots(mappedSlots);
+      setUnits(sortUnits(combinedUnits));
+      setParkingSlots(sortParkingSlots(mappedSlots));
     } catch (error) {
       console.error('Error loading base units from Supabase:', error);
       setUnits([]);
@@ -339,330 +579,167 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const refreshSpecificUnitDetails = useCallback(async (unitId: string) => {
-  const { data: base, error: baseError } = await supabase
-    .from('units')
-    .select(`
-      unit_id,
-      public_id,
-      unit_type,
-      title,
-      is_available,
-      price,
-      location,
-      images,
-      videos,
-      minimum_payment_percent,
-      contract_file_path,
-      contract_file_name
-    `)
-    .eq('unit_id', unitId)
-    .maybeSingle();
-
-  if (baseError) {
-    console.error('Error loading base unit:', baseError);
-    return;
-  }
-
-  if (!base) {
-    setUnits((prev) => prev.filter((unit) => unit.id !== unitId));
-    setParkingSlots((prev) => prev.filter((slot) => slot.unitId !== unitId));
-    return;
-  }
-
-  const resolvedType = base.unit_type as UnitType;
-  const specificTable = getUnitConfig(resolvedType).table;
-
-  let specificRow: SpecificUnitRow | null = null;
-
-  if (resolvedType === 'function_hall') {
-    const { data, error } = await supabase
-      .from(specificTable)
-      .select('unit_id, title, description, policies, features, capacity')
-      .eq('unit_id', unitId)
-      .maybeSingle();
-
-    if (error) {
-      console.error('Error loading specific unit details:', error);
-    } else {
-      specificRow = (data as SpecificUnitRow | null) ?? null;
-    }
-  } else {
-    const { data, error } = await supabase
-      .from(specificTable)
-      .select('unit_id, title, description, policies, features')
-      .eq('unit_id', unitId)
-      .maybeSingle();
-
-    if (error) {
-      console.error('Error loading specific unit details:', error);
-    } else {
-      specificRow = (data as SpecificUnitRow | null) ?? null;
-    }
-  }
-
-  const imagePaths: string[] = Array.isArray(base.images)
-    ? base.images.filter((path: unknown): path is string => typeof path === 'string' && path.length > 0)
-    : [];
-
-  const videoPaths: string[] = Array.isArray(base.videos)
-    ? base.videos.filter((path: unknown): path is string => typeof path === 'string' && path.length > 0)
-    : [];
-
-  const nextUnit: Unit = {
-    id: base.unit_id,
-    propertyId: base.public_id || getPublicId(resolvedType, base.unit_id),
-    name: base.title || specificRow?.title || '',
-    type: resolvedType,
-    description: specificRow?.description || '',
-    price: Number(base.price || 0),
-    imagePaths,
-    images:
-      imagePaths.length > 0
-        ? imagePaths.map((path: string) => getPublicImageUrl(path))
-        : [DEFAULT_UNIT_IMAGE],
-    videoPaths,
-    videos: videoPaths.map((path: string) => getPublicImageUrl(path)),
-    policies: specificRow?.policies || '',
-    capacity:
-      resolvedType === 'function_hall'
-        ? Number(specificRow?.capacity || 0) || undefined
-        : undefined,
-    available: Boolean(base.is_available),
-    features: Array.isArray(specificRow?.features) ? specificRow.features : [],
-    location: base.location || DEFAULT_LOCATION,
-    property: null,
-    minimumPaymentPercent: base.minimum_payment_percent ?? null,
-    contractFilePath: base.contract_file_path ?? null,
-    contractFileName: base.contract_file_name ?? null,
-  };
-
-  setUnits((prev) => {
-    const exists = prev.some((unit) => unit.id === unitId);
-    const next = exists
-      ? prev.map((unit) => (unit.id === unitId ? nextUnit : unit))
-      : [...prev, nextUnit];
-
-    return sortUnits(next);
-  });
-}, []);
-
-const refreshParkingSlotsForUnit = useCallback(async (unitId: string) => {
-  const { data: slotRows, error: slotsError } = await supabase
-    .from('parking_slots')
-    .select('slot_id, unit_id, slot_code, label, status, vehicle_type, image_url, notes')
-    .eq('unit_id', unitId)
-    .order('slot_code', { ascending: true });
-
-  if (slotsError) {
-    console.error('Error loading parking slots for unit:', slotsError);
-    return;
-  }
-
-  const { data: activeParking, error: occupancyError } = await supabase
-    .from('reservations')
-    .select(`
-      user_id,
-      start_date,
-      details,
-      users (
-        first_name,
-        last_name,
-        public_id
-      )
-    `)
-    .eq('unit_type', 'parking_slot')
-    .in('status', ['approved', 'confirmed']);
-
-  if (occupancyError) {
-    console.error('Error loading parking occupancy:', occupancyError);
-  }
-
-  const mappedSlots = (slotRows ?? []).map((slot) => {
-    const occupancy = activeParking?.find((r) => r.details?.slotId === slot.slot_id);
-    const userInfo = occupancy?.users?.[0];
-
-    return {
-      ...mapParkingSlotRow(slot),
-      isOccupied: !!occupancy,
-      occupiedByUserId: occupancy?.user_id ?? null,
-      occupiedByName: userInfo
-        ? `${userInfo.first_name ?? ''} ${userInfo.last_name ?? ''}`.trim()
-        : null,
-      occupiedByPublicId: userInfo?.public_id ?? null,
-      occupiedSince: occupancy?.start_date ?? null,
-    };
-  });
-
-  setParkingSlots((prev) => {
-    const others = prev.filter((slot) => slot.unitId !== unitId);
-    return sortParkingSlots([...others, ...mappedSlots]);
-  });
-}, []);
-
   useEffect(() => {
     void refreshUnits();
   }, [refreshUnits]);
 
   useEffect(() => {
-  const channel = supabase
-    .channel('units-realtime')
+    const channel = supabase
+      .channel('units-realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'units' },
+        async (payload) => {
+          const baseUnit = mapBaseUnitRow(payload.new);
 
-    .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'units' },
-      async (payload) => {
-        const baseUnit = mapBaseUnitRow(payload.new);
+          setUnits((prev) => {
+            if (prev.some((unit) => unit.id === baseUnit.id)) return prev;
+            return sortUnits([...prev, baseUnit]);
+          });
 
-        setUnits((prev) => {
-          if (prev.some((unit) => unit.id === baseUnit.id)) return prev;
-          return sortUnits([...prev, baseUnit]);
-        });
+          await refreshSpecificUnitDetails(baseUnit.id);
 
-        await refreshSpecificUnitDetails(baseUnit.id);
+          if (baseUnit.type === 'parking_slot') {
+            queueParkingUnitRefresh(baseUnit.id);
+          }
 
-        if (baseUnit.type === 'parking_slot') {
-          await refreshParkingSlotsForUnit(baseUnit.id);
+          setUnitsVersion((prev) => prev + 1);
         }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'units' },
+        async (payload) => {
+          const updatedBase = mapBaseUnitRow(payload.new);
 
-        setUnitsVersion((prev) => prev + 1);
-      }
-    )
+          setUnits((prev) =>
+            sortUnits(
+              prev.map((unit) => (unit.id === updatedBase.id ? { ...unit, ...updatedBase } : unit))
+            )
+          );
 
-    .on(
-      'postgres_changes',
-      { event: 'UPDATE', schema: 'public', table: 'units' },
-      async (payload) => {
-        const updatedBase = mapBaseUnitRow(payload.new);
+          await refreshSpecificUnitDetails(updatedBase.id);
 
-        setUnits((prev) =>
-          sortUnits(
-            prev.map((unit) => (unit.id === updatedBase.id ? { ...unit, ...updatedBase } : unit))
-          )
-        );
+          if (updatedBase.type === 'parking_slot') {
+            queueParkingUnitRefresh(updatedBase.id);
+          }
 
-        await refreshSpecificUnitDetails(updatedBase.id);
-
-        if (updatedBase.type === 'parking_slot') {
-          await refreshParkingSlotsForUnit(updatedBase.id);
+          setUnitsVersion((prev) => prev + 1);
         }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'units' },
+        (payload) => {
+          const deletedId = payload.old.unit_id as string | undefined;
+          if (!deletedId) return;
 
-        setUnitsVersion((prev) => prev + 1);
-      }
-    )
+          setUnits((prev) => prev.filter((unit) => unit.id !== deletedId));
+          setParkingSlots((prev) => prev.filter((slot) => slot.unitId !== deletedId));
+          setUnitsVersion((prev) => prev + 1);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rental_units' },
+        async (payload) => {
+          const nextRow = payload.new as { unit_id?: string } | null;
+          const oldRow = payload.old as { unit_id?: string } | null;
+          const unitId = nextRow?.unit_id ?? oldRow?.unit_id;
 
-    .on(
-      'postgres_changes',
-      { event: 'DELETE', schema: 'public', table: 'units' },
-      (payload) => {
-        const deletedId = payload.old.unit_id as string | undefined;
-        if (!deletedId) return;
+          if (!unitId) return;
 
-        setUnits((prev) => prev.filter((unit) => unit.id !== deletedId));
-        setParkingSlots((prev) => prev.filter((slot) => slot.unitId !== deletedId));
-        setUnitsVersion((prev) => prev + 1);
-      }
-    )
+          await refreshSpecificUnitDetails(unitId);
+          setUnitsVersion((prev) => prev + 1);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'parking_units' },
+        async (payload) => {
+          const nextRow = payload.new as { unit_id?: string } | null;
+          const oldRow = payload.old as { unit_id?: string } | null;
+          const unitId = nextRow?.unit_id ?? oldRow?.unit_id;
 
-    .on(
-  'postgres_changes',
-  { event: '*', schema: 'public', table: 'rental_units' },
-  async (payload) => {
-    const nextRow = payload.new as { unit_id?: string } | null;
-    const oldRow = payload.old as { unit_id?: string } | null;
-    const unitId = nextRow?.unit_id ?? oldRow?.unit_id;
+          if (!unitId) return;
 
-    if (!unitId) return;
+          await refreshSpecificUnitDetails(unitId);
+          queueParkingUnitRefresh(unitId);
+          setUnitsVersion((prev) => prev + 1);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'function_units' },
+        async (payload) => {
+          const nextRow = payload.new as { unit_id?: string } | null;
+          const oldRow = payload.old as { unit_id?: string } | null;
+          const unitId = nextRow?.unit_id ?? oldRow?.unit_id;
 
-    await refreshSpecificUnitDetails(unitId);
-    setUnitsVersion((prev) => prev + 1);
-  }
-)
+          if (!unitId) return;
 
-.on(
-  'postgres_changes',
-  { event: '*', schema: 'public', table: 'parking_units' },
-  async (payload) => {
-    const nextRow = payload.new as { unit_id?: string } | null;
-    const oldRow = payload.old as { unit_id?: string } | null;
-    const unitId = nextRow?.unit_id ?? oldRow?.unit_id;
+          await refreshSpecificUnitDetails(unitId);
+          setUnitsVersion((prev) => prev + 1);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'parking_slots' },
+        async (payload) => {
+          const nextRow = payload.new as { unit_id?: string } | null;
+          const oldRow = payload.old as { unit_id?: string } | null;
+          const unitId = nextRow?.unit_id ?? oldRow?.unit_id;
 
-    if (!unitId) return;
+          if (!unitId) return;
 
-    await refreshSpecificUnitDetails(unitId);
-    await refreshParkingSlotsForUnit(unitId);
-    setUnitsVersion((prev) => prev + 1);
-  }
-)
+          queueParkingUnitRefresh(unitId);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'reservations' },
+        async (payload) => {
+          const nextRow = payload.new as any;
+          const oldRow = payload.old as any;
+          const unitType = nextRow?.unit_type ?? oldRow?.unit_type;
 
-.on(
-  'postgres_changes',
-  { event: '*', schema: 'public', table: 'function_units' },
-  async (payload) => {
-    const nextRow = payload.new as { unit_id?: string } | null;
-    const oldRow = payload.old as { unit_id?: string } | null;
-    const unitId = nextRow?.unit_id ?? oldRow?.unit_id;
+          if (unitType !== 'parking_slot') return;
 
-    if (!unitId) return;
+          const nextSlotId = extractSlotId(nextRow);
+          const oldSlotId = extractSlotId(oldRow);
+          const currentSlots = parkingSlotsRef.current;
 
-    await refreshSpecificUnitDetails(unitId);
-    setUnitsVersion((prev) => prev + 1);
-  }
-)
+          const affectedUnitIds = new Set<string>();
 
-    .on(
-  'postgres_changes',
-  { event: '*', schema: 'public', table: 'parking_slots' },
-  async (payload) => {
-    const nextRow = payload.new as { unit_id?: string } | null;
-    const oldRow = payload.old as { unit_id?: string } | null;
-    const unitId = nextRow?.unit_id ?? oldRow?.unit_id;
+          if (nextSlotId) {
+            const nextUnitId = currentSlots.find((slot) => slot.id === nextSlotId)?.unitId;
+            if (nextUnitId) affectedUnitIds.add(nextUnitId);
+          }
 
-    if (!unitId) return;
+          if (oldSlotId) {
+            const oldUnitId = currentSlots.find((slot) => slot.id === oldSlotId)?.unitId;
+            if (oldUnitId) affectedUnitIds.add(oldUnitId);
+          }
 
-    await refreshParkingSlotsForUnit(unitId);
-    setUnitsVersion((prev) => prev + 1);
-  }
-)
+          affectedUnitIds.forEach((unitId) => queueParkingUnitRefresh(unitId));
+        }
+      )
+      .subscribe((status) => {
+        if (import.meta.env.DEV) {
+          console.log('Units realtime status:', status);
+        }
+      });
 
-    .on(
-  'postgres_changes',
-  { event: '*', schema: 'public', table: 'reservations' },
-  async (payload) => {
-    const nextRow = payload.new as { unit_type?: string } | null;
-    const oldRow = payload.old as { unit_type?: string } | null;
-    const unitType = nextRow?.unit_type ?? oldRow?.unit_type;
-
-    if (unitType !== 'parking_slot') return;
-
-    const { data: parkingUnitIds, error } = await supabase
-      .from('units')
-      .select('unit_id')
-      .eq('unit_type', 'parking_slot');
-
-    if (error) {
-      console.error('Error loading parking unit ids for occupancy refresh:', error);
-      return;
-    }
-
-    for (const row of parkingUnitIds ?? []) {
-      await refreshParkingSlotsForUnit(row.unit_id);
-    }
-
-    setUnitsVersion((prev) => prev + 1);
-  }
-)
-
-    .subscribe((status) => {
-      if (import.meta.env.DEV) {
-        console.log('Units realtime status:', status);
-      }
-    });
-
-  return () => {
-    void supabase.removeChannel(channel);
-  };
-}, [mapBaseUnitRow, refreshParkingSlotsForUnit, refreshSpecificUnitDetails]);
+    return () => {
+      refreshTimersRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      refreshTimersRef.current.clear();
+      void supabase.removeChannel(channel);
+    };
+  }, [
+    mapBaseUnitRow,
+    queueParkingUnitRefresh,
+    refreshSpecificUnitDetails,
+  ]);
 
   const uploadUnitImage = useCallback(async (file: File): Promise<string | null> => {
     try {
@@ -1059,7 +1136,10 @@ const refreshParkingSlotsForUnit = useCallback(async (unitId: string) => {
           try {
             await removeStorageFiles(PROPERTY_MEDIA_BUCKET, slotImagesToDelete);
           } catch (storageError) {
-            console.error('Failed to remove parking slot images during unit deletion:', storageError);
+            console.error(
+              'Failed to remove parking slot images during unit deletion:',
+              storageError
+            );
           }
         }
 
@@ -1154,7 +1234,7 @@ const refreshParkingSlotsForUnit = useCallback(async (unitId: string) => {
         throw error;
       }
     },
-    [addAuditLog, refreshUnits, user?.id]
+    [addAuditLog, user?.id]
   );
 
   const updateParkingSlot = useCallback(
@@ -1226,7 +1306,7 @@ const refreshParkingSlotsForUnit = useCallback(async (unitId: string) => {
         throw error;
       }
     },
-    [addAuditLog, parkingSlots, refreshUnits, user?.id]
+    [addAuditLog, parkingSlots, user?.id]
   );
 
   const deleteParkingSlot = useCallback(
@@ -1307,8 +1387,8 @@ const refreshParkingSlotsForUnit = useCallback(async (unitId: string) => {
       uploadUnitContract,
       getUnitById,
       refreshUnits,
-      getParkingSlotById,
       getParkingSlotsByUnit,
+      getParkingSlotById,
       addParkingSlot,
       updateParkingSlot,
       deleteParkingSlot,

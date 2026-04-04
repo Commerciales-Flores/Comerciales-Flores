@@ -26,7 +26,8 @@ import {
   Cell,
 } from 'recharts';
 import { useReactToPrint } from 'react-to-print';
-import { useData, type UnitType } from '../../contexts/DataContext';
+import { useAdminData } from '../../contexts/AdminDataContext';
+import type { UnitType } from '../../data/types';
 import { formatCurrency } from '../../utils/currency';
 import { getUnitTypeLabel } from '../../utils/propertyHelpers';
 import EmptyState from '../../components/common/EmptyState';
@@ -44,7 +45,7 @@ type ChartPoint = {
 };
 
 export default function AdminAnalytics() {
-  const { reservations, payments, units } = useData();
+  const { reservations, payments, units } = useAdminData();
   const [granularity, setGranularity] = useState<Granularity>('monthly');
   const printRef = useRef<HTMLDivElement>(null);
 

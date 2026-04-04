@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { useData } from '../../contexts/DataContext';
+import { useAdminData } from '../../contexts/AdminDataContext';
 import { useRecords } from '../../contexts/RecordsContext';
 import { useUsers } from '../../contexts/UsersContext';
 import { DataTable, DataCell } from '../../components/common/DataTable';
@@ -316,7 +316,7 @@ function MobileFilterMenu({
 }
 
 export default function AdminAudit() {
-  const { getUserById, getUnitById } = useData();
+  const { getUserById, getUnitById } = useAdminData();
   const { fetchAuditLogsPage } = useRecords();
 
   const [rows, setRows] = useState<AuditRow[]>([]);

@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, MessageSquare, Star, TrendingUp, AlertTriangle } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useData } from '../../contexts/DataContext';
+import { useAdminData } from '../../contexts/AdminDataContext';
 import { useReviews } from '../../contexts/ReviewsContext';
 import EmptyState from '../../components/common/EmptyState';
 import ReviewCard from '../../components/reviews/ReviewCard';
 
 export default function AdminReview() {
-  const { units, users } = useData();
+  const { units, users } = useAdminData();
   const { reviews, loading } = useReviews();
 
   const [showAllReviews, setShowAllReviews] = useState(true);

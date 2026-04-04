@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { MessageSquare, Star, PenSquare, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../../contexts/AuthContext';
-import { useData } from '../../contexts/DataContext';
+import { useClientData } from '../../contexts/ClientDataContext';
 import { useReviews } from '../../contexts/ReviewsContext';
 import ReviewModal from '../../components/reviews/ReviewModal';
 import EmptyState from '../../components/common/EmptyState';
@@ -48,7 +48,7 @@ function ReviewStatCard({
 
 export default function Review() {
   const { user } = useAuth();
-  const { getReservationsByUserId, units } = useData();
+  const { getReservationsByUserId, units } = useClientData();
   const { reviews, loading, getReviewsByUserId } = useReviews();
 
   const [showSubmitted, setShowSubmitted] = useState(true);

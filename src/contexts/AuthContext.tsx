@@ -5,6 +5,7 @@ import {
   useEffect,
   useCallback,
   useRef,
+  useMemo,
 } from 'react';
 import type { ReactNode } from 'react';
 import { useIndicator } from './IndicatorContext';
@@ -224,6 +225,28 @@ const mapProfileToUser = (data: any): User => ({
   createdAt: data.created_at ?? undefined,
 });
 
+const USER_SELECT = `
+    user_id,
+    public_id,
+    email,
+    first_name,
+    last_name,
+    phone,
+    role,
+    address,
+    formatted_address,
+    latitude,
+    longitude,
+    is_active,
+    profile_picture_url,
+    last_login,
+    phone_verified,
+    phone_verified_at,
+    address_confirmed,
+    address_confirmed_at,
+    created_at
+  `;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
 
@@ -254,6 +277,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const oauthAuditPendingRef = useRef<string | null>(null);
   const activeUserIdRef = useRef<string | null>(null);
   const pendingDeviceVerificationRef = useRef(false); 
+  const userRef = useRef<User | null>(null);
 
   const warningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const logoutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -278,27 +302,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.removeItem(OAUTH_LOGIN_REQUEST_KEY);
   };
   
-  const USER_SELECT = `
-    user_id,
-    public_id,
-    email,
-    first_name,
-    last_name,
-    phone,
-    role,
-    address,
-    formatted_address,
-    latitude,
-    longitude,
-    is_active,
-    profile_picture_url,
-    last_login,
-    phone_verified,
-    phone_verified_at,
-    address_confirmed,
-    address_confirmed_at,
-    created_at
-  `;
 
   const persistUserSession = useCallback((profile: User) => {
     setUser(profile);
@@ -647,6 +650,10 @@ if (oauthPending) {
   }, [clearUserSession, fetchOrCreateUserProfile, persistUserSession]);
 
   useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
   const handleStorage = (event: StorageEvent) => {
     if (event.key !== LOGOUT_BROADCAST_KEY || !event.newValue) return;
 
@@ -940,19 +947,12 @@ const login = useCallback(
       clearAuthNotice();
       const normalizedEmail = normalizeEmail(email);
 
-      // ✅ 1. Turnstile first (keep security)
       const isTurnstileValid = await verifyTurnstileToken(options?.turnstileToken);
 
       if (!isTurnstileValid) {
         return { success: false, error: 'verification_failed' };
       }
 
-
-if (!isTurnstileValid) {
-  return { success: false, error: 'verification_failed' };
-}
-
-      // ✅ 2. Lock check
       const { data: lockData } = await supabase.rpc('check_login_lock', {
         p_email: normalizedEmail,
       });
@@ -967,7 +967,6 @@ if (!isTurnstileValid) {
 
       pendingDeviceVerificationRef.current = true;
 
-      // ✅ 3. SIGN IN
       const { data, error } = await supabase.auth.signInWithPassword({
         email: normalizedEmail,
         password,
@@ -991,7 +990,6 @@ if (!isTurnstileValid) {
         return { success: false, error: 'device_check_failed' };
       }
 
-      // ✅ 4. DEVICE CHECK FIRST (CRITICAL FIX)
       const fingerprint = getDeviceFingerprint();
 
       const response = await fetch(
@@ -1015,16 +1013,16 @@ if (!isTurnstileValid) {
 
       try {
         deviceCheck = await response.json();
-      } catch {}
+      } catch {
+        deviceCheck = null;
+      }
 
       if (!response.ok) {
         pendingDeviceVerificationRef.current = false;
         await supabase.auth.signOut();
-
         return { success: false, error: 'device_check_failed' };
       }
 
-      // ❗ STOP HERE if unverified
       if (!deviceCheck?.trusted) {
         pendingDeviceVerificationRef.current = false;
         await supabase.auth.signOut();
@@ -1037,7 +1035,6 @@ if (!isTurnstileValid) {
         };
       }
 
-      // ✅ 5. ONLY NOW fetch profile (FIXED)
       const profile = await fetchOrCreateUserProfile(data.user);
 
       if (!profile) {
@@ -1051,11 +1048,8 @@ if (!isTurnstileValid) {
       }
 
       pendingDeviceVerificationRef.current = false;
-
-      // ✅ 6. Persist session
       persistUserSession(profile);
 
-      // ✅ 7. NON-BLOCKING background tasks
       void touchLastLogin(data.user.id);
       void addAuthAuditLog({
         userId: data.user.id,
@@ -1071,7 +1065,6 @@ if (!isTurnstileValid) {
       return { success: true };
     } catch (err) {
       pendingDeviceVerificationRef.current = false;
-
       return { success: false, error: 'invalid_login' };
     } finally {
       setAuthActionPending(false);
@@ -1080,6 +1073,7 @@ if (!isTurnstileValid) {
   [
     authActionPending,
     addAuthAuditLog,
+    clearAuthNotice,
     fetchOrCreateUserProfile,
     persistUserSession,
     touchLastLogin,
@@ -1195,70 +1189,69 @@ if (!isTurnstileValid) {
   );
 
   const logout = useCallback(
-    async (
-      message?: string,
-      options?: { clearGreeting?: boolean; redirectToLogin?: boolean }
-    ) => {
-      logoutInProgressRef.current = true;
+  async (
+    message?: string,
+    options?: { clearGreeting?: boolean; redirectToLogin?: boolean }
+  ) => {
+    logoutInProgressRef.current = true;
 
-      const currentUserId = activeUserIdRef.current;
-      const currentUserEmail = user?.email;
-      const shouldClearGreeting = options?.clearGreeting ?? false;
-      const shouldRedirectToLogin = options?.redirectToLogin ?? false;
+    const currentUser = userRef.current;
+    const currentUserId = activeUserIdRef.current;
+    const currentUserEmail = currentUser?.email;
 
-      const isSessionExpiry = expiryLogoutRef.current || /expired/i.test(message ?? '');
-      const action = isSessionExpiry ? 'SESSION_EXPIRED' : 'LOGOUT';
-      const note = isSessionExpiry
-        ? 'Session expired due to inactivity'
-        : 'User logout';
+    const shouldClearGreeting = options?.clearGreeting ?? false;
+    const shouldRedirectToLogin = options?.redirectToLogin ?? false;
 
-      // Instant local clear first = smoother UX
-      clearUserSession({ clearGreeting: shouldClearGreeting });
-      setFormKey((k) => k + 1);
+    const isSessionExpiry = expiryLogoutRef.current || /expired/i.test(message ?? '');
+    const action = isSessionExpiry ? 'SESSION_EXPIRED' : 'LOGOUT';
+    const note = isSessionExpiry
+      ? 'Session expired due to inactivity'
+      : 'User logout';
 
-      // Broadcast logout to all other tabs
-      localStorage.setItem(
-        LOGOUT_BROADCAST_KEY,
-        JSON.stringify({
-          at: Date.now(),
-          clearGreeting: shouldClearGreeting,
-        })
-      );
+    clearUserSession({ clearGreeting: shouldClearGreeting });
+    setFormKey((k) => k + 1);
 
-      const isSecurity = /expired|security|ended/i.test(message ?? '');
+    localStorage.setItem(
+      LOGOUT_BROADCAST_KEY,
+      JSON.stringify({
+        at: Date.now(),
+        clearGreeting: shouldClearGreeting,
+      })
+    );
 
-      showIndicator(
-        message
-          ? `${message} at ${getFormattedTime()}`
-          : `Logout${currentUserEmail ? ` by ${currentUserEmail}` : ''} at ${getFormattedTime()}`,
-        isSecurity ? 'security' : 'logout'
-      );
+    const isSecurity = /expired|security|ended/i.test(message ?? '');
 
-      try {
-        if (currentUserId) {
-          void addAuthAuditLog({
-            userId: currentUserId,
-            action,
-            notes: note,
-          });
-        }
+    showIndicator(
+      message
+        ? `${message} at ${getFormattedTime()}`
+        : `Logout${currentUserEmail ? ` by ${currentUserEmail}` : ''} at ${getFormattedTime()}`,
+      isSecurity ? 'security' : 'logout'
+    );
 
-        await supabase.auth.signOut();
-      } catch (err) {
-        console.error('Logout failed:', err);
-      } finally {
-        logoutInProgressRef.current = false;
-        expiryLogoutRef.current = false;
-
-        if (shouldRedirectToLogin && window.location.pathname !== '/login') {
-          // still works even without react-router navigate here
-          window.history.replaceState(null, '', '/login');
-          window.dispatchEvent(new PopStateEvent('popstate'));
-        }
+    try {
+      if (currentUserId) {
+        void addAuthAuditLog({
+          userId: currentUserId,
+          action,
+          notes: note,
+        });
       }
-    },
-    [addAuthAuditLog, clearUserSession, showIndicator, user?.email]
-  );
+
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error('Logout failed:', err);
+    } finally {
+      logoutInProgressRef.current = false;
+      expiryLogoutRef.current = false;
+
+      if (shouldRedirectToLogin && window.location.pathname !== '/login') {
+        window.history.replaceState(null, '', '/login');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+    }
+  },
+  [addAuthAuditLog, clearUserSession, showIndicator]
+);
 
     useEffect(() => {
   if (!user?.id) return;
@@ -1334,7 +1327,8 @@ if (!isTurnstileValid) {
 
   const updateProfile = useCallback(
   async (userData: Partial<User>): Promise<boolean> => {
-    if (!user || authActionPending) return false;
+    const currentUser = userRef.current;
+    if (!currentUser || authActionPending) return false;
 
     setAuthActionPending(true);
 
@@ -1365,7 +1359,7 @@ if (!isTurnstileValid) {
         const { error: profileError } = await supabase
           .from('users')
           .update(dbPayload)
-          .eq('user_id', user.id);
+          .eq('user_id', currentUser.id);
 
         if (profileError) {
           console.error('Profile update failed:', profileError.message);
@@ -1374,7 +1368,7 @@ if (!isTurnstileValid) {
       }
 
       const updatedUser: User = {
-        ...user,
+        ...currentUser,
         ...(userData.firstName !== undefined
           ? { firstName: normalizeName(userData.firstName) }
           : {}),
@@ -1401,7 +1395,7 @@ if (!isTurnstileValid) {
       setAuthActionPending(false);
     }
   },
-  [authActionPending, persistUserSession, showIndicator, user]
+  [authActionPending, persistUserSession]
 );
 
   const changePassword = useCallback(
@@ -1630,8 +1624,17 @@ if (!isTurnstileValid) {
 
   const deleteAccount = useCallback(
   async (userId: string): Promise<{ success: boolean; reason?: string }> => {
+    const currentUser = userRef.current;
+
+    if (authActionPending) {
+      return {
+        success: false,
+        reason: 'Another authentication action is already in progress.',
+      };
+    }
+
     try {
-      if (!user?.id || user.id !== userId) {
+      if (!currentUser?.id || currentUser.id !== userId) {
         return {
           success: false,
           reason: 'You are not authorized to delete this account.',
@@ -1688,34 +1691,57 @@ if (!isTurnstileValid) {
       };
     }
   },
-  [user]
+  [authActionPending]
+);
+
+const authValue = useMemo(
+  () => ({
+    user,
+    loading,
+    authActionPending,
+    formKey,
+    setFormKey,
+    showSessionWarning,
+    sessionCountdown,
+    extendSession,
+    login,
+    loginWithGoogle,
+    loginWithFacebook,
+    deleteProfilePicture,
+    register,
+    logout,
+    updateProfile,
+    changePassword,
+    changeEmail,
+    recoverPassword,
+    uploadProfilePicture,
+    deleteAccount,
+  }),
+  [
+    user,
+    loading,
+    authActionPending,
+    formKey,
+    showSessionWarning,
+    sessionCountdown,
+    extendSession,
+    login,
+    loginWithGoogle,
+    loginWithFacebook,
+    deleteProfilePicture,
+    register,
+    logout,
+    updateProfile,
+    changePassword,
+    changeEmail,
+    recoverPassword,
+    uploadProfilePicture,
+    deleteAccount,
+  ]
 );
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        authActionPending,
-        formKey,
-        setFormKey,
-        showSessionWarning,
-        sessionCountdown,
-        extendSession,
-        login,
-        loginWithGoogle,
-        loginWithFacebook,
-        deleteProfilePicture,
-        register,
-        logout,
-        updateProfile,
-        changePassword,
-        changeEmail,
-        recoverPassword,
-        uploadProfilePicture,
-        deleteAccount,
-      }}
-    >
+    <AuthContext.Provider value={authValue}>
       {loading ? (
         <div className="relative min-h-screen w-full flex flex-col items-center justify-center p-6 bg-white rounded-3xl overflow-hidden">
           <div className="absolute top-8 left-8 flex items-center gap-3 select-none">

@@ -8,7 +8,7 @@ import React, {
   useMemo,
   useState,
 } from 'react';
-import { useData } from '../../contexts/DataContext';
+import { useAdminData } from '../../contexts/AdminDataContext';
 import type { User } from '../../contexts/DataContext';
 import {
   X,
@@ -474,7 +474,7 @@ export default function AdminActionModal({
   actionType: ActionType;
   onClose: () => void;
 }) {
-  const { users = [], reservations = [], units = [] } = useData();
+  const { users = [], reservations = [], units = [] } = useAdminData();
 
   const [stage, setStage] = useState<Stage>('select_user');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);

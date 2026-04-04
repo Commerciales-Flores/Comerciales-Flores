@@ -166,12 +166,22 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
 
   const loadedTicketIdsRef = useRef<Set<string>>(new Set());
   const loadingTicketIdsRef = useRef<Set<string>>(new Set());
+  const messagesByTicketIdRef = useRef<Record<string, SupportMessage[]>>({});
+  const ticketsRef = useRef<SupportTicket[]>([]);
+
+  useEffect(() => {
+    messagesByTicketIdRef.current = messagesByTicketId;
+  }, [messagesByTicketId]);
+
+  useEffect(() => {
+    ticketsRef.current = tickets;
+  }, [tickets]);
 
   const fetchMessagesByTicketId = useCallback(
     async (ticketId: string, force = false): Promise<SupportMessage[]> => {
       if (!ticketId) return [];
 
-      const cached = messagesByTicketId[ticketId] ?? [];
+      const cached = messagesByTicketIdRef.current[ticketId] ?? [];
 
       if (!force && loadedTicketIdsRef.current.has(ticketId)) {
         return cached;
@@ -218,7 +228,7 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
         setIsLoadingMessages(loadingTicketIdsRef.current.size > 0);
       }
     },
-    [messagesByTicketId]
+    []
   );
 
   const fetchTickets = useCallback(async (userId?: string): Promise<SupportTicket[]> => {
@@ -337,10 +347,8 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
       last_message_by: senderType,
       resolved_at: null,
       resolved_by_user: false,
-      last_read_at_customer:
-        senderType === 'customer' ? now : null,
-      last_read_at_support:
-        senderType === 'support' ? now : null,
+      last_read_at_customer: senderType === 'customer' ? now : null,
+      last_read_at_support: senderType === 'support' ? now : null,
     };
 
     const { data: ticketData, error: ticketError } = await supabase
@@ -598,7 +606,7 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
     async (ticketId: string, reader: 'customer' | 'support'): Promise<void> => {
       if (!ticketId) return;
 
-      const currentTicket = tickets.find((ticket) => ticket.id === ticketId);
+      const currentTicket = ticketsRef.current.find((ticket) => ticket.id === ticketId);
       if (!currentTicket) return;
 
       const existingReadAt =
@@ -645,7 +653,7 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
         await fetchTickets();
       }
     },
-    [fetchTickets, tickets]
+    [fetchTickets]
   );
 
   const messages = useMemo(
@@ -699,7 +707,6 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const channel = supabase
       .channel('support-realtime')
-
       .on(
         'postgres_changes',
         {
@@ -764,7 +771,6 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
           }
         }
       )
-
       .on(
         'postgres_changes',
         {
@@ -812,7 +818,6 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
           );
         }
       )
-
       .subscribe((status) => {
         if (import.meta.env.DEV) {
           console.log('Support realtime status:', status);

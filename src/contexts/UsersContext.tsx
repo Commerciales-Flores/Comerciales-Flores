@@ -34,6 +34,8 @@ interface UsersContextType {
 
 const UsersContext = createContext<UsersContextType | undefined>(undefined);
 
+const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+
 function mapUserRow(row: any): User {
   return {
     id: row.user_id,
@@ -64,8 +66,6 @@ function sortUsersByCreatedAt(items: User[]) {
       new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
   );
 }
-
-const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
 
 function parseLastLogin(value?: string | null) {
   if (!value) return null;
@@ -106,6 +106,27 @@ function getDeactivationRuleState(params: {
   };
 }
 
+function buildLatestDeletionRequestMap(rows: any[] | null | undefined) {
+  const map = new Map<string, any>();
+
+  for (const row of rows ?? []) {
+    if (!map.has(row.user_id)) {
+      map.set(row.user_id, row);
+    }
+  }
+
+  return map;
+}
+
+function enrichUserWithDeletionState(user: User, deletionRequest: any | null) {
+  return {
+    ...user,
+    deletionRequested: deletionRequest?.status === 'pending',
+    deletionStatus: deletionRequest?.status ?? null,
+    deletionRequestReason: deletionRequest?.request_reason ?? null,
+  };
+}
+
 export function UsersProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
@@ -114,64 +135,60 @@ export function UsersProvider({ children }: { children: ReactNode }) {
   const refreshUsersPromiseRef = useRef<Promise<void> | null>(null);
   const hasLoadedUsersRef = useRef(false);
 
-  const usersPageCacheRef = useRef<
-    Map<string, { data: User[]; count: number }>
-  >(new Map());
+  const usersPageCacheRef = useRef<Map<string, { data: User[]; count: number }>>(
+    new Map()
+  );
+
+  const realtimeBumpTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearUsersPageCache = useCallback(() => {
     usersPageCacheRef.current.clear();
   }, []);
-
-  const specialUserRequestsCount = useMemo(() => {
-  return users.filter(
-    (user: any) => user?.deletionStatus === 'pending'
-  ).length;
-}, [users]);
 
   const clearUsersCache = useCallback(() => {
     hasLoadedUsersRef.current = false;
     clearUsersPageCache();
   }, [clearUsersPageCache]);
 
-  const refreshDeletionStateForUser = useCallback(async (userId: string) => {
-  const existingUser = users.find((user) => user.id === userId);
-  if (!existingUser) return;
+  const specialUserRequestsCount = useMemo(() => {
+    return users.filter((user: any) => user?.deletionStatus === 'pending').length;
+  }, [users]);
 
-  const { data: deletionRequest, error } = await supabase
-    .from('account_deletion_requests')
-    .select(`
-      user_id,
-      status,
-      request_reason
-    `)
-    .eq('user_id', userId)
-    .order('requested_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const refreshDeletionStateForUser = useCallback(
+    async (userId: string) => {
+      const { data: deletionRequest, error } = await supabase
+        .from('account_deletion_requests')
+        .select(`
+          user_id,
+          status,
+          request_reason,
+          requested_at
+        `)
+        .eq('user_id', userId)
+        .order('requested_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-  if (error) {
-    console.error('Error loading deletion request for user:', error);
-    return;
-  }
+      if (error) {
+        console.error('Error loading deletion request for user:', error);
+        return;
+      }
 
-  setUsers((prev) =>
-    sortUsersByCreatedAt(
-      prev.map((user) => {
-        if (user.id !== userId) return user;
+      setUsers((prev) =>
+        sortUsersByCreatedAt(
+          prev.map((user) =>
+            user.id !== userId
+              ? user
+              : enrichUserWithDeletionState(user, deletionRequest ?? null)
+          )
+        )
+      );
 
-        return {
-          ...user,
-          deletionRequested: deletionRequest?.status === 'pending',
-          deletionStatus: deletionRequest?.status ?? null,
-          deletionRequestReason: deletionRequest?.request_reason ?? null,
-        };
-      })
-    )
+      clearUsersPageCache();
+      setVersion((v) => v + 1);
+    },
+    [clearUsersPageCache]
   );
-
-  clearUsersPageCache();
-  setVersion((v) => v + 1);
-}, [clearUsersPageCache, users]);
 
   const refreshUsers = useCallback(
     async (force = false): Promise<void> => {
@@ -221,42 +238,34 @@ export function UsersProvider({ children }: { children: ReactNode }) {
           }
 
           const rows = data ?? [];
-const userIds = rows.map((row) => row.user_id);
+          const userIds = rows.map((row) => row.user_id);
 
-const { data: deletionRequests, error: deletionError } = userIds.length
-  ? await supabase
-      .from('account_deletion_requests')
-      .select(`
-        user_id,
-        status,
-        request_reason
-      `)
-      .in('user_id', userIds)
-  : { data: [], error: null };
+          const { data: deletionRequests, error: deletionError } = userIds.length
+            ? await supabase
+                .from('account_deletion_requests')
+                .select(`
+                  user_id,
+                  status,
+                  request_reason,
+                  requested_at
+                `)
+                .in('user_id', userIds)
+                .order('requested_at', { ascending: false })
+            : { data: [], error: null };
 
           if (deletionError) {
             console.error('Error loading deletion requests:', deletionError);
           }
 
-          const deletionRequestMap = new Map<string, any>();
-          deletionRequests?.forEach((request) => {
-            deletionRequestMap.set(request.user_id, request);
+          const deletionRequestMap = buildLatestDeletionRequestMap(deletionRequests);
+
+          const nextUsers = rows.map((row) => {
+            const mapped = mapUserRow(row);
+            const deletionRequest = deletionRequestMap.get(row.user_id) ?? null;
+            return enrichUserWithDeletionState(mapped, deletionRequest);
           });
 
-          setUsers(
-            rows.map((row) => {
-              const mapped = mapUserRow(row);
-              const deletionRequest = deletionRequestMap.get(row.user_id) ?? null;
-
-              return {
-                ...mapped,
-                deletionRequested: deletionRequest?.status === 'pending',
-                deletionStatus: deletionRequest?.status ?? null,
-                deletionRequestReason: deletionRequest?.request_reason ?? null,
-              };
-            })
-          );
-
+          setUsers(sortUsersByCreatedAt(nextUsers));
           hasLoadedUsersRef.current = true;
         } finally {
           setIsLoadingUsers(false);
@@ -269,8 +278,6 @@ const { data: deletionRequests, error: deletionError } = userIds.length
     },
     [users.length]
   );
-
-  const realtimeBumpTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const bumpVersionDebounced = useCallback(() => {
     if (realtimeBumpTimeoutRef.current) {
@@ -357,8 +364,9 @@ const { data: deletionRequests, error: deletionError } = userIds.length
         throw error;
       }
 
-      const usersMapped = (data ?? []).map(mapUserRow);
-      const userIds = (data ?? []).map((u) => u.user_id);
+      const userRows = data ?? [];
+      const usersMapped = userRows.map(mapUserRow);
+      const userIds = userRows.map((u) => u.user_id);
 
       const [{ data: reservations }, { data: deletionRequests }] = userIds.length
         ? await Promise.all([
@@ -378,9 +386,11 @@ const { data: deletionRequests, error: deletionError } = userIds.length
               .select(`
                 user_id,
                 status,
-                request_reason
+                request_reason,
+                requested_at
               `)
-              .in('user_id', userIds),
+              .in('user_id', userIds)
+              .order('requested_at', { ascending: false }),
           ])
         : [{ data: [] }, { data: [] }];
 
@@ -393,10 +403,7 @@ const { data: deletionRequests, error: deletionError } = userIds.length
         reservationMap.get(reservation.user_id)!.push(reservation);
       });
 
-      const deletionRequestMap = new Map<string, any>();
-      deletionRequests?.forEach((request) => {
-        deletionRequestMap.set(request.user_id, request);
-      });
+      const deletionRequestMap = buildLatestDeletionRequestMap(deletionRequests);
 
       const enriched = usersMapped.map((user) => {
         const userReservations = reservationMap.get(user.id) ?? [];
@@ -413,13 +420,10 @@ const { data: deletionRequests, error: deletionError } = userIds.length
         });
 
         return {
-          ...user,
+          ...enrichUserWithDeletionState(user, deletionRequest),
           hasActiveOccupancy: !!activeReservation,
           activeUnitType: activeReservation?.unit_type ?? null,
           activeSince: activeReservation?.start_date ?? null,
-          deletionRequested: !!deletionRequest,
-          deletionStatus: deletionRequest?.status ?? null,
-          deletionRequestReason: deletionRequest?.request_reason ?? null,
           deactivationBlocked: deactivationState.blocked,
           deactivationReason: deactivationState.reason,
         };
@@ -439,24 +443,26 @@ const { data: deletionRequests, error: deletionError } = userIds.length
   const updateUserStatus = useCallback(
     async (id: string, isActive: boolean) => {
       if (!isActive) {
-        const { data: userRow, error: userError } = await supabase
-          .from('users')
-          .select('last_login')
-          .eq('user_id', id)
-          .maybeSingle();
+        const [{ data: userRow, error: userError }, { data: activeReservation, error: reservationError }] =
+          await Promise.all([
+            supabase
+              .from('users')
+              .select('last_login')
+              .eq('user_id', id)
+              .maybeSingle(),
+            supabase
+              .from('reservations')
+              .select('reservation_id')
+              .eq('user_id', id)
+              .in('status', ['approved', 'confirmed'])
+              .limit(1)
+              .maybeSingle(),
+          ]);
 
         if (userError) {
           console.error('Error checking user activity:', userError);
           return false;
         }
-
-        const { data: activeReservation, error: reservationError } = await supabase
-          .from('reservations')
-          .select('reservation_id')
-          .eq('user_id', id)
-          .in('status', ['approved', 'confirmed'])
-          .limit(1)
-          .maybeSingle();
 
         if (reservationError) {
           console.error('Error checking active reservation:', reservationError);
@@ -504,88 +510,103 @@ const { data: deletionRequests, error: deletionError } = userIds.length
     [users]
   );
 
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-users-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'users',
+        },
+        () => {
+          bumpVersionDebounced();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'reservations',
+        },
+        (payload) => {
+          const nextRow = payload.new as any;
+          const oldRow = payload.old as any;
+
+          const nextStatus = nextRow?.status;
+          const oldStatus = oldRow?.status;
+          const nextUserId = nextRow?.user_id;
+          const oldUserId = oldRow?.user_id;
+
+          if (
+            payload.eventType === 'INSERT' ||
+            payload.eventType === 'DELETE' ||
+            nextStatus !== oldStatus ||
+            nextUserId !== oldUserId
+          ) {
+            bumpVersionDebounced();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'account_deletion_requests',
+        },
+        async (payload) => {
+          const nextRow = payload.new as { user_id?: string } | null;
+          const oldRow = payload.old as { user_id?: string } | null;
+          const userId = nextRow?.user_id ?? oldRow?.user_id;
+
+          if (!userId) return;
+
+          await refreshDeletionStateForUser(userId);
+        }
+      )
+      .subscribe((status) => {
+        if (import.meta.env.DEV) {
+          console.log('admin-users-realtime:', status);
+        }
+      });
+
+    return () => {
+      if (realtimeBumpTimeoutRef.current) {
+        clearTimeout(realtimeBumpTimeoutRef.current);
+        realtimeBumpTimeoutRef.current = null;
+      }
+
+      void supabase.removeChannel(channel);
+    };
+  }, [bumpVersionDebounced, refreshDeletionStateForUser]);
+
   const value = useMemo<UsersContextType>(
-  () => ({
-    users,
-    isLoadingUsers,
-    version,
-    specialUserRequestsCount,
-    getUserById,
-    refreshUsers,
-    fetchUsersPage,
-    updateUserStatus,
-    clearUsersCache,
-  }),
-  [
-    users,
-    isLoadingUsers,
-    version,
-    specialUserRequestsCount,
-    getUserById,
-    refreshUsers,
-    fetchUsersPage,
-    updateUserStatus,
-    clearUsersCache,
-  ]
-);
-
-useEffect(() => {
-  const channel = supabase
-    .channel('admin-users-realtime')
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'users',
-      },
-      () => {
-        bumpVersionDebounced();
-      }
-    )
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'reservations',
-      },
-      () => {
-        bumpVersionDebounced();
-      }
-    )
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'account_deletion_requests',
-      },
-      async (payload) => {
-        const nextRow = payload.new as { user_id?: string } | null;
-        const oldRow = payload.old as { user_id?: string } | null;
-        const userId = nextRow?.user_id ?? oldRow?.user_id;
-
-        if (!userId) return;
-
-        await refreshDeletionStateForUser(userId);
-      }
-    )
-    .subscribe((status) => {
-      if (import.meta.env.DEV) {
-        console.log('admin-users-realtime:', status);
-      }
-    });
-
-  return () => {
-    if (realtimeBumpTimeoutRef.current) {
-      clearTimeout(realtimeBumpTimeoutRef.current);
-      realtimeBumpTimeoutRef.current = null;
-    }
-
-    void supabase.removeChannel(channel);
-  };
-}, [bumpVersionDebounced, refreshDeletionStateForUser]);
+    () => ({
+      users,
+      isLoadingUsers,
+      version,
+      specialUserRequestsCount,
+      getUserById,
+      refreshUsers,
+      fetchUsersPage,
+      updateUserStatus,
+      clearUsersCache,
+    }),
+    [
+      users,
+      isLoadingUsers,
+      version,
+      specialUserRequestsCount,
+      getUserById,
+      refreshUsers,
+      fetchUsersPage,
+      updateUserStatus,
+      clearUsersCache,
+    ]
+  );
 
   return <UsersContext.Provider value={value}>{children}</UsersContext.Provider>;
 }

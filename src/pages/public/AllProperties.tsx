@@ -1,4 +1,5 @@
-import { useData, type Unit, type UnitType } from "../../contexts/DataContext";
+import { useUnits } from "../../contexts/UnitsContext";
+import type { Unit, UnitType } from "../../data/types";
 import { Link } from "react-router-dom";
 import { useReviews } from "../../contexts/ReviewsContext";
 import {
@@ -14,7 +15,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { formatCurrency } from "../../utils/currency";
 import { getUnitTypeLabel } from "../../utils/propertyHelpers";
-
 import UnitModal from "../../components/PropertyModal";
 
 type PriceRange = "all" | "0-1000" | "1001-5000" | "5001-10000" | "10001+";
@@ -23,61 +23,88 @@ const FALLBACK_IMAGE =
   "https://placehold.co/1200x800/e5e7eb/6b7280?text=No+Image";
 
 export default function AllUnits() {
-  const { units } = useData();
-  const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null);
+  const { units } = useUnits();
   const { reviews } = useReviews();
+
+  const [selectedUnit, setSelectedUnit] = useState<Unit | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<UnitType | "all">("all");
   const [filterLocation, setFilterLocation] = useState<string>("all");
   const [priceRange, setPriceRange] = useState<PriceRange>("all");
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
 
-  const resetFilters = () => {
+  const cardVideoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
+
+  const resetFilters = useCallback(() => {
     setSearchTerm("");
     setFilterType("all");
     setFilterLocation("all");
     setPriceRange("all");
-  };
+  }, []);
 
-  const cardVideoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
+  const handleCardVideoEnter = useCallback((unitId: string) => {
+    const video = cardVideoRefs.current[unitId];
+    if (!video) return;
 
-const handleCardVideoEnter = useCallback((unitId: string) => {
-  const video = cardVideoRefs.current[unitId];
-  if (!video) return;
+    video.currentTime = 0;
+    void video.play().catch(() => {});
+  }, []);
 
-  video.currentTime = 0;
-  void video.play().catch(() => {});
-}, []);
+  const handleCardVideoLeave = useCallback((unitId: string) => {
+    const video = cardVideoRefs.current[unitId];
+    if (!video) return;
 
-const handleCardVideoLeave = useCallback((unitId: string) => {
-  const video = cardVideoRefs.current[unitId];
-  if (!video) return;
+    video.pause();
+    video.currentTime = 0;
+  }, []);
 
-  video.pause();
-  video.currentTime = 0;
-}, []);
+  useEffect(() => {
+    return () => {
+      Object.values(cardVideoRefs.current).forEach((video) => {
+        if (!video) return;
+        video.pause();
+        video.currentTime = 0;
+      });
+    };
+  }, []);
 
-useEffect(() => {
-  return () => {
-    Object.values(cardVideoRefs.current).forEach((video) => {
-      if (!video) return;
-      video.pause();
-      video.currentTime = 0;
-    });
-  };
-}, []);
+  const { locations, reviewSummaryByUnitId } = useMemo(() => {
+    const locationSet = new Set<string>();
+    const tempReviewMap = new Map<string, { total: number; count: number }>();
 
-  const locations: string[] = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          units
-            .map((u) => u.location || "")
-            .filter((loc) => loc.trim() !== "")
-        )
-      ),
-    [units]
-  );
+    for (const unit of units) {
+      const location = unit.location?.trim();
+      if (location) {
+        locationSet.add(location);
+      }
+    }
+
+    for (const review of reviews) {
+      if (!review.unit_id) continue;
+
+      if (!tempReviewMap.has(review.unit_id)) {
+        tempReviewMap.set(review.unit_id, { total: 0, count: 0 });
+      }
+
+      const entry = tempReviewMap.get(review.unit_id)!;
+      entry.total += review.rating || 0;
+      entry.count += 1;
+    }
+
+    const summaryMap = new Map<string, { avg: number; count: number }>();
+
+    for (const [unitId, entry] of tempReviewMap.entries()) {
+      summaryMap.set(unitId, {
+        avg: entry.count > 0 ? entry.total / entry.count : 0,
+        count: entry.count,
+      });
+    }
+
+    return {
+      locations: Array.from(locationSet),
+      reviewSummaryByUnitId: summaryMap,
+    };
+  }, [units, reviews]);
 
   const hasNoDataAtAll = units.length === 0;
 
@@ -95,6 +122,7 @@ useEffect(() => {
         filterLocation === "all" || unit.location === filterLocation;
 
       let matchesPrice = true;
+
       switch (priceRange) {
         case "0-1000":
           matchesPrice = unit.price <= 1000;
@@ -108,11 +136,31 @@ useEffect(() => {
         case "10001+":
           matchesPrice = unit.price > 10000;
           break;
+        default:
+          matchesPrice = true;
       }
 
-      return unit.available && matchesSearch && matchesType && matchesLocation && matchesPrice;
+      return (
+        unit.available &&
+        matchesSearch &&
+        matchesType &&
+        matchesLocation &&
+        matchesPrice
+      );
     });
   }, [units, searchTerm, filterType, filterLocation, priceRange]);
+
+  const filteredUnitCards = useMemo(() => {
+    return filteredUnits.map((unit) => {
+      const reviewSummary = reviewSummaryByUnitId.get(unit.id);
+
+      return {
+        unit,
+        averageRating: reviewSummary?.avg ?? 0,
+        reviewCount: reviewSummary?.count ?? 0,
+      };
+    });
+  }, [filteredUnits, reviewSummaryByUnitId]);
 
   const FilterInputs = ({ mobile = false }: { mobile?: boolean }) => (
     <>
@@ -216,8 +264,8 @@ useEffect(() => {
           </div>
 
           {!hasNoDataAtAll && (
-            <div className="hidden md:flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-              <div className="grid w-full md:grid-cols-4 gap-3">
+            <div className="hidden items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:flex">
+              <div className="grid w-full gap-3 md:grid-cols-4">
                 <FilterInputs />
               </div>
 
@@ -244,7 +292,7 @@ useEffect(() => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setIsFilterPanelOpen(false)}
-              className="fixed inset-0 z-[60] bg-slate-900/40  md:hidden"
+              className="fixed inset-0 z-[60] bg-slate-900/40 md:hidden"
             />
 
             <motion.div
@@ -338,122 +386,115 @@ useEffect(() => {
               </button>
             </div>
 
-            {filteredUnits.length > 0 ? (
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 items-stretch">
-                {filteredUnits.map((prop) => {
-                  const unitReviews = reviews.filter(
-  (r) => r.unit_id === (prop.id)
-);
+            {filteredUnitCards.length > 0 ? (
+              <div className="grid items-stretch gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {filteredUnitCards.map(({ unit, averageRating, reviewCount }) => (
+                  <motion.div
+                    key={unit.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="group flex h-full flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-all hover:shadow-xl"
+                  >
+                    <div
+                      className="relative h-48 overflow-hidden sm:h-56 md:h-64"
+                      onMouseEnter={() => handleCardVideoEnter(unit.id)}
+                      onMouseLeave={() => handleCardVideoLeave(unit.id)}
+                    >
+                      {unit.videos?.[0] ? (
+                        <video
+                          ref={(node) => {
+                            cardVideoRefs.current[unit.id] = node;
+                          }}
+                          src={unit.videos[0]}
+                          muted
+                          playsInline
+                          preload="metadata"
+                          poster={unit.images?.[0] || FALLBACK_IMAGE}
+                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
+                      ) : (
+                        <img
+                          src={unit.images?.[0] || FALLBACK_IMAGE}
+                          alt={unit.name}
+                          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        />
+                      )}
 
-const averageRating =
-  unitReviews.length > 0
-    ? unitReviews.reduce((sum, r) => sum + (r.rating || 0), 0) /
-      unitReviews.length
-    : 0;
-                  return (
-  <motion.div
-    key={prop.id}
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    className="group flex h-full flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-all hover:shadow-xl"
-  >
-    <div
-      className="relative h-48 overflow-hidden sm:h-56 md:h-64"
-      onMouseEnter={() => handleCardVideoEnter(prop.id)}
-      onMouseLeave={() => handleCardVideoLeave(prop.id)}
-    >
-      {prop.videos?.[0] ? (
-        <video
-          ref={(node) => {
-            cardVideoRefs.current[prop.id] = node;
-          }}
-          src={prop.videos[0]}
-          muted
-          playsInline
-          preload="metadata"
-          poster={prop.images?.[0] || FALLBACK_IMAGE}
-          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-        />
-      ) : (
-        <img
-          src={prop.images?.[0] || FALLBACK_IMAGE}
-          alt={prop.name}
-          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-        />
-      )}
+                      <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-blue-600">
+                        {getUnitTypeLabel(unit.type)}
+                      </div>
 
-      <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-blue-600">
-        {getUnitTypeLabel(prop.type)}
-      </div>
+                      {unit.videos?.length ? (
+                        <div className="absolute right-4 top-4 rounded-full bg-black/70 px-3 py-1 text-xs font-bold text-white">
+                          {unit.videos.length} video
+                          {unit.videos.length > 1 ? "s" : ""}
+                        </div>
+                      ) : null}
+                    </div>
 
-      {prop.videos?.length ? (
-        <div className="absolute right-4 top-4 rounded-full bg-black/70 px-3 py-1 text-xs font-bold text-white">
-          {prop.videos.length} video{prop.videos.length > 1 ? "s" : ""}
-        </div>
-      ) : null}
-    </div>
+                    <div className="flex flex-1 flex-col p-5">
+                      <div className="min-h-[56px]">
+                        <h3 className="line-clamp-2 text-lg font-bold text-slate-900">
+                          {unit.name}
+                        </h3>
+                      </div>
 
-    <div className="flex flex-1 flex-col p-5">
-      <div className="min-h-[56px]">
-        <h3 className="line-clamp-2 text-lg font-bold text-slate-900">
-          {prop.name}
-        </h3>
-      </div>
+                      <div className="mt-2 min-h-[40px]">
+                        <p className="line-clamp-2 text-sm text-slate-500">
+                          {unit.description?.trim() || "No description available."}
+                        </p>
+                      </div>
 
-      <div className="mt-2 min-h-[40px]">
-        <p className="line-clamp-2 text-sm text-slate-500">
-          {prop.description?.trim() || "No description available."}
-        </p>
-      </div>
+                      <div className="mt-3 min-h-[40px] space-y-1">
+                        {unit.location?.trim() ? (
+                          <p className="flex items-center gap-1.5 text-xs text-slate-400">
+                            <MapPin className="size-3.5 text-red-500" />
+                            <span className="line-clamp-1">{unit.location}</span>
+                          </p>
+                        ) : (
+                          <p className="select-none text-xs text-transparent">
+                            placeholder
+                          </p>
+                        )}
 
-      <div className="mt-3 space-y-1 min-h-[40px]">
-        {prop.location?.trim() ? (
-          <p className="flex items-center gap-1.5 text-xs text-slate-400">
-            <MapPin className="size-3.5 text-red-500" />
-            <span className="line-clamp-1">{prop.location}</span>
-          </p>
-        ) : (
-          <p className="text-xs text-transparent select-none">placeholder</p>
-        )}
+                        <div className="flex items-center gap-1 text-xs text-slate-600">
+                          {averageRating > 0 ? (
+                            <>
+                              <span className="text-amber-500">★</span>
+                              <span className="font-semibold text-slate-900">
+                                {averageRating.toFixed(1)}
+                              </span>
+                              <span className="text-slate-400">
+                                ({reviewCount})
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-slate-400">No ratings yet</span>
+                          )}
+                        </div>
+                      </div>
 
-        <div className="flex items-center gap-1 text-xs text-slate-600">
-          {averageRating > 0 ? (
-            <>
-              <span className="text-amber-500">★</span>
-              <span className="font-semibold text-slate-900">
-                {averageRating.toFixed(1)}
-              </span>
-              <span className="text-slate-400">
-                ({unitReviews.length})
-              </span>
-            </>
-          ) : (
-            <span className="text-slate-400">No ratings yet</span>
-          )}
-        </div>
-      </div>
+                      <div className="mt-4 flex items-center justify-between border-t border-slate-50 pt-4">
+                        <div>
+                          <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                            Price
+                          </span>
+                          <span className="text-lg font-bold text-blue-600">
+                            {formatCurrency(unit.price)}
+                          </span>
+                        </div>
 
-      <div className="mt-4 flex items-center justify-between border-t border-slate-50 pt-4">
-        <div>
-          <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-            Price
-          </span>
-          <span className="text-lg font-bold text-blue-600">
-            {formatCurrency(prop.price)}
-          </span>
-        </div>
-
-        <button
-          onClick={() => setSelectedUnit(prop)}
-          className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-600"
-        >
-          View Details
-        </button>
-      </div>
-    </div>
-  </motion.div>
-                  );
-                })}
+                        <button
+                          onClick={() => setSelectedUnit(unit)}
+                          className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-600"
+                          type="button"
+                        >
+                          View Details
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
               </div>
             ) : (
               <div className="rounded-3xl border border-dashed border-slate-200 bg-white py-20 text-center shadow-sm">
