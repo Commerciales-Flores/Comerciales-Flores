@@ -249,7 +249,6 @@ const USER_SELECT = `
 
 export function AuthProvider({ children }: { children: ReactNode }) {
 
-  const t0 = performance.now();
   const [user, setUser] = useState<User | null>(null);
 
   // Only for initial app bootstrap
@@ -1091,7 +1090,6 @@ console.log(
   'ms'
 );
 
-console.log('login step: device + profile', Math.round(performance.now() - t0), 'ms');
 
 if (!ok) {
   pendingDeviceVerificationRef.current = false;
@@ -1135,7 +1133,6 @@ if (!profile) {
       void supabase.functions.invoke('record-login-context', {
         body: { email: normalizedEmail },
       });
-      console.log('login total', Math.round(performance.now() - t0), 'ms');
       return { success: true };
     } catch (err) {
       pendingDeviceVerificationRef.current = false;
