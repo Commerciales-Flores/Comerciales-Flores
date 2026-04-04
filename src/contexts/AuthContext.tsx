@@ -978,7 +978,11 @@ const [isTurnstileValid, lockResult] = await Promise.all([
   lockPromise,
 ]);
 
-console.log('login step: precheck total', Math.round(performance.now() - t0), 'ms');
+console.log(
+  'login step: precheck total',
+  Math.round(performance.now() - precheckStart),
+  'ms'
+);
 
       if (!isTurnstileValid) {
         return { success: false, error: 'verification_failed' };
