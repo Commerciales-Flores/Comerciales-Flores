@@ -3,49 +3,23 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import AddressPicker from '../../components/common/AddressPicker';
 import PasswordStrengthIndicator from '../../components/common/PasswordStrengthIndicator';
+import FormField from '../../components/common/FormField';
 import { isPasswordPolicyValid } from '../../utils/passwordStrength';
 import {
   Building2,
   AlertCircle,
-  Eye,
-  EyeOff,
   CheckCircle2,
   ArrowRight,
   ArrowLeft,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
-
-const normalizeName = (value: string) => value.trim().replace(/\s+/g, ' ');
-const normalizeEmail = (value: string) => value.trim().toLowerCase();
-const normalizeAddress = (value: string) => value.trim().replace(/\s+/g, ' ');
-
-const normalizePhone = (value: string) => {
-  const digits = value.replace(/\D/g, '');
-
-  if (!digits) return '';
-
-  // 09123456789 → +639123456789
-  if (digits.startsWith('09') && digits.length === 11) {
-    return `+63${digits.slice(1)}`;
-  }
-
-  // 9123456789 → +639123456789
-  if (digits.startsWith('9') && digits.length === 10) {
-    return `+63${digits}`;
-  }
-
-  // 639123456789 → +639123456789
-  if (digits.startsWith('639') && digits.length === 12) {
-    return `+${digits}`;
-  }
-
-  // +639123456789 (already correct)
-  if (value.startsWith('+63') && digits.length === 12) {
-    return `+${digits}`;
-  }
-
-  // ❌ INVALID → return empty instead of raw
-  return '';
-};
+import {
+  normalizeName,
+  normalizeEmail,
+  normalizeAddress,
+  normalizePHPhone,
+} from '../../utils/formFields';
 
 export default function Register() {
   const { register, authActionPending } = useAuth();
@@ -67,36 +41,55 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const handleBlur = useCallback((field: keyof typeof formData) => {
-    setFormData((prev) => {
-      const next = { ...prev };
+  const handleFieldChange = useCallback(
+    (field: keyof typeof formData, value: string) => {
+      setFormData((prev) => ({
+        ...prev,
+        [field]: value,
+      }));
 
-      switch (field) {
-        case 'firstName':
-          next.firstName = normalizeName(prev.firstName);
-          break;
-        case 'lastName':
-          next.lastName = normalizeName(prev.lastName);
-          break;
-        case 'email':
-          next.email = normalizeEmail(prev.email);
-          break;
-        case 'contactNumber':
-          next.contactNumber = normalizePhone(prev.contactNumber);
-          break;
-        case 'address':
-          next.address = normalizeAddress(prev.address);
-          break;
-        case 'password':
-        case 'confirmPassword':
-          next[field] = prev[field].trim();
-          break;
-        default:
-          break;
-      }
+      setErrors((prev) => {
+        if (!prev[field]) return prev;
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+    },
+    []
+  );
 
-      return next;
-    });
+  const handleBlur = useCallback((field: keyof typeof formData, value: string) => {
+    let normalized = value;
+
+    switch (field) {
+      case 'firstName':
+        normalized = normalizeName(value);
+        break;
+      case 'lastName':
+        normalized = normalizeName(value);
+        break;
+      case 'email':
+        normalized = normalizeEmail(value);
+        break;
+      case 'contactNumber':
+        normalized = normalizePHPhone(value);
+        break;
+      case 'address':
+        normalized = normalizeAddress(value);
+        break;
+      case 'password':
+      case 'confirmPassword':
+        normalized = value.trim();
+        break;
+      default:
+        normalized = value.trim();
+        break;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      [field]: normalized,
+    }));
   }, []);
 
   const validate = useCallback(() => {
@@ -105,7 +98,7 @@ export default function Register() {
     const cleanedFirstName = normalizeName(formData.firstName);
     const cleanedLastName = normalizeName(formData.lastName);
     const cleanedEmail = normalizeEmail(formData.email);
-    const cleanedContactNumber = normalizePhone(formData.contactNumber);
+    const cleanedContactNumber = normalizePHPhone(formData.contactNumber);
     const cleanedAddress = normalizeAddress(formData.address);
 
     if (!cleanedFirstName) errs.firstName = 'First name is required.';
@@ -114,11 +107,11 @@ export default function Register() {
     if (!cleanedEmail) {
       errs.email = 'Email is required.';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanedEmail)) {
-      errs.email = 'Invalid email format.';
+      errs.email = 'Enter a valid email address.';
     }
 
-    if (cleanedContactNumber && !/^\+639\d{9}$/.test(cleanedContactNumber)) {
-      errs.contactNumber = 'Invalid Philippine mobile number.';
+    if (formData.contactNumber.trim() && !/^\+639\d{9}$/.test(cleanedContactNumber)) {
+      errs.contactNumber = 'Enter a valid Philippine mobile number.';
     }
 
     if (!formData.password) {
@@ -149,7 +142,7 @@ export default function Register() {
     const cleanedFirstName = normalizeName(formData.firstName);
     const cleanedLastName = normalizeName(formData.lastName);
     const cleanedEmail = normalizeEmail(formData.email);
-    const cleanedContactNumber = normalizePhone(formData.contactNumber);
+    const cleanedContactNumber = normalizePHPhone(formData.contactNumber);
     const cleanedAddress = normalizeAddress(formData.address);
 
     setFormData((prev) => ({
@@ -159,6 +152,8 @@ export default function Register() {
       email: cleanedEmail,
       contactNumber: cleanedContactNumber,
       address: cleanedAddress,
+      password: prev.password.trim(),
+      confirmPassword: prev.confirmPassword.trim(),
     }));
 
     const isValid = validate();
@@ -171,7 +166,7 @@ export default function Register() {
         firstName: cleanedFirstName,
         lastName: cleanedLastName,
         email: cleanedEmail,
-        password: formData.password,
+        password: formData.password.trim(),
         ...(cleanedContactNumber ? { contactNumber: cleanedContactNumber } : {}),
         address: cleanedAddress || '',
       });
@@ -194,8 +189,7 @@ export default function Register() {
       navigate('/login', {
         replace: true,
         state: {
-          message:
-            result.message,
+          message: result.message,
           email: cleanedEmail,
         },
       });
@@ -210,7 +204,9 @@ export default function Register() {
     [errors]
   );
 
-  const addressConfirmed = Boolean(formData.address && formData.latitude && formData.longitude);
+  const addressConfirmed = Boolean(
+    formData.address && formData.latitude && formData.longitude
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 selection:bg-blue-100">
@@ -290,81 +286,54 @@ export default function Register() {
 
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                    First Name
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.firstName}
-                    onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, firstName: e.target.value }))
-                    }
-                    onBlur={() => handleBlur('firstName')}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
-                    placeholder="Juan Dela"
-                  />
-                </div>
+                <FormField
+                  field="firstName"
+                  label="First Name"
+                  value={formData.firstName}
+                  onChange={(value) => handleFieldChange('firstName', value)}
+                  onBlur={(value) => handleBlur('firstName', value)}
+                  placeholder="Juan"
+                  error={errors.firstName}
+                  autoComplete="given-name"
+                />
 
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                    Last Name
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.lastName}
-                    onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, lastName: e.target.value }))
-                    }
-                    onBlur={() => handleBlur('lastName')}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
-                    placeholder="Cruz"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                  Email Address
-                </label>
-                <input
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  value={formData.email}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, email: e.target.value }))
-                  }
-                  onBlur={() => handleBlur('email')}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
-                  placeholder="john@example.com"
+                <FormField
+                  field="lastName"
+                  label="Last Name"
+                  value={formData.lastName}
+                  onChange={(value) => handleFieldChange('lastName', value)}
+                  onBlur={(value) => handleBlur('lastName', value)}
+                  placeholder="Dela Cruz"
+                  error={errors.lastName}
+                  autoComplete="family-name"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Contact */}
-                <div className="space-y-1.5">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                    Contact Number
-                  </label>
-                  <input
-                    name="tel"
-                    type="tel"
-                    autoComplete="tel"
-                    value={formData.contactNumber}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        contactNumber: e.target.value,
-                      }))
-                    }
-                    onBlur={() => handleBlur('contactNumber')}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
-                    placeholder="+63 9xx... (Optional)"
-                  />
-                </div>
+              <FormField
+                field="email"
+                label="Email Address"
+                type="email"
+                value={formData.email}
+                onChange={(value) => handleFieldChange('email', value)}
+                onBlur={(value) => handleBlur('email', value)}
+                placeholder="john@example.com"
+                error={errors.email}
+                autoComplete="email"
+              />
 
-                {/* Address Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <FormField
+                  field="contactNumber"
+                  label="Contact Number"
+                  type="tel"
+                  value={formData.contactNumber}
+                  onChange={(value) => handleFieldChange('contactNumber', value)}
+                  onBlur={(value) => handleBlur('contactNumber', value)}
+                  placeholder="+63 9xx... (Optional)"
+                  error={errors.contactNumber}
+                  autoComplete="tel"
+                />
+
                 <div className="space-y-1.5">
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
                     Address Status
@@ -381,9 +350,7 @@ export default function Register() {
 
                     <div
                       className={`flex items-center justify-center ${
-                        addressConfirmed
-                          ? 'text-emerald-600'
-                          : 'text-rose-500'
+                        addressConfirmed ? 'text-emerald-600' : 'text-rose-500'
                       }`}
                     >
                       <CheckCircle2 className="size-4" />
@@ -396,34 +363,48 @@ export default function Register() {
                 value={formData.address}
                 latitude={formData.latitude}
                 longitude={formData.longitude}
-                onChange={({ address, latitude, longitude }) =>
+                onChange={({ address, latitude, longitude }) => {
                   setFormData((prev) => ({
                     ...prev,
                     address,
                     latitude,
                     longitude,
-                  }))
-                }
+                  }));
+
+                  setErrors((prev) => {
+                    if (!prev.address) return prev;
+                    const next = { ...prev };
+                    delete next.address;
+                    return next;
+                  });
+                }}
               />
+
+              {errors.address ? (
+                <p className="ml-1 text-xs font-medium text-rose-600">
+                  {errors.address}
+                </p>
+              ) : null}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5 relative">
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
                     Password
                   </label>
+
                   <div className="relative">
                     <input
                       name="new-password"
                       type={showPassword ? 'text' : 'password'}
                       autoComplete="new-password"
                       value={formData.password}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          password: e.target.value,
-                        }))
-                      }
-                      className="w-full px-4 py-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
+                      onChange={(e) => handleFieldChange('password', e.target.value)}
+                      onBlur={(e) => handleBlur('password', e.target.value)}
+                      className={`w-full px-4 py-3 pr-10 bg-slate-50 border rounded-xl focus:ring-4 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300 ${
+                        errors.password
+                          ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-100'
+                          : 'border-slate-200 focus:border-blue-500 focus:ring-blue-50'
+                      }`}
                       placeholder="••••••••"
                     />
                     <button
@@ -439,6 +420,12 @@ export default function Register() {
                     </button>
                   </div>
 
+                  {errors.password ? (
+                    <p className="ml-1 text-xs font-medium text-rose-600">
+                      {errors.password}
+                    </p>
+                  ) : null}
+
                   <PasswordStrengthIndicator
                     password={formData.password}
                     confirmPassword={formData.confirmPassword}
@@ -451,6 +438,7 @@ export default function Register() {
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
                     Confirm Password
                   </label>
+
                   <div className="relative">
                     <input
                       name="confirm-password"
@@ -458,12 +446,14 @@ export default function Register() {
                       autoComplete="new-password"
                       value={formData.confirmPassword}
                       onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          confirmPassword: e.target.value,
-                        }))
+                        handleFieldChange('confirmPassword', e.target.value)
                       }
-                      className="w-full px-4 py-3 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300"
+                      onBlur={(e) => handleBlur('confirmPassword', e.target.value)}
+                      className={`w-full px-4 py-3 pr-10 bg-slate-50 border rounded-xl focus:ring-4 focus:bg-white transition-all outline-none text-sm font-medium placeholder:text-slate-300 ${
+                        errors.confirmPassword
+                          ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-100'
+                          : 'border-slate-200 focus:border-blue-500 focus:ring-blue-50'
+                      }`}
                       placeholder="••••••••"
                     />
                     <button
@@ -478,6 +468,12 @@ export default function Register() {
                       )}
                     </button>
                   </div>
+
+                  {errors.confirmPassword ? (
+                    <p className="ml-1 text-xs font-medium text-rose-600">
+                      {errors.confirmPassword}
+                    </p>
+                  ) : null}
 
                   <PasswordStrengthIndicator
                     password={formData.password}

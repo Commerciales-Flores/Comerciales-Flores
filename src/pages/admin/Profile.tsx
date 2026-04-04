@@ -4,6 +4,13 @@ import DeviceManagement from '../../components/security/DeviceManagement';
 import AddressPicker from '../../components/common/AddressPicker';
 import PasswordStrengthIndicator from '../../components/common/PasswordStrengthIndicator';
 import { isPasswordPolicyValid } from '../../utils/passwordStrength';
+import FormField from '../../components/common/FormField';
+import {
+  normalizeName,
+  normalizeEmail,
+  normalizeAddress,
+  normalizePHPhone,
+} from '../../utils/formFields';
 import {
   User as UserIcon,
   Mail,
@@ -193,11 +200,22 @@ export default function AdminProfile() {
       try {
         setSavingProfile(true);
 
+        const cleanedFirstName = normalizeName(profileForm.firstName);
+        const cleanedLastName = normalizeName(profileForm.lastName);
+        const cleanedPhone = normalizePHPhone(profileForm.contactNumber);
+        const cleanedAddress = normalizeAddress(profileForm.address);
+
+        if (profileForm.contactNumber.trim() && !/^\+639\d{9}$/.test(cleanedPhone)) {
+          showMessage('error', 'Please enter a valid Philippine mobile number.');
+          setSavingProfile(false);
+          return;
+        }
+
         await updateProfile({
-          firstName: profileForm.firstName.trim(),
-          lastName: profileForm.lastName.trim(),
-          phone: profileForm.contactNumber.trim(),
-          address: profileForm.address.trim(),
+          firstName: cleanedFirstName,
+          lastName: cleanedLastName,
+          phone: cleanedPhone,
+          address: cleanedAddress,
           latitude: profileForm.latitude ? Number(profileForm.latitude) : null,
           longitude: profileForm.longitude ? Number(profileForm.longitude) : null,
         });
@@ -615,20 +633,21 @@ export default function AdminProfile() {
                       className="space-y-5"
                     >
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <FormInput
+                        <FormField
+                          field="firstName"
                           label="First Name"
-                          icon={<UserIcon className="size-4" />}
                           value={profileForm.firstName}
                           onChange={(v) => handleProfileFieldChange('firstName', v)}
-                        />
-
-                        <FormInput
-                          label="Last Name"
                           icon={<UserIcon className="size-4" />}
-                          value={profileForm.lastName}
-                          onChange={(v) => handleProfileFieldChange('lastName', v)}
                         />
 
+                       <FormField
+                        field="lastName"
+                        label="Last Name"
+                        value={profileForm.lastName}
+                        onChange={(v) => handleProfileFieldChange('lastName', v)}
+                        icon={<UserIcon className="size-4" />}
+                      />
                         <div className="space-y-3 md:col-span-2">
                           <label className="ml-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
                             Email
@@ -683,24 +702,26 @@ export default function AdminProfile() {
                                   </p>
 
                                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                    <FormInput
+                                    <FormField
+                                      field="newEmail"
                                       label="New Email"
-                                      icon={<Mail className="size-4" />}
                                       type="email"
                                       value={emailForm.newEmail}
                                       onChange={(v) =>
                                         setEmailForm((prev) => ({ ...prev, newEmail: v }))
                                       }
+                                      icon={<Mail className="size-4" />}
                                     />
 
-                                    <FormInput
+                                    <FormField
+                                      field="confirmEmail"
                                       label="Confirm New Email"
-                                      icon={<Mail className="size-4" />}
                                       type="email"
                                       value={emailForm.confirmEmail}
                                       onChange={(v) =>
                                         setEmailForm((prev) => ({ ...prev, confirmEmail: v }))
                                       }
+                                      icon={<Mail className="size-4" />}
                                     />
                                   </div>
 
@@ -732,11 +753,14 @@ export default function AdminProfile() {
                           </AnimatePresence>
                         </div>
 
-                        <FormInput
+                        <FormField
+                          field="contactNumber"
                           label="Phone"
-                          icon={<Phone className="size-4" />}
+                          type="tel"
                           value={profileForm.contactNumber}
                           onChange={(v) => handleProfileFieldChange('contactNumber', v)}
+                          onBlur={(v) => handleProfileFieldChange('contactNumber', v)}
+                          icon={<Phone className="size-4" />}
                         />
 
                         <div className="md:col-span-2 space-y-4">
@@ -993,42 +1017,6 @@ function InfoBlock({
   );
 }
 
-function FormInput({
-  label,
-  icon,
-  value,
-  onChange,
-  type = 'text',
-}: {
-  label: string;
-  icon?: ReactNode;
-  value: string;
-  onChange: (v: string) => void;
-  type?: string;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label className="ml-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-        {label}
-      </label>
-
-      <div className="relative">
-        {icon && (
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{icon}</div>
-        )}
-
-        <input
-          type={type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className={`w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 text-sm text-slate-800 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 ${
-            icon ? 'pl-10 pr-4' : 'px-4'
-          }`}
-        />
-      </div>
-    </div>
-  );
-}
 
 function PasswordInput({
   label,

@@ -5,6 +5,13 @@ import supabase from '../../supabaseClient';
 import AddressPicker from '../../components/common/AddressPicker';
 import PasswordStrengthIndicator from '../../components/common/PasswordStrengthIndicator';
 import { isPasswordPolicyValid } from '../../utils/passwordStrength';
+import FormField from '../../components/common/FormField';
+import {
+  normalizeName,
+  normalizeEmail,
+  normalizeAddress,
+  normalizePHPhone,
+} from '../../utils/formFields';
 import {
   User as UserIcon,
   Mail,
@@ -32,37 +39,6 @@ const INITIAL_PASSWORD_FORM = {
   confirmPassword: '',
 };
 
-const normalizeName = (value: string) => value.trim().replace(/\s+/g, ' ');
-
-const normalizePhone = (value: string) => {
-  const digits = value.replace(/\D/g, '');
-
-  if (!digits) return '';
-
-  // 09123456789 -> +639123456789
-  if (digits.startsWith('09') && digits.length === 11) {
-    return `+63${digits.slice(1)}`;
-  }
-
-  // 9123456789 -> +639123456789
-  if (digits.startsWith('9') && digits.length === 10) {
-    return `+63${digits}`;
-  }
-
-  // 639123456789 -> +639123456789
-  if (digits.startsWith('639') && digits.length === 12) {
-    return `+${digits}`;
-  }
-
-  // already typed with +63
-  if (value.trim().startsWith('+63') && digits.length === 12) {
-    return `+${digits}`;
-  }
-
-  return '';
-};
-
-const isValidPHPhone = (value: string) => /^\+639\d{9}$/.test(value);
 
 export default function ClientProfile() {
   const {
@@ -261,58 +237,52 @@ const handleEditCancel = useCallback(() => {
     []
   );
 
-  const handleProfileSubmit = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (savingProfile) return;
+const handleProfileSubmit = useCallback(
+  async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (savingProfile) return;
 
-      try {
-        setSavingProfile(true);
+    try {
+      setSavingProfile(true);
 
-        const cleanedFirstName = normalizeName(profileForm.firstName);
-const cleanedLastName = normalizeName(profileForm.lastName);
-const cleanedPhone = normalizePhone(profileForm.contactNumber);
-const cleanedAddress = profileForm.address.trim();
+      const cleanedFirstName = normalizeName(profileForm.firstName);
+      const cleanedLastName = normalizeName(profileForm.lastName);
+      const cleanedPhone = normalizePHPhone(profileForm.contactNumber);
+      const cleanedAddress = normalizeAddress(profileForm.address);
 
-if (profileForm.contactNumber.trim() && !cleanedPhone) {
-  showMessage('error', 'Please enter a valid Philippine mobile number.');
-  setSavingProfile(false);
-  return;
-}
-
-if (cleanedPhone && !isValidPHPhone(cleanedPhone)) {
-  showMessage('error', 'Please enter a valid Philippine mobile number.');
-  setSavingProfile(false);
-  return;
-}
-
-await updateProfile({
-  firstName: cleanedFirstName,
-  lastName: cleanedLastName,
-  phone: cleanedPhone,
-  address: cleanedAddress,
-  latitude: profileForm.latitude ? Number(profileForm.latitude) : null,
-  longitude: profileForm.longitude ? Number(profileForm.longitude) : null,
-});
-
-setProfileForm((prev) => ({
-  ...prev,
-  firstName: cleanedFirstName,
-  lastName: cleanedLastName,
-  contactNumber: cleanedPhone,
-  address: cleanedAddress,
-}));
-
-        setEditing(false);
-        showMessage('success', 'Profile information updated!');
-      } catch {
-        showMessage('error', 'Failed to update profile.');
-      } finally {
+      if (profileForm.contactNumber.trim() && !/^\+639\d{9}$/.test(cleanedPhone)) {
+        showMessage('error', 'Please enter a valid Philippine mobile number.');
         setSavingProfile(false);
+        return;
       }
-    },
-    [profileForm, savingProfile, showMessage, updateProfile]
-  );
+
+      await updateProfile({
+        firstName: cleanedFirstName,
+        lastName: cleanedLastName,
+        phone: cleanedPhone,
+        address: cleanedAddress,
+        latitude: profileForm.latitude ? Number(profileForm.latitude) : null,
+        longitude: profileForm.longitude ? Number(profileForm.longitude) : null,
+      });
+
+      setProfileForm((prev) => ({
+        ...prev,
+        firstName: cleanedFirstName,
+        lastName: cleanedLastName,
+        contactNumber: cleanedPhone,
+        address: cleanedAddress,
+      }));
+
+      setEditing(false);
+      showMessage('success', 'Profile information updated!');
+    } catch {
+      showMessage('error', 'Failed to update profile.');
+    } finally {
+      setSavingProfile(false);
+    }
+  },
+  [profileForm, savingProfile, showMessage, updateProfile]
+);
 
   const handleEmailSubmit = useCallback(async () => {
   if (savingEmail) return;
@@ -541,7 +511,6 @@ const handleProceedDeletion = useCallback(async () => {
       return;
     }
 
-    console.log('delete-user access token exists:', !!accessToken);
 
     const response = await fetch(
       `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`,
@@ -909,18 +878,21 @@ className={`mt-5 w-full rounded-2xl border px-4 py-3 text-sm font-semibold min-h
                       className="space-y-5"
                     >
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <FormInput
+                        <FormField
+                          field="firstName"
                           label="First Name"
-                          icon={<UserIcon className="size-4" />}
                           value={profileForm.firstName}
                           onChange={(v) => handleProfileFieldChange('firstName', v)}
+                          icon={<UserIcon className="size-4" />}
                         />
 
-                        <FormInput
+
+                        <FormField
+                          field="lastName"
                           label="Last Name"
-                          icon={<UserIcon className="size-4" />}
                           value={profileForm.lastName}
                           onChange={(v) => handleProfileFieldChange('lastName', v)}
+                          icon={<UserIcon className="size-4" />}
                         />
 
                         <div className="space-y-3 md:col-span-2">
@@ -974,25 +946,37 @@ className={`mt-5 w-full rounded-2xl border px-4 py-3 text-sm font-semibold min-h
           </p>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <FormInput
-              label="New Email"
-              icon={<Mail className="size-4" />}
-              type="email"
-              value={emailForm.newEmail}
-              onChange={(v) =>
-                setEmailForm((prev) => ({ ...prev, newEmail: v }))
-              }
-            />
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <FormField
+                field="newEmail"
+                label="New Email"
+                type="email"
+                value={emailForm.newEmail}
+                onChange={(v) =>
+                  setEmailForm((prev) => ({ ...prev, newEmail: v }))
+                }
+                onBlur={(v) =>
+                  setEmailForm((prev) => ({ ...prev, newEmail: v }))
+                }
+                icon={<Mail className="size-4" />}
+                autoComplete="email"
+              />
 
-            <FormInput
-              label="Confirm New Email"
-              icon={<Mail className="size-4" />}
-              type="email"
-              value={emailForm.confirmEmail}
-              onChange={(v) =>
-                setEmailForm((prev) => ({ ...prev, confirmEmail: v }))
-              }
-            />
+              <FormField
+                field="confirmEmail"
+                label="Confirm New Email"
+                type="email"
+                value={emailForm.confirmEmail}
+                onChange={(v) =>
+                  setEmailForm((prev) => ({ ...prev, confirmEmail: v }))
+                }
+                onBlur={(v) =>
+                  setEmailForm((prev) => ({ ...prev, confirmEmail: v }))
+                }
+                icon={<Mail className="size-4" />}
+                autoComplete="email"
+              />
+            </div>
           </div>
 
           <PasswordInput
@@ -1020,17 +1004,14 @@ className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 tex
   </AnimatePresence>
 </div>
 
-                        <FormInput
+                        <FormField
+                          field="contactNumber"
                           label="Phone"
-                          icon={<Phone className="size-4" />}
+                          type="tel"
                           value={profileForm.contactNumber}
                           onChange={(v) => handleProfileFieldChange('contactNumber', v)}
-                          onBlur={() =>
-                            handleProfileFieldChange(
-                              'contactNumber',
-                              normalizePhone(profileForm.contactNumber)
-                            )
-                          }
+                          onBlur={(v) => handleProfileFieldChange('contactNumber', v)}
+                          icon={<Phone className="size-4" />}
                         />
 
                         <div className="md:col-span-2 space-y-4">
@@ -1360,45 +1341,6 @@ function InfoBlock({
   );
 }
 
-function FormInput({
-  label,
-  icon,
-  value,
-  onChange,
-  onBlur,
-  type = 'text',
-}: {
-  label: string;
-  icon?: ReactNode;
-  value: string;
-  onChange: (v: string) => void;
-  onBlur?: () => void;
-  type?: string;
-}) {
-  return (
-    <div className="space-y-1.5">
-      <label className="ml-1 block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-500">
-        {label}
-      </label>
-
-      <div className="relative">
-        {icon && (
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{icon}</div>
-        )}
-
-        <input
-          type={type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onBlur}
-          className={`w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 text-sm text-slate-800 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 ${
-            icon ? 'pl-10 pr-4' : 'px-4'
-          }`}
-        />
-      </div>
-    </div>
-  );
-}
 
 function PasswordInput({
   label,
