@@ -215,18 +215,18 @@ function SessionManager() {
 export default function App() {
   return (
     <Router>
-      <AuthProvider>
-        <DataProvider>
-          <ReviewsProvider>
-            <PaymentMethodsProvider>
-              <IndicatorProvider>
+      <IndicatorProvider>
+        <AuthProvider>
+          <DataProvider>
+            <ReviewsProvider>
+              <PaymentMethodsProvider>
                 <AppRoutes />
                 <SessionManager />
-              </IndicatorProvider>
-            </PaymentMethodsProvider>
-          </ReviewsProvider>
-        </DataProvider>
-      </AuthProvider>
+              </PaymentMethodsProvider>
+            </ReviewsProvider>
+          </DataProvider>
+        </AuthProvider>
+      </IndicatorProvider>
     </Router>
   );
 }
