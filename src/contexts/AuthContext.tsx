@@ -996,12 +996,18 @@ console.log('login step: precheck total', Math.round(performance.now() - t0), 'm
 
       pendingDeviceVerificationRef.current = true;
 
+      const signInStart = performance.now();
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email: normalizedEmail,
         password,
       });
 
-      console.log('login step: signInWithPassword', Math.round(performance.now() - t0), 'ms');
+      console.log(
+        'login step: signInWithPassword only',
+        Math.round(performance.now() - signInStart),
+        'ms'
+      );
 
       if (error || !data.user) {
         pendingDeviceVerificationRef.current = false;
@@ -1022,6 +1028,8 @@ if (!accessToken) {
 }
 
 const fingerprint = getDeviceFingerprint();
+
+const postSignInStart = performance.now();
 
 const deviceCheckPromise = fetch(
   `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-device-and-send-verification`,
@@ -1047,18 +1055,37 @@ const deviceCheckPromise = fetch(
     payload = null;
   }
 
+  console.log(
+    'login step: device check only',
+    Math.round(performance.now() - postSignInStart),
+    'ms'
+  );
+
   return {
     ok: response.ok,
     payload,
   };
 });
 
-const profilePromise = fetchOrCreateUserProfile(data.user);
+const profilePromise = fetchOrCreateUserProfile(data.user).then((profile) => {
+  console.log(
+    'login step: profile fetch only',
+    Math.round(performance.now() - postSignInStart),
+    'ms'
+  );
+  return profile;
+});
 
 const [{ ok, payload: deviceCheck }, profile] = await Promise.all([
   deviceCheckPromise,
   profilePromise,
 ]);
+
+console.log(
+  'login step: post-sign-in total',
+  Math.round(performance.now() - postSignInStart),
+  'ms'
+);
 
 console.log('login step: device + profile', Math.round(performance.now() - t0), 'ms');
 
