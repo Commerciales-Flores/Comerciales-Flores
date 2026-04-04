@@ -6,97 +6,108 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'application/json',
+    },
+  });
+}
+
+function getClientIp(req: Request) {
+  const cfConnectingIp = req.headers.get('cf-connecting-ip');
+  if (cfConnectingIp?.trim()) return cfConnectingIp.trim();
+
+  const forwardedFor = req.headers.get('x-forwarded-for');
+  if (forwardedFor) {
+    const first = forwardedFor.split(',')[0]?.trim();
+    if (first) return first;
+  }
+
+  const realIp = req.headers.get('x-real-ip');
+  if (realIp?.trim()) return realIp.trim();
+
+  return null;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const { token } = await req.json();
+    const { token } = await req.json().catch(() => ({}));
 
-    if (!token) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'missing_token' }),
-        {
-          status: 400,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+    if (!token || typeof token !== 'string') {
+      return jsonResponse({ success: false, error: 'missing_token' }, 400);
     }
 
     const secret = Deno.env.get('TURNSTILE_SECRET_KEY') ?? '';
 
     if (!secret) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'missing_secret_key' }),
-        {
-          status: 500,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      return jsonResponse({ success: false, error: 'missing_secret_key' }, 500);
     }
 
     const formData = new URLSearchParams();
     formData.append('secret', secret);
     formData.append('response', token);
 
-    const cfRes = await fetch(
-      'https://challenges.cloudflare.com/turnstile/v0/siteverify',
-      {
-        method: 'POST',
-        body: formData,
-      }
-    );
+    const clientIp = getClientIp(req);
+    if (clientIp) {
+      formData.append('remoteip', clientIp);
+    }
 
-    const data = await cfRes.json();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
 
-    if (!data.success) {
-      return new Response(
-        JSON.stringify({
+    let cfRes: Response;
+
+    try {
+      cfRes = await fetch(
+        'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+        {
+          method: 'POST',
+          body: formData,
+          signal: controller.signal,
+        }
+      );
+    } catch (error) {
+      const isAbort = error instanceof Error && error.name === 'AbortError';
+
+      return jsonResponse(
+        {
+          success: false,
+          error: isAbort ? 'turnstile_timeout' : 'turnstile_request_failed',
+        },
+        504
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    const data = await cfRes.json().catch(() => null);
+
+    if (!cfRes.ok || !data?.success) {
+      return jsonResponse(
+        {
           success: false,
           error: 'invalid_turnstile',
-          details: data,
-        }),
-        {
-          status: 403,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json',
-          },
-        }
+        },
+        403
       );
     }
 
-    return new Response(
-      JSON.stringify({ success: true }),
-      {
-        status: 200,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    return jsonResponse({ success: true }, 200);
   } catch (err) {
-    return new Response(
-      JSON.stringify({
+    return jsonResponse(
+      {
         success: false,
         error: 'server_error',
         message: err instanceof Error ? err.message : 'Unknown error',
-      }),
-      {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json',
-        },
-      }
+      },
+      500
     );
   }
 });
