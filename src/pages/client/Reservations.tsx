@@ -228,7 +228,7 @@ function ReservationFilterBottomSheet({
 
 export default function ClientReservations() {
   const { user } = useAuth();
-  const { units } = useData();
+  const { units } = useClientData();
   const { getReservationsByUserId, deleteReservation, updateReservation } = useReservations();
 
   const [expandedDetailsId, setExpandedDetailsId] = useState<string | null>(null);
@@ -238,6 +238,13 @@ export default function ClientReservations() {
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
   );
+
+  const [reservationToDelete, setReservationToDelete] = useState<{
+  id: string;
+  unitName: string;
+} | null>(null);
+
+const [isDeletingReservation, setIsDeletingReservation] = useState(false);
 
   const [extensionModalReservationId, setExtensionModalReservationId] = useState<string | null>(null);
   const [extensionMonths, setExtensionMonths] = useState('1');
@@ -313,13 +320,14 @@ export default function ClientReservations() {
   }, []);
 
   const handleDeleteReservation = useCallback(
-    async (reservationId: string, unitName: string) => {
-      if (window.confirm(`Are you sure you want to cancel your reservation for "${unitName}"?`)) {
-        await deleteReservation(reservationId);
-      }
-    },
-    [deleteReservation]
-  );
+  (reservationId: string, unitName: string) => {
+    setReservationToDelete({
+      id: reservationId,
+      unitName,
+    });
+  },
+  []
+);
 
   const toggleExpand = useCallback(
     (id: string) => {
@@ -1080,6 +1088,86 @@ export default function ClientReservations() {
           )}
         </AnimatePresence>
       </div>
+      <AnimatePresence>
+  {reservationToDelete && (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[80] bg-black/50"
+        onClick={() => {
+          if (isDeletingReservation) return;
+          setReservationToDelete(null);
+        }}
+      />
+
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 12 }}
+        transition={{ duration: 0.18 }}
+        className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+      >
+        <div className="w-full max-w-md rounded-[28px] border border-gray-200 bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5">
+            <h2 className="text-lg font-bold text-gray-900">
+              Cancel Reservation
+            </h2>
+
+            <button
+              onClick={() => {
+                if (isDeletingReservation) return;
+                setReservationToDelete(null);
+              }}
+              className="rounded-full bg-gray-100 p-2 transition hover:bg-gray-200"
+            >
+              <X className="size-5 text-gray-500" />
+            </button>
+          </div>
+
+          <div className="px-6 py-5">
+            <p className="text-sm text-gray-600">
+              Are you sure you want to cancel your reservation for{' '}
+              <span className="font-semibold text-gray-900">
+                "{reservationToDelete.unitName}"
+              </span>
+              ?
+            </p>
+          </div>
+
+          <div className="flex gap-3 border-t border-gray-100 px-6 py-5">
+            <button
+              type="button"
+              onClick={() => setReservationToDelete(null)}
+              disabled={isDeletingReservation}
+              className="flex-1 rounded-2xl border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+            >
+              Keep Reservation
+            </button>
+
+            <button
+              type="button"
+              disabled={isDeletingReservation}
+              onClick={async () => {
+                try {
+                  setIsDeletingReservation(true);
+                  await deleteReservation(reservationToDelete.id);
+                  setReservationToDelete(null);
+                } finally {
+                  setIsDeletingReservation(false);
+                }
+              }}
+              className="flex-1 rounded-2xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
+            >
+              {isDeletingReservation ? 'Cancelling...' : 'Yes, Cancel'}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </>
+  )}
+</AnimatePresence>
     </div>
   );
 }

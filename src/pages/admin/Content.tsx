@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, type ReactNode } from 'react';
 import { useAdminData } from '../../contexts/AdminDataContext';
 import supabase from '../../supabaseClient';
+import AppNotice from '../../components/common/AppNotice';
 import {
   Save,
   Plus,
@@ -30,6 +31,11 @@ type EditableSection =
 
 export default function AdminContent() {
   const { contentSettings, updateContentSettings } = useAdminData();
+
+  const [notice, setNotice] = useState<{
+    message: string;
+    variant?: 'error' | 'warning' | 'success' | 'info';
+  } | null>(null);
 
   const [activeSection, setActiveSection] = useState<EditableSection>(null);
   const [newAnnouncement, setNewAnnouncement] = useState('');
@@ -126,7 +132,10 @@ const handleHeroImageUpload = async (file: File | null) => {
     updateHero({ image: path });
   } catch (error) {
     console.error('Failed to upload hero image:', error);
-    alert('Failed to upload hero image.');
+    setNotice({
+      message: 'Failed to upload hero image.',
+      variant: 'error',
+    });
   } finally {
     setIsUploadingHeroImage(false);
   }
@@ -151,7 +160,10 @@ const handleHistoryImagesUpload = async (files: FileList | null) => {
     });
   } catch (error) {
     console.error('Failed to upload history images:', error);
-    alert('Failed to upload one or more history images.');
+    setNotice({
+      message: 'Failed to upload one or more history images.',
+      variant: 'error',
+    });
   } finally {
     setIsUploadingHistoryImages(false);
   }
@@ -219,8 +231,12 @@ const handleHistoryImagesUpload = async (files: FileList | null) => {
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     } catch (error) {
-      console.error('Failed to save content settings:', error);
-    }
+    console.error('Failed to save content settings:', error);
+    setNotice({
+      message: 'Failed to save changes. Please try again.',
+      variant: 'error',
+    });
+  }
   };
 
   const resetSection = (section: EditableSection) => {
@@ -299,11 +315,22 @@ const handleHistoryImagesUpload = async (files: FileList | null) => {
           </p>
         </div>
 
+        {notice && (
+          <AppNotice
+            message={notice.message}
+            variant={notice.variant}
+            onClose={() => setNotice(null)}
+            autoHideMs={4000}
+          />
+        )}
+
         {saved && (
-          <div className="inline-flex w-fit items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-700 shadow-sm animate-in fade-in slide-in-from-top-2">
-            <CheckCircle className="size-5 shrink-0" />
-            <span className="text-sm font-semibold">Changes saved successfully.</span>
-          </div>
+          <AppNotice
+            message="Changes saved successfully."
+            variant="success"
+            onClose={() => setSaved(false)}
+            autoHideMs={2500}
+          />
         )}
       </div>
 

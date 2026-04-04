@@ -881,6 +881,9 @@ if (oauthPending) {
   async (token?: string): Promise<boolean> => {
     if (!token) return false;
 
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 2500);
+
     try {
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/verify-turnstile`,
@@ -890,15 +893,12 @@ if (oauthPending) {
             'Content-Type': 'application/json',
             apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
-          body: JSON.stringify({
-            token,
-          }),
+          body: JSON.stringify({ token }),
+          signal: controller.signal,
         }
       );
 
-      if (!response.ok) {
-        return false;
-      }
+      if (!response.ok) return false;
 
       const data = await response.json().catch(() => null);
       return Boolean(data?.success);
@@ -907,6 +907,8 @@ if (oauthPending) {
         console.warn('Turnstile verification failed:', error);
       }
       return false;
+    } finally {
+      clearTimeout(timeout);
     }
   },
   []
@@ -948,40 +950,24 @@ const login = useCallback(
       clearAuthNotice();
       const normalizedEmail = normalizeEmail(email);
 
-      const precheckStart = performance.now();
 
-const turnstilePromise = verifyTurnstileToken(options?.turnstileToken).then((result) => {
-  console.log(
-    'login step: turnstile',
-    Math.round(performance.now() - precheckStart),
-    'ms'
-  );
-  return result;
-});
+      const turnstilePromise = verifyTurnstileToken(options?.turnstileToken).then((result) => {
+        return result;
+      });
 
-const lockPromise = supabase
-  .rpc('check_login_lock', {
-    p_email: normalizedEmail,
-  })
-  .then((result) => {
-    console.log(
-      'login step: lock check',
-      Math.round(performance.now() - precheckStart),
-      'ms'
-    );
-    return result;
-  });
+      const lockPromise = supabase
+        .rpc('check_login_lock', {
+          p_email: normalizedEmail,
+        })
+        .then((result) => {
+          return result;
+        });
 
-const [isTurnstileValid, lockResult] = await Promise.all([
-  turnstilePromise,
-  lockPromise,
-]);
+      const [isTurnstileValid, lockResult] = await Promise.all([
+        turnstilePromise,
+        lockPromise,
+      ]);
 
-console.log(
-  'login step: precheck total',
-  Math.round(performance.now() - precheckStart),
-  'ms'
-);
 
       if (!isTurnstileValid) {
         return { success: false, error: 'verification_failed' };
@@ -999,18 +985,11 @@ console.log(
 
       pendingDeviceVerificationRef.current = true;
 
-      const signInStart = performance.now();
-
       const { data, error } = await supabase.auth.signInWithPassword({
         email: normalizedEmail,
         password,
       });
 
-      console.log(
-        'login step: signInWithPassword only',
-        Math.round(performance.now() - signInStart),
-        'ms'
-      );
 
       if (error || !data.user) {
         pendingDeviceVerificationRef.current = false;
@@ -1031,8 +1010,6 @@ if (!accessToken) {
 }
 
 const fingerprint = getDeviceFingerprint();
-
-const postSignInStart = performance.now();
 
 const deviceCheckPromise = fetch(
   `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-device-and-send-verification`,
@@ -1058,11 +1035,6 @@ const deviceCheckPromise = fetch(
     payload = null;
   }
 
-  console.log(
-    'login step: device check only',
-    Math.round(performance.now() - postSignInStart),
-    'ms'
-  );
 
   return {
     ok: response.ok,
@@ -1071,11 +1043,6 @@ const deviceCheckPromise = fetch(
 });
 
 const profilePromise = fetchOrCreateUserProfile(data.user).then((profile) => {
-  console.log(
-    'login step: profile fetch only',
-    Math.round(performance.now() - postSignInStart),
-    'ms'
-  );
   return profile;
 });
 
@@ -1084,11 +1051,6 @@ const [{ ok, payload: deviceCheck }, profile] = await Promise.all([
   profilePromise,
 ]);
 
-console.log(
-  'login step: post-sign-in total',
-  Math.round(performance.now() - postSignInStart),
-  'ms'
-);
 
 
 if (!ok) {

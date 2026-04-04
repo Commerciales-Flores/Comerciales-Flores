@@ -3,6 +3,7 @@ import { useAdminData } from '../../contexts/AdminDataContext';
 import { usePayments } from '../../contexts/PaymentsContext';
 import type { PaymentMethod } from '../../data/types';
 import { formatCurrency } from '../../utils/currency';
+import AppNotice from '../common/AppNotice';
 import {
   Paperclip,
   Trash2,
@@ -18,6 +19,7 @@ interface AdminPaymentFormProps {
   onComplete: () => void;
 }
 
+
 export default function AdminPaymentForm({
   userId,
   reservationId,
@@ -25,6 +27,11 @@ export default function AdminPaymentForm({
 }: AdminPaymentFormProps) {
   const { reservations } = useAdminData();
   const { addPayment } = usePayments();
+
+  const [notice, setNotice] = useState<{
+    message: string;
+    variant?: 'error' | 'warning' | 'success' | 'info';
+  } | null>(null);
 
   const reservation = reservations.find((r) => r.id === reservationId);
 
@@ -149,11 +156,12 @@ export default function AdminPaymentForm({
       reservation.unitType === 'rental_space' &&
       enteredAmount < effectiveMinimum
     ) {
-      alert(
-        `Minimum required payment is ${formatCurrency(
+      setNotice({
+        message: `Minimum required payment is ${formatCurrency(
           effectiveMinimum
-        )} for this ${reservation.paymentCycle ?? 'monthly'} rental billing cycle.`
-      );
+        )} for this ${reservation.paymentCycle ?? 'monthly'} rental billing cycle.`,
+        variant: 'warning',
+      });
       return;
     }
 
@@ -189,7 +197,10 @@ export default function AdminPaymentForm({
       onComplete();
     } catch (error) {
       console.error('Failed to add payment:', error);
-      alert('Failed to add verified payment. Please try again.');
+      setNotice({
+        message: 'Failed to add verified payment. Please try again.',
+        variant: 'error',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -213,6 +224,14 @@ export default function AdminPaymentForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {notice && (
+        <AppNotice
+          message={notice.message}
+          variant={notice.variant}
+          onClose={() => setNotice(null)}
+          autoHideMs={4000}
+        />
+      )}
       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
         <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
           Payment Target

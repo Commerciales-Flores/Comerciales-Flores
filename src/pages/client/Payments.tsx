@@ -8,6 +8,7 @@ import type { LedgerEntry } from '../../data/types';
 import { usePaymentMethods } from '../../contexts/PaymentMethodsContext';
 import { formatDate } from '../../utils/date';
 import supabase from '../../supabaseClient';
+import AppNotice from '../../components/common/AppNotice';
 import {
   CreditCard,
   CheckCircle2,
@@ -170,6 +171,11 @@ export default function ClientPayments() {
   const { getPaymentsByUserId, addPayment, uploadPaymentProof } = usePayments();
   const { ledgers } = useRecords();
   const { sendSystemNotification } = useNotifications();
+
+  const [notice, setNotice] = useState<{
+    message: string;
+    variant?: 'error' | 'warning' | 'success' | 'info';
+  } | null>(null);
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState<string | null>(null);
@@ -440,7 +446,10 @@ const getReservationRemainingFromLedger = useCallback(
 
       const isValidType = ['image/png', 'image/jpeg', 'image/jpg'].includes(file.type);
       if (!isValidType) {
-        alert('Please upload a PNG, JPG, or JPEG image.');
+        setNotice({
+          message: 'Please upload a PNG, JPG, or JPEG image.',
+          variant: 'warning',
+        });
         return;
       }
 
@@ -536,16 +545,22 @@ const rentalRequiredPayment = useMemo(() => {
     const balance = getReservationRemainingFromLedger(reservation);
 
     if (Number.isNaN(amount) || amount <= 0 || amount > balance) {
-      alert('Please enter a valid payment amount.');
+      setNotice({
+        message: 'Please enter a valid payment amount.',
+        variant: 'warning',
+      });
       return;
     }
 
     // 🔥 Rental enforcement
     if (reservation.unitType === 'rental_space') {
       if (amount < rentalRequiredPayment) {
-        alert(
-          `Minimum required payment is ${formatCurrency(rentalRequiredPayment)} based on your ${reservation.paymentCycle} billing.`
-        );
+        setNotice({
+          message: `Minimum required payment is ${formatCurrency(
+            rentalRequiredPayment
+          )} based on your ${reservation.paymentCycle} billing.`,
+          variant: 'warning',
+        });
         return;
       }
     }
@@ -604,7 +619,10 @@ const rentalRequiredPayment = useMemo(() => {
       }, 1800);
     } catch (error) {
       console.error('Failed to submit payment:', error);
-      alert('Failed to submit payment. Please try again.');
+      setNotice({
+        message: 'Failed to submit payment. Please try again.',
+        variant: 'error',
+      });
       setIsSubmitting(false);
     }
   },
@@ -632,9 +650,11 @@ const rentalRequiredPayment = useMemo(() => {
       const ledgerEntry = ledgerByPaymentId.get(payment.id);
 
       if (!ledgerEntry) {
-        alert(
-          'Invoice is not available yet. It can be downloaded once this payment has been verified and posted to the ledger.'
-        );
+        setNotice({
+          message:
+            'Invoice is not available yet. It can be downloaded once this payment has been verified.',
+          variant: 'info',
+        });
         return;
       }
 
@@ -805,6 +825,15 @@ Thank you for your payment.
             View balances, track progress, submit payments, and download invoices.
           </p>
         </header>
+
+        {notice && (
+          <AppNotice
+            message={notice.message}
+            variant={notice.variant}
+            onClose={() => setNotice(null)}
+            autoHideMs={4000}
+          />
+        )}
         
 
         {shouldShowOverview && (

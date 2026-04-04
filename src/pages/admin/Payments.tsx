@@ -5,6 +5,7 @@ import { DataTable, DataCell, ActionCell } from '../../components/common/DataTab
 import { useNotifications } from '../../contexts/NotificationContext';
 import { usePayments } from '../../contexts/PaymentsContext';
 import { useRecords } from '../../contexts/RecordsContext';
+import AppNotice from '../../components/common/AppNotice';
 import { formatDate } from '../../utils/date';
 import {
   CreditCard,
@@ -99,6 +100,11 @@ export default function AdminPayments() {
   const { sendPaymentNotification, sendRefundNotification } = useNotifications();
   const { fetchPaymentsPage, updatePayment, issueRefund, paymentsVersion } = usePayments();
   const { ledgers, ledgerVersion } = useRecords();
+
+  const [notice, setNotice] = useState<{
+  message: string;
+  variant?: 'error' | 'warning' | 'success' | 'info';
+} | null>(null);
 
   const [payments, setPayments] = useState<Payment[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -370,11 +376,13 @@ const shouldShowFilters =
         setTotalCount(result.count);
       } catch (error) {
         console.error('Failed to verify payment:', error);
-        alert(
-          error instanceof Error
-            ? error.message
-            : 'Failed to verify payment. Please review the payment rules and try again.'
-        );
+        setNotice({
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Failed to verify payment. Please review the payment rules and try again.',
+          variant: 'error',
+        });
       }
     },
     [
@@ -418,19 +426,26 @@ const shouldShowFilters =
     const parsedAmount = Number(refundAmount);
 
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-      alert('Please enter a valid refund amount.');
+      setNotice({
+        message: 'Please enter a valid refund amount.',
+        variant: 'warning',
+      });
       return;
     }
 
     if (parsedAmount > refundPayment.remainingRefundableAmount) {
-      alert(
-        `Refund cannot exceed ${formatCurrency(refundPayment.remainingRefundableAmount)}.`
-      );
+      setNotice({
+        message: `Refund cannot exceed ${formatCurrency(refundPayment.remainingRefundableAmount)}.`,
+        variant: 'warning',
+      });
       return;
     }
 
     if (!refundNotes.trim()) {
-      alert('Please provide a refund reason.');
+      setNotice({
+        message: 'Please provide a refund reason.',
+        variant: 'warning',
+      });
       return;
     }
 
@@ -469,13 +484,19 @@ const shouldShowFilters =
       setPayments(result.data);
       setTotalCount(result.count);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Refund failed');
+      setNotice({
+        message: err instanceof Error ? err.message : 'Refund failed',
+        variant: 'error',
+      });
     }
   };
 
   const handleExportCSV = useCallback(() => {
     if (paymentViews.length === 0) {
-      alert('No data to export.');
+      setNotice({
+        message: 'No data to export.',
+        variant: 'info',
+      });
       return;
     }
 
@@ -509,6 +530,14 @@ const shouldShowFilters =
   return (
     <div className="min-h-screen bg-white">
       <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
+        {notice && (
+          <AppNotice
+            message={notice.message}
+            variant={notice.variant}
+            onClose={() => setNotice(null)}
+            autoHideMs={4000}
+          />
+        )}
         <div className="hidden items-center justify-between lg:flex">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Payment Management</h1>

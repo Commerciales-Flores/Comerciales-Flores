@@ -12,6 +12,7 @@ import { usePaymentMethods, type PaymentMethodCode } from '../../contexts/Paymen
 import type { Reservation } from '../../data/types';
 import { formatDate } from '../../utils/date';
 import supabase from "../../supabaseClient";
+import AppNotice from "../../components/common/AppNotice";
 
 import {
   Search,
@@ -707,6 +708,11 @@ export default function ClientUnits() {
   const { reviews } = useReviews();
   const { units, parkingSlots } = useUnits();
   const { sendSystemNotification } = useNotifications();
+
+  const [notice, setNotice] = useState<{
+    message: string;
+    variant?: 'error' | 'warning' | 'success' | 'info';
+  } | null>(null);
 
   const [isSlotPanelOpen, setIsSlotPanelOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -1416,7 +1422,10 @@ const getParkingSlotState = useCallback(
     );
 
     if (!reservationForm.agreedToPolicies) {
-      alert("Please agree to the policies before submitting your reservation.");
+      setNotice({
+        message: "Please agree to the policies before submitting your reservation.",
+        variant: "warning",
+      });
       return;
     }
 
@@ -1424,28 +1433,43 @@ const getParkingSlotState = useCallback(
       requiresAppointment &&
       (!reservationForm.appointmentDate || !reservationForm.appointmentTime)
     ) {
-      alert("Please select an appointment date and time.");
+      setNotice({
+        message: "Please select an appointment date and time.",
+        variant: "warning",
+      });
       return;
     }
 
     if (shouldShowPaymentSection && !hasActivePaymentMethods) {
-      alert("No payment methods are currently available. Please try again later.");
+      setNotice({
+        message: "No payment methods are currently available. Please try again later.",
+        variant: "error",
+      });
       return;
     }
 
     if (selectedUnitData.type === "rental_space") {
       if (!reservationForm.startDate || !reservationForm.endDate) {
-        alert("Please select your lease dates first.");
+        setNotice({
+          message: "Please select your lease dates first.",
+          variant: "warning",
+        });
         return;
       }
 
       if (reservationForm.durationType !== "months") {
-        alert("Rental spaces must use monthly duration.");
+        setNotice({
+          message: "Rental spaces must use monthly duration.",
+          variant: "warning",
+        });
         return;
       }
 
       if (!reservationForm.paymentCycle) {
-        alert("Please select a payment cycle.");
+        setNotice({
+          message: "Rental spaces must use monthly duration.",
+          variant: "warning",
+        });
         return;
       }
 
@@ -1453,14 +1477,18 @@ const getParkingSlotState = useCallback(
         reservationForm.paymentCycle === "quarterly" &&
         reservationForm.duration < RESERVATION_LIMITS.rental_space.minMonths
       ) {
-        alert(
-          `Quarterly payment cycle requires at least ${RESERVATION_LIMITS.rental_space.minMonths} months.`
-        );
+        setNotice({
+          message: `Quarterly payment cycle requires at least ${RESERVATION_LIMITS.rental_space.minMonths} months.`,
+          variant: "warning",
+        });
         return;
       }
 
       if (!reservationForm.businessType.trim()) {
-        alert("Please enter your business type.");
+        setNotice({
+          message: "Please enter your business type.",
+          variant: "warning",
+        });
         return;
       }
 
@@ -1474,7 +1502,10 @@ const getParkingSlotState = useCallback(
       );
 
       if (hasRentalConflict) {
-        alert("This rental space is occupied for the selected lease period.");
+        setNotice({
+          message: "This rental space is occupied for the selected lease period.",
+          variant: "error",
+        });
         return;
       }
     }
@@ -1485,7 +1516,10 @@ const getParkingSlotState = useCallback(
         !reservationForm.endDate ||
         reservationForm.duration <= 0
       ) {
-        alert("Please select reservation dates first.");
+        setNotice({
+          message: "Please select reservation dates first.",
+          variant: "warning",
+        });
         return;
       }
 
@@ -1499,7 +1533,10 @@ const getParkingSlotState = useCallback(
       );
 
       if (hasFunctionHallConflict) {
-        alert("This function hall is already reserved for the selected date(s).");
+        setNotice({
+          message: "This function hall is already reserved for the selected date(s).",
+          variant: "error",
+        });
         return;
       }
 
@@ -1507,14 +1544,20 @@ const getParkingSlotState = useCallback(
         !reservationForm.eventPurpose.trim() ||
         !reservationForm.attendees.trim()
       ) {
-        alert("Please complete the function hall reservation details.");
+        setNotice({
+          message: "Please complete the function hall reservation details.",
+          variant: "warning",
+        });
         return;
       }
     }
 
     if (selectedUnitData.type === "parking_slot") {
       if (!reservationForm.slotId) {
-        alert("Please select a specific parking slot before proceeding.");
+        setNotice({
+          message: "Please select a specific parking slot before proceeding.",
+          variant: "warning",
+        });
         setIsSlotPanelOpen(true);
         return;
       }
@@ -1522,12 +1565,18 @@ const getParkingSlotState = useCallback(
       const selectedSlot = parkingSlots.find((s) => s.id === reservationForm.slotId);
 
       if (!selectedSlot) {
-        alert("Invalid slot selected.");
+        setNotice({
+          message: "Invalid slot selected.",
+          variant: "error",
+        });
         return;
       }
 
       if (ownReservedSlotIds.has(selectedSlot.id)) {
-        alert("You already have an active reservation for this parking slot.");
+        setNotice({
+          message: "You already have an active reservation for this parking slot.",
+          variant: "warning",
+        });
         return;
       }
 
@@ -1536,7 +1585,10 @@ const getParkingSlotState = useCallback(
         selectedSlot.status !== "active" ||
         reservedSlotIds.has(selectedSlot.id)
       ) {
-        alert("This parking slot is no longer available. Please select another.");
+        setNotice({
+          message: "This parking slot is no longer available. Please select another.",
+          variant: "error",
+        });
         return;
       }
 
@@ -1544,7 +1596,10 @@ const getParkingSlotState = useCallback(
         !reservationForm.vehicleType.trim() ||
         !reservationForm.plateNumber.trim()
       ) {
-        alert("Please enter your vehicle information.");
+        setNotice({
+          message: "Please enter your vehicle information.",
+          variant: "warning",
+        });
         return;
       }
     }
@@ -1558,9 +1613,10 @@ const getParkingSlotState = useCallback(
       reservationForm.duration < durationBounds.min ||
       reservationForm.duration > durationBounds.max
     ) {
-      alert(
-        `Please enter a valid duration between ${durationBounds.min} and ${durationBounds.max}.`
-      );
+      setNotice({
+        message: `Please enter a valid duration between ${durationBounds.min} and ${durationBounds.max}.`,
+        variant: "warning",
+      });
       return;
     }
 
@@ -1580,9 +1636,10 @@ const getParkingSlotState = useCallback(
         parsedAttendees < RESERVATION_LIMITS.attendees.min ||
         parsedAttendees > attendeesMax)
     ) {
-      alert(
-        `Please enter attendees between ${RESERVATION_LIMITS.attendees.min} and ${attendeesMax}.`
-      );
+      setNotice({
+        message: `Please enter attendees between ${RESERVATION_LIMITS.attendees.min} and ${attendeesMax}.`,
+        variant: "warning",
+      });
       return;
     }
 
@@ -1604,7 +1661,10 @@ const getParkingSlotState = useCallback(
     }
 
     if (!normalizedStartDate || !normalizedEndDate) {
-      alert("Please select reservation dates first.");
+      setNotice({
+        message: "Please select reservation dates first.",
+        variant: "warning",
+      });
       return;
     }
 
@@ -1676,7 +1736,10 @@ const getParkingSlotState = useCallback(
         error instanceof Error
           ? error.message
           : "Unable to submit reservation. Please try again.";
-      alert(message);
+      setNotice({
+        message,
+        variant: "error",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -1761,6 +1824,15 @@ const calendarLegend = (
             Secure a space or book an appointment for a tour
           </p>
         </header>
+
+        {notice && (
+          <AppNotice
+            message={notice.message}
+            variant={notice.variant}
+            onClose={() => setNotice(null)}
+            autoHideMs={4000}
+          />
+        )}
 
         {hasUnits && (
           <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">

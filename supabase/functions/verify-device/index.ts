@@ -178,9 +178,6 @@ Deno.serve(async (req) => {
         : 'Login approved from verification link',
     });
 
-    if (auditError) {
-      console.log('AUDIT ERROR:', auditError.message);
-    }
 
     return new Response(
       JSON.stringify({
@@ -197,10 +194,6 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error) {
-    console.log(
-      'VERIFY DEVICE CATCH:',
-      error instanceof Error ? error.message : String(error)
-    );
 
     return new Response(
       JSON.stringify({
