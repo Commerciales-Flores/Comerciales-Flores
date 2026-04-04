@@ -8,6 +8,11 @@ import {
   type ReactNode,
 } from 'react';
 import supabase from '../supabaseClient';
+import {
+  normalizeText,
+  normalizeName,
+  normalizePHPhone,
+} from '../utils/DataNormalization';
 
 export type PaymentMethodCode =
   | 'gcash'
@@ -101,15 +106,15 @@ function mapPaymentMethodRow(row: any): PaymentMethodConfig {
     id: row.payment_method_id,
     publicId: row.public_id ?? null,
     methodCode: row.method_code as PaymentMethodCode,
-    displayName: row.display_name ?? '',
-    accountName: row.account_name ?? null,
+    displayName: normalizeText(row.display_name ?? ''),
+    accountName: row.account_name ? normalizeName(row.account_name) : null,
     accountNumber: row.account_number ?? null,
-    mobileNumber: row.mobile_number ?? null,
-    bankName: row.bank_name ?? null,
-    branchName: row.branch_name ?? null,
+    mobileNumber: row.mobile_number ? normalizePHPhone(row.mobile_number) : null,
+    bankName: row.bank_name ? normalizeText(row.bank_name) : null,
+    branchName: row.branch_name ? normalizeText(row.branch_name) : null,
     qrImagePath: qrPath,
     qrImageUrl: getPublicImageUrl(qrPath),
-    instructions: row.instructions ?? null,
+    instructions: row.instructions ? normalizeText(row.instructions) : null,
     isActive: Boolean(row.is_active),
     sortOrder: Number(row.sort_order ?? 0),
     createdAt: row.created_at ?? null,
@@ -216,20 +221,34 @@ export function PaymentMethodsProvider({ children }: { children: ReactNode }) {
   const addPaymentMethod = useCallback(
   async (payload: PaymentMethodPayload) => {
     const { error } = await supabase.from('payment_methods').insert([
-      {
-        method_code: payload.methodCode,
-        display_name: payload.displayName.trim(),
-        account_name: payload.accountName?.trim() || null,
-        account_number: payload.accountNumber?.trim() || null,
-        mobile_number: payload.mobileNumber?.trim() || null,
-        bank_name: payload.bankName?.trim() || null,
-        branch_name: payload.branchName?.trim() || null,
-        qr_image_path: payload.qrImagePath?.trim() || null,
-        instructions: payload.instructions?.trim() || null,
-        is_active: payload.isActive,
-        sort_order: Number(payload.sortOrder || 0),
-      },
-    ]);
+  {
+    method_code: payload.methodCode,
+    display_name: normalizeText(payload.displayName),
+    account_name: payload.accountName
+      ? normalizeName(payload.accountName)
+      : null,
+    account_number: payload.accountNumber
+      ? normalizeText(payload.accountNumber)
+      : null,
+    mobile_number: payload.mobileNumber
+      ? normalizePHPhone(payload.mobileNumber)
+      : null,
+    bank_name: payload.bankName
+      ? normalizeText(payload.bankName)
+      : null,
+    branch_name: payload.branchName
+      ? normalizeText(payload.branchName)
+      : null,
+    qr_image_path: payload.qrImagePath
+      ? normalizeText(payload.qrImagePath)
+      : null,
+    instructions: payload.instructions
+      ? normalizeText(payload.instructions)
+      : null,
+    is_active: payload.isActive,
+    sort_order: Number(payload.sortOrder || 0),
+  },
+]);
 
     if (error) throw error;
   },
@@ -242,14 +261,28 @@ export function PaymentMethodsProvider({ children }: { children: ReactNode }) {
       .from('payment_methods')
       .update({
         method_code: payload.methodCode,
-        display_name: payload.displayName.trim(),
-        account_name: payload.accountName?.trim() || null,
-        account_number: payload.accountNumber?.trim() || null,
-        mobile_number: payload.mobileNumber?.trim() || null,
-        bank_name: payload.bankName?.trim() || null,
-        branch_name: payload.branchName?.trim() || null,
-        qr_image_path: payload.qrImagePath?.trim() || null,
-        instructions: payload.instructions?.trim() || null,
+        display_name: normalizeText(payload.displayName),
+        account_name: payload.accountName
+          ? normalizeName(payload.accountName)
+          : null,
+        account_number: payload.accountNumber
+          ? normalizeText(payload.accountNumber)
+          : null,
+        mobile_number: payload.mobileNumber
+          ? normalizePHPhone(payload.mobileNumber)
+          : null,
+        bank_name: payload.bankName
+          ? normalizeText(payload.bankName)
+          : null,
+        branch_name: payload.branchName
+          ? normalizeText(payload.branchName)
+          : null,
+        qr_image_path: payload.qrImagePath
+          ? normalizeText(payload.qrImagePath)
+          : null,
+        instructions: payload.instructions
+          ? normalizeText(payload.instructions)
+          : null,
         is_active: payload.isActive,
         sort_order: Number(payload.sortOrder || 0),
         updated_at: new Date().toISOString(),

@@ -10,6 +10,12 @@ import {
 } from 'react';
 import supabase from '../supabaseClient';
 import type { User } from '../data/types';
+import {
+  normalizeName,
+  normalizeEmail,
+  normalizePHPhone,
+  normalizeAddress,
+} from '../utils/DataNormalization';
 
 type UsersPageFilters = {
   page?: number;
@@ -41,11 +47,11 @@ function mapUserRow(row: any): User {
     id: row.user_id,
     publicId: row.public_id,
     role: row.role,
-    firstName: row.first_name ?? '',
-    lastName: row.last_name ?? '',
-    email: row.email ?? '',
-    phone: row.phone ?? '',
-    address: row.address ?? '',
+    firstName: normalizeName(row.first_name ?? ''),
+    lastName: normalizeName(row.last_name ?? ''),
+    email: row.email ? normalizeEmail(row.email) : '',
+    phone: normalizePHPhone(row.phone ?? ''),
+    address: normalizeAddress(row.address ?? ''),
     formattedAddress: row.formatted_address ?? undefined,
     latitude: row.latitude ?? null,
     longitude: row.longitude ?? null,
@@ -300,7 +306,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
       data: User[];
       count: number;
     }> => {
-      const normalizedSearch = searchTerm.trim().toLowerCase();
+      const normalizedSearch = normalizeEmail(searchTerm);
 
       const cacheKey = JSON.stringify({
         page,

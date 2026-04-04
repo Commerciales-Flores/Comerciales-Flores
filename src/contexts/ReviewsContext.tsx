@@ -8,6 +8,8 @@ import React, {
 } from 'react';
 import supabase from '../supabaseClient';
 
+import { normalizeText } from '../utils/DataNormalization';
+
 export type Review = {
   review_id: string;
   user_id: string | null;
@@ -95,11 +97,16 @@ export function ReviewsProvider({ children }: { children: React.ReactNode }) {
         if (payload.eventType === 'INSERT') {
           const newReview = payload.new as Review;
 
+          const normalized = {
+            ...newReview,
+            comment: newReview.comment ? normalizeText(newReview.comment) : null,
+          };
+
           setReviews((prev) => {
-            if (prev.some((item) => item.review_id === newReview.review_id)) {
+            if (prev.some((item) => item.review_id === normalized.review_id)) {
               return prev;
             }
-            return [newReview, ...prev];
+            return [normalized, ...prev];
           });
 
           return;
@@ -108,9 +115,16 @@ export function ReviewsProvider({ children }: { children: React.ReactNode }) {
         if (payload.eventType === 'UPDATE') {
           const updatedReview = payload.new as Review;
 
+          const normalized = {
+            ...updatedReview,
+            comment: updatedReview.comment
+              ? normalizeText(updatedReview.comment)
+              : null,
+          };
+
           setReviews((prev) =>
             prev.map((item) =>
-              item.review_id === updatedReview.review_id ? updatedReview : item
+              item.review_id === normalized.review_id ? normalized : item
             )
           );
 
@@ -138,61 +152,83 @@ export function ReviewsProvider({ children }: { children: React.ReactNode }) {
 }, []);
 
   const createReview = useCallback(async (input: CreateReviewInput) => {
-    try {
-      setError(null);
+  try {
+    setError(null);
 
-      const { data, error } = await supabase
-        .from('reviews')
-        .insert({
-          user_id: input.user_id,
-          unit_id: input.unit_id,
-          rating: input.rating,
-          comment: input.comment,
-        })
-        .select()
-        .single();
+    const normalizedComment = normalizeText(input.comment);
 
-      if (error) {
-        throw error;
-      }
+    const { data, error } = await supabase
+      .from('reviews')
+      .insert({
+        user_id: input.user_id,
+        unit_id: input.unit_id,
+        rating: input.rating,
+        comment: normalizedComment,
+      })
+      .select()
+      .single();
 
-      setReviews((prev) => [data as Review, ...prev]);
-
-      return { success: true };
-    } catch (err) {
-      console.error('Failed to create review:', err);
-      return { success: false, error: 'Failed to create review.' };
+    if (error) {
+      throw error;
     }
-  }, []);
+
+    if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5) {
+      return { success: false, error: 'Rating must be between 1 and 5.' };
+    }
+
+    setReviews((prev) => [data as Review, ...prev]);
+
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to create review:', err);
+    return { success: false, error: 'Failed to create review.' };
+  }
+}, []);
 
   const updateReview = useCallback(async (reviewId: string, input: UpdateReviewInput) => {
-    try {
-      setError(null);
+  try {
+    setError(null);
 
-      const { data, error } = await supabase
-        .from('reviews')
-        .update({
-          ...input,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('review_id', reviewId)
-        .select()
-        .single();
+    const payload: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
 
-      if (error) {
-        throw error;
-      }
-
-      setReviews((prev) =>
-        prev.map((review) => (review.review_id === reviewId ? (data as Review) : review))
-      );
-
-      return { success: true };
-    } catch (err) {
-      console.error('Failed to update review:', err);
-      return { success: false, error: 'Failed to update review.' };
+    if (input.rating !== undefined) {
+      payload.rating = input.rating;
     }
-  }, []);
+
+    if (input.comment !== undefined) {
+      payload.comment = normalizeText(input.comment);
+    }
+
+    if (
+      input.rating !== undefined &&
+      (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5)
+    ) {
+      return { success: false, error: 'Rating must be between 1 and 5.' };
+    }
+
+    const { data, error } = await supabase
+      .from('reviews')
+      .update(payload)
+      .eq('review_id', reviewId)
+      .select()
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    setReviews((prev) =>
+      prev.map((review) => (review.review_id === reviewId ? (data as Review) : review))
+    );
+
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to update review:', err);
+    return { success: false, error: 'Failed to update review.' };
+  }
+}, []);
 
   const deleteReview = useCallback(async (reviewId: string) => {
     try {

@@ -11,7 +11,9 @@ import {
   normalizeEmail,
   normalizeAddress,
   normalizePHPhone,
-} from '../../utils/formFields';
+  isValidEmail,
+  isValidPHPhone,
+} from '../../utils/DataNormalization';
 import {
   User as UserIcon,
   Mail,
@@ -250,9 +252,8 @@ const handleProfileSubmit = useCallback(
       const cleanedPhone = normalizePHPhone(profileForm.contactNumber);
       const cleanedAddress = normalizeAddress(profileForm.address);
 
-      if (profileForm.contactNumber.trim() && !/^\+639\d{9}$/.test(cleanedPhone)) {
+      if (profileForm.contactNumber.trim() && !isValidPHPhone(cleanedPhone)) {
         showMessage('error', 'Please enter a valid Philippine mobile number.');
-        setSavingProfile(false);
         return;
       }
 
@@ -287,16 +288,16 @@ const handleProfileSubmit = useCallback(
   const handleEmailSubmit = useCallback(async () => {
   if (savingEmail) return;
 
-  const newEmail = emailForm.newEmail.trim().toLowerCase();
-  const confirmEmail = emailForm.confirmEmail.trim().toLowerCase();
-  const currentEmail = user?.email?.trim().toLowerCase() ?? '';
+  const newEmail = normalizeEmail(emailForm.newEmail);
+  const confirmEmail = normalizeEmail(emailForm.confirmEmail);
+  const currentEmail = normalizeEmail(user?.email ?? '');
 
   if (!newEmail) {
     showMessage('error', 'New email is required.');
     return;
   }
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+  if (!isValidEmail(newEmail)) {
     showMessage('error', 'Please enter a valid email address.');
     return;
   }
@@ -945,7 +946,6 @@ className={`mt-5 w-full rounded-2xl border px-4 py-3 text-sm font-semibold min-h
             Your current email stays active until the new email is verified.
           </p>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <FormField
                 field="newEmail"
@@ -976,7 +976,6 @@ className={`mt-5 w-full rounded-2xl border px-4 py-3 text-sm font-semibold min-h
                 icon={<Mail className="size-4" />}
                 autoComplete="email"
               />
-            </div>
           </div>
 
           <PasswordInput

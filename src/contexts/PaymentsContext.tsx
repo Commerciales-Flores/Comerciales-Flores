@@ -14,6 +14,11 @@ import type {
   PaymentStatus,
 } from '../data/types';
 
+import {
+  normalizeMoneyString,
+  normalizeText,
+} from '../utils/DataNormalization';
+
 type PaymentsPageFilters = {
   page?: number;
   pageSize?: number;
@@ -70,7 +75,7 @@ function mapPaymentRow(row: any): Payment {
 }
 
 function normalizeSearchTerm(value: string) {
-  return value.trim();
+  return normalizeText(value).toLowerCase();
 }
 
 function sortPaymentsByCreatedAt(items: Payment[]) {
@@ -274,6 +279,18 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
     ): Promise<string> => {
       const accessToken = await getAccessTokenOrThrow();
 
+      const normalizedAmount = Number(
+        normalizeMoneyString(String(paymentData.amount))
+      );
+
+      if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+        throw new Error('Invalid payment amount.');
+      }
+
+      const normalizedNotes = paymentData.notes
+        ? normalizeText(paymentData.notes)
+        : null;
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment-and-ledger`,
         {
@@ -285,11 +302,11 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
           },
           body: JSON.stringify({
             reservationId: paymentData.reservationId,
-            amount: paymentData.amount,
+            amount: normalizedAmount,
             method: paymentData.method,
             status: paymentData.status,
             proofOfPayment: paymentData.proofOfPayment ?? null,
-            notes: paymentData.notes ?? null,
+            notes: normalizedNotes,
             paymentMethodId: paymentData.paymentMethodId ?? null,
             paymentMethodSnapshot: paymentData.paymentMethodSnapshot ?? null,
             category: paymentData.category ?? 'payment',
@@ -319,6 +336,18 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
     async (id: string, paymentUpdate: Partial<Payment>): Promise<void> => {
       const accessToken = await getAccessTokenOrThrow();
 
+      const normalizedAmount =
+      paymentUpdate.amount !== undefined
+        ? Number(normalizeMoneyString(String(paymentUpdate.amount)))
+        : undefined;
+
+      const normalizedNotes =
+        paymentUpdate.notes !== undefined
+          ? paymentUpdate.notes
+            ? normalizeText(paymentUpdate.notes)
+            : null
+      : undefined;
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment-and-ledger`,
         {
@@ -331,11 +360,11 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({
             paymentId: id,
             reservationId: paymentUpdate.reservationId,
-            amount: paymentUpdate.amount,
+            amount: normalizedAmount,
             method: paymentUpdate.method,
             status: paymentUpdate.status,
             proofOfPayment: paymentUpdate.proofOfPayment ?? null,
-            notes: paymentUpdate.notes ?? null,
+            notes: normalizedNotes,
             paymentMethodId: paymentUpdate.paymentMethodId ?? null,
             paymentMethodSnapshot: paymentUpdate.paymentMethodSnapshot ?? null,
             category: paymentUpdate.category ?? 'payment',
@@ -363,51 +392,59 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
   );
 
   const issueRefund = useCallback(
-    async ({
-      reservationId,
-      paymentId = null,
-      amount,
-      method = null,
-      notes = null,
-      referenceNo = null,
-    }: {
-      reservationId: string;
-      paymentId?: string | null;
-      amount: number;
-      method?: PaymentMethod | null;
-      notes?: string | null;
-      referenceNo?: string | null;
-    }) => {
-      const accessToken = await getAccessTokenOrThrow();
+  async ({
+    reservationId,
+    paymentId = null,
+    amount,
+    method = null,
+    notes = null,
+    referenceNo = null,
+  }: {
+    reservationId: string;
+    paymentId?: string | null;
+    amount: number;
+    method?: PaymentMethod | null;
+    notes?: string | null;
+    referenceNo?: string | null;
+  }) => {
+    const accessToken = await getAccessTokenOrThrow();
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/issue-refund`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({
-            reservationId,
-            paymentId,
-            amount,
-            method,
-            notes,
-            referenceNo,
-          }),
-        }
-      );
+    const normalizedAmount = Number(normalizeMoneyString(String(amount)));
+    if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+      throw new Error('Invalid refund amount.');
+    }
 
-      const payload = await response.json().catch(() => null);
+    const normalizedNotes = notes ? normalizeText(notes) : null;
+    const normalizedReferenceNo = referenceNo ? normalizeText(referenceNo) : null;
 
-      if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || 'Failed to issue refund.');
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/issue-refund`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          reservationId,
+          paymentId,
+          amount: normalizedAmount,
+          method,
+          notes: normalizedNotes,
+          referenceNo: normalizedReferenceNo,
+        }),
       }
-    },
-    []
-  );
+    );
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok || !payload?.success) {
+      throw new Error(payload?.error || 'Failed to issue refund.');
+    }
+  },
+  []
+);
 
   const getPaymentsByUserId = useCallback(
     (userId: string) => payments.filter((p) => p.userId === userId),

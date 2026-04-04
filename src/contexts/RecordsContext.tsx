@@ -9,6 +9,7 @@ import {
 } from 'react';
 import supabase from '../supabaseClient';
 import type { AuditLog, BusinessSlot, LedgerEntry } from '../data/types';
+import { normalizeText } from '../utils/DataNormalization';
 
 type AuditLogFilters = {
   searchTerm?: string;
@@ -55,8 +56,8 @@ function mapLedgerRow(row: any): LedgerEntry {
     method: row.method,
     status: row.status,
     referenceNo: row.reference_no,
-    description: row.description,
-    notes: row.notes,
+    description: row.description ? normalizeText(row.description) : null,
+    notes: row.notes ? normalizeText(row.notes) : null,
     recordedAt: row.recorded_at,
     createdAt: row.created_at,
     createdBy: row.created_by,
@@ -300,15 +301,17 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
       if (startDate) query = query.gte('timestamp', `${startDate}T00:00:00`);
       if (endDate) query = query.lte('timestamp', `${endDate}T23:59:59`);
 
-      if (searchTerm.trim()) {
+      const normalizedSearch = normalizeText(searchTerm).toLowerCase();
+
+      if (normalizedSearch) {
         query = query.or(
           [
-            `action.ilike.%${searchTerm}%`,
-            `target_table.ilike.%${searchTerm}%`,
-            `target_id.ilike.%${searchTerm}%`,
-            `user_id.ilike.%${searchTerm}%`,
-            `notes.ilike.%${searchTerm}%`,
-            `public_id.ilike.%${searchTerm}%`,
+            `action.ilike.%${normalizedSearch}%`,
+            `target_table.ilike.%${normalizedSearch}%`,
+            `target_id.ilike.%${normalizedSearch}%`,
+            `user_id.ilike.%${normalizedSearch}%`,
+            `notes.ilike.%${normalizedSearch}%`,
+            `public_id.ilike.%${normalizedSearch}%`,
           ].join(',')
         );
       }
@@ -342,8 +345,8 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
             method: entry.method,
             status: entry.status,
             reference_no: entry.referenceNo,
-            description: entry.description,
-            notes: entry.notes,
+            description: entry.description ? normalizeText(entry.description) : null,
+            notes: entry.notes ? normalizeText(entry.notes) : null,
             recorded_at: entry.recordedAt,
             created_at: entry.createdAt,
             created_by: entry.createdBy,
@@ -376,7 +379,7 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
             after_value: log.afterValue,
             changed_fields: log.changedFields,
             timestamp: new Date().toISOString(),
-            notes: log.notes,
+            notes: log.notes ? normalizeText(log.notes) : null,
           },
         ])
         .select()

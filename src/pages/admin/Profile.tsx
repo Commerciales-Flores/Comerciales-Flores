@@ -10,7 +10,9 @@ import {
   normalizeEmail,
   normalizeAddress,
   normalizePHPhone,
-} from '../../utils/formFields';
+  isValidPHPhone,
+  isValidEmail,
+} from '../../utils/DataNormalization';
 import {
   User as UserIcon,
   Mail,
@@ -205,9 +207,8 @@ export default function AdminProfile() {
         const cleanedPhone = normalizePHPhone(profileForm.contactNumber);
         const cleanedAddress = normalizeAddress(profileForm.address);
 
-        if (profileForm.contactNumber.trim() && !/^\+639\d{9}$/.test(cleanedPhone)) {
+        if (profileForm.contactNumber.trim() && !isValidPHPhone(cleanedPhone)) {
           showMessage('error', 'Please enter a valid Philippine mobile number.');
-          setSavingProfile(false);
           return;
         }
 
@@ -234,9 +235,9 @@ export default function AdminProfile() {
   const handleEmailSubmit = useCallback(async () => {
     if (savingEmail) return;
 
-    const newEmail = emailForm.newEmail.trim().toLowerCase();
-    const confirmEmail = emailForm.confirmEmail.trim().toLowerCase();
-    const currentEmail = user?.email?.trim().toLowerCase() ?? '';
+    const newEmail = normalizeEmail(emailForm.newEmail);
+    const confirmEmail = normalizeEmail(emailForm.confirmEmail);
+    const currentEmail = normalizeEmail(user?.email ?? '');
 
     if (!newEmail) {
       showMessage('error', 'New email is required.');

@@ -13,6 +13,14 @@ import supabase from '../supabaseClient';
 import { Building2 } from 'lucide-react';
 import { formatTime } from '../utils/date';
 
+import {
+  normalizeName,
+  normalizeEmail,
+  normalizeAddress,
+  normalizePHPhone,
+} from '../utils/DataNormalization';
+
+
 // --- TYPES ---
 interface User {
   id: string;
@@ -138,35 +146,7 @@ const CLIENT_INACTIVITY_LIMIT = 30 * 60 * 1000;
 const ADMIN_INACTIVITY_LIMIT = 15 * 60 * 1000;
 const SESSION_WARNING_TIME = 60 * 1000;
 
-// --- NORMALIZERS ---
-const normalizeName = (value: string) => value.trim().replace(/\s+/g, ' ');
-const normalizeEmail = (email: string) => email.trim().toLowerCase();
-const normalizeAddress = (value: string) => value.trim().replace(/\s+/g, ' ');
 
-const normalizePhone = (value: string) => {
-  const raw = value.trim();
-  const digits = raw.replace(/\D/g, '');
-
-  if (!digits) return '';
-
-  if (digits.startsWith('09') && digits.length === 11) {
-    return `+63${digits.slice(1)}`;
-  }
-
-  if (digits.startsWith('639') && digits.length === 12) {
-    return `+${digits}`;
-  }
-
-  if (digits.startsWith('9') && digits.length === 10) {
-    return `+63${digits}`;
-  }
-
-  if (raw.startsWith('+') && digits.length >= 10 && digits.length <= 15) {
-    return `+${digits}`;
-  }
-
-  return raw;
-};
 
 const getFormattedTime = () => formatTime(new Date());
 
@@ -210,7 +190,7 @@ const mapProfileToUser = (data: any): User => ({
   firstName: normalizeName(data.first_name ?? ''),
   lastName: normalizeName(data.last_name ?? ''),
   role: data.role,
-  phone: normalizePhone(data.phone ?? ''),
+  phone: normalizePHPhone(data.phone ?? ''),
   address: normalizeAddress(data.address ?? ''),
   formattedAddress: data.formatted_address ?? undefined,
   latitude: data.latitude ?? null,
@@ -506,7 +486,7 @@ const deleteProfilePicture = useCallback(async (): Promise<boolean> => {
         const firstName = normalizeName(meta.first_name || parts[0] || '');
         const lastName = normalizeName(meta.last_name || parts.slice(1).join(' ') || '');
         const email = normalizeEmail(authUser.email ?? '');
-        const phone = normalizePhone(meta.phone || '');
+        const phone = normalizePHPhone(meta.phone || '');
         const address = normalizeAddress(meta.address || '');
 
         const { data: existingByEmail, error: existingByEmailError } = await supabase
@@ -1184,7 +1164,7 @@ if (!profile) {
         const normalizedFirstName = normalizeName(userData.firstName);
         const normalizedLastName = normalizeName(userData.lastName);
         const normalizedEmail = normalizeEmail(userData.email);
-        const normalizedContactNumber = normalizePhone(userData.contactNumber ?? '');
+        const normalizedContactNumber = normalizePHPhone(userData.contactNumber ?? '');
         const normalizedAddress = normalizeAddress(userData.address ?? '');
 
         const { data, error } = await supabase.auth.signUp({
@@ -1377,7 +1357,7 @@ if (!profile) {
       }
 
       if (userData.phone !== undefined) {
-        dbPayload.phone = normalizePhone(userData.phone);
+        dbPayload.phone = normalizePHPhone(userData.phone);
       }
 
       if (userData.address !== undefined) {
@@ -1409,7 +1389,7 @@ if (!profile) {
           ? { lastName: normalizeName(userData.lastName) }
           : {}),
         ...(userData.phone !== undefined
-          ? { phone: normalizePhone(userData.phone) }
+          ? { phone: normalizePHPhone(userData.phone) }
           : {}),
         ...(userData.address !== undefined
           ? { address: normalizeAddress(userData.address) }

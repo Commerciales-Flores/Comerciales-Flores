@@ -10,6 +10,12 @@ import {
 } from 'react';
 import supabase from '../supabaseClient';
 
+import {
+  normalizeName,
+  normalizeEmail,
+  normalizeText,
+} from '../utils/DataNormalization';
+
 export type SupportTicketStatus =
   | 'waiting_for_support'
   | 'waiting_for_customer'
@@ -114,10 +120,10 @@ function mapTicket(row: any): SupportTicket {
     id: row.ticket_id,
     publicId: row.public_id ?? null,
     userId: row.user_id ?? null,
-    guestEmail: row.guest_email ?? null,
-    guestFirstName: row.guest_first_name ?? null,
-    guestLastName: row.guest_last_name ?? null,
-    subject: row.subject ?? 'Untitled Ticket',
+    guestEmail: row.guest_email ? normalizeEmail(row.guest_email) : null,
+    guestFirstName: row.guest_first_name ? normalizeName(row.guest_first_name) : null,
+    guestLastName: row.guest_last_name ? normalizeName(row.guest_last_name) : null,
+    subject: normalizeText(row.subject ?? 'Untitled Ticket'),
     status: row.status as SupportTicketStatus,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -302,80 +308,148 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const createTicket = useCallback(async (input: CreateTicketInput): Promise<SupportTicket> => {
-    const now = new Date().toISOString();
+  const now = new Date().toISOString();
 
-    const trimmedFirstName = input.firstName?.trim() || null;
-    const trimmedLastName = input.lastName?.trim() || null;
-    const trimmedEmail = input.email?.trim().toLowerCase() || null;
-    const trimmedSubject = input.subject.trim();
-    const trimmedMessage = input.message.trim();
+  const normalizedFirstName = input.firstName
+    ? normalizeName(input.firstName)
+    : null;
+  const normalizedLastName = input.lastName
+    ? normalizeName(input.lastName)
+    : null;
+  const normalizedEmail = input.email
+    ? normalizeEmail(input.email)
+    : null;
+  const normalizedSubject = normalizeText(input.subject);
+  const cleanedMessage = input.message.replace(/\r\n/g, '\n').trim();
 
-    if (!trimmedSubject || !trimmedMessage) {
-      throw new Error('Subject and first message are required.');
-    }
+  if (!normalizedSubject || !cleanedMessage) {
+    throw new Error('Subject and first message are required.');
+  }
 
-    let resolvedUserId = input.userId ?? null;
+  let resolvedUserId = input.userId ?? null;
 
-    if (!resolvedUserId && trimmedEmail) {
-      const { data: matchedUser, error: matchedUserError } = await supabase
-        .from('users')
-        .select('user_id')
-        .eq('email', trimmedEmail)
-        .maybeSingle();
+  if (!resolvedUserId && normalizedEmail) {
+    const { data: matchedUser, error: matchedUserError } = await supabase
+      .from('users')
+      .select('user_id')
+      .eq('email', normalizedEmail)
+      .maybeSingle();
 
-      if (matchedUserError) throw matchedUserError;
+    if (matchedUserError) throw matchedUserError;
 
-      resolvedUserId = matchedUser?.user_id ?? null;
-    }
+    resolvedUserId = matchedUser?.user_id ?? null;
+  }
 
-    const senderType: SupportSenderType =
-      input.senderType ?? (resolvedUserId ? 'customer' : 'guest');
+  const senderType: SupportSenderType =
+    input.senderType ?? (resolvedUserId ? 'customer' : 'guest');
 
-    const ticketPayload = {
-      user_id: resolvedUserId,
-      guest_email: resolvedUserId ? null : trimmedEmail,
-      guest_first_name: resolvedUserId ? null : trimmedFirstName,
-      guest_last_name: resolvedUserId ? null : trimmedLastName,
-      subject: trimmedSubject,
-      status:
-        senderType === 'support'
-          ? ('waiting_for_customer' as SupportTicketStatus)
-          : ('waiting_for_support' as SupportTicketStatus),
-      created_at: now,
-      updated_at: now,
-      last_message_at: now,
-      last_message_by: senderType,
-      resolved_at: null,
-      resolved_by_user: false,
-      last_read_at_customer: senderType === 'customer' ? now : null,
-      last_read_at_support: senderType === 'support' ? now : null,
-    };
-
-    const { data: ticketData, error: ticketError } = await supabase
-      .from('support_tickets')
-      .insert([ticketPayload])
-      .select()
-      .single();
-
-    if (ticketError) throw ticketError;
-
-    const newTicket = mapTicket(ticketData);
-
-    const displayName =
+  const ticketPayload = {
+    user_id: resolvedUserId,
+    guest_email: resolvedUserId ? null : normalizedEmail,
+    guest_first_name: resolvedUserId ? null : normalizedFirstName,
+    guest_last_name: resolvedUserId ? null : normalizedLastName,
+    subject: normalizedSubject,
+    status:
       senderType === 'support'
-        ? 'Support Team'
-        : [trimmedFirstName, trimmedLastName].filter(Boolean).join(' ').trim() || null;
+        ? ('waiting_for_customer' as SupportTicketStatus)
+        : ('waiting_for_support' as SupportTicketStatus),
+    created_at: now,
+    updated_at: now,
+    last_message_at: now,
+    last_message_by: senderType,
+    resolved_at: null,
+    resolved_by_user: false,
+    last_read_at_customer: senderType === 'customer' ? now : null,
+    last_read_at_support: senderType === 'support' ? now : null,
+  };
+
+  const { data: ticketData, error: ticketError } = await supabase
+    .from('support_tickets')
+    .insert([ticketPayload])
+    .select()
+    .single();
+
+  if (ticketError) throw ticketError;
+
+  const newTicket = mapTicket(ticketData);
+
+  const displayName =
+    senderType === 'support'
+      ? 'Support Team'
+      : [normalizedFirstName, normalizedLastName].filter(Boolean).join(' ').trim() || null;
+
+  const { data: messageData, error: messageError } = await supabase
+    .from('support_messages')
+    .insert([
+      {
+        ticket_id: newTicket.id,
+        sender_type: senderType,
+        sender_user_id: resolvedUserId,
+        sender_name: displayName,
+        sender_email: normalizedEmail,
+        body: cleanedMessage,
+        created_at: now,
+        is_internal: false,
+      },
+    ])
+    .select()
+    .single();
+
+  if (messageError) {
+    await supabase.from('support_tickets').delete().eq('ticket_id', newTicket.id);
+    throw messageError;
+  }
+
+  const newMessage = mapMessage(messageData);
+
+  setTickets((prev) => {
+    if (prev.some((ticket) => ticket.id === newTicket.id)) return prev;
+    return sortTicketsByLatest([newTicket, ...prev]);
+  });
+
+  setMessagesByTicketId((prev) => ({
+    ...prev,
+    [newTicket.id]: [newMessage],
+  }));
+
+  loadedTicketIdsRef.current.add(newTicket.id);
+
+  return newTicket;
+}, []);
+
+  const sendTicketMessage = useCallback(
+  async (
+    ticketId: string,
+    input: SendTicketMessageInput
+  ): Promise<{ ticket: SupportTicket; message: SupportMessage }> => {
+    const now = new Date().toISOString();
+    const cleanedBody = input.body.replace(/\r\n/g, '\n').trim();
+
+    if (!cleanedBody) {
+      throw new Error('Message body is required.');
+    }
+
+    const normalizedSenderName = input.senderName
+      ? normalizeName(input.senderName)
+      : null;
+
+    const normalizedSenderEmail = input.senderEmail
+      ? normalizeEmail(input.senderEmail)
+      : null;
 
     const { data: messageData, error: messageError } = await supabase
       .from('support_messages')
       .insert([
         {
-          ticket_id: newTicket.id,
-          sender_type: senderType,
-          sender_user_id: resolvedUserId,
-          sender_name: displayName,
-          sender_email: trimmedEmail,
-          body: trimmedMessage,
+          ticket_id: ticketId,
+          sender_type: input.senderType,
+          sender_user_id: input.senderUserId ?? null,
+          sender_name:
+            input.senderType === 'support'
+              ? normalizedSenderName || 'Support Team'
+              : normalizedSenderName,
+          sender_email: normalizedSenderEmail,
+          body: cleanedBody,
           created_at: now,
           is_internal: false,
         },
@@ -383,140 +457,86 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
       .select()
       .single();
 
-    if (messageError) {
-      await supabase.from('support_tickets').delete().eq('ticket_id', newTicket.id);
-      throw messageError;
-    }
+    if (messageError) throw messageError;
+
+    const nextStatus: SupportTicketStatus =
+      input.senderType === 'support' ? 'waiting_for_customer' : 'waiting_for_support';
+
+    const ticketUpdate =
+      input.senderType === 'support'
+        ? {
+            status: nextStatus,
+            updated_at: now,
+            last_message_at: now,
+            last_message_by: input.senderType,
+            resolved_at: null,
+            resolved_by_user: false,
+            last_read_at_support: now,
+          }
+        : {
+            status: nextStatus,
+            updated_at: now,
+            last_message_at: now,
+            last_message_by: input.senderType,
+            resolved_at: null,
+            resolved_by_user: false,
+            last_read_at_customer: now,
+          };
+
+    const { data: ticketData, error: ticketError } = await supabase
+      .from('support_tickets')
+      .update(ticketUpdate)
+      .eq('ticket_id', ticketId)
+      .select()
+      .single();
+
+    if (ticketError) throw ticketError;
 
     const newMessage = mapMessage(messageData);
+    const updatedTicket = mapTicket(ticketData);
 
-    setTickets((prev) => {
-      if (prev.some((ticket) => ticket.id === newTicket.id)) return prev;
-      return sortTicketsByLatest([newTicket, ...prev]);
-    });
+    setTickets((prev) =>
+      sortTicketsByLatest(
+        prev.map((ticket) => {
+          if (ticket.id !== ticketId) return ticket;
 
-    setMessagesByTicketId((prev) => ({
-      ...prev,
-      [newTicket.id]: [newMessage],
-    }));
+          return {
+            ...updatedTicket,
+            lastReadAtCustomer: pickLatestTimestamp(
+              ticket.lastReadAtCustomer,
+              updatedTicket.lastReadAtCustomer
+            ),
+            lastReadAtSupport: pickLatestTimestamp(
+              ticket.lastReadAtSupport,
+              updatedTicket.lastReadAtSupport
+            ),
+          };
+        })
+      )
+    );
 
-    loadedTicketIdsRef.current.add(newTicket.id);
+    loadedTicketIdsRef.current.add(ticketId);
 
-    return newTicket;
-  }, []);
+    setMessagesByTicketId((prev) => {
+      const existing = prev[ticketId] ?? [];
 
-  const sendTicketMessage = useCallback(
-    async (
-      ticketId: string,
-      input: SendTicketMessageInput
-    ): Promise<{ ticket: SupportTicket; message: SupportMessage }> => {
-      const now = new Date().toISOString();
-      const trimmedBody = input.body.trim();
-
-      if (!trimmedBody) {
-        throw new Error('Message body is required.');
+      if (existing.some((message) => message.id === newMessage.id)) {
+        return prev;
       }
 
-      const { data: messageData, error: messageError } = await supabase
-        .from('support_messages')
-        .insert([
-          {
-            ticket_id: ticketId,
-            sender_type: input.senderType,
-            sender_user_id: input.senderUserId ?? null,
-            sender_name:
-              input.senderType === 'support'
-                ? input.senderName?.trim() || 'Support Team'
-                : input.senderName?.trim() || null,
-            sender_email: input.senderEmail?.trim() || null,
-            body: trimmedBody,
-            created_at: now,
-            is_internal: false,
-          },
-        ])
-        .select()
-        .single();
-
-      if (messageError) throw messageError;
-
-      const nextStatus: SupportTicketStatus =
-        input.senderType === 'support' ? 'waiting_for_customer' : 'waiting_for_support';
-
-      const ticketUpdate =
-        input.senderType === 'support'
-          ? {
-              status: nextStatus,
-              updated_at: now,
-              last_message_at: now,
-              last_message_by: input.senderType,
-              resolved_at: null,
-              resolved_by_user: false,
-              last_read_at_support: now,
-            }
-          : {
-              status: nextStatus,
-              updated_at: now,
-              last_message_at: now,
-              last_message_by: input.senderType,
-              resolved_at: null,
-              resolved_by_user: false,
-              last_read_at_customer: now,
-            };
-
-      const { data: ticketData, error: ticketError } = await supabase
-        .from('support_tickets')
-        .update(ticketUpdate)
-        .eq('ticket_id', ticketId)
-        .select()
-        .single();
-
-      if (ticketError) throw ticketError;
-
-      const newMessage = mapMessage(messageData);
-      const updatedTicket = mapTicket(ticketData);
-
-      setTickets((prev) =>
-        sortTicketsByLatest(
-          prev.map((ticket) => {
-            if (ticket.id !== ticketId) return ticket;
-
-            return {
-              ...updatedTicket,
-              lastReadAtCustomer: pickLatestTimestamp(
-                ticket.lastReadAtCustomer,
-                updatedTicket.lastReadAtCustomer
-              ),
-              lastReadAtSupport: pickLatestTimestamp(
-                ticket.lastReadAtSupport,
-                updatedTicket.lastReadAtSupport
-              ),
-            };
-          })
-        )
-      );
-
-      loadedTicketIdsRef.current.add(ticketId);
-
-      setMessagesByTicketId((prev) => {
-        const existing = prev[ticketId] ?? [];
-
-        if (existing.some((message) => message.id === newMessage.id)) {
-          return prev;
-        }
-
-        return {
-          ...prev,
-          [ticketId]: sortMessagesByCreatedAtAsc([...existing, newMessage]),
-        };
-      });
-
       return {
-        ticket: updatedTicket,
-        message: newMessage,
+        ...prev,
+        [ticketId]: sortMessagesByCreatedAtAsc([...existing, newMessage]),
       };
-    },
-    []
-  );
+    });
+
+    return {
+      ticket: updatedTicket,
+      message: newMessage,
+    };
+  },
+  []
+);
 
   const markTicketResolved = useCallback(async (ticketId: string): Promise<SupportTicket> => {
     const now = new Date().toISOString();

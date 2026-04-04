@@ -13,6 +13,13 @@ import { useRecords } from './RecordsContext';
 import { useAuth } from './AuthContext';
 import { getChangedFields, buildAuditSnapshot } from '../utils/auditHelpers';
 
+import {
+  normalizeText,
+  normalizePlateNumber,
+  normalizeName,
+  normalizeAddress,
+} from '../utils/DataNormalization';
+
 type ReservationsPageFilters = {
   page?: number;
   pageSize?: number;
@@ -44,13 +51,23 @@ const ReservationsContext = createContext<ReservationsContextType | undefined>(u
 function buildReservationDetails(reservation: Partial<Reservation>) {
   const details = {
     paymentCycle: reservation.paymentCycle,
-    businessType: reservation.businessType,
-    eventPurpose: reservation.eventPurpose,
+    businessType: reservation.businessType
+      ? normalizeText(reservation.businessType)
+      : undefined,
+    eventPurpose: reservation.eventPurpose
+      ? normalizeText(reservation.eventPurpose)
+      : undefined,
     attendees: reservation.attendees,
     slotId: reservation.slotId,
-    slotName: reservation.slotName,
-    vehicleType: reservation.vehicleType,
-    plateNumber: reservation.plateNumber,
+    slotName: reservation.slotName
+      ? normalizeText(reservation.slotName)
+      : undefined,
+    vehicleType: reservation.vehicleType
+      ? normalizeText(reservation.vehicleType)
+      : undefined,
+    plateNumber: reservation.plateNumber
+      ? normalizePlateNumber(reservation.plateNumber)
+      : undefined,
     durationType: reservation.durationType,
   };
 
@@ -549,14 +566,16 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
             start_date: reservationData.startDate,
             end_date: reservationData.endDate,
             duration: reservationData.duration,
-            total_amount: reservationData.totalAmount,
+            total_amount: Number(reservationData.totalAmount),
             status: 'pending',
             payment_method: reservationData.paymentMethod ?? null,
             payment_intent: reservationData.paymentIntent ?? null,
             mode_of_visit: reservationData.modeOfVisit ?? null,
             appointment_date: reservationData.appointmentDate ?? null,
             appointment_time: reservationData.appointmentTime ?? null,
-            notes: reservationData.notes ?? null,
+            notes: reservationData.notes
+              ? normalizeText(reservationData.notes)
+              : null,
             details: cleanDetails,
             minimum_payment_percent_snapshot: minimumPaymentPercentSnapshot,
           },
@@ -633,7 +652,11 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
       const dbPayload: Record<string, unknown> = {};
 
       if (reservationUpdate.status !== undefined) dbPayload.status = reservationUpdate.status;
-      if (reservationUpdate.notes !== undefined) dbPayload.notes = reservationUpdate.notes;
+      if (reservationUpdate.notes !== undefined) {
+        dbPayload.notes = reservationUpdate.notes
+          ? normalizeText(reservationUpdate.notes)
+          : null;
+      }
       if (reservationUpdate.appointmentDate !== undefined) {
         dbPayload.appointment_date = reservationUpdate.appointmentDate;
       }

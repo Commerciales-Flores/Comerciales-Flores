@@ -15,6 +15,13 @@ import { useAuth } from './AuthContext';
 import { getChangedFields, buildAuditSnapshot } from '../utils/auditHelpers';
 import { makePublicId } from '../utils/publicId';
 
+import {
+  normalizeText,
+  normalizeAddress,
+  normalizeMoneyString,
+  normalizeUppercaseText,
+} from '../utils/DataNormalization';
+
 const DEFAULT_LOCATION = 'Quezon City';
 const LOCATION_OPTIONS = ['Quezon City'];
 const DEFAULT_UNIT_IMAGE =
@@ -213,7 +220,7 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
     return {
       id: base.unit_id,
       propertyId: base.public_id || getPublicId(resolvedType, base.unit_id),
-      name: base.title || '',
+      name: normalizeText(base.title || ''),
       type: resolvedType,
       description: '',
       price: Number(base.price || 0),
@@ -228,7 +235,7 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
       capacity: undefined,
       available: Boolean(base.is_available),
       features: [],
-      location: base.location || DEFAULT_LOCATION,
+      location: getSafeLocation(normalizeAddress(base.location)),
       property: null,
       minimumPaymentPercent: base.minimum_payment_percent ?? null,
       contractFilePath: base.contract_file_path ?? null,
@@ -400,9 +407,9 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
     const nextUnit: Unit = {
       id: base.unit_id,
       propertyId: base.public_id || getPublicId(resolvedType, base.unit_id),
-      name: base.title || specificRow?.title || '',
+      name: normalizeText(base.title || specificRow?.title || ''),
       type: resolvedType,
-      description: specificRow?.description || '',
+      description: normalizeText(specificRow?.description || ''),
       price: Number(base.price || 0),
       imagePaths,
       images:
@@ -411,14 +418,16 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
           : [DEFAULT_UNIT_IMAGE],
       videoPaths,
       videos: videoPaths.map((path: string) => getPublicImageUrl(path)),
-      policies: specificRow?.policies || '',
+      policies: normalizeText(specificRow?.policies || ''),
       capacity:
         resolvedType === 'function_hall'
           ? Number(specificRow?.capacity || 0) || undefined
           : undefined,
       available: Boolean(base.is_available),
-      features: Array.isArray(specificRow?.features) ? specificRow.features : [],
-      location: base.location || DEFAULT_LOCATION,
+      features: Array.isArray(specificRow?.features)
+        ? specificRow.features.map((feature) => normalizeText(feature)).filter(Boolean)
+        : [],
+      location: getSafeLocation(normalizeAddress(base.location)),
       property: null,
       minimumPaymentPercent: base.minimum_payment_percent ?? null,
       contractFilePath: base.contract_file_path ?? null,
@@ -527,9 +536,9 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
         return {
           id: base.unit_id,
           propertyId: base.public_id || getPublicId(resolvedType, base.unit_id),
-          name: base.title || specific?.title || '',
+          name: normalizeText(base.title || specific?.title || ''),
           type: resolvedType,
-          description: specific?.description || '',
+          description: normalizeText(specific?.description || ''),
           price: Number(base.price || 0),
           imagePaths,
           images:
@@ -538,14 +547,16 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
               : [DEFAULT_UNIT_IMAGE],
           videoPaths,
           videos: videoPaths.map((path) => getPublicImageUrl(path)),
-          policies: specific?.policies || '',
+          policies: normalizeText(specific?.policies || ''),
           capacity:
             resolvedType === 'function_hall'
               ? Number((specific as SpecificUnitRow | undefined)?.capacity || 0) || undefined
               : undefined,
           available: Boolean(base.is_available),
-          features: Array.isArray(specific?.features) ? specific.features : [],
-          location: base.location || DEFAULT_LOCATION,
+          features: Array.isArray(specific?.features)
+            ? specific.features.map((feature) => normalizeText(feature)).filter(Boolean)
+            : [],
+          location: getSafeLocation(normalizeAddress(base.location)),
           property: null,
           minimumPaymentPercent: base.minimum_payment_percent ?? null,
           contractFilePath: base.contract_file_path ?? null,
@@ -825,6 +836,15 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
       unitData: Omit<Unit, 'id' | 'property' | 'images'> & { images?: string[] }
     ): Promise<void> => {
       try {
+
+        const normalizedName = normalizeText(unitData.name);
+        const normalizedDescription = normalizeText(unitData.description ?? '');
+        const normalizedPolicies = normalizeText(unitData.policies ?? '');
+        const normalizedPrice = Number(normalizeMoneyString(String(unitData.price)));
+        const normalizedFeatures = Array.isArray(unitData.features)
+          ? unitData.features.map((feature) => normalizeText(feature)).filter(Boolean)
+          : [];
+        const normalizedLocation = getSafeLocation(normalizeAddress(unitData.location));
         const newUnitId = crypto.randomUUID();
         const safeLocation = getSafeLocation(unitData.location);
         const publicId = getPublicId(unitData.type, newUnitId);
@@ -847,10 +867,10 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
             unit_id: newUnitId,
             public_id: publicId,
             unit_type: unitData.type,
-            title: unitData.name,
+            title: normalizedName,
             is_available: unitData.available,
-            price: unitData.price,
-            location: safeLocation,
+            price: normalizedPrice,
+            location: normalizedLocation,
             images: imagePaths,
             videos: videoPaths,
             minimum_payment_percent: unitData.minimumPaymentPercent ?? null,
@@ -863,10 +883,10 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
 
         const specificPayload: Record<string, unknown> = {
           unit_id: newUnitId,
-          title: unitData.name,
-          description: unitData.description,
-          policies: unitData.policies,
-          features: unitData.features,
+          title: normalizedName,
+          description: normalizedDescription,
+          policies: normalizedPolicies,
+          features: normalizedFeatures,
         };
 
         if (unitData.type === 'function_hall') {
@@ -885,10 +905,10 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
         const createdUnit: Unit = {
           id: newUnitId,
           propertyId: publicId,
-          name: unitData.name,
+          name: normalizedName,
           type: unitData.type,
-          description: unitData.description,
-          price: unitData.price,
+          description: normalizedDescription,
+          price: normalizedPrice,
           imagePaths,
           images:
             imagePaths.length > 0
@@ -896,11 +916,11 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
               : [DEFAULT_UNIT_IMAGE],
           videoPaths,
           videos: videoPaths.map((path) => getPublicImageUrl(path)),
-          policies: unitData.policies,
+          policies: normalizedPolicies,
           capacity: unitData.type === 'function_hall' ? unitData.capacity : undefined,
           available: unitData.available,
-          features: unitData.features,
-          location: safeLocation,
+          features: normalizedFeatures,
+          location: normalizedLocation,
           property: null,
           minimumPaymentPercent: unitData.minimumPaymentPercent ?? null,
           contractFilePath: unitData.contractFilePath ?? null,
@@ -969,14 +989,18 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
 
         const basePayload: Record<string, unknown> = {};
 
-        if (unitUpdate.name !== undefined) basePayload.title = unitUpdate.name;
+        if (unitUpdate.name !== undefined) {
+          basePayload.title = normalizeText(unitUpdate.name);
+        }
         if (unitUpdate.available !== undefined) basePayload.is_available = unitUpdate.available;
-        if (unitUpdate.price !== undefined) basePayload.price = unitUpdate.price;
+        if (unitUpdate.price !== undefined) {
+          basePayload.price = Number(normalizeMoneyString(String(unitUpdate.price)));
+        }
         if (unitUpdate.minimumPaymentPercent !== undefined) {
           basePayload.minimum_payment_percent = unitUpdate.minimumPaymentPercent;
         }
         if (unitUpdate.location !== undefined) {
-          basePayload.location = getSafeLocation(unitUpdate.location);
+          basePayload.location = getSafeLocation(normalizeAddress(unitUpdate.location));
         }
         if (unitUpdate.imagePaths !== undefined) {
           basePayload.images = unitUpdate.imagePaths;
@@ -1022,12 +1046,20 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
 
         const specificPayload: Record<string, unknown> = {};
 
-        if (unitUpdate.name !== undefined) specificPayload.title = unitUpdate.name;
-        if (unitUpdate.description !== undefined) {
-          specificPayload.description = unitUpdate.description;
+        if (unitUpdate.name !== undefined) {
+          specificPayload.title = normalizeText(unitUpdate.name);
         }
-        if (unitUpdate.policies !== undefined) specificPayload.policies = unitUpdate.policies;
-        if (unitUpdate.features !== undefined) specificPayload.features = unitUpdate.features;
+        if (unitUpdate.description !== undefined) {
+          specificPayload.description = normalizeText(unitUpdate.description);
+        }
+        if (unitUpdate.policies !== undefined) {
+          specificPayload.policies = normalizeText(unitUpdate.policies);
+        }
+        if (unitUpdate.features !== undefined) {
+          specificPayload.features = unitUpdate.features
+            .map((feature) => normalizeText(feature))
+            .filter(Boolean);
+        }
 
         if (existingUnit.type === 'function_hall' && unitUpdate.capacity !== undefined) {
           specificPayload.capacity = unitUpdate.capacity ?? null;
@@ -1044,24 +1076,43 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
         }
 
         const sanitizedUpdate: Partial<Unit> = {
-          ...unitUpdate,
-          ...(unitUpdate.location !== undefined
-            ? { location: getSafeLocation(unitUpdate.location) }
-            : {}),
-          ...(unitUpdate.imagePaths !== undefined
-            ? {
-                images:
-                  unitUpdate.imagePaths.length > 0
-                    ? unitUpdate.imagePaths.map((path) => getPublicImageUrl(path))
-                    : [DEFAULT_UNIT_IMAGE],
-              }
-            : {}),
-          ...(unitUpdate.videoPaths !== undefined
-            ? {
-                videos: unitUpdate.videoPaths.map((path) => getPublicImageUrl(path)),
-              }
-            : {}),
-        };
+        ...unitUpdate,
+        ...(unitUpdate.name !== undefined
+          ? { name: normalizeText(unitUpdate.name) }
+          : {}),
+        ...(unitUpdate.description !== undefined
+          ? { description: normalizeText(unitUpdate.description) }
+          : {}),
+        ...(unitUpdate.policies !== undefined
+          ? { policies: normalizeText(unitUpdate.policies) }
+          : {}),
+        ...(unitUpdate.price !== undefined
+          ? { price: Number(normalizeMoneyString(String(unitUpdate.price))) }
+          : {}),
+        ...(unitUpdate.features !== undefined
+          ? {
+              features: unitUpdate.features
+                .map((feature) => normalizeText(feature))
+                .filter(Boolean),
+            }
+          : {}),
+        ...(unitUpdate.location !== undefined
+          ? { location: getSafeLocation(normalizeAddress(unitUpdate.location)) }
+          : {}),
+        ...(unitUpdate.imagePaths !== undefined
+          ? {
+              images:
+                unitUpdate.imagePaths.length > 0
+                  ? unitUpdate.imagePaths.map((path) => getPublicImageUrl(path))
+                  : [DEFAULT_UNIT_IMAGE],
+            }
+          : {}),
+        ...(unitUpdate.videoPaths !== undefined
+          ? {
+              videos: unitUpdate.videoPaths.map((path) => getPublicImageUrl(path)),
+            }
+          : {}),
+      };
 
         const updatedUnit = buildAuditSnapshot(existingUnit, sanitizedUpdate);
         const changedFields = getChangedFields(existingUnit, sanitizedUpdate);
@@ -1211,12 +1262,12 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
         const payload = {
           slot_id: slotId,
           unit_id: slot.unitId,
-          slot_code: slot.slotCode.trim().toUpperCase(),
-          label: slot.label?.trim() || null,
+          slot_code: normalizeUppercaseText(slot.slotCode),
+          label: slot.label ? normalizeText(slot.label) : null, 
           status: slot.status,
-          vehicle_type: slot.vehicleType?.trim() || null,
-          image_url: slot.imagePath?.trim() || null,
-          notes: slot.notes?.trim() || null,
+          vehicle_type: slot.vehicleType ? normalizeText(slot.vehicleType) : null,
+          image_url: slot.imagePath ? normalizeText(slot.imagePath) : null,
+          notes: slot.notes ? normalizeText(slot.notes) : null,
         };
 
         const { error } = await supabase.from('parking_slots').insert([payload]);
@@ -1254,7 +1305,9 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
 
         const oldImagePath = existingSlot.imagePath ?? null;
         const nextImagePath =
-          slotUpdate.imagePath !== undefined ? slotUpdate.imagePath?.trim() || null : oldImagePath;
+          slotUpdate.imagePath !== undefined
+            ? (slotUpdate.imagePath ? normalizeText(slotUpdate.imagePath) : null)
+            : oldImagePath;
 
         const shouldDeletePreviousImage =
           slotUpdate.imagePath !== undefined &&
@@ -1265,17 +1318,24 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
 
         if (slotUpdate.unitId !== undefined) payload.unit_id = slotUpdate.unitId;
         if (slotUpdate.slotCode !== undefined) {
-          payload.slot_code = slotUpdate.slotCode.trim().toUpperCase();
+          payload.slot_code = normalizeUppercaseText(slotUpdate.slotCode);
         }
-        if (slotUpdate.label !== undefined) payload.label = slotUpdate.label.trim() || null;
-        if (slotUpdate.status !== undefined) payload.status = slotUpdate.status;
+        if (slotUpdate.label !== undefined) {
+          payload.label = slotUpdate.label ? normalizeText(slotUpdate.label) : null;
+        }
         if (slotUpdate.vehicleType !== undefined) {
-          payload.vehicle_type = slotUpdate.vehicleType.trim() || null;
+          payload.vehicle_type = slotUpdate.vehicleType
+            ? normalizeText(slotUpdate.vehicleType)
+            : null;
         }
         if (slotUpdate.imagePath !== undefined) {
-          payload.image_url = slotUpdate.imagePath.trim() || null;
+          payload.image_url = slotUpdate.imagePath
+            ? normalizeText(slotUpdate.imagePath)
+            : null;
         }
-        if (slotUpdate.notes !== undefined) payload.notes = slotUpdate.notes.trim() || null;
+        if (slotUpdate.notes !== undefined) {
+          payload.notes = slotUpdate.notes ? normalizeText(slotUpdate.notes) : null;
+        }
 
         if (Object.keys(payload).length === 0) return;
 

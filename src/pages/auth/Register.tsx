@@ -19,7 +19,9 @@ import {
   normalizeEmail,
   normalizeAddress,
   normalizePHPhone,
-} from '../../utils/formFields';
+  isValidEmail,
+  isValidPHPhone,
+} from '../../utils/DataNormalization';
 
 export default function Register() {
   const { register, authActionPending } = useAuth();
@@ -106,11 +108,11 @@ export default function Register() {
 
     if (!cleanedEmail) {
       errs.email = 'Email is required.';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanedEmail)) {
+    } else if (!isValidEmail(cleanedEmail)) {
       errs.email = 'Enter a valid email address.';
     }
 
-    if (formData.contactNumber.trim() && !/^\+639\d{9}$/.test(cleanedContactNumber)) {
+    if (formData.contactNumber.trim() && !isValidPHPhone(cleanedContactNumber)) {
       errs.contactNumber = 'Enter a valid Philippine mobile number.';
     }
 

@@ -11,6 +11,7 @@ import supabase from '../supabaseClient';
 import type { Notification } from '../data/types';
 import { formatDate } from '../utils/date';
 import { formatCurrency } from '../utils/currency';
+import { normalizeText } from '../utils/DataNormalization';
 
 
 interface NotificationsDataContextType {
@@ -94,8 +95,8 @@ function mapNotificationRow(row: any): Notification {
   return {
     id: row.notification_id,
     userId: row.user_id,
-    title: row.title,
-    message: row.message,
+    title: normalizeText(row.title ?? ''),
+    message: normalizeText(row.message ?? ''),
     type: row.type,
     read: row.is_read,
     date: row.date,
@@ -217,8 +218,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     ): Promise<void> => {
       const payload = {
         user_id: notification.userId,
-        title: notification.title,
-        message: notification.message,
+        title: normalizeText(notification.title),
+        message: normalizeText(notification.message),
         type: notification.type,
         is_read: false,
         date: new Date().toISOString(),

@@ -1023,14 +1023,15 @@ const [formError, setFormError] = useState<string | null>(null);
                   Capacity
                 </label>
                 <input
-                    id="capacity"
-                    type="number"
-                    min="1"
-                    required={unitForm.type === 'function_hall'}
-                    placeholder="Enter maximum guests"
-                    value={unitForm.capacity}
-                    onChange={(e) => updateFormField('capacity', e.target.value)}
-                  />
+                  id="capacity"
+                  type="number"
+                  min="1"
+                  required={unitForm.type === 'function_hall'}
+                  placeholder="Enter maximum guests"
+                  value={unitForm.capacity}
+                  onChange={(e) => updateFormField('capacity', e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+                />
                 <p className="ml-1 text-[11px] text-slate-400">
                   Number of guests the function hall can accommodate.
                 </p>

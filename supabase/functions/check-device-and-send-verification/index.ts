@@ -553,9 +553,6 @@ async function processTrustedDeviceLogin(params: {
       subject: 'Security alert: sign-in from a different country',
       html: countryAlertHtml,
     });
-
-    console.log('COUNTRY ALERT STATUS:', emailResult.status);
-    console.log('COUNTRY ALERT RESPONSE:', emailResult.data);
   }
 
   if (willSendCountryAlert) {
@@ -809,9 +806,6 @@ Deno.serve(async (req) => {
       html: approvalHtml,
     });
 
-    console.log('EMAIL STATUS:', emailResult.status);
-    console.log('EMAIL RESPONSE:', emailResult.data);
-    console.log('EMAIL TARGET:', user.email);
 
     if (!emailResult.ok) {
       await adminClient
