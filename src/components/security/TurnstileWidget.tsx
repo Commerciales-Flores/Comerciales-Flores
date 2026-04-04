@@ -28,7 +28,6 @@ export default function TurnstileWidget({
 
   useEffect(() => {
     const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
-    console.log('Turnstile site key:', siteKey);
 
     if (!siteKey || typeof siteKey !== 'string') {
       console.error('Missing VITE_TURNSTILE_SITE_KEY');

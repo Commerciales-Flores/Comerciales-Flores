@@ -172,7 +172,8 @@ const TrendCard = ({
         <span className="text-2xl font-bold text-gray-900">{value}</span>
       </div>
 
-      <div className="h-36">
+      <div className="min-w-0 w-full h-[160px]">
+        {data.length > 0 && (
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>
             <XAxis dataKey="label" tick={{ fontSize: 10 }} />
@@ -190,6 +191,7 @@ const TrendCard = ({
             />
           </LineChart>
         </ResponsiveContainer>
+        )}
       </div>
     </div>
   );
@@ -625,6 +627,7 @@ const occupancyRate =
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="min-w-0">
                 <TrendCard
                   title="Occupancy Rate"
                   value={`${dashboardData.occupancyRate.toFixed(1)}%`}
@@ -634,7 +637,9 @@ const occupancyRate =
                   stroke="#7c3aed"
                   formatter={(value) => [`${(value ?? 0).toFixed(1)}%`, 'Occupancy']}
                 />
+                </div>
 
+              <div className="min-w-0">
                 <TrendCard
                   title="Total Revenue"
                   value={formatCurrency(dashboardData.totalRevenue)}
@@ -644,6 +649,7 @@ const occupancyRate =
                   stroke="#16a34a"
                   formatter={(value) => [`₱${((value ?? 0) / 1000).toFixed(1)}k`, 'Revenue']}
                 />
+                </div>
               </div>
             </section>
 
