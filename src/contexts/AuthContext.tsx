@@ -949,14 +949,36 @@ const login = useCallback(
       clearAuthNotice();
       const normalizedEmail = normalizeEmail(email);
 
-      const [isTurnstileValid, lockResult] = await Promise.all([
-        verifyTurnstileToken(options?.turnstileToken),
-        supabase.rpc('check_login_lock', {
-          p_email: normalizedEmail,
-        }),
-      ]);
+      const precheckStart = performance.now();
 
-      console.log('login step: precheck', Math.round(performance.now() - t0), 'ms');
+const turnstilePromise = verifyTurnstileToken(options?.turnstileToken).then((result) => {
+  console.log(
+    'login step: turnstile',
+    Math.round(performance.now() - precheckStart),
+    'ms'
+  );
+  return result;
+});
+
+const lockPromise = supabase
+  .rpc('check_login_lock', {
+    p_email: normalizedEmail,
+  })
+  .then((result) => {
+    console.log(
+      'login step: lock check',
+      Math.round(performance.now() - precheckStart),
+      'ms'
+    );
+    return result;
+  });
+
+const [isTurnstileValid, lockResult] = await Promise.all([
+  turnstilePromise,
+  lockPromise,
+]);
+
+console.log('login step: precheck total', Math.round(performance.now() - t0), 'ms');
 
       if (!isTurnstileValid) {
         return { success: false, error: 'verification_failed' };
