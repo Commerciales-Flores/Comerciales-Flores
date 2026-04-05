@@ -561,6 +561,7 @@ async function processTrustedDeviceLogin(params: {
       action: 'DEVICE_LOCATION_COUNTRY_CHANGED',
       target_table: 'trusted_devices',
       target_id: trustedDevice.trusted_device_id,
+      target_public_id: trustedDevice.public_id,
       changed_fields: ['location_country', 'last_location_alert_at'],
       timestamp: nowIso,
       notes: suspiciousReason ?? 'Trusted device country changed',
@@ -571,6 +572,7 @@ async function processTrustedDeviceLogin(params: {
       action: 'DEVICE_LOCATION_SUSPICIOUS',
       target_table: 'trusted_devices',
       target_id: trustedDevice.trusted_device_id,
+      target_public_id: trustedDevice.public_id,
       changed_fields: ['location_city', 'last_ip', 'suspicious_login'],
       timestamp: nowIso,
       notes: suspiciousReason ?? 'Suspicious location pattern detected',
@@ -640,6 +642,7 @@ Deno.serve(async (req) => {
       .from('trusted_devices')
       .select(`
         trusted_device_id,
+        public_id,
         is_trusted,
         last_ip,
         user_agent,

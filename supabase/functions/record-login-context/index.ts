@@ -139,7 +139,7 @@ async function processLoginContext(params: {
 
   const { data: profile, error: profileError } = await adminClient
     .from('users')
-    .select('user_id, email, latitude, longitude')
+    .select('user_id, public_id, email, latitude, longitude')
     .eq('user_id', user.id)
     .single();
 
@@ -264,6 +264,7 @@ async function processLoginContext(params: {
       action: 'LOGIN_SUSPICIOUS',
       target_table: 'users',
       target_id: profile.user_id,
+      target_public_id: profile.public_id, 
       changed_fields: ['ip_address', 'user_agent', 'country', 'region', 'city'],
       timestamp: new Date().toISOString(),
       notes: `Suspicious login detected for ${profile.email}. Reasons: ${suspiciousReasons.join(', ')}`,

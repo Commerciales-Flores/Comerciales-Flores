@@ -404,15 +404,27 @@ Deno.serve(async (req) => {
       );
     }
 
-    await adminClient.from('audit_log').insert({
-      user_id: user.id,
-      action: 'EMAIL_CHANGE_REQUESTED',
-      target_table: 'users',
-      target_id: user.id,
-      changed_fields: ['email'],
-      timestamp: requestedAt,
-      notes: `Requested email change from ${currentEmail} to ${newEmail}`,
-    });
+    const { data: userRow, error: userFetchError } = await adminClient
+      .from('users')
+      .select('user_id, public_id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (userFetchError) {
+      console.error('Failed to fetch user public_id for audit log:', userFetchError);
+    }
+
+    if (userRow) {
+      await adminClient.from('audit_log').insert({
+        user_id: user.id,
+        action: 'EMAIL_CHANGE_REQUESTED',
+        target_table: 'users',
+        target_id: userRow.user_id,
+        target_public_id: userRow.public_id ?? null, // ✅ FIX
+        changed_fields: ['email'],
+        notes: `Requested email change from ${currentEmail} to ${newEmail}`,
+      });
+    }
 
     return jsonResponse({
       success: true,

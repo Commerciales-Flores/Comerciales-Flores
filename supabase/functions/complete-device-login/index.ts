@@ -144,20 +144,30 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { error: auditError } = await adminClient.from('audit_log').insert({
-      user_id: verification.user_id,
-      action: 'DEVICE_LOGIN_APPROVAL_COMPLETED',
-      target_table: 'users',
-      target_id: verification.user_id,
-      changed_fields: ['device_fingerprint'],
-      timestamp: nowIso,
-      notes: verification.remember_device
-        ? 'Approved login completed on original browser; device was already trusted during email approval'
-        : 'Approved login completed on original browser',
-    });
+    const { data: userRow, error: userFetchError } = await adminClient
+      .from('users')
+      .select('user_id, public_id')
+      .eq('user_id', verification.user_id)
+      .single();
 
-    if (auditError) {
-      console.error('Audit log insert failed:', auditError);
+    if (userFetchError) {
+      console.error('Failed to fetch user public_id for audit log:', userFetchError);
+    } else {
+      const { error: auditError } = await adminClient.from('audit_log').insert({
+        user_id: verification.user_id,
+        action: 'DEVICE_LOGIN_APPROVAL_COMPLETED',
+        target_table: 'users',
+        target_id: userRow.user_id,
+        target_public_id: userRow.public_id ?? null,
+        changed_fields: ['device_fingerprint'],
+        notes: verification.remember_device
+          ? 'Approved login completed on original browser; device was already trusted during email approval'
+          : 'Approved login completed on original browser',
+      });
+
+      if (auditError) {
+        console.error('Audit log insert failed:', auditError);
+      }
     }
 
     return jsonResponse({

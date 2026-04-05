@@ -330,6 +330,16 @@ if (deleteAuthError) {
       success: true,
       reason: 'Account deleted successfully.',
     })
+
+    await admin.from('audit_log').insert({
+      user_id: requestedUserId,
+      action: 'ACCOUNT_DELETED',
+      target_table: 'users',
+      target_id: requestedUserId,
+      target_public_id: profile?.public_id ?? null,
+      changed_fields: ['account_deleted'],
+      notes: `User account deleted. Snapshot created and all related data preserved.`,
+    });
   } catch (err) {
     return jsonResponse(
       {

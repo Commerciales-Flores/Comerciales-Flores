@@ -474,40 +474,49 @@ serve(async (req) => {
       if (existingLedgerError) throw existingLedgerError;
 
       if (!existingLedger) {
-        const { entryType, depositType } = getLedgerMeaningFromCategory(category);
+  const { entryType, depositType } = getLedgerMeaningFromCategory(category);
 
-        const { error: ledgerError } = await admin.from('ledger').insert([
-          {
-            user_id: finalPaymentRow.user_id,
-            reservation_id: finalPaymentRow.reservation_id,
-            payment_id: finalPaymentRow.payment_id,
-            entry_type: entryType,
-            deposit_type: depositType ?? null,
-            amount: finalPaymentRow.amount,
-            method: finalPaymentRow.method,
-            status: 'verified',
-            reference_no: null,
-            description:
-              category === 'security_deposit'
-                ? `Security deposit for ${
-                    finalPaymentRow.public_id ?? finalPaymentRow.payment_id
-                  }`
-                : category === 'advance_deposit'
-                ? `Advance deposit for ${
-                    finalPaymentRow.public_id ?? finalPaymentRow.payment_id
-                  }`
-                : `Payment for reservation ${
-                    finalPaymentRow.public_id ?? finalPaymentRow.payment_id
-                  }`,
-            notes: finalPaymentRow.notes ?? null,
-            recorded_at: new Date().toISOString(),
-            created_at: new Date().toISOString(),
-            created_by: user.id,
-          },
-        ]);
+  const { data: insertedLedger, error: ledgerError } = await admin
+    .from('ledger')
+    .insert([
+      {
+        user_id: finalPaymentRow.user_id,
+        reservation_id: finalPaymentRow.reservation_id,
+        payment_id: finalPaymentRow.payment_id,
+        entry_type: entryType,
+        deposit_type: depositType ?? null,
+        amount: finalPaymentRow.amount,
+        method: finalPaymentRow.method,
+        status: 'verified',
+        reference_no: null,
+        description:
+          category === 'security_deposit'
+            ? `Security deposit for ${finalPaymentRow.public_id ?? finalPaymentRow.payment_id}`
+            : category === 'advance_deposit'
+            ? `Advance deposit for ${finalPaymentRow.public_id ?? finalPaymentRow.payment_id}`
+            : `Payment for reservation ${finalPaymentRow.public_id ?? finalPaymentRow.payment_id}`,
+        notes: finalPaymentRow.notes ?? null,
+        recorded_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        created_by: user.id,
+      },
+    ])
+    .select('ledger_id, public_id') // 🔥 IMPORTANT
+    .single();
 
-        if (ledgerError) throw ledgerError;
-      }
+  if (ledgerError) throw ledgerError;
+
+  // ✅ Audit log for ledger
+  await admin.from('audit_log').insert({
+    user_id: user.id,
+    action: 'LEDGER_ENTRY_CREATED',
+    target_table: 'ledger',
+    target_id: insertedLedger.ledger_id,
+    target_public_id: insertedLedger.public_id ?? null,
+    changed_fields: ['amount', 'entry_type'],
+    notes: `Ledger entry created for payment ${finalPaymentRow.public_id}`,
+  });
+}
 
       const netPaid = await getReservationLedgerNetPaid(
         admin,
@@ -538,11 +547,13 @@ serve(async (req) => {
         target_table: 'payments',
         target_id: finalPaymentRow.payment_id,
         target_public_id: finalPaymentRow.public_id ?? null,
-        changed_fields: paymentId ? ['payment'] : Object.keys(finalPaymentRow),
+        changed_fields: paymentId
+          ? ['amount', 'method', 'status']
+          : ['amount', 'method', 'status', 'category'],
         timestamp: new Date().toISOString(),
         notes: paymentId
-          ? `Processed ${category} ${finalPaymentRow.public_id ?? finalPaymentRow.payment_id}`
-          : `Created ${category} ${finalPaymentRow.public_id ?? finalPaymentRow.payment_id}`,
+          ? `Processed ${category} ${finalPaymentRow.public_id} for reservation ${reservation.public_id}`
+          : `Created ${category} ${finalPaymentRow.public_id} for reservation ${reservation.public_id}`,
       },
     ]);
 

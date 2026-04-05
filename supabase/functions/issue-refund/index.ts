@@ -259,6 +259,24 @@ serve(async (req) => {
       },
     ]);
 
+    const { data: insertedLedger } = await admin
+      .from('ledger')
+      .select('ledger_id, public_id')
+      .eq('reservation_id', reservationId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    await admin.from('audit_log').insert({
+      user_id: user.id,
+      action: 'LEDGER_REFUND_ENTRY_CREATED',
+      target_table: 'ledger',
+      target_id: insertedLedger.ledger_id,
+      target_public_id: insertedLedger.public_id ?? null,
+      changed_fields: ['amount', 'entry_type'],
+      notes: `Refund ledger entry created for ₱${refundAmount.toFixed(2)}`,
+    });
+
     if (ledgerError) throw ledgerError;
 
     const netPaid = await getReservationLedgerNetPaid(admin, reservationId);
@@ -277,9 +295,10 @@ serve(async (req) => {
       {
         user_id: user.id,
         action: 'PAYMENT_REFUNDED',
-        target_table: 'payments',
-        target_id: paymentId ?? reservationId,
-        target_public_id: linkedPayment?.public_id ?? reservation.public_id ?? null,
+        target_table: paymentId ? 'payments' : 'reservations',
+        target_id: paymentId ?? reservation.reservation_id,
+        target_public_id:
+          linkedPayment?.public_id ?? reservation.public_id ?? null,
         changed_fields: ['refund'],
         timestamp: new Date().toISOString(),
         notes: linkedPayment

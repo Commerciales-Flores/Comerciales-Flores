@@ -5,14 +5,29 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'application/json',
+    },
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+      return jsonResponse({ success: false, error: 'Missing server configuration' }, 500);
+    }
+
     const adminClient = createClient(supabaseUrl, supabaseServiceRoleKey);
 
     const body = await req.json().catch(() => ({}));
@@ -20,13 +35,7 @@ Deno.serve(async (req) => {
     const requestedRememberDevice = Boolean(body?.rememberDevice);
 
     if (!token) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Missing token' }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return jsonResponse({ success: false, error: 'Missing token' }, 400);
     }
 
     const { data: verification, error: verificationError } = await adminClient
@@ -36,22 +45,13 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (verificationError) {
-      return new Response(
-        JSON.stringify({ success: false, error: verificationError.message }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return jsonResponse({ success: false, error: verificationError.message }, 500);
     }
 
     if (!verification) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Invalid or already used token' }),
-        {
-          status: 404,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+      return jsonResponse(
+        { success: false, error: 'Invalid or already used token' },
+        404
       );
     }
 
@@ -59,30 +59,21 @@ Deno.serve(async (req) => {
       Boolean(verification.remember_device) || requestedRememberDevice;
 
     if (new Date(verification.expires_at).getTime() < Date.now()) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Verification link expired' }),
-        {
-          status: 410,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
+      return jsonResponse(
+        { success: false, error: 'Verification link expired' },
+        410
       );
     }
 
     if (verification.approved_at) {
-      return new Response(
-        JSON.stringify({
-          success: true,
-          approved: true,
-          trusted: rememberDevice,
-          message: rememberDevice
-            ? 'Sign-in already approved and this browser is trusted. Return to your original browser to continue.'
-            : 'Sign-in already approved. Return to your original browser to continue.',
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return jsonResponse({
+        success: true,
+        approved: true,
+        trusted: rememberDevice,
+        message: rememberDevice
+          ? 'Sign-in already approved and this browser is trusted. Return to your original browser to continue.'
+          : 'Sign-in already approved. Return to your original browser to continue.',
+      });
     }
 
     const nowIso = new Date().toISOString();
@@ -97,14 +88,12 @@ Deno.serve(async (req) => {
       .is('approved_at', null);
 
     if (markVerifiedError) {
-      return new Response(
-        JSON.stringify({ success: false, error: markVerifiedError.message }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return jsonResponse({ success: false, error: markVerifiedError.message }, 500);
     }
+
+    let trustedDeviceRecord:
+      | { trusted_device_id: string; public_id: string | null }
+      | null = null;
 
     if (rememberDevice) {
       const { error: trustError } = await adminClient
@@ -148,62 +137,76 @@ Deno.serve(async (req) => {
         );
 
       if (trustError) {
-        return new Response(
-          JSON.stringify({ success: false, error: trustError.message }),
-          {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          }
-        );
+        return jsonResponse({ success: false, error: trustError.message }, 500);
       }
+
+      const { data: deviceRow, error: deviceFetchError } = await adminClient
+        .from('trusted_devices')
+        .select('trusted_device_id, public_id')
+        .eq('user_id', verification.user_id)
+        .eq('device_fingerprint', verification.device_fingerprint)
+        .single();
+
+      if (deviceFetchError) {
+        return jsonResponse({ success: false, error: deviceFetchError.message }, 500);
+      }
+
+      trustedDeviceRecord = deviceRow;
     }
 
-    const deviceLabel =
-      verification.device_name?.trim() ||
-      (verification.user_agent?.toLowerCase().includes('chrome') ? 'Chrome browser' : '') ||
-      'Trusted device';
+    const { data: userRow, error: userFetchError } = await adminClient
+      .from('users')
+      .select('user_id, public_id')
+      .eq('user_id', verification.user_id)
+      .single();
 
-    const { error: auditError } = await adminClient.from('audit_log').insert({
-      user_id: verification.user_id,
-      action: 'LOGIN_APPROVED',
-      target_table: rememberDevice ? 'trusted_devices' : 'users',
-      target_id: rememberDevice ? verification.device_fingerprint : verification.user_id,
-      target_public_id: rememberDevice ? deviceLabel : null,
-      changed_fields: rememberDevice
-        ? ['device_fingerprint', 'is_trusted']
-        : ['device_fingerprint'],
-      timestamp: nowIso,
-      notes: rememberDevice
-        ? 'Login approved from verification link and device trusted immediately'
-        : 'Login approved from verification link',
+    if (userFetchError) {
+      return jsonResponse({ success: false, error: userFetchError.message }, 500);
+    }
+
+    const auditPayload = rememberDevice
+      ? {
+          user_id: verification.user_id,
+          action: 'LOGIN_APPROVED',
+          target_table: 'trusted_devices',
+          target_id: trustedDeviceRecord?.trusted_device_id ?? null,
+          target_public_id: trustedDeviceRecord?.public_id ?? null,
+          changed_fields: ['device_fingerprint', 'is_trusted'],
+          notes: 'Login approved from verification link and device trusted immediately',
+        }
+      : {
+          user_id: verification.user_id,
+          action: 'LOGIN_APPROVED',
+          target_table: 'users',
+          target_id: userRow.user_id,
+          target_public_id: userRow.public_id ?? null,
+          changed_fields: ['device_fingerprint'],
+          notes: 'Login approved from verification link',
+        };
+
+    const { error: auditError } = await adminClient
+      .from('audit_log')
+      .insert(auditPayload);
+
+    if (auditError) {
+      return jsonResponse({ success: false, error: auditError.message }, 500);
+    }
+
+    return jsonResponse({
+      success: true,
+      approved: true,
+      trusted: rememberDevice,
+      message: rememberDevice
+        ? 'Sign-in approved and this browser is now trusted. Return to your original browser to continue.'
+        : 'Sign-in approved. Return to your original browser to continue.',
     });
-
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        approved: true,
-        trusted: rememberDevice,
-        message: rememberDevice
-          ? 'Sign-in approved and this browser is now trusted. Return to your original browser to continue.'
-          : 'Sign-in approved. Return to your original browser to continue.',
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
   } catch (error) {
-
-    return new Response(
-      JSON.stringify({
+    return jsonResponse(
+      {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
+      },
+      500
     );
   }
 });
