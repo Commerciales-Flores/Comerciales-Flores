@@ -823,131 +823,153 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
   );
 
   const addUnit = useCallback(
-    async (
-      unitData: Omit<Unit, 'id' | 'property' | 'images'> & { images?: string[] }
-    ): Promise<void> => {
-      try {
+  async (
+    unitData: Omit<Unit, 'id' | 'property' | 'images'> & { images?: string[] }
+  ): Promise<void> => {
+    try {
+      const normalizedName = normalizeText(unitData.name);
+      const normalizedDescription = normalizeText(unitData.description ?? '');
+      const normalizedPolicies = normalizeText(unitData.policies ?? '');
+      const normalizedPrice = Number(normalizeMoneyString(String(unitData.price)));
+      const normalizedFeatures = Array.isArray(unitData.features)
+        ? unitData.features.map((feature) => normalizeText(feature)).filter(Boolean)
+        : [];
+      const normalizedLocation = getSafeLocation(normalizeAddress(unitData.location));
+      const newUnitId = crypto.randomUUID();
+      const config = getUnitConfig(unitData.type);
 
-        const normalizedName = normalizeText(unitData.name);
-        const normalizedDescription = normalizeText(unitData.description ?? '');
-        const normalizedPolicies = normalizeText(unitData.policies ?? '');
-        const normalizedPrice = Number(normalizeMoneyString(String(unitData.price)));
-        const normalizedFeatures = Array.isArray(unitData.features)
-          ? unitData.features.map((feature) => normalizeText(feature)).filter(Boolean)
+      const imagePaths = Array.isArray(unitData.imagePaths)
+        ? unitData.imagePaths
+        : Array.isArray(unitData.images)
+          ? unitData.images
           : [];
-        const normalizedLocation = getSafeLocation(normalizeAddress(unitData.location));
-        const newUnitId = crypto.randomUUID();
-        const config = getUnitConfig(unitData.type);
 
-        const imagePaths = Array.isArray(unitData.imagePaths)
-          ? unitData.imagePaths
-          : Array.isArray(unitData.images)
-            ? unitData.images
-            : [];
+      const videoPaths = Array.isArray(unitData.videoPaths)
+        ? unitData.videoPaths
+        : Array.isArray(unitData.videos)
+          ? unitData.videos
+          : [];
 
-        const videoPaths = Array.isArray(unitData.videoPaths)
-          ? unitData.videoPaths
-          : Array.isArray(unitData.videos)
-            ? unitData.videos
-            : [];
+      const basePayload = {
+        unit_id: newUnitId,
+        unit_type: unitData.type,
+        title: normalizedName,
+        is_available: unitData.available,
+        price: normalizedPrice,
+        location: normalizedLocation,
+        images: imagePaths,
+        videos: videoPaths,
+        minimum_payment_percent: unitData.minimumPaymentPercent ?? null,
+        contract_file_path: unitData.contractFilePath ?? null,
+        contract_file_name: unitData.contractFileName ?? null,
+      };
 
-        const { data: insertedBase, error: baseError } = await supabase
-          .from('units')
-          .insert([
-            {
-              unit_id: newUnitId,
-              unit_type: unitData.type,
-              title: normalizedName,
-              is_available: unitData.available,
-              price: normalizedPrice,
-              location: normalizedLocation,
-              images: imagePaths,
-              videos: videoPaths,
-              minimum_payment_percent: unitData.minimumPaymentPercent ?? null,
-              contract_file_path: unitData.contractFilePath ?? null,
-              contract_file_name: unitData.contractFileName ?? null,
-            },
-          ])
-          .select('unit_id, public_id')
-          .single();
+      const { data: insertedBase, error: baseError } = await supabase
+        .from('units')
+        .insert([basePayload])
+        .select('unit_id, public_id')
+        .single();
 
-        if (baseError) throw baseError;
-        if (!insertedBase?.public_id) {
-          throw new Error('Unit insert succeeded but public_id was not returned.');
-        }
-
-        if (baseError) throw baseError;
-
-        const specificPayload: Record<string, unknown> = {
-          unit_id: newUnitId,
-          title: normalizedName,
-          description: normalizedDescription,
-          policies: normalizedPolicies,
-          features: normalizedFeatures,
-        };
-
-        if (unitData.type === 'function_hall') {
-          specificPayload.capacity = unitData.capacity ?? null;
-        }
-
-        const { error: specificError } = await supabase
-          .from(config.table)
-          .insert([specificPayload]);
-
-        if (specificError) {
-          await supabase.from('units').delete().eq('unit_id', newUnitId);
-          throw specificError;
-        }
-
-        const createdUnit: Unit = {
-          id: newUnitId,
-          propertyId: insertedBase.public_id,
-          name: normalizedName,
-          type: unitData.type,
-          description: normalizedDescription,
-          price: normalizedPrice,
-          imagePaths,
-          images:
-            imagePaths.length > 0
-              ? imagePaths.map((path) => getPublicImageUrl(path))
-              : [DEFAULT_UNIT_IMAGE],
-          videoPaths,
-          videos: videoPaths.map((path) => getPublicImageUrl(path)),
-          policies: normalizedPolicies,
-          capacity: unitData.type === 'function_hall' ? unitData.capacity : undefined,
-          available: unitData.available,
-          features: normalizedFeatures,
-          location: normalizedLocation,
-          property: null,
-          minimumPaymentPercent: unitData.minimumPaymentPercent ?? null,
-          contractFilePath: unitData.contractFilePath ?? null,
-          contractFileName: unitData.contractFileName ?? null,
-        };
-
-        if (user?.id) {
-          try {
-            await addAuditLog({
-              userId: user.id,
-              action: 'CREATE',
-              targetTable: 'units',
-              targetId: newUnitId,
-              targetPublicId: insertedBase.public_id,
-              beforeValue: null,
-              afterValue: createdUnit,
-              changedFields: Object.keys(createdUnit),
-              notes: `Created unit ${createdUnit.name}`,
-            });
-          } catch (auditError) {
-            console.error('Failed to audit unit creation:', auditError);
-          }
-        }
-      } catch (error) {
-        console.error('Error adding unit:', error);
-        throw error;
+      if (baseError) {
+        console.error('Base unit insert failed:', {
+          code: baseError.code,
+          message: baseError.message,
+          details: baseError.details,
+          hint: baseError.hint,
+          payload: basePayload,
+        });
+        throw baseError;
       }
-    },
-    [addAuditLog, user?.id]
-  );
+
+      if (!insertedBase?.public_id) {
+        throw new Error('Unit insert succeeded but public_id was not returned.');
+      }
+
+      const specificPayload: Record<string, unknown> = {
+        unit_id: newUnitId,
+        title: normalizedName,
+        description: normalizedDescription,
+        policies: normalizedPolicies,
+        features: normalizedFeatures,
+      };
+
+      if (unitData.type === 'function_hall') {
+        specificPayload.capacity = unitData.capacity ?? null;
+      }
+
+      const { error: specificError } = await supabase
+        .from(config.table)
+        .insert([specificPayload]);
+
+      if (specificError) {
+        console.error('Specific unit insert failed:', {
+          table: config.table,
+          code: specificError.code,
+          message: specificError.message,
+          details: specificError.details,
+          hint: specificError.hint,
+          payload: specificPayload,
+        });
+
+        await supabase.from('units').delete().eq('unit_id', newUnitId);
+        throw specificError;
+      }
+
+      const createdUnit: Unit = {
+        id: newUnitId,
+        propertyId: insertedBase.public_id,
+        name: normalizedName,
+        type: unitData.type,
+        description: normalizedDescription,
+        price: normalizedPrice,
+        imagePaths,
+        images:
+          imagePaths.length > 0
+            ? imagePaths.map((path) => getPublicImageUrl(path))
+            : [DEFAULT_UNIT_IMAGE],
+        videoPaths,
+        videos: videoPaths.map((path) => getPublicImageUrl(path)),
+        policies: normalizedPolicies,
+        capacity: unitData.type === 'function_hall' ? unitData.capacity : undefined,
+        available: unitData.available,
+        features: normalizedFeatures,
+        location: normalizedLocation,
+        property: null,
+        minimumPaymentPercent: unitData.minimumPaymentPercent ?? null,
+        contractFilePath: unitData.contractFilePath ?? null,
+        contractFileName: unitData.contractFileName ?? null,
+      };
+
+      if (user?.id) {
+        try {
+          await addAuditLog({
+            userId: user.id,
+            action: 'CREATE',
+            targetTable: 'units',
+            targetId: newUnitId,
+            targetPublicId: insertedBase.public_id,
+            beforeValue: null,
+            afterValue: createdUnit,
+            changedFields: Object.keys(createdUnit),
+            notes: `Created unit ${createdUnit.name}`,
+          });
+        } catch (auditError) {
+          console.error('Failed to audit unit creation:', auditError);
+        }
+      }
+    } catch (error: any) {
+      console.error('Error adding unit:', {
+        code: error?.code,
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        error,
+      });
+      throw error;
+    }
+  },
+  [addAuditLog, user?.id]
+);
 
   const updateUnit = useCallback(
     async (id: string, unitUpdate: Partial<Unit>): Promise<void> => {
