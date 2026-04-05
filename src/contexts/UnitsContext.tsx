@@ -13,7 +13,6 @@ import type { Unit, UnitType, ParkingSlot } from '../data/types';
 import { useRecords } from './RecordsContext';
 import { useAuth } from './AuthContext';
 import { getChangedFields, buildAuditSnapshot } from '../utils/auditHelpers';
-import { makePublicId } from '../utils/publicId';
 
 import {
   normalizeText,
@@ -29,22 +28,18 @@ const DEFAULT_UNIT_IMAGE =
 
 const UNIT_CONFIG: Record<
   UnitType,
-  { table: 'rental_units' | 'function_units' | 'parking_units'; prefix: string }
+  { table: 'rental_units' | 'function_units' | 'parking_units' }
 > = {
   rental_space: {
     table: 'rental_units',
-    prefix: 'RNT',
   },
   function_hall: {
     table: 'function_units',
-    prefix: 'FUN',
   },
   parking_slot: {
     table: 'parking_units',
-    prefix: 'PAR',
   },
 };
-
 const PROPERTY_MEDIA_BUCKET = 'property_media';
 const UNIT_CONTRACTS_BUCKET = 'unit_contracts';
 
@@ -111,10 +106,6 @@ function getUnitConfig(type: UnitType) {
   return UNIT_CONFIG[type];
 }
 
-function getPublicId(type: UnitType, uuid: string) {
-  const config = getUnitConfig(type);
-  return makePublicId(config.prefix, { uuid, length: 5 });
-}
 
 function getPublicImageUrl(path: string) {
   const { data } = supabase.storage.from(PROPERTY_MEDIA_BUCKET).getPublicUrl(path);
@@ -219,7 +210,7 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
 
     return {
       id: base.unit_id,
-      propertyId: base.public_id || getPublicId(resolvedType, base.unit_id),
+      propertyId: base.public_id,
       name: normalizeText(base.title || ''),
       type: resolvedType,
       description: '',
@@ -406,7 +397,7 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
 
     const nextUnit: Unit = {
       id: base.unit_id,
-      propertyId: base.public_id || getPublicId(resolvedType, base.unit_id),
+      propertyId: base.public_id,
       name: normalizeText(base.title || specificRow?.title || ''),
       type: resolvedType,
       description: normalizeText(specificRow?.description || ''),
@@ -535,7 +526,7 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
 
         return {
           id: base.unit_id,
-          propertyId: base.public_id || getPublicId(resolvedType, base.unit_id),
+          propertyId: base.public_id,
           name: normalizeText(base.title || specific?.title || ''),
           type: resolvedType,
           description: normalizeText(specific?.description || ''),
@@ -846,8 +837,6 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
           : [];
         const normalizedLocation = getSafeLocation(normalizeAddress(unitData.location));
         const newUnitId = crypto.randomUUID();
-        const safeLocation = getSafeLocation(unitData.location);
-        const publicId = getPublicId(unitData.type, newUnitId);
         const config = getUnitConfig(unitData.type);
 
         const imagePaths = Array.isArray(unitData.imagePaths)
@@ -862,22 +851,30 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
             ? unitData.videos
             : [];
 
-        const { error: baseError } = await supabase.from('units').insert([
-          {
-            unit_id: newUnitId,
-            public_id: publicId,
-            unit_type: unitData.type,
-            title: normalizedName,
-            is_available: unitData.available,
-            price: normalizedPrice,
-            location: normalizedLocation,
-            images: imagePaths,
-            videos: videoPaths,
-            minimum_payment_percent: unitData.minimumPaymentPercent ?? null,
-            contract_file_path: unitData.contractFilePath ?? null,
-            contract_file_name: unitData.contractFileName ?? null,
-          },
-        ]);
+        const { data: insertedBase, error: baseError } = await supabase
+          .from('units')
+          .insert([
+            {
+              unit_id: newUnitId,
+              unit_type: unitData.type,
+              title: normalizedName,
+              is_available: unitData.available,
+              price: normalizedPrice,
+              location: normalizedLocation,
+              images: imagePaths,
+              videos: videoPaths,
+              minimum_payment_percent: unitData.minimumPaymentPercent ?? null,
+              contract_file_path: unitData.contractFilePath ?? null,
+              contract_file_name: unitData.contractFileName ?? null,
+            },
+          ])
+          .select('unit_id, public_id')
+          .single();
+
+        if (baseError) throw baseError;
+        if (!insertedBase?.public_id) {
+          throw new Error('Unit insert succeeded but public_id was not returned.');
+        }
 
         if (baseError) throw baseError;
 
@@ -904,7 +901,7 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
 
         const createdUnit: Unit = {
           id: newUnitId,
-          propertyId: publicId,
+          propertyId: insertedBase.public_id,
           name: normalizedName,
           type: unitData.type,
           description: normalizedDescription,
@@ -934,7 +931,7 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
               action: 'CREATE',
               targetTable: 'units',
               targetId: newUnitId,
-              targetPublicId: publicId,
+              targetPublicId: insertedBase.public_id,
               beforeValue: null,
               afterValue: createdUnit,
               changedFields: Object.keys(createdUnit),

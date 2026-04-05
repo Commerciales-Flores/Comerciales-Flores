@@ -8,7 +8,6 @@ import {
 import PaymentMethodModal from './PaymentMethodModal';
 import PaymentMethodCard from './PaymentMethodCard';
 
-
 export default function AdminPaymentMethods() {
   const {
     paymentMethods,
