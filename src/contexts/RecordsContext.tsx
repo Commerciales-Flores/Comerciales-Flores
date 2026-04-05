@@ -165,117 +165,86 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
   }, [refreshLedgers, refreshAuditLogs]);
 
   useEffect(() => {
-    const channel = supabase
-      .channel('records-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'ledger',
-        },
-        (payload) => {
-          const newEntry = mapLedgerRow(payload.new);
+  const channel = supabase
+    .channel('records-realtime')
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'ledger',
+      },
+      (payload) => {
+        const newEntry = mapLedgerRow(payload.new);
 
-          setLedgers((prev) => {
-            if (prev.some((item) => item.id === newEntry.id)) return prev;
-            return sortLedgers([newEntry, ...prev]);
-          });
+        setLedgers((prev) => {
+          if (prev.some((item) => item.id === newEntry.id)) return prev;
+          return sortLedgers([newEntry, ...prev]);
+        });
 
-          setLedgerVersion((prev) => prev + 1);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'ledger',
-        },
-        (payload) => {
-          const updatedEntry = mapLedgerRow(payload.new);
+        setLedgerVersion((prev) => prev + 1);
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'ledger',
+      },
+      (payload) => {
+        const updatedEntry = mapLedgerRow(payload.new);
 
-          setLedgers((prev) =>
-            sortLedgers(
-              prev.map((item) => (item.id === updatedEntry.id ? updatedEntry : item))
-            )
-          );
+        setLedgers((prev) =>
+          sortLedgers(
+            prev.map((item) => (item.id === updatedEntry.id ? updatedEntry : item))
+          )
+        );
 
-          setLedgerVersion((prev) => prev + 1);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'ledger',
-        },
-        (payload) => {
-          const deletedId = payload.old.ledger_id as string | undefined;
-          if (!deletedId) return;
+        setLedgerVersion((prev) => prev + 1);
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'DELETE',
+        schema: 'public',
+        table: 'ledger',
+      },
+      (payload) => {
+        const deletedId = payload.old.ledger_id as string | undefined;
+        if (!deletedId) return;
 
-          setLedgers((prev) => prev.filter((item) => item.id !== deletedId));
-          setLedgerVersion((prev) => prev + 1);
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'audit_log',
-        },
-        (payload) => {
-          const newLog = mapAuditRow(payload.new);
+        setLedgers((prev) => prev.filter((item) => item.id !== deletedId));
+        setLedgerVersion((prev) => prev + 1);
+      }
+    )
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'audit_log',
+      },
+      (payload) => {
+        const newLog = mapAuditRow(payload.new);
 
-          setAuditLogs((prev) => {
-            if (prev.some((item) => item.id === newLog.id)) return prev;
-            return sortAuditLogs([newLog, ...prev]);
-          });
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'audit_log',
-        },
-        (payload) => {
-          const updatedLog = mapAuditRow(payload.new);
+        setAuditLogs((prev) => {
+          if (prev.some((item) => item.id === newLog.id)) return prev;
+          return sortAuditLogs([newLog, ...prev]);
+        });
+      }
+    )
+    .subscribe((status) => {
+      if (import.meta.env.DEV) {
+        console.log('Records realtime status:', status);
+      }
+    });
 
-          setAuditLogs((prev) =>
-            sortAuditLogs(
-              prev.map((item) => (item.id === updatedLog.id ? updatedLog : item))
-            )
-          );
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'audit_log',
-        },
-        (payload) => {
-          const deletedId = payload.old.audit_id as string | undefined;
-          if (!deletedId) return;
-
-          setAuditLogs((prev) => prev.filter((item) => item.id !== deletedId));
-        }
-      )
-      .subscribe((status) => {
-        if (import.meta.env.DEV) {
-          console.log('Records realtime status:', status);
-        }
-      });
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, []);
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}, []);
 
   const fetchAuditLogsPage = useCallback(
     async ({
@@ -378,7 +347,6 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
             before_value: log.beforeValue,
             after_value: log.afterValue,
             changed_fields: log.changedFields,
-            timestamp: new Date().toISOString(),
             notes: log.notes ? normalizeText(log.notes) : null,
           },
         ])

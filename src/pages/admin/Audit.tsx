@@ -47,17 +47,26 @@ const ACTION_OPTIONS = [
   'CREATE',
   'UPDATE',
   'DELETE',
+
   'DEACTIVATE',
+
   'LOGIN',
   'LOGIN_FAILED',
   'LOGIN_APPROVED',
   'LOGOUT',
   'SESSION_EXPIRED',
+
+  'DEVICE_VERIFIED',
+  'DEVICE_REMOVED',
+
   'PAYMENT_CREATED',
   'PAYMENT_UPDATED',
   'PAYMENT_APPROVED',
   'PAYMENT_REJECTED',
   'PAYMENT_PROOF_UPLOADED',
+
+  'ACCOUNT_DELETION_REQUESTED',
+  'ACCOUNT_DELETION_APPROVED',
 ];
 
 const MODULE_OPTIONS = [
@@ -66,7 +75,10 @@ const MODULE_OPTIONS = [
   'units',
   'reservations',
   'payments',
+  'ledger',
   'trusted_devices',
+  'support_tickets',
+  'support_messages',
 ];
 
 const ACTION_STYLES: Record<string, string> = {
