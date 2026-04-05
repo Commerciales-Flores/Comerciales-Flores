@@ -685,6 +685,10 @@ if (oauthPending) {
       void (async () => {
         try {
           if (event === 'SIGNED_OUT') {
+            if (logoutInProgressRef.current) {
+              return;
+            }
+
             const wasLoggedIn = sessionStorage.getItem(WAS_LOGGED_IN_KEY) === 'true';
 
             if (wasLoggedIn && !logoutInProgressRef.current) {
@@ -859,6 +863,11 @@ if (oauthPending) {
 
   const verifyTurnstileToken = useCallback(
   async (token?: string): Promise<boolean> => {
+    // ✅ DEV MODE BYPASS
+    if (import.meta.env.DEV) {
+      return true;
+    }
+
     if (!token) return false;
 
     const controller = new AbortController();
@@ -1206,6 +1215,7 @@ if (!profile) {
     message?: string,
     options?: { clearGreeting?: boolean; redirectToLogin?: boolean }
   ) => {
+    if (logoutInProgressRef.current) return;
     logoutInProgressRef.current = true;
 
     const currentUser = userRef.current;
@@ -1221,47 +1231,47 @@ if (!profile) {
       ? 'Session expired due to inactivity'
       : 'User logout';
 
-    clearUserSession({ clearGreeting: shouldClearGreeting });
-    setFormKey((k) => k + 1);
-
-    localStorage.setItem(
-      LOGOUT_BROADCAST_KEY,
-      JSON.stringify({
-        at: Date.now(),
-        clearGreeting: shouldClearGreeting,
-      })
-    );
-
     const isSecurity = /expired|security|ended/i.test(message ?? '');
 
-    showIndicator(
-      message
-        ? `${message} at ${getFormattedTime()}`
-        : `Logout${currentUserEmail ? ` by ${currentUserEmail}` : ''} at ${getFormattedTime()}`,
-      isSecurity ? 'security' : 'logout'
-    );
+if (shouldRedirectToLogin && window.location.pathname !== '/login') {
+  window.history.replaceState(null, '', '/login');
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
 
-    try {
-      if (currentUserId) {
-        void addAuthAuditLog({
-          userId: currentUserId,
-          action,
-          notes: note,
-        });
-      }
+clearUserSession({ clearGreeting: shouldClearGreeting });
+setFormKey((k) => k + 1);
 
-      await supabase.auth.signOut();
-    } catch (err) {
-      console.error('Logout failed:', err);
-    } finally {
-      logoutInProgressRef.current = false;
-      expiryLogoutRef.current = false;
+localStorage.setItem(
+  LOGOUT_BROADCAST_KEY,
+  JSON.stringify({
+    at: Date.now(),
+    clearGreeting: shouldClearGreeting,
+  })
+);
 
-      if (shouldRedirectToLogin && window.location.pathname !== '/login') {
-        window.history.replaceState(null, '', '/login');
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      }
-    }
+showIndicator(
+  message
+    ? `${message} at ${getFormattedTime()}`
+    : `Logout${currentUserEmail ? ` by ${currentUserEmail}` : ''} at ${getFormattedTime()}`,
+  isSecurity ? 'security' : 'logout'
+);
+
+try {
+  if (currentUserId) {
+    void addAuthAuditLog({
+      userId: currentUserId,
+      action,
+      notes: note,
+    });
+  }
+
+  await supabase.auth.signOut();
+} catch (err) {
+  console.error('Logout failed:', err);
+} finally {
+  logoutInProgressRef.current = false;
+  expiryLogoutRef.current = false;
+}
   },
   [addAuthAuditLog, clearUserSession, showIndicator]
 );

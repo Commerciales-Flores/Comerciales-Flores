@@ -21,6 +21,10 @@ type UsersPageFilters = {
   page?: number;
   pageSize?: number;
   searchTerm?: string;
+  accountFilter?: 'all' | 'active' | 'inactive';
+  deletionFilter?: 'all' | 'pending' | 'approved' | 'rejected' | 'none';
+  businessFilter?: 'all' | 'occupied' | 'upcoming' | 'unpaid';
+  useExactCount?: boolean;
 };
 
 interface UsersContextType {
@@ -298,153 +302,116 @@ export function UsersProvider({ children }: { children: ReactNode }) {
   }, [clearUsersCache]);
 
   const fetchUsersPage = useCallback(
-    async ({
-      page = 1,
-      pageSize = 25,
-      searchTerm = '',
-    }: UsersPageFilters): Promise<{
-      data: User[];
-      count: number;
-    }> => {
-      const normalizedSearch = normalizeEmail(searchTerm);
+  async ({
+    page = 1,
+    pageSize = 25,
+    searchTerm = '',
+    accountFilter = 'all',
+    deletionFilter = 'all',
+    businessFilter = 'all',
+    useExactCount = false,
+  }: UsersPageFilters) => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
 
-      const cacheKey = JSON.stringify({
-        page,
-        pageSize,
-        searchTerm: normalizedSearch,
-      });
+    const cacheKey = JSON.stringify({
+      page,
+      pageSize,
+      search: normalizedSearch,
+      accountFilter,
+      deletionFilter,
+      businessFilter,
+      useExactCount,
+    });
 
-      const cached = usersPageCacheRef.current.get(cacheKey);
-      if (cached) {
-        return cached;
+    const cached = usersPageCacheRef.current.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    let query = supabase
+      .from('admin_customer_overview')
+      .select(
+        '*',
+        useExactCount ? { count: 'exact' } : { count: 'planned' }
+      )
+      .order('created_at', { ascending: false });
+
+    if (normalizedSearch) {
+      query = query.or(
+        [
+          `public_id.ilike.%${normalizedSearch}%`,
+          `first_name.ilike.%${normalizedSearch}%`,
+          `last_name.ilike.%${normalizedSearch}%`,
+          `email.ilike.%${normalizedSearch}%`,
+          `phone.ilike.%${normalizedSearch}%`,
+          `address.ilike.%${normalizedSearch}%`,
+        ].join(',')
+      );
+    }
+
+    if (accountFilter === 'active') {
+      query = query.eq('is_active', true);
+    } else if (accountFilter === 'inactive') {
+      query = query.eq('is_active', false);
+    }
+
+    if (deletionFilter === 'pending') {
+      query = query.eq('deletion_status', 'pending');
+    } else if (deletionFilter === 'approved') {
+      query = query.eq('deletion_status', 'approved');
+    } else if (deletionFilter === 'rejected') {
+      query = query.eq('deletion_status', 'rejected');
+    } else if (deletionFilter === 'none') {
+      query = query.is('deletion_status', null);
+    }
+
+    if (businessFilter === 'occupied') {
+      query = query.eq('has_active_occupancy', true);
+    } else if (businessFilter === 'upcoming') {
+      query = query.eq('has_upcoming_reservation', true);
+    } else if (businessFilter === 'unpaid') {
+      query = query.eq('has_unpaid_balance', true);
+    }
+
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    const { data, error, count } = await query.range(from, to);
+
+    if (error) throw error;
+
+    const mapped = (data ?? []).map((row) => ({
+      ...mapUserRow(row),
+      hasActiveOccupancy: row.has_active_occupancy,
+      activeUnitName: row.active_unit_name ?? null,
+      activeUnitType: row.active_unit_type,
+      activeSince: row.active_since,
+      hasUpcomingReservation: row.has_upcoming_reservation ?? false,
+      hasUnpaidBalance: row.has_unpaid_balance ?? false,
+      deletionStatus: row.deletion_status,
+      deletionRequestReason: row.deletion_request_reason,
+      deletionRequested: row.deletion_status === 'pending',
+      deactivationBlocked: false,
+      deactivationReason: null,
+    }));
+
+    const result = {
+      data: mapped,
+      count: count ?? 0,
+    };
+
+    if (!usersPageCacheRef.current.has(cacheKey) && usersPageCacheRef.current.size >= 50) {
+      const oldestKey = usersPageCacheRef.current.keys().next().value;
+      if (oldestKey) {
+        usersPageCacheRef.current.delete(oldestKey);
       }
+    }
 
-      let query = supabase
-        .from('users')
-        .select(
-          `
-            user_id,
-            public_id,
-            role,
-            first_name,
-            last_name,
-            email,
-            phone,
-            address,
-            formatted_address,
-            latitude,
-            longitude,
-            is_active,
-            profile_picture_url,
-            last_login,
-            phone_verified,
-            phone_verified_at,
-            address_confirmed,
-            address_confirmed_at,
-            created_at
-          `,
-          { count: 'exact' }
-        )
-        .eq('role', 'client')
-        .order('created_at', { ascending: false });
-
-      if (normalizedSearch) {
-        query = query.or(
-          [
-            `public_id.ilike.%${normalizedSearch}%`,
-            `first_name.ilike.%${normalizedSearch}%`,
-            `last_name.ilike.%${normalizedSearch}%`,
-            `email.ilike.%${normalizedSearch}%`,
-            `phone.ilike.%${normalizedSearch}%`,
-            `address.ilike.%${normalizedSearch}%`,
-          ].join(',')
-        );
-      }
-
-      const from = (page - 1) * pageSize;
-      const to = from + pageSize - 1;
-
-      const { data, error, count } = await query.range(from, to);
-
-      if (error) {
-        throw error;
-      }
-
-      const userRows = data ?? [];
-      const usersMapped = userRows.map(mapUserRow);
-      const userIds = userRows.map((u) => u.user_id);
-
-      const [{ data: reservations }, { data: deletionRequests }] = userIds.length
-        ? await Promise.all([
-            supabase
-              .from('reservations')
-              .select(`
-                user_id,
-                unit_id,
-                unit_type,
-                start_date,
-                status
-              `)
-              .in('user_id', userIds)
-              .in('status', ['approved', 'confirmed']),
-            supabase
-              .from('account_deletion_requests')
-              .select(`
-                user_id,
-                status,
-                request_reason,
-                requested_at
-              `)
-              .in('user_id', userIds)
-              .order('requested_at', { ascending: false }),
-          ])
-        : [{ data: [] }, { data: [] }];
-
-      const reservationMap = new Map<string, any[]>();
-
-      reservations?.forEach((reservation) => {
-        if (!reservationMap.has(reservation.user_id)) {
-          reservationMap.set(reservation.user_id, []);
-        }
-        reservationMap.get(reservation.user_id)!.push(reservation);
-      });
-
-      const deletionRequestMap = buildLatestDeletionRequestMap(deletionRequests);
-
-      const enriched = usersMapped.map((user) => {
-        const userReservations = reservationMap.get(user.id) ?? [];
-
-        const activeReservation = userReservations.find((reservation) =>
-          ['approved', 'confirmed'].includes(reservation.status)
-        );
-
-        const deletionRequest = deletionRequestMap.get(user.id) ?? null;
-
-        const deactivationState = getDeactivationRuleState({
-          hasActiveReservation: !!activeReservation,
-          lastLogin: user.lastLogin ?? null,
-        });
-
-        return {
-          ...enrichUserWithDeletionState(user, deletionRequest),
-          hasActiveOccupancy: !!activeReservation,
-          activeUnitType: activeReservation?.unit_type ?? null,
-          activeSince: activeReservation?.start_date ?? null,
-          deactivationBlocked: deactivationState.blocked,
-          deactivationReason: deactivationState.reason,
-        };
-      });
-
-      const result = {
-        data: enriched,
-        count: count ?? 0,
-      };
-
-      usersPageCacheRef.current.set(cacheKey, result);
-      return result;
-    },
-    []
-  );
+    usersPageCacheRef.current.set(cacheKey, result);
+    return result;
+  },
+  []
+);
 
   const updateUserStatus = useCallback(
     async (id: string, isActive: boolean) => {

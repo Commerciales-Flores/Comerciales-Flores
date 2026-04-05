@@ -828,9 +828,9 @@ const [formError, setFormError] = useState<string | null>(null);
       });
 
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to save unit:', error);
-      setFormError('Failed to save unit. Please try again.');
+      setFormError(error?.message || 'Failed to save unit. Please try again.');
       setIsSubmitting(false);
     }
   },

@@ -871,14 +871,21 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
         .single();
 
       if (baseError) {
-        console.error('Base unit insert failed:', {
-          code: baseError.code,
-          message: baseError.message,
-          details: baseError.details,
-          hint: baseError.hint,
-          payload: basePayload,
-        });
-        throw baseError;
+        console.log('BASE ERROR RAW:', baseError);
+        console.log('BASE ERROR CODE:', baseError.code);
+        console.log('BASE ERROR MESSAGE:', baseError.message);
+        console.log('BASE ERROR DETAILS:', baseError.details);
+        console.log('BASE ERROR HINT:', baseError.hint);
+        console.log('BASE PAYLOAD:', JSON.stringify(basePayload, null, 2));
+
+        throw new Error(
+          [
+            `code=${baseError.code ?? 'n/a'}`,
+            `message=${baseError.message ?? 'n/a'}`,
+            `details=${baseError.details ?? 'n/a'}`,
+            `hint=${baseError.hint ?? 'n/a'}`,
+          ].join(' | ')
+        );
       }
 
       if (!insertedBase?.public_id) {
@@ -1137,6 +1144,22 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
         const changedFields = getChangedFields(existingUnit, sanitizedUpdate);
 
         if (changedFields.length === 0) return;
+
+        // ✅ Immediate UI update
+        setUnits((prev) => {
+          const next = prev.map((unit) =>
+            unit.id === id
+              ? {
+                  ...unit,
+                  ...sanitizedUpdate,
+                }
+              : unit
+          );
+
+          return sortUnits(next);
+        });
+
+        setUnitsVersion((prev) => prev + 1);
 
         if (user?.id) {
           try {

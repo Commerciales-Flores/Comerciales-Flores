@@ -221,11 +221,21 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
 
         const nextMessages = sortMessagesByCreatedAtAsc((data ?? []).map(mapMessage));
 
-        setMessagesByTicketId((prev) => ({
-          ...prev,
-          [ticketId]: nextMessages,
-        }));
+        setMessagesByTicketId((prev) => {
+          const existing = prev[ticketId] ?? [];
 
+          if (
+            existing.length === nextMessages.length &&
+            existing.every((message, index) => message.id === nextMessages[index]?.id)
+          ) {
+            return prev;
+          }
+
+          return {
+            ...prev,
+            [ticketId]: nextMessages,
+          };
+        });
         loadedTicketIdsRef.current.add(ticketId);
 
         return nextMessages;
@@ -281,12 +291,24 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const hydrateTicketMessages = useCallback((ticketId: string, nextMessages: SupportMessage[]) => {
-    setMessagesByTicketId((prev) => ({
+  setMessagesByTicketId((prev) => {
+    const existing = prev[ticketId] ?? [];
+
+    if (
+      existing.length === nextMessages.length &&
+      existing.every((message, index) => message.id === nextMessages[index]?.id)
+    ) {
+      return prev;
+    }
+
+    return {
       ...prev,
       [ticketId]: sortMessagesByCreatedAtAsc(nextMessages),
-    }));
-    loadedTicketIdsRef.current.add(ticketId);
-  }, []);
+    };
+  });
+
+  loadedTicketIdsRef.current.add(ticketId);
+}, []);
 
   const clearTicketMessages = useCallback((ticketId?: string) => {
     if (!ticketId) {
@@ -524,6 +546,15 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
         return prev;
       }
 
+      const lastMessage = existing[existing.length - 1];
+
+      if (!lastMessage || getTimestamp(lastMessage.createdAt) <= getTimestamp(newMessage.createdAt)) {
+        return {
+          ...prev,
+          [ticketId]: [...existing, newMessage],
+        };
+      }
+
       return {
         ...prev,
         [ticketId]: sortMessagesByCreatedAtAsc([...existing, newMessage]),
@@ -676,13 +707,17 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
     [fetchTickets]
   );
 
-  const messages = useMemo(
-    () =>
-      Object.values(messagesByTicketId)
-        .flat()
-        .sort((a, b) => getTimestamp(a.createdAt) - getTimestamp(b.createdAt)),
-    [messagesByTicketId]
-  );
+  const messages = useMemo(() => {
+  const allMessages: SupportMessage[] = [];
+
+  for (const ticketMessages of Object.values(messagesByTicketId)) {
+    if (ticketMessages.length > 0) {
+      allMessages.push(...ticketMessages);
+    }
+  }
+
+  return allMessages;
+}, [messagesByTicketId]);
 
   const getMessagesByTicketId = useCallback(
     (ticketId: string) => messagesByTicketId[ticketId] ?? [],
@@ -807,6 +842,15 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
 
             if (existing.some((message) => message.id === newMessage.id)) {
               return prev;
+            }
+
+            const lastMessage = existing[existing.length - 1];
+
+            if (!lastMessage || getTimestamp(lastMessage.createdAt) <= getTimestamp(newMessage.createdAt)) {
+              return {
+                ...prev,
+                [ticketId]: [...existing, newMessage],
+              };
             }
 
             return {

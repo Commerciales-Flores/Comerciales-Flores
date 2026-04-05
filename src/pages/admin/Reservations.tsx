@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useAdminData } from '../../contexts/AdminDataContext';
 import { useReservations } from '../../contexts/ReservationsContext';
 import { useNotifications } from '../../contexts/NotificationContext';
@@ -28,6 +28,7 @@ import { motion } from 'framer-motion';
 import EmptyState from '../../components/common/EmptyState';
 import { useUsers } from '../../contexts/UsersContext';
 import type { ReservationDetails } from '../../data/types';
+
 
 type ReservationFilterStatus =
   | 'all'
@@ -194,6 +195,9 @@ function useDebouncedValue<T>(value: T, delay = 250) {
 }
 
 export default function AdminReservations() {
+
+  const loadStartRef = useRef<number | null>(null);
+const hasMeasuredRef = useRef(false);
   const { updateReservation, getUnitById, loadingUnits } = useAdminData();
   const { users, isLoadingUsers, refreshUsers, getUserById } = useUsers();
   const { fetchReservationsPage, reservationsVersion } = useReservations();
@@ -259,6 +263,27 @@ export default function AdminReservations() {
     },
     [fetchReservationsPage, page, pageSize, filterStatus, debouncedSearch]
   );
+
+  useEffect(() => {
+  if (!isPageReady) return;
+  if (hasMeasuredRef.current) return;
+
+  const end = performance.now();
+  const start = loadStartRef.current ?? end;
+
+  console.log(
+    `[Reservations] ✅ Load complete in ${(end - start).toFixed(2)} ms`
+  );
+
+  hasMeasuredRef.current = true;
+}, [isPageReady]);
+
+  useEffect(() => {
+  loadStartRef.current = performance.now();
+  hasMeasuredRef.current = false;
+
+  console.log('[Reservations] ⏱️ Load started');
+}, []);
 
   useEffect(() => {
     setPageInput(String(page));

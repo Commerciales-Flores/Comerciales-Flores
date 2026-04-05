@@ -451,7 +451,7 @@ export default function AdminInquiries() {
 
   const [filterContactType, setFilterContactType] = useState<'all' | 'user' | 'guest'>('all');
 
-  
+  const { getMessagesByTicketId } = useInquiries();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
@@ -646,33 +646,17 @@ export default function AdminInquiries() {
       });
 }, [users, ticketIndex, debouncedSearch, filterContactType]);
 
-  const messagesByTicketId = useMemo(() => {
-    const grouped: Record<string, SupportMessage[]> = {};
-
-    for (const message of messages) {
-      if (!grouped[message.ticketId]) grouped[message.ticketId] = [];
-      grouped[message.ticketId].push(message);
-    }
-
-    for (const ticketId of Object.keys(grouped)) {
-      grouped[ticketId].sort(
-        (a, b) => getTimestamp(a.createdAt) - getTimestamp(b.createdAt)
-      );
-    }
-
-    return grouped;
-  }, [messages]);
 
   const ticketPreviewByTicketId = useMemo(() => {
-    const previews: Record<string, string> = {};
+  const previews: Record<string, string> = {};
 
-    for (const ticket of tickets) {
-      const ticketMessages = messagesByTicketId[ticket.id] ?? [];
-      previews[ticket.id] = ticketMessages[ticketMessages.length - 1]?.body ?? '';
-    }
+  for (const ticket of tickets) {
+    const msgs = getMessagesByTicketId(ticket.id);
+    previews[ticket.id] = msgs[msgs.length - 1]?.body ?? '';
+  }
 
-    return previews;
-  }, [tickets, messagesByTicketId]);
+  return previews;
+}, [tickets, getMessagesByTicketId]);
 
   const selectedContact = useMemo(
     () => contacts.find((contact) => contact.id === selectedContactId) ?? null,
@@ -732,10 +716,9 @@ export default function AdminInquiries() {
   );
 
   const selectedTicketMessages = useMemo(
-    () => (selectedTicket ? messagesByTicketId[selectedTicket.id] ?? [] : []),
-    [messagesByTicketId, selectedTicket]
-  );
-
+  () => (selectedTicket ? getMessagesByTicketId(selectedTicket.id) : []),
+  [getMessagesByTicketId, selectedTicket]
+);
   const currentReply = selectedTicket ? replyDrafts[selectedTicket.id] ?? '' : '';
   const isInitialInquiriesLoading = pageLoading || isLoadingTickets || isLoadingUsers;
   const trimmedSearch = debouncedSearch.trim();
@@ -1242,7 +1225,7 @@ const hasNoSearchResults =
                           key={ticket.id}
                           ticket={ticket}
                           preview={ticketPreviewByTicketId[ticket.id] ?? ''}
-                          messageCount={(messagesByTicketId[ticket.id] ?? []).length}
+                          messageCount={getMessagesByTicketId(ticket.id).length}
                           isSelected={ticket.id === selectedTicketId}
                           onSelect={openTicket}
                         />

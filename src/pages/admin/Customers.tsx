@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, type KeyboardEvent } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, type KeyboardEvent } from 'react';
 import { useUsers } from '../../contexts/UsersContext';
 import { useAuth } from '../../contexts/AuthContext';
 import type { UnitType } from '../../data/types';
@@ -96,6 +96,7 @@ const INITIAL_CUSTOMER_FORM: NewCustomerForm = {
 
 function useDebouncedValue<T>(value: T, delay = 250) {
   const [debounced, setDebounced] = useState(value);
+
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(value), delay);
@@ -266,6 +267,8 @@ function StatusBadge({
   );
 }
 
+
+
 export default function AdminCustomers() {
   const { fetchUsersPage, updateUserStatus, clearUsersCache, version } = useUsers();
   const { user } = useAuth();
@@ -302,8 +305,6 @@ const [showMobileFilters, setShowMobileFilters] = useState(false);
     action: null,
   });
 
-  const location = useLocation();
-
   const [restrictionModal, setRestrictionModal] = useState<{
     title: string;
     message: string;
@@ -313,39 +314,15 @@ const [showMobileFilters, setShowMobileFilters] = useState(false);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
 
-  const filteredRows = useMemo(() => {
-  return rows.filter((row) => {
-    const matchesAccount =
-      accountFilter === 'all' ||
-      (accountFilter === 'active' && !!row.is_active) ||
-      (accountFilter === 'inactive' && !row.is_active);
-
-    const matchesDeletion =
-      deletionFilter === 'all' ||
-      (deletionFilter === 'pending' && row.deletionStatus === 'pending') ||
-      (deletionFilter === 'approved' && row.deletionStatus === 'approved') ||
-      (deletionFilter === 'rejected' && row.deletionStatus === 'rejected') ||
-      (deletionFilter === 'none' && !row.deletionStatus);
-
-    const matchesBusiness =
-      businessFilter === 'all' ||
-      (businessFilter === 'occupied' && !!row.hasActiveOccupancy) ||
-      (businessFilter === 'upcoming' && !!row.hasUpcomingBooking) ||
-      (businessFilter === 'unpaid' && !!row.hasUnpaidBalance);
-
-    return matchesAccount && matchesDeletion && matchesBusiness;
-  });
-}, [rows, accountFilter, deletionFilter, businessFilter]);
+  const filteredRows = rows;
 
 
 const confirmTarget = useMemo(
   () =>
     confirmDeactivateId
-      ? filteredRows.find((r) => r.id === confirmDeactivateId) ??
-        rows.find((r) => r.id === confirmDeactivateId) ??
-        null
+      ? rows.find((r) => r.id === confirmDeactivateId) ?? null
       : null,
-  [filteredRows, rows, confirmDeactivateId]
+  [rows, confirmDeactivateId]
 );
   const hasActiveSearch = debouncedSearchTerm.trim() !== '';
 const hasActiveFilters =
@@ -355,7 +332,7 @@ const hasActiveFilters =
 
 const hasNoCustomers = !loading && !hasActiveSearch && !hasActiveFilters && totalCount === 0;
 const hasNoSearchResults =
-  !loading && (hasActiveSearch || hasActiveFilters) && filteredRows.length === 0;
+  !loading && (hasActiveSearch || hasActiveFilters) && rows.length === 0;
 
   const shouldShowFilters =
   !loading && (!hasNoCustomers || hasActiveSearch || hasActiveFilters);
@@ -363,11 +340,9 @@ const hasNoSearchResults =
   const customer = useMemo(
   () =>
     selectedCustomer
-      ? filteredRows.find((c) => c.id === selectedCustomer) ??
-        rows.find((c) => c.id === selectedCustomer) ??
-        null
+      ? rows.find((c) => c.id === selectedCustomer) ?? null
       : null,
-  [filteredRows, rows, selectedCustomer]
+  [rows, selectedCustomer]
 );
 
   const passwordScore = useMemo(
@@ -463,45 +438,63 @@ const hasNoSearchResults =
   }, [canSubmitNewCustomer]);
 
   const reloadUsers = useCallback(async () => {
-    const result = await fetchUsersPage({
-      page,
-      pageSize,
-      searchTerm: debouncedSearchTerm,
-    });
+  const result = await fetchUsersPage({
+    page,
+    pageSize,
+    searchTerm: debouncedSearchTerm,
+    accountFilter,
+    deletionFilter,
+    businessFilter,
+    useExactCount: false,
+  });
 
-    setRows(result.data.map(mapUserToCustomerRow));
-    setTotalCount(result.count);
-  }, [fetchUsersPage, page, pageSize, debouncedSearchTerm]);
+  setRows(result.data.map(mapUserToCustomerRow));
+  setTotalCount(result.count);
+}, [
+  fetchUsersPage,
+  page,
+  pageSize,
+  debouncedSearchTerm,
+  accountFilter,
+  deletionFilter,
+  businessFilter,
+]);
 
   const toggleStatus = useCallback(
-    async (id: string, status: boolean) => {
-      try {
-        const success = await updateUserStatus(id, status);
+  async (id: string, status: boolean) => {
+    try {
+      const success = await updateUserStatus(id, status);
 
-        if (!success) {
-          const target = rows.find((row) => row.id === id) ?? confirmTarget ?? null;
-          setConfirmDeactivateId(null);
-          openRestrictionModal(getDeactivationReason(target));
-          return;
-        }
-
-        setRows((prev) =>
-          prev.map((row) => (row.id === id ? { ...row, is_active: status } : row))
-        );
-
-        await reloadUsers();
+      if (!success) {
+        const target = rows.find((row) => row.id === id) ?? confirmTarget ?? null;
         setConfirmDeactivateId(null);
-
-        if (!status && selectedCustomer === id) {
-          setSelectedCustomer(null);
-        }
-      } catch (error) {
-        console.error('Failed to update user status:', error);
-        setConfirmDeactivateId(null);
+        openRestrictionModal(getDeactivationReason(target));
+        return;
       }
-    },
-    [updateUserStatus, rows, confirmTarget, reloadUsers, selectedCustomer, openRestrictionModal]
-  );
+
+      setRows((prev) =>
+        prev.map((row) =>
+          row.id === id
+            ? {
+                ...row,
+                is_active: status,
+              }
+            : row
+        )
+      );
+
+      setConfirmDeactivateId(null);
+
+      if (!status && selectedCustomer === id) {
+        setSelectedCustomer(null);
+      }
+    } catch (error) {
+      console.error('Failed to update user status:', error);
+      setConfirmDeactivateId(null);
+    }
+  },
+  [updateUserStatus, rows, confirmTarget, selectedCustomer, openRestrictionModal]
+);
 
   const openDeletionDecisionModal = useCallback(
     (target: CustomerRow | null, action: DeletionDecisionAction) => {
@@ -737,51 +730,72 @@ const hasNoSearchResults =
     [user?.id]
   );
 
+
   useEffect(() => {
     setPageInput(String(page));
   }, [page]);
 
   useEffect(() => {
-  setPage(1);
+  setPage((prev) => (prev === 1 ? prev : 1));
 }, [debouncedSearchTerm, accountFilter, deletionFilter, businessFilter]);
 
   useEffect(() => {
-    let cancelled = false;
+  let cancelled = false;
 
-    const loadUsers = async () => {
-      setLoading(true);
+  const loadUsers = async () => {
+    const startedAt = performance.now();
+    setLoading(true);
+    console.log('[Customers] ⏱️ Load started');
 
-      try {
-        const result = await fetchUsersPage({
-          page,
-          pageSize,
-          searchTerm: debouncedSearchTerm,
-        });
+    try {
+      const result = await fetchUsersPage({
+        page,
+        pageSize,
+        searchTerm: debouncedSearchTerm,
+        accountFilter,
+        deletionFilter,
+        businessFilter,
+        useExactCount: false,
+      });
 
-        if (cancelled) return;
+      if (cancelled) return;
 
-        setRows(result.data.map(mapUserToCustomerRow));
-        setTotalCount(result.count);
-      } catch (error) {
-        console.error('Failed to load users page:', error);
+      setRows(result.data.map(mapUserToCustomerRow));
+      setTotalCount(result.count);
+    } catch (error) {
+      console.error('Failed to load users page:', error);
 
-        if (!cancelled) {
-          setRows([]);
-          setTotalCount(0);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+      if (!cancelled) {
+        setRows([]);
+        setTotalCount(0);
       }
-    };
+    } finally {
+      if (!cancelled) {
+        setLoading(false);
+        const endedAt = performance.now();
+        console.log(
+          `[Customers] ✅ Load complete in ${(endedAt - startedAt).toFixed(2)} ms`
+        );
+      }
+    }
+  };
 
-    void loadUsers();
+  void loadUsers();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [location.key, fetchUsersPage, page, pageSize, debouncedSearchTerm, version]);
+  return () => {
+    cancelled = true;
+  };
+}, [
+  fetchUsersPage,
+  page,
+  pageSize,
+  debouncedSearchTerm,
+  accountFilter,
+  deletionFilter,
+  businessFilter,
+  version,
+]);
+
 
   useEffect(() => {
     if (!confirmDeactivateId) return;
