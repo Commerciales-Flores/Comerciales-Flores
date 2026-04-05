@@ -5,6 +5,7 @@ import {
   useMemo,
   useState,
   useCallback,
+  useRef,
   type ReactNode,
 } from 'react';
 import supabase from '../supabaseClient';
@@ -176,6 +177,9 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
   const { addAuditLog, ledgers } = useRecords();
   const { user } = useAuth();
 
+  const hasLoadedReservationsRef = useRef(false);
+const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
+
   const ledgerTotalsMap = useMemo(() => buildLedgerTotalsMap(ledgers), [ledgers]);
 
   const applyDerivedReservationState = useCallback(
@@ -265,11 +269,19 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
     [ledgerTotalsMap]
   );
 
-  const refreshReservations = useCallback(async () => {
+  const refreshReservations = useCallback(async (force = false) => {
+  if (!force && hasLoadedReservationsRef.current) {
+    return;
+  }
+
+  if (refreshReservationsPromiseRef.current) {
+    return refreshReservationsPromiseRef.current;
+  }
+
+  const promise = (async () => {
     const { data, error } = await supabase
       .from('reservations')
-      .select(
-        `
+      .select(`
         reservation_id,
         public_id,
         user_id,
@@ -294,26 +306,58 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
         visit_status,
         details,
         minimum_payment_percent_snapshot
-        `
-      )
+      `)
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error loading reservations:', {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
-      });
+      console.error('Error loading reservations:', error);
+      hasLoadedReservationsRef.current = false;
       return;
     }
 
     setReservations(sortReservationsByRequestDate((data ?? []).map(mapReservationRow)));
-  }, [mapReservationRow]);
+    hasLoadedReservationsRef.current = true;
+  })();
+
+  refreshReservationsPromiseRef.current = promise;
+
+  try {
+    await promise;
+  } finally {
+    refreshReservationsPromiseRef.current = null;
+  }
+}, [mapReservationRow]);
 
   useEffect(() => {
-    void refreshReservations();
-  }, [refreshReservations]);
+  let cancelled = false;
+
+  const start = () => {
+    if (!cancelled) {
+      void refreshReservations();
+    }
+  };
+
+  if ('requestIdleCallback' in window) {
+    const idleWindow = window as Window & {
+      requestIdleCallback: (cb: () => void) => number;
+      cancelIdleCallback: (id: number) => void;
+    };
+
+    const idleId = idleWindow.requestIdleCallback(start);
+
+    return () => {
+      cancelled = true;
+      idleWindow.cancelIdleCallback(idleId);
+    };
+  }
+
+  const timeoutId = globalThis.setTimeout(start, 300);
+
+  return () => {
+    cancelled = true;
+    globalThis.clearTimeout(timeoutId);
+  };
+}, [refreshReservations]);
 
   useEffect(() => {
     setReservations((prev) =>
@@ -431,7 +475,7 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
           details,
           minimum_payment_percent_snapshot
           `,
-          { count: 'exact' }
+          { count: 'planned' }
         )
         .order('created_at', { ascending: false });
 

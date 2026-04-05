@@ -183,6 +183,8 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
   const parkingSlotsRef = useRef<ParkingSlot[]>([]);
 const refreshTimersRef = useRef<Map<string, number>>(new Map());
 const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
+const hasLoadedUnitsRef = useRef(false);
+const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
 
   const { addAuditLog } = useRecords();
   const { user } = useAuth();
@@ -435,7 +437,16 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
     });
   }, []);
 
-  const refreshUnits = useCallback(async () => {
+  const refreshUnits = useCallback(async (force = false) => {
+  if (!force && hasLoadedUnitsRef.current) {
+    return;
+  }
+
+  if (refreshUnitsPromiseRef.current) {
+    return refreshUnitsPromiseRef.current;
+  }
+
+  const promise = (async () => {
     setLoadingUnits(true);
 
     try {
@@ -573,37 +584,71 @@ const recentUnitInsertionsRef = useRef<Map<string, number>>(new Map());
 
       setUnits(sortUnits(combinedUnits));
       setParkingSlots(sortParkingSlots(mappedSlots));
+      hasLoadedUnitsRef.current = true;
     } catch (error) {
       console.error('Error loading base units from Supabase:', error);
       setUnits([]);
       setParkingSlots([]);
+      hasLoadedUnitsRef.current = false;
     } finally {
       setLoadingUnits(false);
+      refreshUnitsPromiseRef.current = null;
     }
-  }, []);
+  })();
+
+  refreshUnitsPromiseRef.current = promise;
+  return promise;
+}, []);
 
   useEffect(() => {
-    void refreshUnits();
-  }, [refreshUnits]);
+  let cancelled = false;
+
+  const start = () => {
+    if (!cancelled) {
+      void refreshUnits();
+    }
+  };
+
+  if ('requestIdleCallback' in window) {
+    const idleWindow = window as Window & {
+      requestIdleCallback: (cb: () => void) => number;
+      cancelIdleCallback: (id: number) => void;
+    };
+
+    const idleId = idleWindow.requestIdleCallback(start);
+
+    return () => {
+      cancelled = true;
+      idleWindow.cancelIdleCallback(idleId);
+    };
+  }
+
+  const timeoutId = globalThis.setTimeout(start, 250);
+
+  return () => {
+    cancelled = true;
+    globalThis.clearTimeout(timeoutId);
+  };
+}, [refreshUnits]);
 
   useEffect(() => {
     const channel = supabase
       .channel('units-realtime')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'units' },
-        async (payload) => {
-          const baseUnit = payload.new as { unit_id: string; unit_type: UnitType };
+      // .on(
+      //   'postgres_changes',
+      //   { event: 'INSERT', schema: 'public', table: 'units' },
+      //   async (payload) => {
+      //     const baseUnit = payload.new as { unit_id: string; unit_type: UnitType };
 
-          await refreshSpecificUnitDetails(baseUnit.unit_id);
+      //     await refreshSpecificUnitDetails(baseUnit.unit_id);
 
-          if (baseUnit.unit_type === 'parking_slot') {
-            queueParkingUnitRefresh(baseUnit.unit_id);
-          }
+      //     if (baseUnit.unit_type === 'parking_slot') {
+      //       queueParkingUnitRefresh(baseUnit.unit_id);
+      //     }
 
-          setUnitsVersion((prev) => prev + 1);
-        }
-      )
+      //     setUnitsVersion((prev) => prev + 1);
+      //   }
+      // )
       .on(
   'postgres_changes',
   { event: 'INSERT', schema: 'public', table: 'units' },

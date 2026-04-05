@@ -5,6 +5,7 @@ import {
   useMemo,
   useState,
   useCallback,
+  useRef,
   type ReactNode,
 } from 'react';
 import supabase from '../supabaseClient';
@@ -103,9 +104,21 @@ async function getAccessTokenOrThrow() {
 
 export function PaymentsProvider({ children }: { children: ReactNode }) {
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [paymentsVersion, setPaymentsVersion] = useState(0);
+const [paymentsVersion, setPaymentsVersion] = useState(0);
 
-  const refreshPayments = useCallback(async () => {
+const hasLoadedPaymentsRef = useRef(false);
+const refreshPaymentsPromiseRef = useRef<Promise<void> | null>(null);
+
+  const refreshPayments = useCallback(async (force = false) => {
+  if (!force && hasLoadedPaymentsRef.current) {
+    return;
+  }
+
+  if (refreshPaymentsPromiseRef.current) {
+    return refreshPaymentsPromiseRef.current;
+  }
+
+  const promise = (async () => {
     const { data, error } = await supabase
       .from('payments')
       .select(
@@ -120,15 +133,53 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
         hint: error.hint,
         code: error.code,
       });
+      hasLoadedPaymentsRef.current = false;
       return;
     }
 
     setPayments(sortPaymentsByCreatedAt((data ?? []).map(mapPaymentRow)));
-  }, []);
+    hasLoadedPaymentsRef.current = true;
+  })();
+
+  refreshPaymentsPromiseRef.current = promise;
+
+  try {
+    await promise;
+  } finally {
+    refreshPaymentsPromiseRef.current = null;
+  }
+}, []);
 
   useEffect(() => {
-    void refreshPayments();
-  }, [refreshPayments]);
+  let cancelled = false;
+
+  const start = () => {
+    if (!cancelled) {
+      void refreshPayments();
+    }
+  };
+
+  if ('requestIdleCallback' in window) {
+    const idleWindow = window as Window & {
+      requestIdleCallback: (cb: () => void) => number;
+      cancelIdleCallback: (id: number) => void;
+    };
+
+    const idleId = idleWindow.requestIdleCallback(start);
+
+    return () => {
+      cancelled = true;
+      idleWindow.cancelIdleCallback(idleId);
+    };
+  }
+
+  const timeoutId = globalThis.setTimeout(start, 300);
+
+  return () => {
+    cancelled = true;
+    globalThis.clearTimeout(timeoutId);
+  };
+}, [refreshPayments]);
 
   useEffect(() => {
     const channel = supabase
@@ -213,7 +264,7 @@ export function PaymentsProvider({ children }: { children: ReactNode }) {
         .from('payments')
         .select(
           'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category',
-          { count: 'exact' }
+          { count: 'planned' }
         )
         .order('date', { ascending: false });
 

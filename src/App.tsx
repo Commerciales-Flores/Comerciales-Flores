@@ -1,15 +1,20 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { DataProvider } from './contexts/DataContext';
 import { ClientDataProvider } from './contexts/ClientDataContext';
 import { AdminDataProvider } from './contexts/AdminDataContext';
-import { NotificationProvider } from './contexts/NotificationContext';
 import { IndicatorProvider } from './contexts/IndicatorContext';
 import { ReviewsProvider } from './contexts/ReviewsContext';
 import SessionWarningModal from './components/auth/SessionWarningModal';
 import { PaymentMethodsProvider } from './contexts/PaymentMethodsContext';
 import { Building2 } from 'lucide-react';
+import { ServerErrorBoundary } from './pages/errors/ServerErrorBoundary';
+import { ProtectedRoute, GuestRoute } from './components/auth/RouteGuards';
+
+// Eager layouts so shell/navbar/sidebar appear immediately
+import ClientLayout from './components/layouts/ClientLayout';
+import AdminLayout from './components/layouts/AdminLayout';
 
 // Public Pages
 const LandingPage = lazy(() => import('./pages/public/LandingPage'));
@@ -19,7 +24,6 @@ const ResetPassword = lazy(() => import('./pages/auth/ResetPassword'));
 const AllProperties = lazy(() => import('./pages/public/AllProperties'));
 const VerifyDevice = lazy(() => import('./pages/auth/VerifyDevice'));
 const AuthCallback = lazy(() => import('./pages/auth/AuthCallback'));
-
 
 // Client Pages
 const ClientDashboard = lazy(() => import('./pages/client/Dashboard'));
@@ -59,14 +63,6 @@ const ServerErrorPage = lazy(() =>
   import('./pages/errors').then((m) => ({ default: m.ServerErrorPage }))
 );
 
-import { ServerErrorBoundary } from './pages/errors/ServerErrorBoundary';
-
-// Layouts
-const ClientLayout = lazy(() => import('./components/layouts/ClientLayout'));
-const AdminLayout = lazy(() => import('./components/layouts/AdminLayout'));
-
-import { ProtectedRoute, GuestRoute } from './components/auth/RouteGuards';
-
 function RouteLoader() {
   return (
     <div className="relative min-h-screen w-full flex flex-col items-center justify-center p-6 bg-white overflow-hidden">
@@ -88,9 +84,7 @@ function RouteLoader() {
           <Building2 className="size-10 text-white -rotate-12" />
         </div>
 
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">
-          Loading page
-        </h2>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Loading page</h2>
         <p className="text-gray-500 mb-8 leading-relaxed">
           Please wait while we prepare this page.
         </p>
@@ -105,96 +99,403 @@ function RouteLoader() {
   );
 }
 
+function PageSectionLoader() {
+  return (
+    <div className="flex min-h-[60vh] w-full items-center justify-center p-6">
+      <div className="w-full max-w-md rounded-[2rem] border border-gray-200 bg-white p-8 text-center shadow-sm">
+        <div className="mx-auto mb-5 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-600 shadow-lg shadow-blue-100">
+          <Building2 className="size-8 text-white" />
+        </div>
+
+        <h2 className="text-xl font-bold text-gray-900">Loading content</h2>
+        <p className="mt-2 text-sm leading-relaxed text-gray-500">
+          Please wait while this section is being prepared.
+        </p>
+
+        <div className="mt-6 flex items-center justify-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-blue-600 animate-bounce [animation-delay:-0.3s]" />
+          <span className="h-2.5 w-2.5 rounded-full bg-blue-600 animate-bounce [animation-delay:-0.15s]" />
+          <span className="h-2.5 w-2.5 rounded-full bg-blue-600 animate-bounce" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RouteSuspense({
+  children,
+  inLayout = false,
+}: {
+  children: ReactNode;
+  inLayout?: boolean;
+}) {
+  return (
+    <Suspense fallback={inLayout ? <PageSectionLoader /> : <RouteLoader />}>
+      {children}
+    </Suspense>
+  );
+}
+
+function preloadAdminRoutes() {
+  void import('./pages/admin/Dashboard');
+  void import('./pages/admin/Customers');
+  void import('./pages/admin/Reservations');
+  void import('./pages/admin/Payments');
+  void import('./pages/admin/Inquiries');
+  void import('./pages/admin/Profile');
+}
+
+function preloadClientRoutes() {
+  void import('./pages/client/Dashboard');
+  void import('./pages/client/Reservations');
+  void import('./pages/client/Payments');
+  void import('./pages/client/Messages');
+  void import('./pages/client/Profile');
+}
+
+function RoutePrefetcher() {
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (!user) return;
+
+    const preload = () => {
+      if (user.role === 'admin') {
+        preloadAdminRoutes();
+      } else {
+        preloadClientRoutes();
+      }
+    };
+
+    if ('requestIdleCallback' in window) {
+  const idleWindow = window as Window & {
+    requestIdleCallback: (cb: IdleRequestCallback) => number;
+    cancelIdleCallback: (id: number) => void;
+  };
+
+  const id = idleWindow.requestIdleCallback(() => preload());
+
+  return () => {
+    idleWindow.cancelIdleCallback(id);
+  };
+}
+
+const timeoutId = globalThis.setTimeout(preload, 250);
+return () => globalThis.clearTimeout(timeoutId);
+  }, [user?.id, user?.role]);
+
+  return null;
+}
+
 function AppRoutes() {
   return (
-    <Suspense fallback={<RouteLoader />}>
-      <Routes>
-        {/* --- Public Routes --- */}
-        <Route path="/" element={<LandingPage />} />
-        <Route
-          path="/login"
-          element={
-            <GuestRoute>
+    <Routes>
+      {/* Public Routes */}
+      <Route
+        path="/"
+        element={
+          <RouteSuspense>
+            <LandingPage />
+          </RouteSuspense>
+        }
+      />
+      <Route
+        path="/login"
+        element={
+          <GuestRoute>
+            <RouteSuspense>
               <Login />
-            </GuestRoute>
-          }
-        />
-        <Route
-          path="/register"
-          element={
-            <GuestRoute>
+            </RouteSuspense>
+          </GuestRoute>
+        }
+      />
+      <Route
+        path="/register"
+        element={
+          <GuestRoute>
+            <RouteSuspense>
               <Register />
-            </GuestRoute>
+            </RouteSuspense>
+          </GuestRoute>
+        }
+      />
+      <Route
+        path="/auth/callback"
+        element={
+          <RouteSuspense>
+            <AuthCallback />
+          </RouteSuspense>
+        }
+      />
+      <Route
+        path="/reset-password"
+        element={
+          <RouteSuspense>
+            <ResetPassword />
+          </RouteSuspense>
+        }
+      />
+      <Route
+        path="/verify-device"
+        element={
+          <RouteSuspense>
+            <VerifyDevice />
+          </RouteSuspense>
+        }
+      />
+      <Route
+        path="/spaces"
+        element={
+          <RouteSuspense>
+            <AllProperties />
+          </RouteSuspense>
+        }
+      />
+
+      {/* Error Pages */}
+      <Route
+        path="/401"
+        element={
+          <RouteSuspense>
+            <UnauthorizePage />
+          </RouteSuspense>
+        }
+      />
+      <Route
+        path="/403"
+        element={
+          <RouteSuspense>
+            <ForbiddenPage />
+          </RouteSuspense>
+        }
+      />
+      <Route
+        path="/500"
+        element={
+          <RouteSuspense>
+            <ServerErrorPage />
+          </RouteSuspense>
+        }
+      />
+
+      {/* Client Routes */}
+      <Route
+        path="/client/*"
+        element={
+          <ProtectedRoute allowedRoles={['client']}>
+            <ClientDataProvider>
+              <ServerErrorBoundary>
+                <ClientLayout />
+              </ServerErrorBoundary>
+            </ClientDataProvider>
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<Navigate to="/client/dashboard" replace />} />
+        <Route
+          path="dashboard"
+          element={
+            <RouteSuspense inLayout>
+              <ClientDashboard />
+            </RouteSuspense>
           }
         />
-        <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/verify-device" element={<VerifyDevice />} />
-        <Route path="/spaces" element={<AllProperties />} />
-
-        {/* --- Error Pages --- */}
-        <Route path="/401" element={<UnauthorizePage />} />
-        <Route path="/403" element={<ForbiddenPage />} />
-        <Route path="/500" element={<ServerErrorPage />} />
-
-        {/* --- Client Routes --- */}
         <Route
-          path="/client/*"
+          path="properties"
           element={
-            <ProtectedRoute allowedRoles={['client']}>
-              <ClientDataProvider>
-                <ServerErrorBoundary>
-                  <ClientLayout />
-                </ServerErrorBoundary>
-              </ClientDataProvider>
-            </ProtectedRoute>
+            <RouteSuspense inLayout>
+              <ClientProperties />
+            </RouteSuspense>
           }
-        >
-          <Route index element={<Navigate to="/client/dashboard" replace />} />
-          <Route path="dashboard" element={<ClientDashboard />} />
-          <Route path="properties" element={<ClientProperties />} />
-          <Route path="reservations" element={<ClientReservations />} />
-          <Route path="payments" element={<ClientPayments />} />
-          <Route path="reviews" element={<ClientReview />} />
-          <Route path="notifications" element={<ClientNotifications />} />
-          <Route path="messages" element={<ClientMessages />} />
-          <Route path="profile" element={<ClientProfile />} />
-          <Route path="*" element={<NotFoundPage />} />
-        </Route>
-
-        {/* --- Admin Routes --- */}
+        />
         <Route
-          path="/admin/*"
+          path="reservations"
           element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <AdminDataProvider>
-                <ServerErrorBoundary>
-                  <AdminLayout />
-                </ServerErrorBoundary>
-              </AdminDataProvider>
-            </ProtectedRoute>
+            <RouteSuspense inLayout>
+              <ClientReservations />
+            </RouteSuspense>
           }
-        >
-          <Route index element={<Navigate to="/admin/dashboard" replace />} />
-          <Route path="dashboard" element={<AdminDashboard />} />
-          <Route path="customers" element={<AdminCustomers />} />
-          <Route path="audit" element={<AdminAudit />} />
-          <Route path="business-slots" element={<AdminBusinessSlots />} />
-          <Route path="reservations" element={<AdminReservations />} />
-          <Route path="payments" element={<AdminPayments />} />
-          <Route path="payment-methods" element={<AdminPaymentMethods />} />
-          <Route path="reviews" element={<AdminReview />} />
-          <Route path="inquiries" element={<AdminInquiries />} />
-          <Route path="content" element={<AdminContent />} />
-          <Route path="analytics" element={<AdminAnalytics />} />
-          <Route path="profile" element={<AdminProfile />} />
-          <Route path="*" element={<NotFoundPage />} />
-        </Route>
+        />
+        <Route
+          path="payments"
+          element={
+            <RouteSuspense inLayout>
+              <ClientPayments />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="reviews"
+          element={
+            <RouteSuspense inLayout>
+              <ClientReview />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="notifications"
+          element={
+            <RouteSuspense inLayout>
+              <ClientNotifications />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="messages"
+          element={
+            <RouteSuspense inLayout>
+              <ClientMessages />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="profile"
+          element={
+            <RouteSuspense inLayout>
+              <ClientProfile />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="*"
+          element={
+            <RouteSuspense inLayout>
+              <NotFoundPage />
+            </RouteSuspense>
+          }
+        />
+      </Route>
 
-        {/* --- Global Catch-all --- */}
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
-    </Suspense>
+      {/* Admin Routes */}
+      <Route
+        path="/admin/*"
+        element={
+          <ProtectedRoute allowedRoles={['admin']}>
+            <AdminDataProvider>
+              <ServerErrorBoundary>
+                <AdminLayout />
+              </ServerErrorBoundary>
+            </AdminDataProvider>
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<Navigate to="/admin/dashboard" replace />} />
+        <Route
+          path="dashboard"
+          element={
+            <RouteSuspense inLayout>
+              <AdminDashboard />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="customers"
+          element={
+            <RouteSuspense inLayout>
+              <AdminCustomers />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="audit"
+          element={
+            <RouteSuspense inLayout>
+              <AdminAudit />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="business-slots"
+          element={
+            <RouteSuspense inLayout>
+              <AdminBusinessSlots />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="reservations"
+          element={
+            <RouteSuspense inLayout>
+              <AdminReservations />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="payments"
+          element={
+            <RouteSuspense inLayout>
+              <AdminPayments />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="payment-methods"
+          element={
+            <RouteSuspense inLayout>
+              <AdminPaymentMethods />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="reviews"
+          element={
+            <RouteSuspense inLayout>
+              <AdminReview />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="inquiries"
+          element={
+            <RouteSuspense inLayout>
+              <AdminInquiries />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="content"
+          element={
+            <RouteSuspense inLayout>
+              <AdminContent />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="analytics"
+          element={
+            <RouteSuspense inLayout>
+              <AdminAnalytics />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="profile"
+          element={
+            <RouteSuspense inLayout>
+              <AdminProfile />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="*"
+          element={
+            <RouteSuspense inLayout>
+              <NotFoundPage />
+            </RouteSuspense>
+          }
+        />
+      </Route>
+
+      {/* Global Catch-all */}
+      <Route
+        path="*"
+        element={
+          <RouteSuspense>
+            <NotFoundPage />
+          </RouteSuspense>
+        }
+      />
+    </Routes>
   );
 }
 
@@ -220,6 +521,7 @@ export default function App() {
           <DataProvider>
             <ReviewsProvider>
               <PaymentMethodsProvider>
+                <RoutePrefetcher />
                 <AppRoutes />
                 <SessionManager />
               </PaymentMethodsProvider>
