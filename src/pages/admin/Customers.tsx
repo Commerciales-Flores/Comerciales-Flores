@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef, type KeyboardEvent } from 'react';
+import { useState, useMemo, useEffect, useCallback, type KeyboardEvent } from 'react';
 import { useUsers } from '../../contexts/UsersContext';
 import { useAuth } from '../../contexts/AuthContext';
 import type { UnitType } from '../../data/types';
@@ -7,14 +7,22 @@ import { useNotifications } from '../../contexts/NotificationContext';
 import { DataTable, DataCell, ActionCell } from '../../components/common/DataTable';
 import TableBadge from '../../components/common/TableBadge';
 import { formatDateTime, formatDate } from '../../utils/date';
-import { useLocation } from 'react-router-dom';
+import AddressPicker from '../../components/common/AddressPicker';
+import PasswordStrengthIndicator from '../../components/common/PasswordStrengthIndicator';
+import FormField from '../../components/common/FormField';
+import { isPasswordPolicyValid } from '../../utils/passwordStrength';
+import AdminUserForm from '../../components/forms/AdminUserForm';
+import {
+  normalizeName,
+  normalizeEmail,
+  normalizePHPhone,
+} from '../../utils/DataNormalization';
 import AdminFilterBar, {
   FILTER_BUTTON_CLASS,
   FILTER_SELECT_CLASS,
 } from '../../components/common/AdminFilterBar';
 import { AdminFilterGroup } from '../../components/common/AdminFilterGroup';
 import {
-  Search,
   Eye,
   Plus,
   X,
@@ -25,10 +33,10 @@ import {
   MapPin,
   ShieldCheck,
   ShieldAlert,
+  Building2,
   Hash,
   RotateCcw,
   AlertTriangle,
-  EyeOff,
   Inbox,
   Filter,
   Clock3,
@@ -76,12 +84,13 @@ type NewCustomerForm = {
   email: string;
   contactNumber: string;
   address: string;
+  latitude: string;
+  longitude: string;
   password: string;
+  confirmPassword: string;
   role: 'client';
   is_active: boolean;
 };
-
-type DeletionDecisionAction = 'approve' | 'reject';
 
 const INITIAL_CUSTOMER_FORM: NewCustomerForm = {
   first_name: '',
@@ -89,10 +98,15 @@ const INITIAL_CUSTOMER_FORM: NewCustomerForm = {
   email: '',
   contactNumber: '',
   address: '',
+  latitude: '',
+  longitude: '',
   password: '',
+  confirmPassword: '',
   role: 'client',
   is_active: true,
 };
+
+type DeletionDecisionAction = 'approve' | 'reject';
 
 function useDebouncedValue<T>(value: T, delay = 250) {
   const [debounced, setDebounced] = useState(value);
@@ -106,30 +120,6 @@ function useDebouncedValue<T>(value: T, delay = 250) {
   return debounced;
 }
 
-function getPasswordScore(password: string) {
-  let score = 0;
-  if (password.length >= 8) score++;
-  if (/[A-Z]/.test(password)) score++;
-  if (/[0-9]/.test(password)) score++;
-  if (/[^A-Za-z0-9]/.test(password)) score++;
-  return score;
-}
-
-function getPasswordStrengthLabel(score: number) {
-  switch (score) {
-    case 0:
-    case 1:
-      return 'Very Weak';
-    case 2:
-      return 'Weak';
-    case 3:
-      return 'Medium';
-    case 4:
-      return 'Strong';
-    default:
-      return '';
-  }
-}
 
 
 function formatLastLogin(value?: string | null) {
@@ -291,10 +281,12 @@ const [businessFilter, setBusinessFilter] = useState<
 const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [confirmDeactivateId, setConfirmDeactivateId] = useState<string | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
-  const [newCustomer, setNewCustomer] = useState<NewCustomerForm>(INITIAL_CUSTOMER_FORM);
-  const [pageInput, setPageInput] = useState('1');
+const [confirmDeactivateId, setConfirmDeactivateId] = useState<string | null>(null);
+const [showPassword, setShowPassword] = useState(false);
+const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+const [newCustomer, setNewCustomer] = useState<NewCustomerForm>(INITIAL_CUSTOMER_FORM);
+const [newCustomerErrors, setNewCustomerErrors] = useState<Partial<Record<string, string>>>({});
+const [pageInput, setPageInput] = useState('1');
 
   const [isSubmittingDeletionDecision, setIsSubmittingDeletionDecision] = useState(false);
   const [deletionDecisionState, setDeletionDecisionState] = useState<{
@@ -345,15 +337,6 @@ const hasNoSearchResults =
   [rows, selectedCustomer]
 );
 
-  const passwordScore = useMemo(
-    () => getPasswordScore(newCustomer.password),
-    [newCustomer.password]
-  );
-
-  const passwordStrength = useMemo(
-    () => getPasswordStrengthLabel(passwordScore),
-    [passwordScore]
-  );
 
   const openRestrictionModal = useCallback((message: string) => {
     setRestrictionModal({
@@ -423,11 +406,14 @@ const hasNoSearchResults =
   }, []);
 
   const updateNewCustomerField = useCallback(
-    <K extends keyof NewCustomerForm>(key: K, value: NewCustomerForm[K]) => {
-      setNewCustomer((prev) => ({ ...prev, [key]: value }));
-    },
-    []
-  );
+  (field: keyof NewCustomerForm, value: string | number | boolean | null | undefined) => {
+    setNewCustomer((prev) => ({
+      ...prev,
+      [field]: value as NewCustomerForm[keyof NewCustomerForm],
+    }));
+  },
+  []
+);
 
   const handleAddCustomer = useCallback(async () => {
     if (!canSubmitNewCustomer) return;
@@ -1584,155 +1570,56 @@ const hasNoSearchResults =
         )}
 
         {showAddModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 p-4 transition-all duration-300">
-            <div className="animate-in zoom-in-95 fade-in-0 w-full max-w-lg overflow-hidden rounded-[2rem] border border-slate-200/60 bg-white shadow-xl duration-300">
-              <div className="flex items-center justify-between bg-slate-900 p-6">
-                <div>
-                  <h2 className="text-xl font-bold tracking-tight text-white">Add New Customer</h2>
-                  <p className="mt-1 text-xs font-medium text-slate-400">
-                    Create a new client profile for Comerciales Flores
-                  </p>
-                </div>
+  <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-900/60 p-4">
+    <div className="flex min-h-full items-center justify-center">
+      <div className="w-full max-w-4xl rounded-[2rem] border border-gray-200 bg-gray-50 shadow-[0_20px_60px_rgba(15,23,42,0.18)]">
+        <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-5 sm:px-8">
+          <div className="flex items-start gap-3">
+            <div className="rounded-2xl bg-blue-600 p-3 text-white">
+              <Building2 className="size-5" />
+            </div>
 
-                <button
-                  onClick={closeAddModal}
-                  className="rounded-xl bg-white/5 p-2 text-slate-400 transition-all hover:bg-white/10"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="space-y-6 p-8">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                      First Name
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="John"
-                      maxLength={100}
-                      value={newCustomer.first_name}
-                      onChange={(e) => updateNewCustomerField('first_name', e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                      Last Name
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Doe"
-                      maxLength={100}
-                      value={newCustomer.last_name}
-                      onChange={(e) => updateNewCustomerField('last_name', e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
-                    />
-                  </div>
-
-                  <div className="col-span-2 space-y-1.5">
-                    <label className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                      Email Address
-                    </label>
-                    <input
-                      type="email"
-                      maxLength={150}
-                      autoComplete="off"
-                      placeholder="customer@example.com"
-                      value={newCustomer.email}
-                      onChange={(e) => updateNewCustomerField('email', e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
-                    />
-                  </div>
-
-                  <div className="col-span-2 space-y-1.5">
-                    <label className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                      Contact Number
-                    </label>
-                    <input
-                      type="tel"
-                      placeholder="+63 9xx..."
-                      maxLength={20}
-                      value={newCustomer.contactNumber}
-                      onChange={(e) => updateNewCustomerField('contactNumber', e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
-                    />
-                  </div>
-
-                  <div className="col-span-2 space-y-1.5">
-                    <label className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                      Complete Address
-                    </label>
-                    <textarea
-                      placeholder="House No., Street, City"
-                      maxLength={300}
-                      value={newCustomer.address}
-                      onChange={(e) => updateNewCustomerField('address', e.target.value)}
-                      className="h-20 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
-                    />
-                  </div>
-
-                  <div className="col-span-2 space-y-1.5">
-                    <label className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                      Set Password
-                    </label>
-
-                    <div className="relative">
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        autoComplete="new-password"
-                        placeholder="••••••••"
-                        value={newCustomer.password}
-                        onChange={(e) => updateNewCustomerField('password', e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword((prev) => !prev)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-slate-400 transition-colors hover:text-blue-600"
-                      >
-                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </button>
-                    </div>
-
-                    {newCustomer.password && (
-                      <div className="mt-2 space-y-1.5 px-1">
-                        <div className="flex h-1 gap-1">
-                          {[1, 2, 3, 4].map((step) => (
-                            <div
-                              key={step}
-                              className={`h-full flex-1 rounded-full transition-all duration-500 ${
-                                passwordScore >= step
-                                  ? passwordScore <= 2
-                                    ? 'bg-rose-500'
-                                    : passwordScore === 3
-                                      ? 'bg-amber-500'
-                                      : 'bg-emerald-500'
-                                  : 'bg-slate-200'
-                              }`}
-                            />
-                          ))}
-                        </div>
-
-                        <p className="text-[10px] italic text-slate-400">{passwordStrength}</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleAddCustomer}
-                  disabled={!canSubmitNewCustomer}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 py-4 text-xs font-bold uppercase tracking-widest text-white shadow-xl shadow-blue-600/20 transition-all hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Register Customer Account
-                </button>
-              </div>
+            <div>
+              <h2 className="text-lg font-bold tracking-tight text-gray-900 sm:text-xl">
+                Add Customer
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Create a customer account from the admin panel.
+              </p>
             </div>
           </div>
-        )}
+
+          <button
+            type="button"
+            onClick={closeAddModal}
+            className="rounded-2xl border border-gray-300 bg-white p-2 text-gray-500 transition hover:bg-gray-50 hover:text-gray-700"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+
+        <AdminUserForm  
+          newCustomer={newCustomer}
+          newCustomerErrors={newCustomerErrors}
+          canSubmitNewCustomer={canSubmitNewCustomer}
+          updateNewCustomerField={updateNewCustomerField}
+          setNewCustomer={setNewCustomer}
+          setNewCustomerErrors={setNewCustomerErrors}
+          normalizeName={normalizeName}
+          normalizeEmail={normalizeEmail}
+          normalizePHPhone={normalizePHPhone}
+          isPasswordPolicyValid={isPasswordPolicyValid}
+          handleSubmit={handleAddCustomer}
+          onCancel={closeAddModal}
+          FormField={FormField}
+          AddressPicker={AddressPicker}
+          PasswordStrengthIndicator={PasswordStrengthIndicator}
+          submitLabel="Create Customer"
+        />
+      </div>
+    </div>
+  </div>
+)}
       </div>
     </div>
   );

@@ -329,13 +329,13 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     }
 
     let query = supabase
-    .schema('admin')
-    .from('admin_customer_overview')
-    .select(
-      '*',
-      useExactCount ? { count: 'exact' } : { count: 'planned' }
-    )
-    .order('created_at', { ascending: false });
+  .from('admin_customer_overview')
+  .select(
+    '*',
+    useExactCount ? { count: 'exact' } : { count: 'planned' }
+  )
+  .order('created_at', { ascending: false });
+    
 
     if (normalizedSearch) {
       query = query.or(
@@ -378,6 +378,8 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     const to = from + pageSize - 1;
 
     const { data, error, count } = await query.range(from, to);
+
+console.log('admin_customer_overview:', { data, error, count });
 
     if (error) throw error;
 

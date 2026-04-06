@@ -87,6 +87,7 @@ function sortPaymentsByCreatedAt(items: Payment[]) {
   );
 }
 
+
 async function getAccessTokenOrThrow() {
   const {
     data: { session },

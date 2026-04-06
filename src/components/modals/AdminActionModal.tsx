@@ -20,6 +20,7 @@ import {
   RotateCcw,
   Mail,
   CreditCard,
+  Building2,
   Loader2,
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
@@ -612,21 +613,31 @@ export default function AdminActionModal({
   return (
     <div className="fixed inset-0 bg-slate-900/60 flex items-end sm:items-center justify-center z-[100] p-0 sm:p-4 transition-all duration-300">
           <div className="bg-white w-full sm:max-w-4xl h-[92vh] sm:h-auto sm:max-h-[92vh] rounded-t-[2rem] sm:rounded-[2rem] overflow-hidden shadow-xl border border-slate-200/60 animate-in fade-in zoom-in-95 slide-in-from-bottom duration-300 flex flex-col">
-            <div className="bg-slate-900 p-6 flex justify-between items-center">
-          <div className="min-w-0">
-            <h2 className="text-xl font-bold text-white tracking-tight">
-              Administrator Tools
-            </h2>
-            <p className="text-slate-400 text-xs font-medium mt-1">
-              New {actionType === 'payment' ? 'Payment' : 'Reservation'}
-            </p>
-          </div>
+            <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-5 sm:px-8">
+          <div className="flex items-center gap-3">
+            <div className="rounded-2xl bg-blue-600 p-3 text-white">
+              <Building2 className="size-5" />
+            </div>
 
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-500">
+                Administrator Tools
+              </p>
+              <h2 className="mt-1 text-lg font-extrabold text-gray-900">
+                New {actionType === 'payment' ? 'Payment' : 'Reservation'}
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {actionType === 'payment'
+                  ? 'Record and manage verified reservation payments.'
+                  : 'Create a new reservation for a client.'}
+              </p>
+            </div>
+          </div>
 
           <button
             type="button"
             onClick={handleClose}
-            className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-white/10"
+            className="rounded-2xl border border-gray-300 bg-white p-2 text-gray-500 transition hover:bg-gray-50 hover:text-gray-700"
           >
             <X className="size-5" />
           </button>

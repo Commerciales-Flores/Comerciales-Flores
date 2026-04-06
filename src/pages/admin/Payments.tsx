@@ -28,6 +28,7 @@ import Papa from 'papaparse';
 import AdminActionModal from '../../components/modals/AdminActionModal';
 import { motion, AnimatePresence } from 'framer-motion';
 import EmptyState from '../../components/common/EmptyState';
+import supabase from '../../supabaseClient';
 import type { Payment } from '../../data/types';
 
 type PaymentFilterStatus = 'all' | 'paid' | 'unpaid' | 'partial';
@@ -93,6 +94,26 @@ function useDebouncedValue<T>(value: T, delay = 250) {
   }, [value, delay]);
 
   return debounced;
+}
+
+function resolveProofImageSrc(value?: string | null) {
+  if (!value) return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('data:image/')
+  ) {
+    return trimmed;
+  }
+
+  return supabase.storage
+    .from('payment_proofs')
+    .getPublicUrl(trimmed).data.publicUrl;
 }
 
 export default function AdminPayments() {
@@ -948,7 +969,7 @@ const shouldShowFilters =
                   <td className="w-[120px] px-4 py-2.5 align-middle">
                     {payment.proofOfPayment ? (
                       <button
-                        onClick={() => setProofImageUrl(payment.proofOfPayment || null)}
+                        onClick={() => setProofImageUrl(resolveProofImageSrc(payment.proofOfPayment))}
                         className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 transition hover:text-blue-700 hover:underline"
                       >
                         <ImageIcon className="size-4" />
@@ -1165,7 +1186,7 @@ const shouldShowFilters =
                       <p className="mb-2 text-sm text-gray-600">Proof of Payment</p>
                       <button
                         onClick={() =>
-                          setProofImageUrl(selectedPaymentData.proofOfPayment || null)
+                          setProofImageUrl(resolveProofImageSrc(selectedPaymentData.proofOfPayment))
                         }
                         className="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-4 py-2 text-sm font-medium text-blue-600 transition hover:bg-blue-100"
                       >

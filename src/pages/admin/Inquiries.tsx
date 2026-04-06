@@ -534,64 +534,63 @@ export default function AdminInquiries() {
     setSendReplyError('');
   }, [selectedTicketId]);
 
-  const contacts = useMemo(() => {
-    const q = debouncedSearch.trim().toLowerCase();
-    const map = new Map<string, SupportContact>();
+  const allContacts = useMemo(() => {
+  const map = new Map<string, SupportContact>();
 
-    const activeUserList = (users ?? []).filter((u: any) => u.isActive);
+  const activeUserList = (users ?? []).filter((u: any) => u.isActive);
 
-    for (const user of activeUserList) {
-      const email = user.email?.trim().toLowerCase();
-      if (!email) continue;
+  for (const user of activeUserList) {
+    const email = user.email?.trim().toLowerCase();
+    if (!email) continue;
 
-      const relatedByUserId = ticketIndex.byUserId.get(user.id) ?? [];
-      const relatedGuestTickets = (ticketIndex.byGuestEmail.get(email) ?? []).filter(
-        (ticket) => !ticket.userId
-      );
-      const relatedTickets = [...relatedByUserId, ...relatedGuestTickets].sort(
-        (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
-      );
+    const relatedByUserId = ticketIndex.byUserId.get(user.id) ?? [];
+    const relatedGuestTickets = (ticketIndex.byGuestEmail.get(email) ?? []).filter(
+      (ticket) => !ticket.userId
+    );
+    const relatedTickets = [...relatedByUserId, ...relatedGuestTickets].sort(
+      (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
+    );
 
-      const openTicketCount = relatedTickets.filter(
-        (ticket) => ticket.status !== 'resolved'
-      ).length;
+    const openTicketCount = relatedTickets.filter(
+      (ticket) => ticket.status !== 'resolved'
+    ).length;
 
-      const unreadForSupportCount = relatedTickets.filter((ticket) => {
-        if (ticket.lastMessageBy !== 'customer' && ticket.lastMessageBy !== 'guest') {
-          return false;
-        }
+    const unreadForSupportCount = relatedTickets.filter((ticket) => {
+      if (ticket.lastMessageBy !== 'customer' && ticket.lastMessageBy !== 'guest') {
+        return false;
+      }
 
-        return getTimestamp(ticket.lastMessageAt) > getTimestamp(ticket.lastReadAtSupport);
-      }).length;
+      return getTimestamp(ticket.lastMessageAt) > getTimestamp(ticket.lastReadAtSupport);
+    }).length;
 
-      const latestTicketAt =
-        relatedTickets[0]?.lastMessageAt ?? relatedTickets[0]?.createdAt ?? '';
+    const latestTicketAt =
+      relatedTickets[0]?.lastMessageAt ?? relatedTickets[0]?.createdAt ?? '';
 
-      map.set(`user:${user.id}`, {
-        id: `user:${user.id}`,
-        type: 'user',
-        userId: user.id,
-        email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        publicId: user.publicId ?? user.id,
-        isActive: true,
-        openTicketCount,
-        unreadForSupportCount,
-        latestTicketAt,
-      });
-    }
+    map.set(`user:${user.id}`, {
+      id: `user:${user.id}`,
+      type: 'user',
+      userId: user.id,
+      email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      publicId: user.publicId ?? user.id,
+      isActive: true,
+      openTicketCount,
+      unreadForSupportCount,
+      latestTicketAt,
+    });
+  }
 
-    for (const [email, guestTickets] of ticketIndex.byGuestEmail.entries()) {
-      const existingUserContact = Array.from(map.values()).find(
-        (contact) => contact.type === 'user' && contact.email === email
-      );
+  for (const [email, guestTickets] of ticketIndex.byGuestEmail.entries()) {
+    const existingUserContact = Array.from(map.values()).find(
+      (contact) => contact.type === 'user' && contact.email === email
+    );
 
-      if (existingUserContact) continue;
+    if (existingUserContact) continue;
 
-      const firstTicket = guestTickets[0];
+    const firstTicket = guestTickets[0];
 
-      const unreadForSupportCount = guestTickets.filter((ticket) => {
+    const unreadForSupportCount = guestTickets.filter((ticket) => {
       if (ticket.lastMessageBy !== 'customer' && ticket.lastMessageBy !== 'guest') {
         return false;
       }
@@ -612,41 +611,44 @@ export default function AdminInquiries() {
       unreadForSupportCount,
       latestTicketAt: firstTicket?.lastMessageAt ?? firstTicket?.createdAt ?? '',
     });
-    }
+  }
 
-    return Array.from(map.values())
-      .filter((contact) => {
-        const fullName = [contact.firstName, contact.lastName]
-          .filter(Boolean)
-          .join(' ')
-          .trim();
+  return Array.from(map.values()).sort((a, b) => {
+    const aTime = getTimestamp(a.latestTicketAt);
+    const bTime = getTimestamp(b.latestTicketAt);
 
-        const searchable = [fullName, contact.email, contact.publicId]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
+    if (aTime !== bTime) return bTime - aTime;
 
-        const matchesSearch = q === '' || searchable.includes(q);
+    const aName =
+      [a.firstName, a.lastName].filter(Boolean).join(' ').trim() || a.email;
+    const bName =
+      [b.firstName, b.lastName].filter(Boolean).join(' ').trim() || b.email;
 
-        const matchesType =
-          filterContactType === 'all' || contact.type === filterContactType;
+    return aName.localeCompare(bName);
+  });
+}, [users, ticketIndex]);
 
-        return matchesSearch && matchesType;
-      })
-      .sort((a, b) => {
-        const aTime = getTimestamp(a.latestTicketAt);
-        const bTime = getTimestamp(b.latestTicketAt);
+const contacts = useMemo(() => {
+  const q = debouncedSearch.trim().toLowerCase();
 
-        if (aTime !== bTime) return bTime - aTime;
+  return allContacts.filter((contact) => {
+    const fullName = [contact.firstName, contact.lastName]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
 
-        const aName =
-          [a.firstName, a.lastName].filter(Boolean).join(' ').trim() || a.email;
-        const bName =
-          [b.firstName, b.lastName].filter(Boolean).join(' ').trim() || b.email;
+    const searchable = [fullName, contact.email, contact.publicId]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
 
-        return aName.localeCompare(bName);
-      });
-}, [users, ticketIndex, debouncedSearch, filterContactType]);
+    const matchesSearch = q === '' || searchable.includes(q);
+    const matchesType =
+      filterContactType === 'all' || contact.type === filterContactType;
+
+    return matchesSearch && matchesType;
+  });
+}, [allContacts, debouncedSearch, filterContactType]);
 
 
   const ticketPreviewByTicketId = useMemo(() => {
@@ -726,10 +728,16 @@ export default function AdminInquiries() {
   const trimmedSearch = debouncedSearch.trim();
 
 const hasNoContacts =
-  !isInitialInquiriesLoading && contacts.length === 0 && trimmedSearch.length === 0;
+  !isInitialInquiriesLoading && allContacts.length === 0;
+
+const hasNoFilteredContacts =
+  !isInitialInquiriesLoading && allContacts.length > 0 && contacts.length === 0;
 
 const hasNoSearchResults =
-  !isInitialInquiriesLoading && contacts.length === 0 && trimmedSearch.length > 0;  
+  hasNoFilteredContacts && trimmedSearch.length > 0;
+
+const hasNoFilterResults =
+  hasNoFilteredContacts && trimmedSearch.length === 0; 
   const hasNoTicketsForSelectedContact =
     !isInitialInquiriesLoading &&
     !!selectedContact &&
@@ -1096,12 +1104,6 @@ const hasNoSearchResults =
             title="No contacts found"
             description="Contacts with user accounts or guest ticket history will appear here."
           />
-        ) : hasNoSearchResults ? (
-          <EmptyState
-            icon={<Search className="size-10 text-blue-500" />}
-            title="No matching contacts found"
-            description="Try adjusting your search term."
-          />
         ) : (
             <div className="grid h-full min-h-0 flex-1 grid-cols-[320px_minmax(0,360px)_minmax(0,1fr)] gap-4 p-4">
               <div
@@ -1133,15 +1135,36 @@ const hasNoSearchResults =
                   </div>
                 </div>
 
-                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
-                  {contacts.map((contact) => (
-                    <AdminContactListItem
-                      key={contact.id}
-                      contact={contact}
-                      isSelected={contact.id === selectedContactId}
-                      onSelect={openContact}
-                    />
-                  ))}
+                <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                  {contacts.length === 0 ? (
+                    <div className="flex h-full items-center justify-center p-6">
+                      <div className="rounded-2xl bg-gray-50 px-6 py-5 text-center">
+                        <h3 className="text-sm font-semibold text-gray-900">
+                          {hasNoSearchResults ? 'No matching contacts found' : 'No contacts in this filter'}
+                        </h3>
+                        <p className="mt-1 text-xs text-gray-500">
+                          {hasNoSearchResults
+                            ? 'Try adjusting your search term.'
+                            : filterContactType === 'user'
+                            ? 'There are no user contacts to display right now.'
+                            : filterContactType === 'guest'
+                            ? 'There are no guest contacts to display right now.'
+                            : 'No contacts are available.'}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {contacts.map((contact) => (
+                        <AdminContactListItem
+                          key={contact.id}
+                          contact={contact}
+                          isSelected={contact.id === selectedContactId}
+                          onSelect={openContact}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1208,34 +1231,45 @@ const hasNoSearchResults =
                 </div>
 
                 <div className="min-h-0 flex-1 overflow-y-auto p-4">
-                  {!selectedContact ? null : hasNoTicketsForSelectedContact ? (
-                    <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
-                      <div>
-                        <h3 className="text-sm font-semibold text-gray-900">
-                          No tickets yet
-                        </h3>
-                        <p className="mt-1 text-xs text-gray-500">
-                          {selectedContact.type === 'guest'
-                            ? 'Each landing page inquiry from this guest creates a new ticket. Replies are handled via email.'
-                            : 'Start a new support conversation for this customer.'}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {filteredTicketsForSelectedContact.map((ticket) => (
-                        <AdminTicketListItem
-                          key={ticket.id}
-                          ticket={ticket}
-                          preview={ticketPreviewByTicketId[ticket.id] ?? ''}
-                          messageCount={getMessagesByTicketId(ticket.id).length}
-                          isSelected={ticket.id === selectedTicketId}
-                          onSelect={openTicket}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
+  {!selectedContact ? (
+    <div className="flex h-full items-center justify-center rounded-2xl bg-gray-50 p-6 text-center">
+  <div>
+    <h3 className="text-sm font-semibold text-gray-900">
+      No contact selected
+    </h3>
+    <p className="mt-1 text-xs text-gray-500">
+      Select a contact on the left to view their tickets.
+    </p>
+  </div>
+</div>  
+  ) : hasNoTicketsForSelectedContact ? (
+    <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-6 text-center">
+      <div>
+        <h3 className="text-sm font-semibold text-gray-900">
+          No tickets yet
+        </h3>
+        <p className="mt-1 text-xs text-gray-500">
+          {selectedContact.type === 'guest'
+            ? 'Each landing page inquiry from this guest creates a new ticket. Replies are handled via email.'
+            : 'Start a new support conversation for this customer.'}
+        </p>
+      </div>
+    </div>
+  ) : (
+    <div className="space-y-3">
+      {filteredTicketsForSelectedContact.map((ticket) => (
+        <AdminTicketListItem
+          key={ticket.id}
+          ticket={ticket}
+          preview={ticketPreviewByTicketId[ticket.id] ?? ''}
+          messageCount={getMessagesByTicketId(ticket.id).length}
+          isSelected={ticket.id === selectedTicketId}
+          onSelect={openTicket}
+        />
+      ))}
+    </div>
+  )}
+</div>
               </div>
 
               <div
@@ -1326,18 +1360,29 @@ const hasNoSearchResults =
                     onMessageChange={setNewTicketMessage}
                     onStartConversation={handleStartConversation}
                   />
-                ) : !selectedTicket ? (
-                  <div className="flex flex-1 items-center justify-center p-6 text-center">
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-900">
-                        Select a ticket
-                      </h3>
-                      <p className="mt-1 text-xs text-gray-500">
-                        Choose a support ticket to continue the conversation.
-                      </p>
-                    </div>
+                ) : !selectedContact ? (
+                <div className="flex flex-1 items-center justify-center p-6 text-center">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      No contact selected
+                    </h3>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Choose a contact to start or continue a conversation.
+                    </p>
                   </div>
-                ) : isLoadingMessages ? (
+                </div>
+              ) : !selectedTicket ? (
+                <div className="flex flex-1 items-center justify-center p-6 text-center">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      Select a ticket
+                    </h3>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Choose a support ticket to continue the conversation.
+                    </p>
+                  </div>
+                </div>
+              ) : isLoadingMessages ? (
                   <div className="flex flex-1 p-5 md:p-6">
                     <ThreadLoadingState />
                   </div>
