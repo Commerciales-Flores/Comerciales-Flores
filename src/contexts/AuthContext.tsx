@@ -124,7 +124,7 @@ if (import.meta.env.DEV) {
 const STORAGE_KEY = 'currentUser';
 const WAS_LOGGED_IN_KEY = 'wasLoggedIn';
 const LAST_LOGIN_USER_KEY = 'lastLoginUser';
-const LOGOUT_BROADCAST_KEY = 'auth:logout';
+const LOGOUT_GREETING_ACTIVE_KEY = 'logoutGreetingActive';
 const RESET_PASSWORD_PATH = '/reset-password';
 const ACTIVE_SESSION_ID_KEY = 'auth:active-session-id';
 const ACTIVITY_BROADCAST_KEY = 'auth:activity';
@@ -253,17 +253,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return role === 'admin' ? ADMIN_INACTIVITY_LIMIT : CLIENT_INACTIVITY_LIMIT;
   }, []);
 
+  const shouldEnforceSingleSession = useCallback((role?: User['role']) => {
+  return role === 'client';
+}, []);
+
     const getLocalActiveSessionId = useCallback(() => {
-      return localStorage.getItem(ACTIVE_SESSION_ID_KEY);
-    }, []);
+  return sessionStorage.getItem(ACTIVE_SESSION_ID_KEY);
+}, []);
 
-    const setLocalActiveSessionId = useCallback((sessionId: string) => {
-      localStorage.setItem(ACTIVE_SESSION_ID_KEY, sessionId);
-    }, []);
+const setLocalActiveSessionId = useCallback((sessionId: string) => {
+  sessionStorage.setItem(ACTIVE_SESSION_ID_KEY, sessionId);
+}, []);
 
-    const clearLocalActiveSessionId = useCallback(() => {
-      localStorage.removeItem(ACTIVE_SESSION_ID_KEY);
-    }, []);
+const clearLocalActiveSessionId = useCallback(() => {
+  sessionStorage.removeItem(ACTIVE_SESSION_ID_KEY);
+}, []);
+
+const clearLogoutGreeting = useCallback(() => {
+  sessionStorage.removeItem(LAST_LOGIN_USER_KEY);
+  sessionStorage.removeItem(LOGOUT_GREETING_ACTIVE_KEY);
+}, []);
 
     
   const getStoredLastActivityAt = useCallback(() => {
@@ -465,8 +474,31 @@ const handleForeignSession = useCallback(
 
 const claimBrowserSession = useCallback(
   async (userId: string, profile: User): Promise<User | null> => {
-    const browserSessionId = getLocalActiveSessionId() || crypto.randomUUID();
     const nowIso = new Date().toISOString();
+
+    if (!shouldEnforceSingleSession(profile.role)) {
+      const { error } = await supabase
+        .from('users')
+        .update({
+          last_login: nowIso,
+        })
+        .eq('user_id', userId);
+
+      if (error) {
+        console.error('Failed to refresh admin login:', error);
+        return null;
+      }
+
+      clearLocalActiveSessionId();
+
+      return {
+        ...profile,
+        activeSessionId: null,
+        lastLogin: nowIso,
+      };
+    }
+
+    const browserSessionId = getLocalActiveSessionId() || crypto.randomUUID();
 
     const { error } = await supabase
       .from('users')
@@ -489,7 +521,12 @@ const claimBrowserSession = useCallback(
       lastLogin: nowIso,
     };
   },
-  [getLocalActiveSessionId, setLocalActiveSessionId]
+  [
+    clearLocalActiveSessionId,
+    getLocalActiveSessionId,
+    setLocalActiveSessionId,
+    shouldEnforceSingleSession,
+  ]
 );
 
     const extendSession = useCallback(() => {
@@ -688,6 +725,7 @@ useEffect(() => {
 
       // same account, but another browser/device owns it now
       if (
+        shouldEnforceSingleSession(profile.role) &&
         profile.activeSessionId &&
         localActiveSessionId &&
         profile.activeSessionId !== localActiveSessionId
@@ -765,45 +803,6 @@ useEffect(() => {
     userRef.current = user;
   }, [user]);
 
-  useEffect(() => {
-  const handleStorage = (event: StorageEvent) => {
-    if (event.key !== LOGOUT_BROADCAST_KEY || !event.newValue) return;
-
-    try {
-      const payload = JSON.parse(event.newValue) as {
-        at?: number;
-        clearGreeting?: boolean;
-      };
-
-      clearUserSession({
-        clearGreeting: Boolean(payload?.clearGreeting),
-      });
-
-      setFormKey((k) => k + 1);
-
-      showIndicator(
-        `SYSTEM ALERT: Session ended in another tab at ${getFormattedTime()}`,
-        'security'
-      );
-
-      if (window.location.pathname !== '/login') {
-        window.history.replaceState(null, '', '/login');
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      }
-    } catch {
-      clearUserSession({ clearGreeting: true });
-      setFormKey((k) => k + 1);
-
-      if (window.location.pathname !== '/login') {
-        window.history.replaceState(null, '', '/login');
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      }
-    }
-  };
-
-  window.addEventListener('storage', handleStorage);
-  return () => window.removeEventListener('storage', handleStorage);
-}, [clearUserSession, showIndicator]);
 
   // --- AUTH STATE LISTENER ---
 useEffect(() => {
@@ -815,21 +814,27 @@ useEffect(() => {
     void (async () => {
       try {
         if (event === 'SIGNED_OUT') {
-          if (logoutInProgressRef.current) {
-            return;
-          }
+  if (logoutInProgressRef.current) {
+    return;
+  }
 
-          const wasLoggedIn = sessionStorage.getItem(WAS_LOGGED_IN_KEY) === 'true';
+  const wasLoggedIn = sessionStorage.getItem(WAS_LOGGED_IN_KEY) === 'true';
 
-          if (wasLoggedIn && !logoutInProgressRef.current) {
-            showIndicator(`SYSTEM ALERT: Session ended at ${getFormattedTime()}`, 'security');
-            clearUserSession({ clearGreeting: true });
-            clearLocalActiveSessionId();
-            setFormKey((k) => k + 1);
-          }
+  if (wasLoggedIn) {
+    clearUserSession({ clearGreeting: true });
+    clearLocalActiveSessionId();
+    setFormKey((k) => k + 1);
 
-          return;
-        }
+    if (window.location.pathname !== '/login') {
+      window.history.replaceState(null, '', '/login');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+
+    showIndicator(`Logged out at ${getFormattedTime()}`, 'logout');
+  }
+
+  return;
+}
 
         if (!session?.user) return;
 
@@ -870,17 +875,18 @@ useEffect(() => {
 
         // same account, but another browser/device now owns the session
         if (
-          profile.activeSessionId &&
-          localActiveSessionId &&
-          profile.activeSessionId !== localActiveSessionId
-        ) {
-          await handleForeignSession(
-            'SYSTEM ALERT: Your session was ended because your account was opened elsewhere.'
-          );
-          clearOAuthFlowPending();
-          oauthAuditPendingRef.current = null;
-          return;
-        }
+  shouldEnforceSingleSession(profile.role) &&
+  profile.activeSessionId &&
+  localActiveSessionId &&
+  profile.activeSessionId !== localActiveSessionId
+) {
+  await handleForeignSession(
+    'SYSTEM ALERT: Your session was ended because your account was opened elsewhere.'
+  );
+  clearOAuthFlowPending();
+  oauthAuditPendingRef.current = null;
+  return;
+}
 
         pendingDeviceVerificationRef.current = false;
         persistUserSession(profile);
@@ -1147,28 +1153,57 @@ type LoginResult = {
       }
 
       const browserSessionId = getLocalActiveSessionId() || crypto.randomUUID();
+const nowIso = new Date().toISOString();
 
-      const { error: activeSessionError } = await supabase
-        .from('users')
-        .update({
-          active_session_id: browserSessionId,
-          last_login: new Date().toISOString(),
-        })
-        .eq('user_id', data.user.id);
+let nextProfile: User = {
+  ...profile,
+  lastLogin: nowIso,
+};
 
-      if (activeSessionError) {
-        pendingDeviceVerificationRef.current = false;
-        await supabase.auth.signOut();
-        return { success: false, error: 'device_check_failed' };
-      }
+if (shouldEnforceSingleSession(profile.role)) {
+  const { error: activeSessionError } = await supabase
+    .from('users')
+    .update({
+      active_session_id: browserSessionId,
+      last_login: nowIso,
+    })
+    .eq('user_id', data.user.id);
 
-      setLocalActiveSessionId(browserSessionId);
+  if (activeSessionError) {
+    pendingDeviceVerificationRef.current = false;
+    await supabase.auth.signOut();
+    return { success: false, error: 'device_check_failed' };
+  }
 
-      const nextProfile: User = {
-        ...profile,
-        activeSessionId: browserSessionId,
-        lastLogin: new Date().toISOString(),
-      };
+  setLocalActiveSessionId(browserSessionId);
+
+  nextProfile = {
+    ...profile,
+    activeSessionId: browserSessionId,
+    lastLogin: nowIso,
+  };
+} else {
+  clearLocalActiveSessionId();
+
+  const { error: adminLoginError } = await supabase
+    .from('users')
+    .update({
+      last_login: nowIso,
+    })
+    .eq('user_id', data.user.id);
+
+  if (adminLoginError) {
+    pendingDeviceVerificationRef.current = false;
+    await supabase.auth.signOut();
+    return { success: false, error: 'device_check_failed' };
+  }
+
+  nextProfile = {
+    ...profile,
+    activeSessionId: null,
+    lastLogin: nowIso,
+  };
+}
 
       pendingDeviceVerificationRef.current = false;
       persistUserSession(nextProfile);
@@ -1203,6 +1238,8 @@ type LoginResult = {
     setLocalActiveSessionId,
     verifyTurnstileToken,
     writeSharedActivity,
+    clearLocalActiveSessionId,
+    shouldEnforceSingleSession,
   ]
 );
   const loginWithGoogle = useCallback(async () => {
@@ -1325,8 +1362,8 @@ type LoginResult = {
     const currentUserId = activeUserIdRef.current;
     const currentUserEmail = currentUser?.email;
 
-        const shouldClearGreeting = options?.clearGreeting ?? true;
-    const shouldRedirectToLogin = options?.redirectToLogin ?? false;
+    const shouldClearGreeting = options?.clearGreeting ?? true;
+    const shouldRedirectToLogin = options?.redirectToLogin ?? true;
 
     const isSessionExpiry = expiryLogoutRef.current || /expired/i.test(message ?? '');
     const action = isSessionExpiry ? 'SESSION_EXPIRED' : 'LOGOUT';
@@ -1336,22 +1373,14 @@ type LoginResult = {
 
     const isSecurity = /expired|security|ended/i.test(message ?? '');
 
-    if (shouldRedirectToLogin && window.location.pathname !== '/login') {
-      window.history.replaceState(null, '', '/login');
-      window.dispatchEvent(new PopStateEvent('popstate'));
-    }
-
     clearUserSession({ clearGreeting: shouldClearGreeting });
+
+    if (!shouldClearGreeting) {
+      sessionStorage.setItem(LOGOUT_GREETING_ACTIVE_KEY, 'true');
+    } else {
+      clearLogoutGreeting();
+    }
     setFormKey((k) => k + 1);
-
-    localStorage.setItem(
-      LOGOUT_BROADCAST_KEY,
-      JSON.stringify({
-        at: Date.now(),
-        clearGreeting: shouldClearGreeting,
-      })
-    );
-
     localStorage.removeItem(LAST_ACTIVITY_AT_KEY);
 
     showIndicator(
@@ -1360,6 +1389,11 @@ type LoginResult = {
         : `Logout${currentUserEmail ? ` by ${currentUserEmail}` : ''} at ${getFormattedTime()}`,
       isSecurity ? 'security' : 'logout'
     );
+
+    if (shouldRedirectToLogin && window.location.pathname !== '/login') {
+      window.history.replaceState(null, '', '/login');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
 
     try {
       if (currentUserId) {
@@ -1372,7 +1406,12 @@ type LoginResult = {
 
       const localActiveSessionId = getLocalActiveSessionId();
 
-      if (currentUserId && localActiveSessionId) {
+      if (
+        currentUserId &&
+        currentUser &&
+        shouldEnforceSingleSession(currentUser.role) &&
+        localActiveSessionId
+      ) {
         await supabase
           .from('users')
           .update({ active_session_id: null })
@@ -1395,8 +1434,35 @@ type LoginResult = {
     clearUserSession,
     getLocalActiveSessionId,
     showIndicator,
+    shouldEnforceSingleSession,
   ]
 );
+
+useEffect(() => {
+  const clearIfTransientGreeting = () => {
+    if (sessionStorage.getItem(LOGOUT_GREETING_ACTIVE_KEY) === 'true') {
+      clearLogoutGreeting();
+    }
+  };
+
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'hidden') {
+      clearIfTransientGreeting();
+    }
+  };
+
+  const handleBeforeUnload = () => {
+    clearIfTransientGreeting();
+  };
+
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  window.addEventListener('beforeunload', handleBeforeUnload);
+
+  return () => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('beforeunload', handleBeforeUnload);
+  };
+}, [clearLogoutGreeting]);
 
           // --- SHARED INACTIVITY TIMER ACROSS TABS ---
   useEffect(() => {
@@ -1552,19 +1618,20 @@ type LoginResult = {
         const localActiveSessionId = getLocalActiveSessionId();
 
         if (
-          nextUser.activeSessionId &&
-          localActiveSessionId &&
-          nextUser.activeSessionId !== localActiveSessionId
-        ) {
-          if (!isHandlingForcedLogout) {
-            isHandlingForcedLogout = true;
-            await logout('Your session was ended because your account was opened elsewhere.', {
-              clearGreeting: true,
-              redirectToLogin: true,
-            });
-          }
-          return;
-        }
+  shouldEnforceSingleSession(nextUser.role) &&
+  nextUser.activeSessionId &&
+  localActiveSessionId &&
+  nextUser.activeSessionId !== localActiveSessionId
+) {
+  if (!isHandlingForcedLogout) {
+    isHandlingForcedLogout = true;
+    await logout('Your session was ended because your account was opened elsewhere.', {
+      clearGreeting: true,
+      redirectToLogin: true,
+    });
+  }
+  return;
+}
 
         persistUserSession(nextUser);
 
