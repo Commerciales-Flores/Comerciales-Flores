@@ -255,7 +255,7 @@ export default function Register() {
                 Need assistance?
               </p>
               <p className="text-sm text-white font-semibold transition-colors">
-                support@comercialesflores.ph
+                support@comercialesflores.com
               </p>
             </div>
 
