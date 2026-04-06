@@ -42,6 +42,7 @@ interface User {
   addressConfirmed: boolean;
   addressConfirmedAt?: string | null;
   createdAt?: string;
+  activeSessionId?: string | null;
 }
 
 interface RegisterInput {
@@ -125,6 +126,10 @@ const WAS_LOGGED_IN_KEY = 'wasLoggedIn';
 const LAST_LOGIN_USER_KEY = 'lastLoginUser';
 const LOGOUT_BROADCAST_KEY = 'auth:logout';
 const RESET_PASSWORD_PATH = '/reset-password';
+const ACTIVE_SESSION_ID_KEY = 'auth:active-session-id';
+const ACTIVITY_BROADCAST_KEY = 'auth:activity';
+const LAST_ACTIVITY_AT_KEY = 'auth:last-activity-at';
+const ACTIVITY_SYNC_TICK_MS = 1000;
 
 const AUTH_NOTICE_KEY = 'auth:notice';
 
@@ -203,6 +208,7 @@ const mapProfileToUser = (data: any): User => ({
   addressConfirmed: Boolean(data.address_confirmed),
   addressConfirmedAt: data.address_confirmed_at ?? null,
   createdAt: data.created_at ?? undefined,
+  activeSessionId: data.active_session_id ?? null,
 });
 
 const USER_SELECT = `
@@ -224,7 +230,8 @@ const USER_SELECT = `
     phone_verified_at,
     address_confirmed,
     address_confirmed_at,
-    created_at
+    created_at,
+    active_session_id
   `;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -242,10 +249,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [sessionCountdown, setSessionCountdown] = useState(0);
   const [sessionResetKey, setSessionResetKey] = useState(0);
 
+    const getInactivityLimit = useCallback((role?: User['role']) => {
+    return role === 'admin' ? ADMIN_INACTIVITY_LIMIT : CLIENT_INACTIVITY_LIMIT;
+  }, []);
+
+    const getLocalActiveSessionId = useCallback(() => {
+      return localStorage.getItem(ACTIVE_SESSION_ID_KEY);
+    }, []);
+
+    const setLocalActiveSessionId = useCallback((sessionId: string) => {
+      localStorage.setItem(ACTIVE_SESSION_ID_KEY, sessionId);
+    }, []);
+
+    const clearLocalActiveSessionId = useCallback(() => {
+      localStorage.removeItem(ACTIVE_SESSION_ID_KEY);
+    }, []);
+
+    
+  const getStoredLastActivityAt = useCallback(() => {
+    const raw = localStorage.getItem(LAST_ACTIVITY_AT_KEY);
+    const parsed = raw ? Number(raw) : 0;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : Date.now();
+  }, []);
+
+  const writeSharedActivity = useCallback((timestamp = Date.now()) => {
+    localStorage.setItem(LAST_ACTIVITY_AT_KEY, String(timestamp));
+    localStorage.setItem(
+      ACTIVITY_BROADCAST_KEY,
+      JSON.stringify({ at: timestamp })
+    );
+  }, []);
+
   const { showIndicator } = useIndicator();
   const setAuthNotice = useCallback((notice: AuthNotice) => {
     sessionStorage.setItem(AUTH_NOTICE_KEY, JSON.stringify(notice));
   }, []);
+  
 
   const clearAuthNotice = useCallback(() => {
     sessionStorage.removeItem(AUTH_NOTICE_KEY);
@@ -400,11 +439,65 @@ const deleteProfilePicture = useCallback(async (): Promise<boolean> => {
     [clearSessionTimers]
   );
 
-  const extendSession = useCallback(() => {
+
+const handleForeignSession = useCallback(
+  async (message: string) => {
+    clearUserSession({ clearGreeting: true });
+    clearLocalActiveSessionId();
+    pendingDeviceVerificationRef.current = false;
+    activeUserIdRef.current = null;
+
+    if (window.location.pathname !== '/login') {
+      window.history.replaceState(null, '', '/login');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+
+    showIndicator(message, 'security');
+
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error('Foreign session sign-out failed:', error);
+    }
+  },
+  [clearLocalActiveSessionId, clearUserSession, showIndicator]
+);
+
+const claimBrowserSession = useCallback(
+  async (userId: string, profile: User): Promise<User | null> => {
+    const browserSessionId = getLocalActiveSessionId() || crypto.randomUUID();
+    const nowIso = new Date().toISOString();
+
+    const { error } = await supabase
+      .from('users')
+      .update({
+        active_session_id: browserSessionId,
+        last_login: nowIso,
+      })
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('Failed to claim browser session:', error);
+      return null;
+    }
+
+    setLocalActiveSessionId(browserSessionId);
+
+    return {
+      ...profile,
+      activeSessionId: browserSessionId,
+      lastLogin: nowIso,
+    };
+  },
+  [getLocalActiveSessionId, setLocalActiveSessionId]
+);
+
+    const extendSession = useCallback(() => {
+    writeSharedActivity(Date.now());
     setShowSessionWarning(false);
     setSessionCountdown(0);
     setSessionResetKey((k) => k + 1);
-  }, []);
+  }, [writeSharedActivity]);
 
   const getAuthProviderLabel = useCallback((authUser: any): string => {
     const provider =
@@ -455,17 +548,6 @@ const deleteProfilePicture = useCallback(async (): Promise<boolean> => {
     []
   );
 
-
-  const touchLastLogin = useCallback(async (userId: string) => {
-    try {
-      await supabase
-        .from('users')
-        .update({ last_login: new Date().toISOString() })
-        .eq('user_id', userId);
-    } catch (error) {
-      console.error('Failed to update last_login:', error);
-    }
-  }, []);
 
   const fetchOrCreateUserProfile = useCallback(
   async (authUser: any): Promise<User | null> => {
@@ -557,78 +639,127 @@ const deleteProfilePicture = useCallback(async (): Promise<boolean> => {
 );
 
   // --- INITIAL APP BOOTSTRAP ---
-  useEffect(() => {
-    isMountedRef.current = true;
+useEffect(() => {
+  isMountedRef.current = true;
 
-    const initializeSession = async () => {
-      try {
-        setLoading(true);
+  const initializeSession = async () => {
+    try {
+      setLoading(true);
 
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-        if (!isMountedRef.current) return;
+      if (!isMountedRef.current) return;
 
-        if (!session?.user) {
-          clearUserSession();
-          pendingDeviceVerificationRef.current = false;
+      if (!session?.user) {
+        clearUserSession();
+        clearLocalActiveSessionId();
+        pendingDeviceVerificationRef.current = false;
+        clearOAuthFlowPending();
+        activeUserIdRef.current = null;
+        return;
+      }
+
+      const oauthPending = isOAuthFlowPending();
+      const profile = await fetchOrCreateUserProfile(session.user);
+      const localActiveSessionId = getLocalActiveSessionId();
+      const cachedRaw = sessionStorage.getItem(STORAGE_KEY);
+      const cachedUser = cachedRaw ? (JSON.parse(cachedRaw) as User) : null;
+
+      if (!isMountedRef.current) return;
+
+      if (!profile) {
+        await supabase.auth.signOut();
+        clearUserSession({ clearGreeting: true });
+        clearLocalActiveSessionId();
+        clearOAuthFlowPending();
+        return;
+      }
+
+      // hard guard: browser auth changed to a different account
+      if (cachedUser && cachedUser.id !== profile.id) {
+        await handleForeignSession(
+          'SYSTEM ALERT: This browser was signed in as a different account. Please sign in again.'
+        );
+        clearOAuthFlowPending();
+        return;
+      }
+
+      // same account, but another browser/device owns it now
+      if (
+        profile.activeSessionId &&
+        localActiveSessionId &&
+        profile.activeSessionId !== localActiveSessionId
+      ) {
+        await handleForeignSession(
+          'SYSTEM ALERT: Your session was ended because your account was opened in another browser or device.'
+        );
+        clearOAuthFlowPending();
+        return;
+      }
+
+            pendingDeviceVerificationRef.current = false;
+
+      let nextProfile = profile;
+
+      if (oauthPending) {
+        const claimedProfile = await claimBrowserSession(session.user.id, profile);
+
+        if (!claimedProfile) {
+          await supabase.auth.signOut();
+          clearUserSession({ clearGreeting: true });
+          clearLocalActiveSessionId();
           clearOAuthFlowPending();
-
-          // 🔴 Also reset active user ref
-          activeUserIdRef.current = null;
-
           return;
         }
 
-        const oauthPending = isOAuthFlowPending();
+        nextProfile = claimedProfile;
 
-const profile = await fetchOrCreateUserProfile(session.user);
+        const providerLabel = getAuthProviderLabel(session.user);
 
-if (!isMountedRef.current) return;
+        void addAuthAuditLog({
+          userId: session.user.id,
+          action: 'LOGIN',
+          changedFields: ['last_login', 'active_session_id'],
+          notes: `User login via ${providerLabel}`,
+        });
 
-if (!profile) {
-  await supabase.auth.signOut();
-  clearUserSession({ clearGreeting: true });
-  clearOAuthFlowPending();
-  return;
-}
-
-pendingDeviceVerificationRef.current = false;
-persistUserSession(profile);
-
-if (oauthPending) {
-  const providerLabel = getAuthProviderLabel(session.user);
-
-  void addAuthAuditLog({
-    userId: session.user.id,
-    action: 'LOGIN',
-    changedFields: ['last_login'],
-    notes: `User login via ${providerLabel}`,
-  });
-
-  void touchLastLogin(session.user.id);
-  clearOAuthFlowPending();
-}
-      } catch (error) {
-        console.error('Session init failed:', error);
-        if (isMountedRef.current) {
-          clearUserSession();
-        }
-      } finally {
-        if (isMountedRef.current) {
-          bootstrappedRef.current = true;
-          setLoading(false);
-        }
+        clearOAuthFlowPending();
       }
-    };
 
-    void initializeSession();
+      persistUserSession(nextProfile);
+      writeSharedActivity(Date.now());
+    } catch (error) {
+      console.error('Session init failed:', error);
+      if (isMountedRef.current) {
+        clearUserSession();
+      }
+    } finally {
+      if (isMountedRef.current) {
+        bootstrappedRef.current = true;
+        setLoading(false);
+      }
+    }
+  };
 
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, [clearUserSession, fetchOrCreateUserProfile, persistUserSession]);
+  void initializeSession();
+
+  return () => {
+    isMountedRef.current = false;
+  };
+}, [
+  addAuthAuditLog,
+  claimBrowserSession,
+  clearLocalActiveSessionId,
+  clearUserSession,
+  fetchOrCreateUserProfile,
+  getAuthProviderLabel,
+  getLocalActiveSessionId,
+  handleForeignSession,
+  persistUserSession,
+  writeSharedActivity,
+]);
 
   useEffect(() => {
     userRef.current = user;
@@ -675,189 +806,150 @@ if (oauthPending) {
 }, [clearUserSession, showIndicator]);
 
   // --- AUTH STATE LISTENER ---
-  useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      // Ignore listener noise before initial bootstrap finishes
-      if (!bootstrappedRef.current) return;
+useEffect(() => {
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((event, session) => {
+    if (!bootstrappedRef.current) return;
 
-      void (async () => {
-        try {
-          if (event === 'SIGNED_OUT') {
-            if (logoutInProgressRef.current) {
-              return;
-            }
-
-            const wasLoggedIn = sessionStorage.getItem(WAS_LOGGED_IN_KEY) === 'true';
-
-            if (wasLoggedIn && !logoutInProgressRef.current) {
-              showIndicator(`SYSTEM ALERT: Session ended at ${getFormattedTime()}`, 'security');
-              clearUserSession({ clearGreeting: true });
-              setFormKey((k) => k + 1);
-            }
-
+    void (async () => {
+      try {
+        if (event === 'SIGNED_OUT') {
+          if (logoutInProgressRef.current) {
             return;
           }
 
-          if (!session?.user) return;
+          const wasLoggedIn = sessionStorage.getItem(WAS_LOGGED_IN_KEY) === 'true';
 
-          const oauthPending = isOAuthFlowPending();
-
-          // Only block email/password flow while device verification is in progress.
-          // OAuth should not be blocked here.
-          if (pendingDeviceVerificationRef.current && !oauthPending) {
-            return;
+          if (wasLoggedIn && !logoutInProgressRef.current) {
+            showIndicator(`SYSTEM ALERT: Session ended at ${getFormattedTime()}`, 'security');
+            clearUserSession({ clearGreeting: true });
+            clearLocalActiveSessionId();
+            setFormKey((k) => k + 1);
           }
 
-          // If same user already in memory, skip expensive resync
-          if (activeUserIdRef.current === session.user.id && user) return;
+          return;
+        }
 
-          const profile = await fetchOrCreateUserProfile(session.user);
+        if (!session?.user) return;
 
-          if (!profile) {
+        const oauthPending = isOAuthFlowPending();
+
+        if (pendingDeviceVerificationRef.current && !oauthPending) {
+          return;
+        }
+
+        const currentUser = userRef.current;
+        const localActiveSessionId = getLocalActiveSessionId();
+
+        // hard guard: browser auth changed to another account
+        if (currentUser && currentUser.id !== session.user.id) {
+          await handleForeignSession(
+            'SYSTEM ALERT: This browser was signed in as a different account. Please sign in again.'
+          );
+          clearOAuthFlowPending();
+          oauthAuditPendingRef.current = null;
+          return;
+        }
+
+        if (activeUserIdRef.current === session.user.id && currentUser) return;
+
+        const profile = await fetchOrCreateUserProfile(session.user);
+
+        if (!profile) {
+          await supabase.auth.signOut();
+          clearUserSession({ clearGreeting: true });
+          clearLocalActiveSessionId();
+          setFormKey((k) => k + 1);
+          showIndicator(
+            'Your account is no longer active. Please contact the administrator.',
+            'security'
+          );
+          return;
+        }
+
+        // same account, but another browser/device now owns the session
+        if (
+          profile.activeSessionId &&
+          localActiveSessionId &&
+          profile.activeSessionId !== localActiveSessionId
+        ) {
+          await handleForeignSession(
+            'SYSTEM ALERT: Your session was ended because your account was opened elsewhere.'
+          );
+          clearOAuthFlowPending();
+          oauthAuditPendingRef.current = null;
+          return;
+        }
+
+        pendingDeviceVerificationRef.current = false;
+        persistUserSession(profile);
+
+                pendingDeviceVerificationRef.current = false;
+
+        let nextProfile = profile;
+        const providerLabel = getAuthProviderLabel(session.user);
+
+        if (
+          oauthPending ||
+          oauthAuditPendingRef.current === 'google' ||
+          oauthAuditPendingRef.current === 'facebook'
+        ) {
+          const claimedProfile = await claimBrowserSession(session.user.id, profile);
+
+          if (!claimedProfile) {
             await supabase.auth.signOut();
             clearUserSession({ clearGreeting: true });
+            clearLocalActiveSessionId();
             setFormKey((k) => k + 1);
             showIndicator(
-              `Your account is no longer active. Please contact the administrator.`,
+              'Unable to complete sign-in securely. Please try again.',
               'security'
             );
-            return;
-          }
-          pendingDeviceVerificationRef.current = false;
-          persistUserSession(profile);
-
-          const providerLabel = getAuthProviderLabel(session.user);
-
-          if (
-            oauthPending ||
-            oauthAuditPendingRef.current === 'google' ||
-            oauthAuditPendingRef.current === 'facebook'
-          ) {
-            void addAuthAuditLog({
-              userId: session.user.id,
-              action: 'LOGIN',
-              changedFields: ['last_login'],
-              notes: `User login via ${providerLabel}`,
-            });
-
-            void touchLastLogin(session.user.id);
             oauthAuditPendingRef.current = null;
             clearOAuthFlowPending();
+            return;
           }
-        } catch (error) {
-          console.error('onAuthStateChange error:', error);
-        }
-      })();
-    });
 
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, [
-    addAuthAuditLog,
-    clearUserSession,
-    fetchOrCreateUserProfile,
-    getAuthProviderLabel,
-    persistUserSession,
-    showIndicator,
-    touchLastLogin,
-  ]);
+          nextProfile = claimedProfile;
 
-  
-
-  // --- INACTIVITY TIMER ---
-  useEffect(() => {
-    if (!user) {
-      clearSessionTimers();
-      setShowSessionWarning(false);
-      setSessionCountdown(0);
-      return;
-    }
-
-    const inactivityLimit =
-      user.role === 'admin' ? ADMIN_INACTIVITY_LIMIT : CLIENT_INACTIVITY_LIMIT;
-
-    const startTimers = () => {
-      clearSessionTimers();
-      setShowSessionWarning(false);
-      setSessionCountdown(0);
-
-      const warningDelay = Math.max(inactivityLimit - SESSION_WARNING_TIME, 0);
-
-      warningTimeoutRef.current = setTimeout(() => {
-        setShowSessionWarning(true);
-        setSessionCountdown(Math.floor(SESSION_WARNING_TIME / 1000));
-
-        countdownIntervalRef.current = setInterval(() => {
-          setSessionCountdown((prev) => {
-            if (prev <= 1) {
-              if (countdownIntervalRef.current) {
-                clearInterval(countdownIntervalRef.current);
-                countdownIntervalRef.current = null;
-              }
-              return 0;
-            }
-            return prev - 1;
+          void addAuthAuditLog({
+            userId: session.user.id,
+            action: 'LOGIN',
+            changedFields: ['last_login', 'active_session_id'],
+            notes: `User login via ${providerLabel}`,
           });
-        }, 1000);
-      }, warningDelay);
 
-      logoutTimeoutRef.current = setTimeout(() => {
-        expiryLogoutRef.current = true;
-        void logout('Session expired due to inactivity', {
-          clearGreeting: true,
-          redirectToLogin: true,
-        });
-      }, inactivityLimit);
-    };
+          oauthAuditPendingRef.current = null;
+          clearOAuthFlowPending();
+        }
 
-    const resetTimer = () => {
-      startTimers();
-    };
-
-    const throttledReset = (() => {
-      let ticking = false;
-
-      return () => {
-        if (ticking) return;
-        ticking = true;
-
-        window.setTimeout(() => {
-          resetTimer();
-          ticking = false;
-        }, 250);
-      };
-    })();
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        resetTimer();
+        persistUserSession(nextProfile);
+        writeSharedActivity(Date.now());
+      } catch (error) {
+        console.error('onAuthStateChange error:', error);
       }
-    };
+    })();
+  });
 
-    const events: Array<keyof WindowEventMap> = [
-      'mousedown',
-      'keypress',
-      'scroll',
-      'touchstart',
-      'click',
-    ];
+  return () => {
+    subscription.unsubscribe();
+  };
+}, [
+  addAuthAuditLog,
+  claimBrowserSession,
+  clearLocalActiveSessionId,
+  clearUserSession,
+  fetchOrCreateUserProfile,
+  getAuthProviderLabel,
+  getLocalActiveSessionId,
+  handleForeignSession,
+  persistUserSession,
+  showIndicator,
+  writeSharedActivity,
+]);
 
-    events.forEach((event) =>
-      window.addEventListener(event, throttledReset, { passive: true })
-    );
-    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    startTimers();
-
-    return () => {
-      clearSessionTimers();
-      events.forEach((event) => window.removeEventListener(event, throttledReset));
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [user, clearSessionTimers, sessionResetKey]);
 
 
 
@@ -919,8 +1011,7 @@ type LoginResult = {
   expiresAt?: string;
 };
 
-  // --- AUTH ACTIONS ---
-const login = useCallback(
+  const login = useCallback(
   async (
     email: string,
     password: string,
@@ -939,24 +1030,15 @@ const login = useCallback(
       clearAuthNotice();
       const normalizedEmail = normalizeEmail(email);
 
-
-      const turnstilePromise = verifyTurnstileToken(options?.turnstileToken).then((result) => {
-        return result;
+      const turnstilePromise = verifyTurnstileToken(options?.turnstileToken);
+      const lockPromise = supabase.rpc('check_login_lock', {
+        p_email: normalizedEmail,
       });
-
-      const lockPromise = supabase
-        .rpc('check_login_lock', {
-          p_email: normalizedEmail,
-        })
-        .then((result) => {
-          return result;
-        });
 
       const [isTurnstileValid, lockResult] = await Promise.all([
         turnstilePromise,
         lockPromise,
       ]);
-
 
       if (!isTurnstileValid) {
         return { success: false, error: 'verification_failed' };
@@ -979,7 +1061,6 @@ const login = useCallback(
         password,
       });
 
-
       if (error || !data.user) {
         pendingDeviceVerificationRef.current = false;
 
@@ -992,98 +1073,118 @@ const login = useCallback(
       }
 
       const accessToken = data.session?.access_token;
-if (!accessToken) {
-  pendingDeviceVerificationRef.current = false;
-  await supabase.auth.signOut();
-  return { success: false, error: 'device_check_failed' };
-}
+      if (!accessToken) {
+        pendingDeviceVerificationRef.current = false;
+        await supabase.auth.signOut();
+        return { success: false, error: 'device_check_failed' };
+      }
 
-const fingerprint = getDeviceFingerprint();
+      const fingerprint = getDeviceFingerprint();
 
-const deviceCheckPromise = fetch(
-  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-device-and-send-verification`,
-  {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify({
-      deviceFingerprint: fingerprint,
-      userAgent: navigator.userAgent,
-      rememberDevice: Boolean(options?.rememberDevice),
-    }),
-  }
-).then(async (response) => {
-  let payload: any = null;
+      const deviceCheckPromise = fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-device-and-send-verification`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            deviceFingerprint: fingerprint,
+            userAgent: navigator.userAgent,
+            rememberDevice: Boolean(options?.rememberDevice),
+          }),
+        }
+      ).then(async (response) => {
+        let payload: any = null;
 
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
+        try {
+          payload = await response.json();
+        } catch {
+          payload = null;
+        }
 
+        return {
+          ok: response.ok,
+          payload,
+        };
+      });
 
-  return {
-    ok: response.ok,
-    payload,
-  };
-});
+      const profilePromise = fetchOrCreateUserProfile(data.user);
 
-const profilePromise = fetchOrCreateUserProfile(data.user).then((profile) => {
-  return profile;
-});
+      const [{ ok, payload: deviceCheck }, profile] = await Promise.all([
+        deviceCheckPromise,
+        profilePromise,
+      ]);
 
-const [{ ok, payload: deviceCheck }, profile] = await Promise.all([
-  deviceCheckPromise,
-  profilePromise,
-]);
+      if (!ok) {
+        pendingDeviceVerificationRef.current = false;
+        await supabase.auth.signOut();
+        return { success: false, error: 'device_check_failed' };
+      }
 
+      if (!deviceCheck?.trusted) {
+        pendingDeviceVerificationRef.current = false;
+        await supabase.auth.signOut();
 
+        return {
+          success: false,
+          error: 'unverified_device',
+          loginRequestId: deviceCheck?.loginRequestId,
+          expiresAt: deviceCheck?.expiresAt,
+        };
+      }
 
-if (!ok) {
-  pendingDeviceVerificationRef.current = false;
-  await supabase.auth.signOut();
-  return { success: false, error: 'device_check_failed' };
-}
+      if (!profile) {
+        pendingDeviceVerificationRef.current = false;
+        await supabase.auth.signOut();
 
-if (!deviceCheck?.trusted) {
-  pendingDeviceVerificationRef.current = false;
-  await supabase.auth.signOut();
+        return {
+          success: false,
+          error: 'account_inactive',
+        };
+      }
 
-  return {
-    success: false,
-    error: 'unverified_device',
-    loginRequestId: deviceCheck?.loginRequestId,
-    expiresAt: deviceCheck?.expiresAt,
-  };
-}
+      const browserSessionId = getLocalActiveSessionId() || crypto.randomUUID();
 
-if (!profile) {
-  pendingDeviceVerificationRef.current = false;
-  await supabase.auth.signOut();
+      const { error: activeSessionError } = await supabase
+        .from('users')
+        .update({
+          active_session_id: browserSessionId,
+          last_login: new Date().toISOString(),
+        })
+        .eq('user_id', data.user.id);
 
-  return {
-    success: false,
-    error: 'account_inactive',
-  };
-}
+      if (activeSessionError) {
+        pendingDeviceVerificationRef.current = false;
+        await supabase.auth.signOut();
+        return { success: false, error: 'device_check_failed' };
+      }
+
+      setLocalActiveSessionId(browserSessionId);
+
+      const nextProfile: User = {
+        ...profile,
+        activeSessionId: browserSessionId,
+        lastLogin: new Date().toISOString(),
+      };
 
       pendingDeviceVerificationRef.current = false;
-      persistUserSession(profile);
+      persistUserSession(nextProfile);
+      writeSharedActivity(Date.now());
 
-      void touchLastLogin(data.user.id);
       void addAuthAuditLog({
         userId: data.user.id,
         action: 'LOGIN',
-        changedFields: ['last_login'],
+        changedFields: ['last_login', 'active_session_id'],
         notes: 'User login via email/password',
       });
 
       void supabase.functions.invoke('record-login-context', {
         body: { email: normalizedEmail },
       });
+
       return { success: true };
     } catch (err) {
       pendingDeviceVerificationRef.current = false;
@@ -1097,9 +1198,11 @@ if (!profile) {
     addAuthAuditLog,
     clearAuthNotice,
     fetchOrCreateUserProfile,
+    getLocalActiveSessionId,
     persistUserSession,
-    touchLastLogin,
+    setLocalActiveSessionId,
     verifyTurnstileToken,
+    writeSharedActivity,
   ]
 );
   const loginWithGoogle = useCallback(async () => {
@@ -1222,7 +1325,7 @@ if (!profile) {
     const currentUserId = activeUserIdRef.current;
     const currentUserEmail = currentUser?.email;
 
-    const shouldClearGreeting = options?.clearGreeting ?? false;
+        const shouldClearGreeting = options?.clearGreeting ?? true;
     const shouldRedirectToLogin = options?.redirectToLogin ?? false;
 
     const isSessionExpiry = expiryLogoutRef.current || /expired/i.test(message ?? '');
@@ -1233,48 +1336,185 @@ if (!profile) {
 
     const isSecurity = /expired|security|ended/i.test(message ?? '');
 
-if (shouldRedirectToLogin && window.location.pathname !== '/login') {
-  window.history.replaceState(null, '', '/login');
-  window.dispatchEvent(new PopStateEvent('popstate'));
-}
+    if (shouldRedirectToLogin && window.location.pathname !== '/login') {
+      window.history.replaceState(null, '', '/login');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
 
-clearUserSession({ clearGreeting: shouldClearGreeting });
-setFormKey((k) => k + 1);
+    clearUserSession({ clearGreeting: shouldClearGreeting });
+    setFormKey((k) => k + 1);
 
-localStorage.setItem(
-  LOGOUT_BROADCAST_KEY,
-  JSON.stringify({
-    at: Date.now(),
-    clearGreeting: shouldClearGreeting,
-  })
-);
+    localStorage.setItem(
+      LOGOUT_BROADCAST_KEY,
+      JSON.stringify({
+        at: Date.now(),
+        clearGreeting: shouldClearGreeting,
+      })
+    );
 
-showIndicator(
-  message
-    ? `${message} at ${getFormattedTime()}`
-    : `Logout${currentUserEmail ? ` by ${currentUserEmail}` : ''} at ${getFormattedTime()}`,
-  isSecurity ? 'security' : 'logout'
-);
+    localStorage.removeItem(LAST_ACTIVITY_AT_KEY);
 
-try {
-  if (currentUserId) {
-    void addAuthAuditLog({
-      userId: currentUserId,
-      action,
-      notes: note,
-    });
-  }
+    showIndicator(
+      message
+        ? `${message} at ${getFormattedTime()}`
+        : `Logout${currentUserEmail ? ` by ${currentUserEmail}` : ''} at ${getFormattedTime()}`,
+      isSecurity ? 'security' : 'logout'
+    );
 
-  await supabase.auth.signOut();
-} catch (err) {
-  console.error('Logout failed:', err);
-} finally {
-  logoutInProgressRef.current = false;
-  expiryLogoutRef.current = false;
-}
+    try {
+      if (currentUserId) {
+        void addAuthAuditLog({
+          userId: currentUserId,
+          action,
+          notes: note,
+        });
+      }
+
+      const localActiveSessionId = getLocalActiveSessionId();
+
+      if (currentUserId && localActiveSessionId) {
+        await supabase
+          .from('users')
+          .update({ active_session_id: null })
+          .eq('user_id', currentUserId)
+          .eq('active_session_id', localActiveSessionId);
+      }
+
+      clearLocalActiveSessionId();
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error('Logout failed:', err);
+    } finally {
+      logoutInProgressRef.current = false;
+      expiryLogoutRef.current = false;
+    }
   },
-  [addAuthAuditLog, clearUserSession, showIndicator]
+  [
+    addAuthAuditLog,
+    clearLocalActiveSessionId,
+    clearUserSession,
+    getLocalActiveSessionId,
+    showIndicator,
+  ]
 );
+
+          // --- SHARED INACTIVITY TIMER ACROSS TABS ---
+  useEffect(() => {
+    if (!user) {
+      clearSessionTimers();
+      setShowSessionWarning(false);
+      setSessionCountdown(0);
+      return;
+    }
+
+    const inactivityLimit = getInactivityLimit(user.role);
+
+    // ensure a shared baseline exists when session starts
+    if (!localStorage.getItem(LAST_ACTIVITY_AT_KEY)) {
+      writeSharedActivity(Date.now());
+    }
+
+    const evaluateSessionState = () => {
+      const lastActivityAt = getStoredLastActivityAt();
+      const now = Date.now();
+      const idleFor = now - lastActivityAt;
+      const timeRemaining = inactivityLimit - idleFor;
+
+      if (timeRemaining <= 0) {
+        if (!logoutInProgressRef.current) {
+          expiryLogoutRef.current = true;
+          void logout('Session expired due to inactivity', {
+            clearGreeting: true,
+            redirectToLogin: true,
+          });
+        }
+        return;
+      }
+
+      if (timeRemaining <= SESSION_WARNING_TIME) {
+        setShowSessionWarning(true);
+        setSessionCountdown(Math.ceil(timeRemaining / 1000));
+      } else {
+        setShowSessionWarning(false);
+        setSessionCountdown(0);
+      }
+    };
+
+    const resetSharedActivity = () => {
+      writeSharedActivity(Date.now());
+      evaluateSessionState();
+    };
+
+    const throttledReset = (() => {
+      let ticking = false;
+
+      return () => {
+        if (ticking) return;
+        ticking = true;
+
+        window.setTimeout(() => {
+          resetSharedActivity();
+          ticking = false;
+        }, 250);
+      };
+    })();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        evaluateSessionState();
+      }
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (
+        event.key === LAST_ACTIVITY_AT_KEY ||
+        event.key === ACTIVITY_BROADCAST_KEY
+      ) {
+        evaluateSessionState();
+      }
+    };
+
+    const events: Array<keyof WindowEventMap> = [
+      'mousedown',
+      'keypress',
+      'scroll',
+      'touchstart',
+      'click',
+    ];
+
+    events.forEach((event) =>
+      window.addEventListener(event, throttledReset, { passive: true })
+    );
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('storage', handleStorage);
+
+    const intervalId = window.setInterval(
+      evaluateSessionState,
+      ACTIVITY_SYNC_TICK_MS
+    );
+
+    evaluateSessionState();
+
+    return () => {
+      clearSessionTimers();
+      window.clearInterval(intervalId);
+      events.forEach((event) =>
+        window.removeEventListener(event, throttledReset)
+      );
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [
+    user,
+    clearSessionTimers,
+    getInactivityLimit,
+    getStoredLastActivityAt,
+    logout,
+    writeSharedActivity,
+    sessionResetKey,
+  ]);
+
 
     useEffect(() => {
   if (!user?.id) return;
@@ -1309,11 +1549,25 @@ try {
         }
 
         const nextUser = mapProfileToUser(nextRow);
+        const localActiveSessionId = getLocalActiveSessionId();
 
-        // keep local session/user in sync immediately
+        if (
+          nextUser.activeSessionId &&
+          localActiveSessionId &&
+          nextUser.activeSessionId !== localActiveSessionId
+        ) {
+          if (!isHandlingForcedLogout) {
+            isHandlingForcedLogout = true;
+            await logout('Your session was ended because your account was opened elsewhere.', {
+              clearGreeting: true,
+              redirectToLogin: true,
+            });
+          }
+          return;
+        }
+
         persistUserSession(nextUser);
 
-        // deactivated by admin
         if (nextUser.isActive === false) {
           if (!isHandlingForcedLogout) {
             isHandlingForcedLogout = true;
@@ -1325,7 +1579,6 @@ try {
           return;
         }
 
-        // role changed while signed in
         if (user.role !== nextUser.role) {
           const nextPath =
             nextUser.role === 'admin' ? '/admin/dashboard' : '/client/dashboard';
@@ -1346,7 +1599,7 @@ try {
   return () => {
     void supabase.removeChannel(channel);
   };
-}, [user?.id, user?.role, logout, persistUserSession]);
+}, [getLocalActiveSessionId, user?.id, user?.role, logout, persistUserSession]);
 
   const updateProfile = useCallback(
   async (userData: Partial<User>): Promise<boolean> => {
