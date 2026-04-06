@@ -8,9 +8,10 @@ const storage =
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
+    storage,
     persistSession: true,
     autoRefreshToken: true,
-    storage,
+    detectSessionInUrl: true, // IMPORTANT
   },
 });
 

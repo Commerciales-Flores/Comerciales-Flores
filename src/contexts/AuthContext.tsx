@@ -253,8 +253,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return role === 'admin' ? ADMIN_INACTIVITY_LIMIT : CLIENT_INACTIVITY_LIMIT;
   }, []);
 
-  const shouldEnforceSingleSession = useCallback((role?: User['role']) => {
-  return role === 'client';
+  const shouldEnforceSingleSession = useCallback((_role?: User['role']) => {
+  return false;
 }, []);
 
     const getLocalActiveSessionId = useCallback(() => {
@@ -476,57 +476,27 @@ const claimBrowserSession = useCallback(
   async (userId: string, profile: User): Promise<User | null> => {
     const nowIso = new Date().toISOString();
 
-    if (!shouldEnforceSingleSession(profile.role)) {
-      const { error } = await supabase
-        .from('users')
-        .update({
-          last_login: nowIso,
-        })
-        .eq('user_id', userId);
-
-      if (error) {
-        console.error('Failed to refresh admin login:', error);
-        return null;
-      }
-
-      clearLocalActiveSessionId();
-
-      return {
-        ...profile,
-        activeSessionId: null,
-        lastLogin: nowIso,
-      };
-    }
-
-    const browserSessionId = getLocalActiveSessionId() || crypto.randomUUID();
-
     const { error } = await supabase
       .from('users')
       .update({
-        active_session_id: browserSessionId,
         last_login: nowIso,
       })
       .eq('user_id', userId);
 
     if (error) {
-      console.error('Failed to claim browser session:', error);
+      console.error('Failed to refresh login:', error);
       return null;
     }
 
-    setLocalActiveSessionId(browserSessionId);
+    clearLocalActiveSessionId();
 
     return {
       ...profile,
-      activeSessionId: browserSessionId,
+      activeSessionId: null,
       lastLogin: nowIso,
     };
   },
-  [
-    clearLocalActiveSessionId,
-    getLocalActiveSessionId,
-    setLocalActiveSessionId,
-    shouldEnforceSingleSession,
-  ]
+  [clearLocalActiveSessionId]
 );
 
     const extendSession = useCallback(() => {
@@ -888,10 +858,9 @@ useEffect(() => {
   return;
 }
 
-        pendingDeviceVerificationRef.current = false;
         persistUserSession(profile);
 
-                pendingDeviceVerificationRef.current = false;
+        pendingDeviceVerificationRef.current = false;
 
         let nextProfile = profile;
         const providerLabel = getAuthProviderLabel(session.user);
@@ -1152,58 +1121,28 @@ type LoginResult = {
         };
       }
 
-      const browserSessionId = getLocalActiveSessionId() || crypto.randomUUID();
-const nowIso = new Date().toISOString();
+      const nowIso = new Date().toISOString();
 
-let nextProfile: User = {
+clearLocalActiveSessionId();
+
+const { error: loginUpdateError } = await supabase
+  .from('users')
+  .update({
+    last_login: nowIso,
+  })
+  .eq('user_id', data.user.id);
+
+if (loginUpdateError) {
+  pendingDeviceVerificationRef.current = false;
+  await supabase.auth.signOut();
+  return { success: false, error: 'device_check_failed' };
+}
+
+const nextProfile: User = {
   ...profile,
+  activeSessionId: null,
   lastLogin: nowIso,
 };
-
-if (shouldEnforceSingleSession(profile.role)) {
-  const { error: activeSessionError } = await supabase
-    .from('users')
-    .update({
-      active_session_id: browserSessionId,
-      last_login: nowIso,
-    })
-    .eq('user_id', data.user.id);
-
-  if (activeSessionError) {
-    pendingDeviceVerificationRef.current = false;
-    await supabase.auth.signOut();
-    return { success: false, error: 'device_check_failed' };
-  }
-
-  setLocalActiveSessionId(browserSessionId);
-
-  nextProfile = {
-    ...profile,
-    activeSessionId: browserSessionId,
-    lastLogin: nowIso,
-  };
-} else {
-  clearLocalActiveSessionId();
-
-  const { error: adminLoginError } = await supabase
-    .from('users')
-    .update({
-      last_login: nowIso,
-    })
-    .eq('user_id', data.user.id);
-
-  if (adminLoginError) {
-    pendingDeviceVerificationRef.current = false;
-    await supabase.auth.signOut();
-    return { success: false, error: 'device_check_failed' };
-  }
-
-  nextProfile = {
-    ...profile,
-    activeSessionId: null,
-    lastLogin: nowIso,
-  };
-}
 
       pendingDeviceVerificationRef.current = false;
       persistUserSession(nextProfile);
@@ -1402,21 +1341,6 @@ if (shouldEnforceSingleSession(profile.role)) {
           action,
           notes: note,
         });
-      }
-
-      const localActiveSessionId = getLocalActiveSessionId();
-
-      if (
-        currentUserId &&
-        currentUser &&
-        shouldEnforceSingleSession(currentUser.role) &&
-        localActiveSessionId
-      ) {
-        await supabase
-          .from('users')
-          .update({ active_session_id: null })
-          .eq('user_id', currentUserId)
-          .eq('active_session_id', localActiveSessionId);
       }
 
       clearLocalActiveSessionId();

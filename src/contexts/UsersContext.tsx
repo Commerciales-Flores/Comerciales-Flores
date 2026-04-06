@@ -329,12 +329,13 @@ export function UsersProvider({ children }: { children: ReactNode }) {
     }
 
     let query = supabase
-      .from('admin_customer_overview')
-      .select(
-        '*',
-        useExactCount ? { count: 'exact' } : { count: 'planned' }
-      )
-      .order('created_at', { ascending: false });
+    .schema('admin')
+    .from('admin_customer_overview')
+    .select(
+      '*',
+      useExactCount ? { count: 'exact' } : { count: 'planned' }
+    )
+    .order('created_at', { ascending: false });
 
     if (normalizedSearch) {
       query = query.or(
