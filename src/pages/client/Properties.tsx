@@ -1841,6 +1841,7 @@ const calendarLegend = (
                 <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
+                  maxLength={100}
                   placeholder="Search units..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -1862,6 +1863,7 @@ const calendarLegend = (
                 <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
+                  maxLength={100}
                   placeholder="Search units..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -2696,6 +2698,7 @@ const calendarLegend = (
                             <input
                               type="text"
                               required
+                              maxLength={50}
                               value={reservationForm.vehicleType}
                               onChange={(e) =>
                                 setReservationForm((prev) => ({
@@ -2715,6 +2718,7 @@ const calendarLegend = (
                             <input
                               type="text"
                               required
+                              maxLength={20}
                               value={reservationForm.plateNumber}
                               onChange={(e) =>
                                 setReservationForm((prev) => ({
@@ -2948,6 +2952,7 @@ const calendarLegend = (
                             <input
                               type="text"
                               required
+                              maxLength={150}
                               value={reservationForm.eventPurpose}
                               onChange={(e) =>
                                 setReservationForm((prev) => ({
@@ -3181,6 +3186,7 @@ const calendarLegend = (
                             <input
                               type="text"
                               required
+                              maxLength={100}
                               value={reservationForm.businessType}
                               onChange={(e) =>
                                 setReservationForm((prev) => ({

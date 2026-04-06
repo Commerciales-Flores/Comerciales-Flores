@@ -17,6 +17,7 @@ type FormFieldProps = {
   autoComplete?: string;
   visible?: boolean;
   onToggleVisibility?: () => void;
+  maxLength?: number;
 };
 
 export default function FormField({
@@ -34,6 +35,7 @@ export default function FormField({
   autoComplete,
   visible = false,
   onToggleVisibility,
+  maxLength,
 }: FormFieldProps) {
   const derivedError = error ?? getFieldError(field, value);
   const inputPadding = icon ? 'pl-10 pr-4' : 'px-4';
@@ -65,6 +67,7 @@ export default function FormField({
             value={value}
             rows={rows}
             disabled={disabled}
+            maxLength={maxLength}
             onChange={(e) => onChange(e.target.value)}
             onBlur={() => onBlur?.(normalizeFieldValue(field, value))}
             placeholder={placeholder}
@@ -76,6 +79,7 @@ export default function FormField({
             value={value}
             disabled={disabled}
             autoComplete={autoComplete}
+            maxLength={maxLength}
             onChange={(e) => onChange(e.target.value)}
             onBlur={() => onBlur?.(normalizeFieldValue(field, value))}
             placeholder={placeholder}

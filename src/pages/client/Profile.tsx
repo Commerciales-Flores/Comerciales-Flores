@@ -880,6 +880,7 @@ className={`mt-5 w-full rounded-2xl border px-4 py-3 text-sm font-semibold min-h
                     >
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <FormField
+                          maxLength={100}
                           field="firstName"
                           label="First Name"
                           value={profileForm.firstName}
@@ -891,6 +892,7 @@ className={`mt-5 w-full rounded-2xl border px-4 py-3 text-sm font-semibold min-h
                         <FormField
                           field="lastName"
                           label="Last Name"
+                          maxLength={100}
                           value={profileForm.lastName}
                           onChange={(v) => handleProfileFieldChange('lastName', v)}
                           icon={<UserIcon className="size-4" />}
@@ -950,6 +952,7 @@ className={`mt-5 w-full rounded-2xl border px-4 py-3 text-sm font-semibold min-h
               <FormField
                 field="newEmail"
                 label="New Email"
+                maxLength={150}
                 type="email"
                 value={emailForm.newEmail}
                 onChange={(v) =>
@@ -965,6 +968,7 @@ className={`mt-5 w-full rounded-2xl border px-4 py-3 text-sm font-semibold min-h
               <FormField
                 field="confirmEmail"
                 label="Confirm New Email"
+                maxLength={150}
                 type="email"
                 value={emailForm.confirmEmail}
                 onChange={(v) =>
@@ -1005,6 +1009,7 @@ className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 tex
 
                         <FormField
                           field="contactNumber"
+                          maxLength={20}
                           label="Phone"
                           type="tel"
                           value={profileForm.contactNumber}
@@ -1141,6 +1146,7 @@ className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 tex
                           onChange={(v) => handlePasswordFieldChange('newPassword', v)}
                           visible={showNewPassword}
                           onToggleVisibility={() => setShowNewPassword((prev) => !prev)}
+                          maxLength={100}
                         />
 
                         <PasswordInput
@@ -1149,6 +1155,7 @@ className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 tex
                           onChange={(v) => handlePasswordFieldChange('confirmPassword', v)}
                           visible={showConfirmPassword}
                           onToggleVisibility={() => setShowConfirmPassword((prev) => !prev)}
+                          maxLength={100}
                         />
                       </div>
 
@@ -1347,12 +1354,14 @@ function PasswordInput({
   onChange,
   visible,
   onToggleVisibility,
+  maxLength = 100,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   visible: boolean;
   onToggleVisibility: () => void;
+  maxLength?: number;
 }) {
   return (
     <div className="space-y-1.5">
@@ -1368,6 +1377,7 @@ function PasswordInput({
         <input
           type={visible ? 'text' : 'password'}
           value={value}
+          maxLength={maxLength}
           onChange={(e) => onChange(e.target.value)}
           className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-12 text-sm text-slate-800 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
         />

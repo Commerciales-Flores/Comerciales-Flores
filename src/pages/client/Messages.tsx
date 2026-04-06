@@ -296,6 +296,7 @@ const TicketDetail = React.memo(function TicketDetail({
           <div className="space-y-3">
             <textarea
               rows={4}
+              maxLength={2000}
               value={replyDraft}
               onChange={(e) => onReplyChange(e.target.value)}
 className="w-full resize-none rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500 sm:text-base"              placeholder="Write your reply here..."
@@ -404,6 +405,7 @@ const TicketComposerModal = React.memo(function TicketComposerModal({
                   <input
                     type="text"
                     required
+                    maxLength={150}
                     value={form.subject}
                     onChange={(e) => onSubjectChange(e.target.value)}
                     className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
@@ -420,6 +422,7 @@ const TicketComposerModal = React.memo(function TicketComposerModal({
                     rows={4}
                     required
                     value={form.message}
+                    maxLength={2000}
                     onChange={(e) => onMessageChange(e.target.value)}
                     className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Tell us more about your concern..."

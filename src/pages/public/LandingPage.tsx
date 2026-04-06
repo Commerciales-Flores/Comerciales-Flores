@@ -869,6 +869,7 @@ export default function LandingPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <input
                   type="text"
+                  maxLength={100}
                   placeholder="First Name"
                   disabled={isSubmittingInquiry}
                   value={inquiryForm.firstName}
@@ -879,6 +880,7 @@ export default function LandingPage() {
 
                 <input
                   type="text"
+                  maxLength={100}
                   placeholder="Last Name"
                   disabled={isSubmittingInquiry}
                   value={inquiryForm.lastName}
@@ -890,6 +892,7 @@ export default function LandingPage() {
 
               <input
                 type="email"
+                maxLength={150}
                 placeholder="Email"
                 value={inquiryForm.email}
                 disabled={isSubmittingInquiry}
@@ -916,6 +919,7 @@ export default function LandingPage() {
 
               <input
                 type="text"
+                maxLength={150}
                 placeholder="Subject"
                 value={inquiryForm.subject}
                 disabled={isSubmittingInquiry}
@@ -926,6 +930,7 @@ export default function LandingPage() {
 
               <textarea
                 placeholder="Message"
+                maxLength={2000}
                 value={inquiryForm.message}
                 disabled={isSubmittingInquiry}
                 onChange={(e) => updateInquiryField("message", e.target.value)}

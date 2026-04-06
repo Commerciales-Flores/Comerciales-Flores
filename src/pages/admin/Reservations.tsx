@@ -633,6 +633,7 @@ const hasMeasuredRef = useRef(false);
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
                 <input
                   type="text"
+                  maxLength={100}
                   placeholder="Search..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -657,6 +658,7 @@ const hasMeasuredRef = useRef(false);
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
                   <input
                     type="text"
+                    maxLength={100}
                     placeholder="Search by ID, Unit, or Customer..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}

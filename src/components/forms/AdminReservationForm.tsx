@@ -75,6 +75,14 @@ const RESERVATION_LIMITS = {
   },
 };
 
+const INPUT_LIMITS = {
+  businessType: 100,
+  eventPurpose: 150,
+  vehicleType: 50,
+  plateNumber: 20,
+  notes: 1000,
+};
+
 function isBlockingReservation(status?: string | null) {
   return BLOCKING_STATUSES.includes(
     (status ?? '') as (typeof BLOCKING_STATUSES)[number]
@@ -852,6 +860,7 @@ export default function AdminReservationForm({
               <input
                 type="text"
                 placeholder="e.g., Retail, Office, Restaurant"
+                maxLength={INPUT_LIMITS.eventPurpose}
                 value={formState.businessType}
                 onChange={(e) =>
                   setFormState((prev) => ({
@@ -1202,6 +1211,7 @@ export default function AdminReservationForm({
                 <FieldLabel>Vehicle Type</FieldLabel>
                 <input
                   type="text"
+                  maxLength={INPUT_LIMITS.vehicleType}
                   placeholder="e.g., Sedan, SUV, Motorcycle"
                   value={formState.vehicleType}
                   onChange={(e) =>
@@ -1220,6 +1230,7 @@ export default function AdminReservationForm({
                 <input
                   type="text"
                   placeholder="e.g., ABC 1234"
+                  maxLength={INPUT_LIMITS.plateNumber}
                   value={formState.plateNumber}
                   onChange={(e) =>
                     setFormState((prev) => ({
@@ -1286,6 +1297,7 @@ export default function AdminReservationForm({
             rows={4}
             placeholder="Add internal notes or reservation remarks..."
             value={formState.notes}
+            maxLength={INPUT_LIMITS.notes}
             onChange={(e) =>
               setFormState((prev) => ({
                 ...prev,

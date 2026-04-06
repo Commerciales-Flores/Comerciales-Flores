@@ -208,7 +208,7 @@ export default function ContactSupportModal({ onClose }: ContactSupportModalProp
                     onChange={(e) =>
                       setFormData((prev) => ({ ...prev, subject: e.target.value }))
                     }
-                    maxLength={120}
+                    maxLength={150}
                     className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none transition-all placeholder:text-gray-400 focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100"
                     placeholder="Example: Partial payment not reflecting"
                     required

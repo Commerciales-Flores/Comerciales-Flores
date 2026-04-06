@@ -883,6 +883,7 @@ export default function AdminProfile() {
                           onChange={(v) => handlePasswordFieldChange('newPassword', v)}
                           visible={showNewPassword}
                           onToggleVisibility={() => setShowNewPassword((prev) => !prev)}
+                          maxLength={100}
                         />
 
                         <PasswordInput
@@ -891,6 +892,7 @@ export default function AdminProfile() {
                           onChange={(v) => handlePasswordFieldChange('confirmPassword', v)}
                           visible={showConfirmPassword}
                           onToggleVisibility={() => setShowConfirmPassword((prev) => !prev)}
+                          maxLength={100}
                         />
                       </div>
 
@@ -1025,12 +1027,14 @@ function PasswordInput({
   onChange,
   visible,
   onToggleVisibility,
+  maxLength = 100,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   visible: boolean;
   onToggleVisibility: () => void;
+  maxLength?: number;
 }) {
   return (
     <div className="space-y-1.5">
@@ -1046,6 +1050,7 @@ function PasswordInput({
         <input
           type={visible ? 'text' : 'password'}
           value={value}
+          maxLength={maxLength}
           onChange={(e) => onChange(e.target.value)}
           className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-12 text-sm text-slate-800 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
         />

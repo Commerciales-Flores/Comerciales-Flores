@@ -379,6 +379,7 @@ export default function AdminPaymentForm({
                   <Landmark className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
+                    maxLength={100}
                     value={formState.bank}
                     onChange={(e) =>
                       setFormState({ ...formState, bank: e.target.value })
@@ -400,6 +401,7 @@ export default function AdminPaymentForm({
                   <CreditCard className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
+                    maxLength={100}
                     value={formState.referenceNumber}
                     onChange={(e) =>
                       setFormState({
@@ -485,6 +487,7 @@ export default function AdminPaymentForm({
             <div className="relative">
               <FileText className="absolute left-3 top-3.5 size-4 text-slate-400" />
               <textarea
+                maxLength={500}
                 value={formState.notes}
                 onChange={(e) =>
                   setFormState({ ...formState, notes: e.target.value })

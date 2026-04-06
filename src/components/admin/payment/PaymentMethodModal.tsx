@@ -271,6 +271,7 @@ export default function PaymentMethodModal({
                 <input
                   type="text"
                   required
+                  maxLength={150}
                   value={form.displayName}
                   onChange={(e) => updateField('displayName', e.target.value)}
                   placeholder="e.g. GCash, BDO Bank Transfer"
@@ -287,6 +288,7 @@ export default function PaymentMethodModal({
                   </label>
                   <input
                     type="text"
+                    maxLength={150}
                     value={form.accountName || ''}
                     onChange={(e) => updateField('accountName', e.target.value)}
                     placeholder="Account holder name"
@@ -300,6 +302,7 @@ export default function PaymentMethodModal({
                   </label>
                   <input
                     type="text"
+                    maxLength={20}
                     value={form.mobileNumber || ''}
                     onChange={(e) => updateField('mobileNumber', e.target.value)}
                     placeholder="e.g. 09171234567"
@@ -318,6 +321,7 @@ export default function PaymentMethodModal({
                     </label>
                     <input
                       type="text"
+                      maxLength={150}
                       value={form.bankName || ''}
                       onChange={(e) => updateField('bankName', e.target.value)}
                       placeholder="e.g. BDO"
@@ -331,6 +335,7 @@ export default function PaymentMethodModal({
                     </label>
                     <input
                       type="text"
+                      maxLength={150}
                       value={form.branchName || ''}
                       onChange={(e) => updateField('branchName', e.target.value)}
                       placeholder="Optional"
@@ -346,6 +351,7 @@ export default function PaymentMethodModal({
                     </label>
                     <input
                       type="text"
+                      maxLength={150}
                       value={form.accountName || ''}
                       onChange={(e) => updateField('accountName', e.target.value)}
                       placeholder="Account holder name"
@@ -359,6 +365,7 @@ export default function PaymentMethodModal({
                     </label>
                     <input
                       type="text"
+                      maxLength={150}
                       value={form.accountNumber || ''}
                       onChange={(e) => updateField('accountNumber', e.target.value)}
                       placeholder="Bank account number"
@@ -374,7 +381,8 @@ export default function PaymentMethodModal({
                 Instructions
               </label>
               <textarea
-                rows={4}
+                rows={5}
+                maxLength={3000}
                 value={form.instructions || ''}
                 onChange={(e) => updateField('instructions', e.target.value)}
                 placeholder="Tell clients what to do after sending payment."

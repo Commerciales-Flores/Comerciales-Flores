@@ -303,6 +303,7 @@ function EmptyThreadState({
             </label>
             <input
               type="text"
+              maxLength={150}
               value={draftSubject}
               onChange={(e) => onSubjectChange(e.target.value)}
               className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition-all focus:border-blue-300 focus:ring-2 focus:ring-blue-500"
@@ -316,6 +317,7 @@ function EmptyThreadState({
             </label>
             <textarea
               rows={6}
+              maxLength={2000}
               value={draftMessage}
               onChange={(e) => onMessageChange(e.target.value)}
               className="w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition-all focus:border-blue-300 focus:ring-2 focus:ring-blue-500"
@@ -1068,6 +1070,7 @@ const hasNoSearchResults =
                   type="text"
                   placeholder="Search contacts by name, email, or ID..."
                   value={searchTerm}
+                  maxLength={100}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
                 />
@@ -1366,6 +1369,7 @@ const hasNoSearchResults =
 
                         <textarea
                           rows={4}
+                          maxLength={2000}
                           value={currentReply}
                           onChange={(e) =>
                             selectedTicket &&

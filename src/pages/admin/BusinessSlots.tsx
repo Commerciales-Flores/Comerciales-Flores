@@ -62,6 +62,20 @@ const INITIAL_FORM_STATE = {
   contractFileName: '',
 };
 
+const INPUT_LIMITS = {
+  unitName: 100,
+  description: 2000,
+  policies: 3000,
+  features: 500,
+  location: 100,
+  propertyId: 100,
+  contractFileName: 255,
+  slotCode: 20,
+  slotLabel: 100,
+  slotVehicleType: 50,
+  slotNotes: 500,
+};
+
 const INITIAL_SLOT_FORM = {
   slotCode: '',
   label: '',
@@ -443,7 +457,26 @@ const UnitFormModal = React.memo(function UnitFormModal({
     key: K,
     value: (typeof INITIAL_FORM_STATE)[K]
   ) => {
-    setUnitForm((prev) => ({ ...prev, [key]: value }));
+    let nextValue = value;
+
+    if (typeof nextValue === 'string') {
+      const limitMap: Partial<Record<keyof typeof INITIAL_FORM_STATE, number>> = {
+        name: INPUT_LIMITS.unitName,
+        description: INPUT_LIMITS.description,
+        policies: INPUT_LIMITS.policies,
+        features: INPUT_LIMITS.features,
+        location: INPUT_LIMITS.location,
+        propertyId: INPUT_LIMITS.propertyId,
+        contractFileName: INPUT_LIMITS.contractFileName,
+      };
+
+      const max = limitMap[key];
+      if (max) {
+        nextValue = nextValue.slice(0, max) as (typeof INITIAL_FORM_STATE)[K];
+      }
+    }
+
+    setUnitForm((prev) => ({ ...prev, [key]: nextValue }));
     setFormError(null);
   },
   []
@@ -895,6 +928,7 @@ const [formError, setFormError] = useState<string | null>(null);
                 id="name"
                 type="text"
                 required
+                maxLength={INPUT_LIMITS.unitName}
                 value={unitForm.name}
                 onChange={(e) => updateFormField('name', e.target.value)}
                 placeholder="Enter unit name"
@@ -1079,6 +1113,7 @@ const [formError, setFormError] = useState<string | null>(null);
               id="description"
               required
               rows={4}
+              maxLength={INPUT_LIMITS.description}
               value={unitForm.description}
               onChange={(e) => updateFormField('description', e.target.value)}
               placeholder="Describe the unit..."
@@ -1201,6 +1236,7 @@ const [formError, setFormError] = useState<string | null>(null);
               id="features"
               type="text"
               placeholder="WiFi, Aircon, Parking, Stage"
+              maxLength={INPUT_LIMITS.features}
               value={unitForm.features}
               onChange={(e) => updateFormField('features', e.target.value)}
               className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
@@ -1216,6 +1252,7 @@ const [formError, setFormError] = useState<string | null>(null);
             </label>
             <textarea
               id="policies"
+              maxLength={INPUT_LIMITS.policies}
               required
               rows={3}
               value={unitForm.policies}
@@ -1776,6 +1813,7 @@ const SlotManagerModal = React.memo(function SlotManagerModal({
                     <input
                       type="text"
                       required
+                      maxLength={INPUT_LIMITS.slotCode}
                       value={slotForm.slotCode}
                       onChange={(e) => onSlotFieldChange('slotCode', e.target.value)}
                       placeholder="e.g. A1"
@@ -1789,6 +1827,7 @@ const SlotManagerModal = React.memo(function SlotManagerModal({
                     </label>
                     <input
                       type="text"
+                      maxLength={INPUT_LIMITS.slotLabel}
                       value={slotForm.label}
                       onChange={(e) => onSlotFieldChange('label', e.target.value)}
                       placeholder="Optional display name"
@@ -1822,6 +1861,7 @@ const SlotManagerModal = React.memo(function SlotManagerModal({
                     </label>
                     <input
                       type="text"
+                      maxLength={INPUT_LIMITS.slotVehicleType}
                       value={slotForm.vehicleType}
                       onChange={(e) => onSlotFieldChange('vehicleType', e.target.value)}
                       placeholder="e.g. Car, SUV, Motorcycle"
@@ -1907,6 +1947,7 @@ const SlotManagerModal = React.memo(function SlotManagerModal({
                   <textarea
                     rows={3}
                     value={slotForm.notes}
+                    maxLength={INPUT_LIMITS.slotNotes}
                     onChange={(e) => onSlotFieldChange('notes', e.target.value)}
                     placeholder="Optional notes for this slot"
                     className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-orange-500 focus:bg-white focus:ring-4 focus:ring-orange-50"
@@ -2484,12 +2525,32 @@ const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'available'
     setShowSlotManager(false);
   }, [isSavingSlot, isDeletingSlot, resetSlotForm]);
 
-  const updateSlotFormField = useCallback(
-    <K extends keyof typeof INITIAL_SLOT_FORM>(key: K, value: (typeof INITIAL_SLOT_FORM)[K]) => {
-      setSlotForm((prev) => ({ ...prev, [key]: value }));
-    },
-    []
-  );
+ const updateSlotFormField = useCallback(
+  <K extends keyof typeof INITIAL_SLOT_FORM>(
+    key: K,
+    value: (typeof INITIAL_SLOT_FORM)[K]
+  ) => {
+    let nextValue = value;
+
+    if (typeof nextValue === 'string') {
+      const limitMap: Partial<Record<keyof typeof INITIAL_SLOT_FORM, number>> = {
+        slotCode: INPUT_LIMITS.slotCode,
+        label: INPUT_LIMITS.slotLabel,
+        vehicleType: INPUT_LIMITS.slotVehicleType,
+        notes: INPUT_LIMITS.slotNotes,
+      };
+
+      const max = limitMap[key];
+      if (max) {
+        nextValue = nextValue.slice(0, max) as (typeof INITIAL_SLOT_FORM)[K];
+      }
+    }
+
+    setSlotForm((prev) => ({ ...prev, [key]: nextValue }));
+    setSlotError(null);
+  },
+  []
+);
 
   const handleSlotImageSelected = useCallback(
     async (fileList: FileList | null) => {

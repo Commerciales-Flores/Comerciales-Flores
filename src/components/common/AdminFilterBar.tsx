@@ -37,6 +37,7 @@ export default function AdminFilterBar({
             <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
+              maxLength={100}
               value={searchTerm}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder={placeholder}

@@ -308,6 +308,7 @@ const clampToPhilippines = (lat: number, lng: number): [number, number] => {
             <div className="relative flex-1">
               <input
                 type="text"
+                maxLength={300}
                 value={query}
                 onChange={(e) => {
                   setQuery(e.target.value);

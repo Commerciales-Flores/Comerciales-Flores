@@ -761,6 +761,7 @@ useEffect(() => {
                         name="email"
                         type="email"
                         required
+                        maxLength={150}
                         ref={emailRef}
                         autoComplete="email"
                         value={formData.email}
@@ -786,6 +787,7 @@ useEffect(() => {
                         name="password"
                         type={showPassword ? 'text' : 'password'}
                         required
+                        maxLength={100}
                         ref={passRef}
                         autoComplete="current-password"
                         value={formData.password}
@@ -988,6 +990,7 @@ useEffect(() => {
                   type="email"
                   required
                   value={recoveryEmail}
+                  maxLength={150}
                   onChange={(e) => setRecoveryEmail(e.target.value)}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm font-medium text-slate-900 outline-none transition-all placeholder:text-slate-300 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
                   placeholder="you@example.com"

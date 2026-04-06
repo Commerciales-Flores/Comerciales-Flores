@@ -124,6 +124,7 @@ export default function ResetPassword() {
                   <LockKeyhole className="size-5 text-gray-400 transition-colors group-focus-within:text-blue-600" />
                   <input
                     type="password"
+                    maxLength={100}
                     placeholder="Enter new password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -147,6 +148,7 @@ export default function ResetPassword() {
                   <ShieldCheck className="size-5 text-gray-400 transition-colors group-focus-within:text-blue-600" />
                   <input
                     type="password"
+                    maxLength={100}
                     placeholder="Confirm new password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}

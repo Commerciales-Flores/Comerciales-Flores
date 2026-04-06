@@ -1611,6 +1611,7 @@ const hasNoSearchResults =
                     <input
                       type="text"
                       placeholder="John"
+                      maxLength={100}
                       value={newCustomer.first_name}
                       onChange={(e) => updateNewCustomerField('first_name', e.target.value)}
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
@@ -1624,6 +1625,7 @@ const hasNoSearchResults =
                     <input
                       type="text"
                       placeholder="Doe"
+                      maxLength={100}
                       value={newCustomer.last_name}
                       onChange={(e) => updateNewCustomerField('last_name', e.target.value)}
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
@@ -1636,6 +1638,7 @@ const hasNoSearchResults =
                     </label>
                     <input
                       type="email"
+                      maxLength={150}
                       autoComplete="off"
                       placeholder="customer@example.com"
                       value={newCustomer.email}
@@ -1651,6 +1654,7 @@ const hasNoSearchResults =
                     <input
                       type="tel"
                       placeholder="+63 9xx..."
+                      maxLength={20}
                       value={newCustomer.contactNumber}
                       onChange={(e) => updateNewCustomerField('contactNumber', e.target.value)}
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
@@ -1663,6 +1667,7 @@ const hasNoSearchResults =
                     </label>
                     <textarea
                       placeholder="House No., Street, City"
+                      maxLength={300}
                       value={newCustomer.address}
                       onChange={(e) => updateNewCustomerField('address', e.target.value)}
                       className="h-20 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"

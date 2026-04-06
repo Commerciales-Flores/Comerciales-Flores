@@ -573,6 +573,7 @@ const shouldShowFilters =
                   <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
                   <input
                     type="text"
+                    maxLength={100}
                     placeholder="Search by payment ID, reservation ID, user ID, customer, or category..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -1245,7 +1246,19 @@ const shouldShowFilters =
                       max={refundPayment.remainingRefundableAmount}
                       step="0.01"
                       value={refundAmount}
-                      onChange={(e) => setRefundAmount(e.target.value)}
+                      onChange={(e) => {
+                        let value = e.target.value;
+
+                        // allow only 10 digits + 2 decimals
+                        if (!/^\d{0,10}(\.\d{0,2})?$/.test(value)) return;
+
+                        // clamp to max refundable
+                        if (Number(value) > refundPayment.remainingRefundableAmount) {
+                          value = String(refundPayment.remainingRefundableAmount);
+                        }
+
+                        setRefundAmount(value);
+                      }}
                       className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-100"
                       placeholder="Enter refund amount"
                     />
@@ -1260,6 +1273,7 @@ const shouldShowFilters =
                       Reason / Notes
                     </label>
                     <textarea
+                    maxLength={500}
                       value={refundNotes}
                       onChange={(e) => setRefundNotes(e.target.value)}
                       rows={4}

@@ -452,6 +452,13 @@ const getReservationRemainingFromLedger = useCallback(
         });
         return;
       }
+      if (file.size > 5 * 1024 * 1024) {
+        setNotice({
+          message: 'File must be under 5MB.',
+          variant: 'warning',
+        });
+        return;
+      }
 
       setProofFile(file);
 
@@ -650,7 +657,7 @@ const rentalRequiredPayment = useMemo(() => {
       const ledgerEntry = ledgerByPaymentId.get(payment.id);
 
       if (!ledgerEntry) {
-        setNotice({
+        setNotice({ 
           message:
             'Invoice is not available yet. It can be downloaded once this payment has been verified.',
           variant: 'info',
@@ -1029,6 +1036,7 @@ Thank you for your payment.
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                     <input
                       type="text"
+                      maxLength={100}
                       placeholder="Search by reservation, amount, method..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -1446,12 +1454,17 @@ Thank you for your payment.
                           step="0.01"
                           max={selectedReservationBalance}
                           value={paymentForm.amount}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            const value = e.target.value;
+
+                            // Limit to 10 digits + 2 decimals (e.g. 9999999999.99)
+                            if (!/^\d{0,10}(\.\d{0,2})?$/.test(value)) return;
+
                             setPaymentForm((prev) => ({
                               ...prev,
-                              amount: e.target.value,
-                            }))
-                          }
+                              amount: value,
+                            }));
+                          }}
                           className={`w-full rounded-2xl border border-slate-300 py-3 pl-10 pr-4 text-sm sm:text-base outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
                           placeholder="0.00"
                         />
@@ -1624,6 +1637,7 @@ Thank you for your payment.
                         Notes (Optional)
                       </label>
                       <textarea
+                      maxLength={500}
                         value={paymentForm.notes}
                         onChange={(e) =>
                           setPaymentForm((prev) => ({

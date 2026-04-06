@@ -297,6 +297,7 @@ export default function Register() {
                   placeholder="Juan"
                   error={errors.firstName}
                   autoComplete="given-name"
+                  maxLength={100}
                 />
 
                 <FormField
@@ -308,6 +309,7 @@ export default function Register() {
                   placeholder="Dela Cruz"
                   error={errors.lastName}
                   autoComplete="family-name"
+                  maxLength={100}
                 />
               </div>
 
@@ -321,6 +323,7 @@ export default function Register() {
                 placeholder="john@example.com"
                 error={errors.email}
                 autoComplete="email"
+                maxLength={150}
               />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -334,6 +337,7 @@ export default function Register() {
                   placeholder="+63 9xx... (Optional)"
                   error={errors.contactNumber}
                   autoComplete="tel"
+                  maxLength={20}
                 />
 
                 <div className="space-y-1.5">
@@ -397,6 +401,7 @@ export default function Register() {
                   <div className="relative">
                     <input
                       name="new-password"
+                      maxLength={100}
                       type={showPassword ? 'text' : 'password'}
                       autoComplete="new-password"
                       value={formData.password}
@@ -444,6 +449,7 @@ export default function Register() {
                   <div className="relative">
                     <input
                       name="confirm-password"
+                      maxLength={100}
                       type={showConfirmPassword ? 'text' : 'password'}
                       autoComplete="new-password"
                       value={formData.confirmPassword}

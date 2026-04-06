@@ -1050,7 +1050,14 @@ const [isDeletingReservation, setIsDeletingReservation] = useState(false);
                         type="number"
                         min={1}
                         value={extensionMonths}
-                        onChange={(e) => setExtensionMonths(e.target.value)}
+                        onChange={(e) => {
+                          let value = e.target.value;
+
+                          // allow only up to 2 digits (e.g. 12, 24, 36)
+                          value = value.replace(/\D/g, '').slice(0, 2);
+
+                          setExtensionMonths(value);
+                        }}
                         className="w-full rounded-2xl border border-gray-300 px-4 py-3 min-h-[44px] text-sm outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
                         placeholder="Enter number of months"
                       />
