@@ -202,12 +202,12 @@ function getLedgerMeaningFromCategory(category?: PaymentCategory | null): {
 
 async function getReservationLedgerNetPaid(
   admin: ReturnType<typeof createClient>,
-  reservationId: string,
+  effectiveReservationId: string,
 ) {
   const { data, error } = await admin
     .from('ledger')
     .select('entry_type, deposit_type, amount')
-    .eq('reservation_id', reservationId);
+    .eq('reservation_id', effectiveReservationId);
 
   if (error) throw error;
 
@@ -248,8 +248,14 @@ async function getReservationLedgerNetPaid(
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+  return new Response(null, {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      'Content-Length': '0',
+    },
+  });
+}
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -276,30 +282,42 @@ serve(async (req) => {
     const body = await req.json();
 
     const {
-      reservationId,
-      amount,
-      method,
-      status,
-      proofOfPayment = null,
-      notes = null,
-      paymentMethodId = null,
-      paymentMethodSnapshot = null,
-      category = 'payment',
-      paymentId = null,
-    }: {
-      reservationId: string;
-      amount: number;
-      method: PaymentMethod;
-      status: PaymentStatus;
-      proofOfPayment?: string | null;
-      notes?: string | null;
-      paymentMethodId?: string | null;
-      paymentMethodSnapshot?: Record<string, unknown> | null;
-      category?: PaymentCategory;
-      paymentId?: string | null;
-    } = body;
+  effectiveReservationId: bodyReservationId,
+  amount,
+  method,
+  status,
+  proofOfPayment = null,
+  notes = null,
+  paymentMethodId = null,
+  paymentMethodSnapshot = null,
+  category = 'payment',
+  paymentId = null,
+}: {
+  effectiveReservationId: string | null;
+  amount: number;
+  method: PaymentMethod;
+  status: PaymentStatus;
+  proofOfPayment?: string | null;
+  notes?: string | null;
+  paymentMethodId?: string | null;
+  paymentMethodSnapshot?: Record<string, unknown> | null;
+  category?: PaymentCategory;
+  paymentId?: string | null;
+} = body;
 
-    if (!reservationId) {
+let effectiveReservationId = bodyReservationId;
+
+    if (!effectiveReservationId && paymentId) {
+      const { data: existing } = await admin
+        .from('payments')
+        .select('reservation_id')
+        .eq('payment_id', paymentId)
+        .maybeSingle();
+
+      effectiveReservationId = existing?.reservation_id ?? null;
+    }
+
+    if (!effectiveReservationId) {
       return json(400, { success: false, error: 'Reservation is required.' });
     }
 
@@ -324,7 +342,7 @@ serve(async (req) => {
         minimum_payment_percent_snapshot,
         details
       `)
-      .eq('reservation_id', reservationId)
+      .eq('reservation_id', effectiveReservationId)
       .maybeSingle<ReservationRow>();
 
     if (reservationError || !reservation) {
@@ -332,7 +350,7 @@ serve(async (req) => {
     }
 
     const depositPayment = isDepositCategory(category);
-    const ledgerPaid = await getReservationLedgerNetPaid(admin, reservationId);
+    const ledgerPaid = await getReservationLedgerNetPaid(admin, effectiveReservationId);
     const remaining = clampMoney(Number(reservation.total_amount) - ledgerPaid);
 
     if (!depositPayment && submittedAmount > remaining) {
@@ -374,7 +392,7 @@ serve(async (req) => {
         .insert([
           {
             user_id: reservation.user_id,
-            reservation_id: reservationId,
+            reservation_id: effectiveReservationId,
             amount: submittedAmount,
             method,
             status,

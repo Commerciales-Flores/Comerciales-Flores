@@ -374,52 +374,37 @@ const shouldShowFilters =
   !isTableLoading && (!hasNoPayments || hasActiveFilters);
 
   const handleVerify = useCallback(
-    async (payment: PaymentView) => {
-      try {
-        await updatePayment(payment.id, { status: 'paid' });
+  async (payment: PaymentView) => {
+    try {
+      console.log('handleVerify clicked', payment);
 
-        await sendPaymentNotification({
-          userId: payment.userId,
-          paymentPublicId: payment.publicId || payment.id,
-          amount: payment.amount,
-        });
+      const original = payments.find((p) => p.id === payment.id);
+      console.log('original before updatePayment', original);
 
-        setSelectedPayment(null);
-
-        const result = await fetchPaymentsPage({
-          page,
-          pageSize,
-          status: filterStatus,
-          searchTerm: debouncedSearch,
-        });
-
-        setPayments(result.data);
-        setTotalCount(result.count);
-      } catch (error) {
-        console.error('Failed to verify payment:', error);
-        setNotice({
-          message:
-            error instanceof Error
-              ? error.message
-              : 'Failed to verify payment. Please review the payment rules and try again.',
-          variant: 'error',
-        });
+      if (!original?.reservationId) {
+        throw new Error('Reservation is required.');
       }
-    },
-    [
-      updatePayment,
-      sendPaymentNotification,
-      fetchPaymentsPage,
-      page,
-      pageSize,
-      filterStatus,
-      debouncedSearch,
-    ]
-  );
 
-  const handleReject = useCallback(
-    async (paymentId: string) => {
-      await updatePayment(paymentId, { status: 'unpaid' });
+      if (!Number.isFinite(Number(original.amount)) || Number(original.amount) <= 0) {
+        throw new Error('Payment amount must be greater than zero.');
+      }
+
+      await updatePayment(payment.id, {
+        reservationId: original.reservationId,
+        amount: Number(original.amount),
+        method: original.method,
+        status: 'paid',
+        proofOfPayment: original.proofOfPayment ?? undefined,
+        notes: original.notes ?? undefined,
+        category: original.category ?? 'payment',
+      });
+
+      await sendPaymentNotification({
+        userId: payment.userId,
+        paymentPublicId: payment.publicId || payment.id,
+        amount: Number(original.amount),
+      });
+
       setSelectedPayment(null);
 
       const result = await fetchPaymentsPage({
@@ -431,9 +416,66 @@ const shouldShowFilters =
 
       setPayments(result.data);
       setTotalCount(result.count);
-    },
-    [updatePayment, fetchPaymentsPage, page, pageSize, filterStatus, debouncedSearch]
-  );
+    } catch (error) {
+      console.error('Failed to verify payment:', error);
+      setNotice({
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to verify payment. Please review the payment rules and try again.',
+        variant: 'error',
+      });
+    }
+  },
+  [
+    payments,
+    updatePayment,
+    sendPaymentNotification,
+    fetchPaymentsPage,
+    page,
+    pageSize,
+    filterStatus,
+    debouncedSearch,
+  ]
+);
+
+  const handleReject = useCallback(
+  async (payment: PaymentView) => {
+    try {
+      await updatePayment(payment.id, {
+        reservationId: payment.reservationId ?? selectedPaymentData?.reservationId,
+        amount: payment.amount,
+        method: payment.method,
+        status: 'unpaid',
+        proofOfPayment: payment.proofOfPayment,
+        notes: payment.notes,
+        category: payment.category ?? 'payment',
+      });
+
+      setSelectedPayment(null);
+
+      const result = await fetchPaymentsPage({
+        page,
+        pageSize,
+        status: filterStatus,
+        searchTerm: debouncedSearch,
+      });
+
+      setPayments(result.data);
+      setTotalCount(result.count);
+    } catch (error) {
+      console.error('Failed to reject payment:', error);
+      setNotice({
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Failed to reject payment.',
+        variant: 'error',
+      });
+    }
+  },
+  [updatePayment, fetchPaymentsPage, page, pageSize, filterStatus, debouncedSearch]
+);
 
   const openRefundModal = useCallback((payment: PaymentView) => {
     setRefundPayment(payment);
@@ -604,14 +646,17 @@ const shouldShowFilters =
 
                 <div className="flex gap-2 lg:hidden">
                   <button
-                    onClick={() => setShowMobileFilters((prev) => !prev)}
-                    className={`rounded-xl border p-2.5 transition ${
+                    onClick={() => setShowMobileFilters(true)}
+                    className={`relative rounded-2xl border p-3 transition ${
                       showMobileFilters
-                        ? 'border-blue-600 bg-blue-600 text-white'
-                        : 'border-gray-300 bg-white text-gray-600'
+                        ? 'border-blue-300 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 bg-white text-gray-600 shadow-sm'
                     }`}
                   >
                     <SlidersHorizontal className="size-5" />
+                    {filterStatus !== 'all' && (
+                      <span className="absolute right-2 top-2 size-2.5 rounded-full border-2 border-white bg-blue-600" />
+                    )}
                   </button>
 
                   <button
@@ -657,29 +702,69 @@ const shouldShowFilters =
               )}
 
               <AnimatePresence>
-                {showMobileFilters && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -8 }}
-                    className="grid grid-cols-2 gap-2 pt-1 lg:hidden"
-                  >
-                    {filterOptions.map((status) => (
-                      <button
-                        key={status}
-                        onClick={() => setFilterStatus(status)}
-                        className={`rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
-                          filterStatus === status
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-gray-50 text-gray-600'
-                        }`}
-                      >
-                        {getStatusLabel(status)}
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
+  {showMobileFilters && (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[60] flex items-end justify-center lg:hidden"
+    >
+      <button
+        className="absolute inset-0 bg-gray-900/40"
+        onClick={() => setShowMobileFilters(false)}
+        aria-label="Close payment filters"
+      />
+
+      <motion.div
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ duration: 0.28, ease: 'easeOut' }}
+        className="relative w-full rounded-t-3xl bg-white p-6 shadow-xl"
+      >
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">Filter by Status</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Filter payments by current payment status.
+            </p>
+          </div>
+
+          <button
+            onClick={() => setShowMobileFilters(false)}
+            className="rounded-full bg-gray-100 p-2"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          {filterOptions.map((status) => (
+            <button
+              key={status}
+              onClick={() => {
+                setFilterStatus(status);
+                setShowMobileFilters(false);
+              }}
+              className={`w-full rounded-2xl border-2 px-6 py-4 text-left font-semibold transition-all ${
+                filterStatus === status
+                  ? 'border-blue-600 bg-blue-50 text-blue-700'
+                  : 'border-gray-100 bg-gray-50 text-gray-600'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span>{getStatusLabel(status)}</span>
+                <span className="text-sm opacity-80">
+                  ({paymentCounts[status]})
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      </motion.div>
+    </motion.div>
+  )}
+</AnimatePresence>
             </div>
           </div>
         )}
@@ -807,7 +892,7 @@ const shouldShowFilters =
                       </button>
 
                       <button
-                        onClick={() => handleReject(payment.id)}
+                        onClick={() => handleReject(payment)}
                         className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-rose-50 px-3 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-100"
                       >
                         <XCircle className="size-4" />
@@ -1000,7 +1085,7 @@ const shouldShowFilters =
                         </button>
 
                         <button
-                          onClick={() => handleReject(payment.id)}
+                          onClick={() => handleReject(payment)}
                           className="rounded-lg p-2 text-rose-600 transition hover:bg-rose-50"
                           title="Reject"
                         >
@@ -1199,7 +1284,7 @@ const shouldShowFilters =
                   {selectedPaymentData.status === 'unpaid' && (
                     <div className="flex gap-3 border-t border-gray-200 pt-4">
                       <button
-                        onClick={() => handleReject(selectedPaymentData.id)}
+                        onClick={() => handleReject(selectedPaymentData)}
                         className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-white transition hover:bg-rose-700"
                       >
                         <XCircle className="size-5" />

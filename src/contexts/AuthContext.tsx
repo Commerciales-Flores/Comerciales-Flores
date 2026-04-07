@@ -578,6 +578,7 @@ const claimBrowserSession = useCallback(
         const phone = normalizePHPhone(meta.phone || '');
         const address = normalizeAddress(meta.address || '');
 
+        // Check whether a profile already exists for this email
         const { data: existingByEmail, error: existingByEmailError } = await supabase
           .from('users')
           .select(USER_SELECT)
@@ -589,41 +590,55 @@ const claimBrowserSession = useCallback(
           return null;
         }
 
-        if (existingByEmail && existingByEmail.user_id !== authUser.id) {
-          const providerLabel = getAuthProviderLabel(authUser);
+        if (existingByEmail) {
+          // If Supabase auto-linked identities correctly, authUser.id should now be the same user.
+          // But if the public profile still points to an old auth user_id, reattach it safely.
+          if (existingByEmail.user_id !== authUser.id) {
+            const { data: migratedRow, error: migrateError } = await supabase
+              .from('users')
+              .update({
+                user_id: authUser.id,
+                email,
+                first_name: firstName || existingByEmail.first_name,
+                last_name: lastName || existingByEmail.last_name,
+                phone: phone || existingByEmail.phone,
+                address: address || existingByEmail.address,
+                profile_picture_url:
+                  meta.avatar_url || meta.picture || existingByEmail.profile_picture_url || null,
+              })
+              .eq('user_id', existingByEmail.user_id)
+              .select(USER_SELECT)
+              .single();
 
-          setAuthNotice({
-            code: 'oauth_same_email_existing_account',
-            email,
-            provider: providerLabel,
-            createdAt: new Date().toISOString(),
-          });
+            if (migrateError || !migratedRow) {
+              console.error('Failed to reattach existing profile to linked auth user:', migrateError);
+              return null;
+            }
 
-          console.warn(
-            'OAuth email matches an existing account. Refusing to create duplicate profile.'
-          );
+            data = migratedRow;
+          } else {
+            data = existingByEmail;
+          }
+        } else {
+          const insertResult = await supabase
+            .from('users')
+            .insert({
+              user_id: authUser.id,
+              email,
+              first_name: firstName,
+              last_name: lastName,
+              role: 'client',
+              phone,
+              address,
+              is_active: true,
+              profile_picture_url: meta.avatar_url || meta.picture || null,
+            })
+            .select(USER_SELECT)
+            .single();
 
-          return null;
+          data = insertResult.data;
+          error = insertResult.error;
         }
-
-        const insertResult = await supabase
-          .from('users')
-          .insert({
-            user_id: authUser.id,
-            email,
-            first_name: firstName,
-            last_name: lastName,
-            role: 'client',
-            phone,
-            address,
-            is_active: true,
-            profile_picture_url: meta.avatar_url || meta.picture || null,
-          })
-          .select(USER_SELECT)
-          .single();
-
-        data = insertResult.data;
-        error = insertResult.error;
       }
 
       if (error || !data) {
@@ -642,7 +657,71 @@ const claimBrowserSession = useCallback(
       return null;
     }
   },
-  [clearAuthNotice, getAuthProviderLabel, setAuthNotice]
+  [clearAuthNotice]
+);
+
+const verifyCurrentSessionDevice = useCallback(
+  async (
+    accessToken: string,
+    options?: { rememberDevice?: boolean }
+  ): Promise<
+    | { ok: true }
+    | {
+        ok: false;
+        error: 'device_check_failed' | 'unverified_device';
+        loginRequestId?: string;
+        expiresAt?: string;
+      }
+  > => {
+    try {
+      const fingerprint = getDeviceFingerprint();
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-device-and-send-verification`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            deviceFingerprint: fingerprint,
+            userAgent: navigator.userAgent,
+            rememberDevice: Boolean(options?.rememberDevice),
+          }),
+        }
+      );
+
+      let payload: any = null;
+      try {
+        payload = await response.json();
+      } catch {
+        payload = null;
+      }
+
+      console.log('Device verify payload:', payload);
+
+      if (!response.ok) {
+        return { ok: false, error: 'device_check_failed' };
+      }
+
+      if (!payload?.trusted) {
+        return {
+          ok: false,
+          error: 'unverified_device',
+          loginRequestId: payload?.loginRequestId,
+          expiresAt: payload?.expiresAt,
+        };
+      }
+
+      return { ok: true };
+    } catch (error) {
+      console.error('Device verification failed:', error);
+      return { ok: false, error: 'device_check_failed' };
+    }
+  },
+  []
 );
 
   // --- INITIAL APP BOOTSTRAP ---
@@ -668,73 +747,107 @@ useEffect(() => {
         return;
       }
 
-      const oauthPending = isOAuthFlowPending();
       const profile = await fetchOrCreateUserProfile(session.user);
-      const localActiveSessionId = getLocalActiveSessionId();
-      const cachedRaw = sessionStorage.getItem(STORAGE_KEY);
-      const cachedUser = cachedRaw ? (JSON.parse(cachedRaw) as User) : null;
+const localActiveSessionId = getLocalActiveSessionId();
+const cachedRaw = sessionStorage.getItem(STORAGE_KEY);
+const cachedUser = cachedRaw ? (JSON.parse(cachedRaw) as User) : null;
 
-      if (!isMountedRef.current) return;
+if (!isMountedRef.current) return;
 
-      if (!profile) {
-        await supabase.auth.signOut();
-        clearUserSession({ clearGreeting: true });
-        clearLocalActiveSessionId();
-        clearOAuthFlowPending();
-        return;
-      }
+if (!profile) {
+  await supabase.auth.signOut();
+  clearUserSession({ clearGreeting: true });
+  clearLocalActiveSessionId();
+  clearOAuthFlowPending();
+  return;
+}
 
-      // hard guard: browser auth changed to a different account
-      if (cachedUser && cachedUser.id !== profile.id) {
-        await handleForeignSession(
-          'SYSTEM ALERT: This browser was signed in as a different account. Please sign in again.'
-        );
-        clearOAuthFlowPending();
-        return;
-      }
+// hard guard: browser auth changed to a different account
+if (cachedUser && cachedUser.id !== profile.id) {
+  await handleForeignSession(
+    'SYSTEM ALERT: This browser was signed in as a different account. Please sign in again.'
+  );
+  clearOAuthFlowPending();
+  return;
+}
 
-      // same account, but another browser/device owns it now
-      if (
-        shouldEnforceSingleSession(profile.role) &&
-        profile.activeSessionId &&
-        localActiveSessionId &&
-        profile.activeSessionId !== localActiveSessionId
-      ) {
-        await handleForeignSession(
-          'SYSTEM ALERT: Your session was ended because your account was opened in another browser or device.'
-        );
-        clearOAuthFlowPending();
-        return;
-      }
+// same account, but another browser/device owns it now
+if (
+  shouldEnforceSingleSession(profile.role) &&
+  profile.activeSessionId &&
+  localActiveSessionId &&
+  profile.activeSessionId !== localActiveSessionId
+) {
+  await handleForeignSession(
+    'SYSTEM ALERT: Your session was ended because your account was opened in another browser or device.'
+  );
+  clearOAuthFlowPending();
+  return;
+}
 
-            pendingDeviceVerificationRef.current = false;
+pendingDeviceVerificationRef.current = false;
 
-      let nextProfile = profile;
+let nextProfile = profile;
 
-      if (oauthPending) {
-        const claimedProfile = await claimBrowserSession(session.user.id, profile);
+const provider =
+  session.user?.app_metadata?.provider ||
+  session.user?.app_metadata?.providers?.[0] ||
+  'unknown';
 
-        if (!claimedProfile) {
-          await supabase.auth.signOut();
-          clearUserSession({ clearGreeting: true });
-          clearLocalActiveSessionId();
-          clearOAuthFlowPending();
-          return;
-        }
+const isOAuthProvider = provider === 'google' || provider === 'facebook';
 
-        nextProfile = claimedProfile;
+if (isOAuthProvider) {
+  const accessToken = session.access_token;
 
-        const providerLabel = getAuthProviderLabel(session.user);
+  if (!accessToken) {
+    await supabase.auth.signOut();
+    clearUserSession({ clearGreeting: true });
+    clearLocalActiveSessionId();
+    clearOAuthFlowPending();
+    return;
+  }
 
-        void addAuthAuditLog({
-          userId: session.user.id,
-          action: 'LOGIN',
-          changedFields: ['last_login', 'active_session_id'],
-          notes: `User login via ${providerLabel}`,
-        });
+  const deviceResult = await verifyCurrentSessionDevice(accessToken, {
+    rememberDevice: true,
+  });
 
-        clearOAuthFlowPending();
-      }
+  if (!deviceResult.ok) {
+    await supabase.auth.signOut();
+    clearUserSession({ clearGreeting: true });
+    clearLocalActiveSessionId();
+
+    showIndicator(
+      deviceResult.error === 'unverified_device'
+        ? 'Please verify this device from your email before signing in.'
+        : 'Unable to complete sign-in securely. Please try again.',
+      'security'
+    );
+
+    clearOAuthFlowPending();
+    return;
+  }
+
+  const claimedProfile = await claimBrowserSession(session.user.id, profile);
+
+  if (!claimedProfile) {
+    await supabase.auth.signOut();
+    clearUserSession({ clearGreeting: true });
+    clearLocalActiveSessionId();
+    clearOAuthFlowPending();
+    return;
+  }
+
+  nextProfile = claimedProfile;
+
+  void addAuthAuditLog({
+    userId: session.user.id,
+    action: 'LOGIN',
+    changedFields: ['last_login', 'active_session_id'],
+    notes: `User login via ${getAuthProviderLabel(session.user)}`,
+  });
+
+  clearOAuthFlowPending();
+}
 
       persistUserSession(nextProfile);
       writeSharedActivity(Date.now());
@@ -766,6 +879,7 @@ useEffect(() => {
   getLocalActiveSessionId,
   handleForeignSession,
   persistUserSession,
+  verifyCurrentSessionDevice,
   writeSharedActivity,
 ]);
 
@@ -804,7 +918,7 @@ useEffect(() => {
   }
 
   return;
-}
+  }
 
         if (!session?.user) return;
 
@@ -858,19 +972,66 @@ useEffect(() => {
   return;
 }
 
-        persistUserSession(profile);
+        //persistUserSession(profile);
 
         pendingDeviceVerificationRef.current = false;
 
         let nextProfile = profile;
         const providerLabel = getAuthProviderLabel(session.user);
 
+        const provider =
+          session.user?.app_metadata?.provider ||
+          session.user?.app_metadata?.providers?.[0] ||
+          'unknown';
+
+        const isOAuthProvider = provider === 'google' || provider === 'facebook';
+
         if (
+          isOAuthProvider ||
           oauthPending ||
           oauthAuditPendingRef.current === 'google' ||
           oauthAuditPendingRef.current === 'facebook'
         ) {
-          const claimedProfile = await claimBrowserSession(session.user.id, profile);
+  const accessToken = session.access_token;
+
+  if (!accessToken) {
+    await supabase.auth.signOut();
+    clearUserSession({ clearGreeting: true });
+    clearLocalActiveSessionId();
+    setFormKey((k) => k + 1);
+    showIndicator(
+      'Unable to complete sign-in securely. Please try again.',
+      'security'
+    );
+    oauthAuditPendingRef.current = null;
+    clearOAuthFlowPending();
+    return;
+  }
+  
+
+  const deviceResult = await verifyCurrentSessionDevice(accessToken, {
+    rememberDevice: true,
+  });
+
+  if (!deviceResult.ok) {
+    await supabase.auth.signOut();
+    clearUserSession({ clearGreeting: true });
+    clearLocalActiveSessionId();
+    setFormKey((k) => k + 1);
+
+    showIndicator(
+      deviceResult.error === 'unverified_device'
+        ? 'Please verify this device from your email before signing in.'
+        : 'Unable to complete sign-in securely. Please try again.',
+      'security'
+    );
+
+    oauthAuditPendingRef.current = null;
+    clearOAuthFlowPending();
+    return;
+  }
+
+  const claimedProfile = await claimBrowserSession(session.user.id, profile);
 
           if (!claimedProfile) {
             await supabase.auth.signOut();
@@ -921,6 +1082,7 @@ useEffect(() => {
   handleForeignSession,
   persistUserSession,
   showIndicator,
+  verifyCurrentSessionDevice,
   writeSharedActivity,
 ]);
 
@@ -1054,62 +1216,84 @@ type LoginResult = {
         return { success: false, error: 'device_check_failed' };
       }
 
-      const fingerprint = getDeviceFingerprint();
+      // const fingerprint = getDeviceFingerprint();
 
-      const deviceCheckPromise = fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-device-and-send-verification`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({
-            deviceFingerprint: fingerprint,
-            userAgent: navigator.userAgent,
-            rememberDevice: Boolean(options?.rememberDevice),
-          }),
-        }
-      ).then(async (response) => {
-        let payload: any = null;
+      // const deviceCheckPromise = fetch(
+      //   `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-device-and-send-verification`,
+      //   {
+      //     method: 'POST',
+      //     headers: {
+      //       'Content-Type': 'application/json',
+      //       apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+      //       Authorization: `Bearer ${accessToken}`,
+      //     },
+      //     body: JSON.stringify({
+      //       deviceFingerprint: fingerprint,
+      //       userAgent: navigator.userAgent,
+      //       rememberDevice: Boolean(options?.rememberDevice),
+      //     }),
+      //   }
+      // ).then(async (response) => {
+      //   let payload: any = null;
 
-        try {
-          payload = await response.json();
-        } catch {
-          payload = null;
-        }
+      //   try {
+      //     payload = await response.json();
+      //   } catch {
+      //     payload = null;
+      //   }
 
-        return {
-          ok: response.ok,
-          payload,
-        };
-      });
+      //   return {
+      //     ok: response.ok,
+      //     payload,
+      //   };
+      // });
 
-      const profilePromise = fetchOrCreateUserProfile(data.user);
+      // const profilePromise = fetchOrCreateUserProfile(data.user);
 
-      const [{ ok, payload: deviceCheck }, profile] = await Promise.all([
-        deviceCheckPromise,
-        profilePromise,
-      ]);
+      // const [{ ok, payload: deviceCheck }, profile] = await Promise.all([
+      //   deviceCheckPromise,
+      //   profilePromise,
+      // ]);
 
-      if (!ok) {
-        pendingDeviceVerificationRef.current = false;
-        await supabase.auth.signOut();
-        return { success: false, error: 'device_check_failed' };
-      }
+      const deviceResult = await verifyCurrentSessionDevice(accessToken, {
+  rememberDevice: Boolean(options?.rememberDevice),
+});
 
-      if (!deviceCheck?.trusted) {
-        pendingDeviceVerificationRef.current = false;
-        await supabase.auth.signOut();
+if (!deviceResult.ok) {
+  pendingDeviceVerificationRef.current = false;
+  await supabase.auth.signOut();
 
-        return {
-          success: false,
-          error: 'unverified_device',
-          loginRequestId: deviceCheck?.loginRequestId,
-          expiresAt: deviceCheck?.expiresAt,
-        };
-      }
+  if (deviceResult.error === 'unverified_device') {
+    return {
+      success: false,
+      error: 'unverified_device',
+      loginRequestId: deviceResult.loginRequestId,
+      expiresAt: deviceResult.expiresAt,
+    };
+  }
+
+  return { success: false, error: 'device_check_failed' };
+}
+
+const profile = await fetchOrCreateUserProfile(data.user);
+
+      // if (!ok) {
+      //   pendingDeviceVerificationRef.current = false;
+      //   await supabase.auth.signOut();
+      //   return { success: false, error: 'device_check_failed' };
+      // }
+
+      // if (!deviceCheck?.trusted) {
+      //   pendingDeviceVerificationRef.current = false;
+      //   await supabase.auth.signOut();
+
+      //   return {
+      //     success: false,
+      //     error: 'unverified_device',
+      //     loginRequestId: deviceCheck?.loginRequestId,
+      //     expiresAt: deviceCheck?.expiresAt,
+      //   };
+      // }
 
       if (!profile) {
         pendingDeviceVerificationRef.current = false;
@@ -1175,6 +1359,7 @@ const nextProfile: User = {
     getLocalActiveSessionId,
     persistUserSession,
     setLocalActiveSessionId,
+    verifyCurrentSessionDevice,
     verifyTurnstileToken,
     writeSharedActivity,
     clearLocalActiveSessionId,
@@ -1301,7 +1486,7 @@ const nextProfile: User = {
     const currentUserId = activeUserIdRef.current;
     const currentUserEmail = currentUser?.email;
 
-    const shouldClearGreeting = options?.clearGreeting ?? true;
+    const shouldClearGreeting = options?.clearGreeting ?? false;
     const shouldRedirectToLogin = options?.redirectToLogin ?? true;
 
     const isSessionExpiry = expiryLogoutRef.current || /expired/i.test(message ?? '');

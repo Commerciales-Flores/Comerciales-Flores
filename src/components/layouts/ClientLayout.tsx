@@ -51,7 +51,6 @@ const unreadNotifications = useMemo(
 
   const unreadMessages = useMemo(() => {
   if (!user?.id) return 0;
-  if (location.pathname === "/client/messages") return 0;
 
   return tickets.filter((ticket) => {
     if (ticket.userId !== user.id) return false;
@@ -63,7 +62,7 @@ const unreadNotifications = useMemo(
 
     return isUnreadForCustomer;
   }).length;
-}, [location.pathname, tickets, user?.id]);
+}, [tickets, user?.id]);
 
   useEffect(() => {
   if (!user) return;

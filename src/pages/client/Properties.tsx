@@ -817,7 +817,16 @@ useEffect(() => {
     ];
   }, [units]);
 
-  
+  const [blockingReservations, setBlockingReservations] = useState<
+  Array<{
+    reservation_id: string;
+    unit_id: string;
+    unit_type: UnitType;
+    start_date: string;
+    end_date: string;
+    status: string;
+  }>
+>([]);
   
 
   const selectedUnitData = useMemo(() => {
@@ -828,13 +837,19 @@ useEffect(() => {
   const selectedUnitBlockingReservations = useMemo(() => {
   if (!selectedUnitData) return [];
 
-  return getBlockingReservationsForUnit(
-    reservations,
-    selectedUnitData.id,
-    selectedUnitData.type,
-    user?.id
-  );
-}, [reservations, selectedUnitData, user?.id]);
+  return blockingReservations
+    .filter(
+      (r) =>
+        r.unit_id === selectedUnitData.id &&
+        r.unit_type === selectedUnitData.type &&
+        isBlockingReservation(r.status)
+    )
+    .map((r) => ({
+      startDate: r.start_date,
+      endDate: r.end_date,
+      status: r.status,
+    }));
+}, [blockingReservations, selectedUnitData]);
 
 
 
@@ -853,6 +868,7 @@ const isCalendarTileDisabled = useCallback(
   },
   [selectedUnitData, selectedUnitBlockingReservations]
 );
+
 
 const getCalendarTileClassName = useCallback(
   ({ date, view }: { date: Date; view: string }) => {
@@ -967,6 +983,28 @@ useEffect(() => {
   reservationForm.durationType,
   reservationForm.startDate,
 ]);
+
+useEffect(() => {
+  let mounted = true;
+
+  async function loadBlockingReservations() {
+    const { data, error } = await supabase.rpc("get_blocking_reservations");
+
+    if (error) {
+      console.error("Failed to load blocking reservations:", error);
+      return;
+    }
+
+    if (!mounted) return;
+    setBlockingReservations(data ?? []);
+  }
+
+  void loadBlockingReservations();
+
+  return () => {
+    mounted = false;
+  };
+}, []);
 
 useEffect(() => {
   if (selectedUnitData?.type !== "rental_space") return;
@@ -1414,12 +1452,7 @@ const getParkingSlotState = useCallback(
 
     const isViewingOnly = reservationIntent === "viewing_only";
 
-    const blockingReservations = getBlockingReservationsForUnit(
-      reservations,
-      selectedUnitData.id,
-      selectedUnitData.type,
-      user.id
-    );
+    const blockingReservations = selectedUnitBlockingReservations;
 
     if (!reservationForm.agreedToPolicies) {
       setNotice({
@@ -1718,6 +1751,9 @@ const getParkingSlotState = useCallback(
 
       await addReservation(reservationData);
 
+      const { data } = await supabase.rpc("get_blocking_reservations");
+      setBlockingReservations(data ?? []);
+
       sendSystemNotification(
         user.id,
         isViewingOnly ? "Viewing Appointment Submitted" : "Reservation Request Submitted",
@@ -1760,6 +1796,7 @@ const getParkingSlotState = useCallback(
   reservationIntent,
   requiresAppointment,
   shouldShowPaymentSection,
+  selectedUnitBlockingReservations,
 ]
 );
 
@@ -2160,24 +2197,24 @@ const calendarLegend = (
         )}
 
         {showReservationModal && selectedUnitData && (
-          <div className="fixed inset-0 z-50 bg-black/40 p-4 sm:p-6">
-            <div className="flex h-full items-center justify-center">
-              <div
-                className={`flex max-h-[95vh] w-full flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ${
-                  reservationSuccess ? 'max-w-md' : 'max-w-5xl'
-                }`}
-              >
+  <div className="fixed inset-0 z-50 bg-black/40 p-0 sm:p-6">
+    <div className="flex h-full items-end justify-center sm:items-center">
+      <div
+        className={`flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-auto sm:max-h-[95vh] sm:rounded-3xl ${
+          reservationSuccess ? 'sm:max-w-md' : 'sm:max-w-5xl'
+        }`}
+      >
                         <div
-            className={`flex items-start justify-between border-b border-gray-100 ${
-              reservationSuccess ? 'px-5 py-4' : 'px-6 py-5'
-            }`}
-          >
+                          className={`flex items-start justify-between gap-3 border-b border-gray-100 ${
+                            reservationSuccess ? 'px-4 py-4 sm:px-5' : 'px-4 py-4 sm:px-6 sm:py-5'
+                          }`}
+                        >
                 <div>
                   <div className={`mb-1 ${reservationSuccess ? 'text-xs' : 'text-sm'} font-medium text-blue-600`}>
                   {getUnitTypeLabel(selectedUnitData.type)}
                 </div>
 
-                <h2 className={`${reservationSuccess ? 'text-lg' : 'text-xl'} font-bold text-gray-900`}>
+                <h2 className={`${reservationSuccess ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'} font-bold leading-tight text-gray-900`}>
                   {selectedUnitData.name}
                 </h2>
 
@@ -2263,8 +2300,8 @@ const calendarLegend = (
       </div>
     </div>
   ) : (
-                <div className="p-6 sm:p-7">
-                  <div className="grid gap-6 md:grid-cols-2">
+                <div className="p-4 sm:p-6">
+  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:gap-6">
                     <div>
                       <div className="relative mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-gray-100">
                         {isVideoUrl(selectedUnitMedia[safeCurrentMediaIndex]) ? (
@@ -2276,14 +2313,14 @@ const calendarLegend = (
                             muted
                             playsInline
                             preload="metadata"
-                            className="h-56 w-full object-cover"
+                            className="h-48 w-full object-cover sm:h-56"
                           />
                         ) : (
                           <img
                             key={selectedUnitMedia[safeCurrentMediaIndex]}
                             src={selectedUnitMedia[safeCurrentMediaIndex]}
                             alt={selectedUnitData.name}
-                            className="h-56 w-full object-cover"
+                            className="h-48 w-full object-cover sm:h-56"
                           />
                         )}
 
@@ -2315,7 +2352,7 @@ const calendarLegend = (
                       </div>
 
                       {selectedUnitMedia.length > 1 && (
-                        <div className="mb-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        <div className="mb-4 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                           {selectedUnitMedia.map((media, index) => (
                             <button
                               key={`${media}-${index}`}
@@ -2392,8 +2429,8 @@ const calendarLegend = (
                       </div>
                     </div>
 
-                    <form onSubmit={handleReservationSubmit} className="space-y-4 pb-1">
-                      <div className="space-y-4 rounded-2xl border border-gray-200 p-4">
+                    <form onSubmit={handleReservationSubmit} className="space-y-3 pb-24 sm:space-y-4 sm:pb-1">
+                      <div className="space-y-3 rounded-2xl border border-gray-200 p-3.5 sm:space-y-4 sm:p-4">
   <div>
     <label className="mb-1 block text-sm font-medium text-gray-700">
       How do you want to proceed?
@@ -2639,7 +2676,7 @@ const calendarLegend = (
                             </label>
 
                             {selectedSlotObject ? (
-                              <div className="flex items-center gap-4 rounded-2xl border border-gray-200 bg-gradient-to-r from-gray-50 to-white p-3 shadow-sm">
+                              <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-gradient-to-r from-gray-50 to-white p-3 shadow-sm sm:flex-row sm:items-center sm:gap-4">
                                 <img
                                   src={selectedSlotObject.imageUrl || FALLBACK_IMAGE}
                                   alt={
@@ -2647,7 +2684,7 @@ const calendarLegend = (
                                     selectedSlotObject.label ||
                                     "Parking Slot"
                                   }
-                                  className="h-20 w-28 rounded-xl object-cover"
+                                  className="h-32 w-full rounded-xl object-cover sm:h-20 sm:w-28"
                                 />
                                 <div className="min-w-0 flex-1">
                                   <p className="text-xs uppercase tracking-wide text-gray-500">
@@ -2662,11 +2699,11 @@ const calendarLegend = (
                                       "Parking Slot"}
                                   </p>
                                 </div>
-                                <div className="flex gap-2">
+                                <div className="flex w-full gap-2 sm:w-auto">
                                   <button
                                     type="button"
                                     onClick={() => setIsSlotPanelOpen(true)}
-                                    className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm font-medium text-blue-700 transition hover:bg-blue-100"
+                                    className="flex-1 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-medium text-blue-700 transition hover:bg-blue-100 sm:flex-none"
                                   >
                                     Change
                                   </button>
@@ -2882,7 +2919,7 @@ const calendarLegend = (
                                   value={
                                     reservationForm.startDate && reservationForm.endDate
                                       ? [reservationForm.startDate, reservationForm.endDate]
-                                      : reservationForm.startDate ?? undefined
+                                      : reservationForm.startDate ?? null
                                   }
                                   selectRange={false}
                                   minDate={getTomorrow()}
@@ -2892,7 +2929,7 @@ const calendarLegend = (
 
                                 {calendarLegend}
 
-                                <div className="mt-3 flex items-center justify-between gap-3">
+                                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                   <p className="text-xs leading-5 text-amber-700">
                                     Function hall reservations must be one continuous available date range.
                                     If you need dates separated by unavailable days, please submit separate reservations.
@@ -2912,7 +2949,7 @@ const calendarLegend = (
                                         setFunctionHallConflictMessage("");
                                         setIsSelectingRangeEnd(false);
                                       }}
-                                      className="shrink-0 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-xs font-medium text-red-700 transition hover:bg-red-100"
+                                      className="shrink-0 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-100"
                                     >
                                       Clear dates
                                     </button>
@@ -3312,19 +3349,21 @@ const calendarLegend = (
                         </p>
                       </div>
 
-                      <button
-                        type="submit"
-                        disabled={!canSubmit}
-                        className="w-full rounded-xl bg-blue-600 px-4 py-3 font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {isSubmitting
-                          ? "Submitting..."
-                          : isViewingOnly
-                            ? "Book Viewing Appointment"
-                            : reservationIntent === "reserve_onsite"
-                              ? "Submit Reservation & Visit Request"
-                              : "Submit Reservation Request"}
-                      </button>
+                      <div className="sticky bottom-0 -mx-4 mt-4 border-t border-gray-200 bg-white/95 px-4 py-3 backdrop-blur supports-[padding:max(0px)]:pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
+                        <button
+                          type="submit"
+                          disabled={!canSubmit}
+                          className="w-full rounded-xl bg-blue-600 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-blue-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 sm:py-3 sm:text-base"
+                        >
+                          {isSubmitting
+                            ? "Submitting..."
+                            : isViewingOnly
+                              ? "Book Viewing Appointment"
+                              : reservationIntent === "reserve_onsite"
+                                ? "Submit Reservation & Visit Request"
+                                : "Submit Reservation Request"}
+                        </button>
+                      </div>
                                           </form>
                   </div>
                 </div>

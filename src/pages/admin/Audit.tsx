@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAdminData } from '../../contexts/AdminDataContext';
 import { useRecords } from '../../contexts/RecordsContext';
 import { useUsers } from '../../contexts/UsersContext';
@@ -224,109 +224,6 @@ function DesktopFilterBar({
   );
 }
 
-function MobileFilterMenu({
-  isOpen,
-  onClose,
-  selectedAction,
-  setSelectedAction,
-  selectedModule,
-  setSelectedModule,
-  startDate,
-  setStartDate,
-  endDate,
-  setEndDate,
-  modules,
-  resetFilters,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  selectedAction: string;
-  setSelectedAction: (value: string) => void;
-  selectedModule: string;
-  setSelectedModule: (value: string) => void;
-  startDate: string;
-  setStartDate: (value: string) => void;
-  endDate: string;
-  setEndDate: (value: string) => void;
-  modules: string[];
-  resetFilters: () => void;
-}) {
-  if (!isOpen) return null;
-
-  return (
-    <div className="absolute bottom-16 right-0 w-[85vw] max-w-[320px] animate-in space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl fade-in zoom-in-95 duration-200">
-      <div className="flex items-center justify-between border-b pb-2">
-        <h3 className="text-sm font-bold text-gray-900">Filters</h3>
-        <button
-          onClick={resetFilters}
-          className="text-[10px] font-bold uppercase tracking-tighter text-blue-600 hover:text-red-500"
-        >
-          Reset All
-        </button>
-      </div>
-
-      <div className="space-y-4">
-        <div className="space-y-1">
-          <label className="text-[10px] font-bold uppercase text-gray-400">Action</label>
-          <select
-            value={selectedAction}
-            onChange={(e) => setSelectedAction(e.target.value)}
-            className="w-full rounded-lg border bg-gray-50 p-2 text-sm outline-none"
-          >
-            {ACTION_OPTIONS.map((action) => (
-              <option key={action} value={action}>
-                {action === 'All' ? 'All Actions' : action}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="space-y-1">
-          <label className="text-[10px] font-bold uppercase text-gray-400">Module</label>
-          <select
-            value={selectedModule}
-            onChange={(e) => setSelectedModule(e.target.value)}
-            className="w-full rounded-lg border bg-gray-50 p-2 text-sm outline-none"
-          >
-            {modules.map((m) => (
-              <option key={m} value={m}>
-                {m === 'All' ? 'All Modules' : m.charAt(0).toUpperCase() + m.slice(1)}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase text-gray-400">From</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full appearance-none rounded-lg border bg-gray-50 p-2 text-[10px] outline-none"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase text-gray-400">To</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full appearance-none rounded-lg border bg-gray-50 p-2 text-[10px] outline-none"
-            />
-          </div>
-        </div>
-      </div>
-
-      <button
-        onClick={onClose}
-        className="w-full rounded-xl bg-blue-600 py-3 text-sm font-bold text-white shadow-lg transition-transform active:scale-95"
-      >
-        Apply Filters
-      </button>
-    </div>
-  );
-}
 
 export default function AdminAudit() {
   const { getUserById, getUnitById } = useAdminData();
@@ -343,7 +240,7 @@ export default function AdminAudit() {
   const [selectedModule, setSelectedModule] = useState('All');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [isMobileDropdownOpen, setIsMobileDropdownOpen] = useState(false);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 250);
 
@@ -562,24 +459,13 @@ export default function AdminAudit() {
     setEndDate('');
   }, []);
 
-  const closeMobileDropdown = useCallback(() => {
-    setIsMobileDropdownOpen(false);
-  }, []);
-
-  const toggleMobileDropdown = useCallback(() => {
-    setIsMobileDropdownOpen((prev) => !prev);
-  }, []);
+const closeMobileFilters = useCallback(() => {
+  setShowMobileFilters(false);
+}, []);
 
   return (
     <div className="min-h-screen bg-white">
       <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
-        <div
-          className={`fixed inset-0 z-40 bg-gray-900/20 transition-opacity duration-300 md:hidden ${
-            isMobileDropdownOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
-          }`}
-          onClick={closeMobileDropdown}
-        />
-
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Audit Log</h1>
           <p className="text-sm text-gray-500">
@@ -592,8 +478,8 @@ export default function AdminAudit() {
     searchTerm={searchTerm}
     onSearchChange={setSearchTerm}
     placeholder="Search logs..."
-    showMobileFilters={isMobileDropdownOpen}
-    onToggleMobileFilters={toggleMobileDropdown}
+    showMobileFilters={showMobileFilters}
+    onToggleMobileFilters={() => setShowMobileFilters((prev) => !prev)}
     filters={
       <AdminFilterGroup align="between">
         <div className="grid w-full grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
@@ -639,14 +525,14 @@ export default function AdminAudit() {
         </div>
 
         {hasActiveFilters && (
-          <div className="flex w-full justify-end lg:w-auto">
+          <div className="w-full lg:w-auto">
             <button
               type="button"
               onClick={() => {
                 resetFilters();
-                setIsMobileDropdownOpen(false);
+                setShowMobileFilters(false);
               }}
-              className={FILTER_BUTTON_CLASS}
+              className={`${FILTER_BUTTON_CLASS} w-full justify-center lg:w-auto`}
             >
               Clear
             </button>
@@ -876,40 +762,6 @@ export default function AdminAudit() {
               </div>
             </div>
           )}
-        </div>
-
-        <div className="fixed bottom-6 right-6 z-50 md:hidden">
-          <MobileFilterMenu
-            isOpen={isMobileDropdownOpen}
-            onClose={closeMobileDropdown}
-            selectedAction={selectedAction}
-            setSelectedAction={setSelectedAction}
-            selectedModule={selectedModule}
-            setSelectedModule={setSelectedModule}
-            startDate={startDate}
-            setStartDate={setStartDate}
-            endDate={endDate}
-            setEndDate={setEndDate}
-            modules={MODULE_OPTIONS}
-            resetFilters={resetFilters}
-          />
-
-          <button
-            onClick={toggleMobileDropdown}
-            className={`relative flex size-14 items-center justify-center rounded-full shadow-2xl transition-all duration-300 ${
-              isMobileDropdownOpen
-                ? 'rotate-90 bg-gray-900 text-white'
-                : 'bg-blue-600 text-white hover:scale-105'
-            }`}
-          >
-            {isMobileDropdownOpen ? <X size={24} /> : <Filter size={24} />}
-
-            {!isMobileDropdownOpen && hasActiveFilters && (
-              <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full border-2 border-white bg-red-500 text-[10px] font-bold text-white">
-                !
-              </span>
-            )}
-          </button>
         </div>
       </div>
     </div>

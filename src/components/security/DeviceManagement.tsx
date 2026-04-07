@@ -173,12 +173,12 @@ function DetailField({
       </p>
 
       <div className="mt-1 min-w-0">
-        <p className="text-[13px] font-semibold leading-[1.45] text-slate-800 break-words">
+        <p className="break-words text-[13px] font-semibold leading-[1.45] text-slate-800">
           {value}
         </p>
 
         {subvalue ? (
-          <p className="mt-0.5 text-[11px] leading-[1.4] text-slate-500 break-words">
+          <p className="mt-0.5 break-words text-[11px] leading-[1.4] text-slate-500">
             {subvalue}
           </p>
         ) : null}
@@ -280,35 +280,53 @@ export default function DeviceManagement() {
 
   return (
     <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-col gap-4 border-b border-slate-100 bg-slate-50/70 px-5 py-5 sm:px-6 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
-            <ShieldCheck className="size-5" />
-          </div>
-
-          <div className="min-w-0">
-            <h3 className="text-[15px] font-bold text-slate-900">Trusted Devices</h3>
-            <p className="mt-1 text-[13px] text-slate-500">
-              Manage browsers and devices that can sign in without another verification step.
-            </p>
-            <p className="mt-1 text-[11px] text-slate-400">
-              Location is approximate and based on network IP.
-            </p>
-          </div>
+  <div className="border-b border-slate-100 bg-slate-50/70 px-4 py-5 sm:px-6">
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex min-w-0 items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+          <ShieldCheck className="size-5" />
         </div>
 
-        <button
-          type="button"
-          onClick={() => void loadDevices('refresh')}
-          disabled={loading || refreshing}
-          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <RefreshCw className={`size-4 ${refreshing ? 'animate-spin' : ''}`} />
-          {refreshing ? 'Refreshing...' : 'Refresh'}
-        </button>
+        <div className="min-w-0">
+          <h3 className="text-[15px] font-bold text-slate-900">
+            Trusted Devices
+          </h3>
+
+          <p className="mt-1 text-[13px] text-slate-500">
+            Manage browsers and devices that can sign in without another verification step.
+          </p>
+
+          <p className="mt-1 text-[11px] text-slate-400">
+            Location is approximate and based on network IP.
+          </p>
+        </div>
       </div>
 
-      <div className="p-5 sm:p-6">
+      {/* Desktop refresh */}
+      <button
+        type="button"
+        onClick={() => void loadDevices('refresh')}
+        disabled={loading || refreshing}
+        className="hidden sm:inline-flex min-h-[40px] items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-[13px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <RefreshCw className={`size-4 ${refreshing ? 'animate-spin' : ''}`} />
+        {refreshing ? 'Refreshing...' : 'Refresh'}
+      </button>
+    </div>
+
+    {/* Mobile refresh */}
+    <button
+      type="button"
+      onClick={() => void loadDevices('refresh')}
+      disabled={loading || refreshing}
+      className="mt-4 sm:hidden inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[13px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      <RefreshCw className={`size-4 ${refreshing ? 'animate-spin' : ''}`} />
+      {refreshing ? 'Refreshing...' : 'Refresh'}
+    </button>
+  </div>
+
+  <div className="p-4 sm:p-6">
         {error && (
           <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] font-medium text-rose-700">
             {error}
@@ -325,7 +343,7 @@ export default function DeviceManagement() {
           </div>
         ) : (
           <>
-            <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="mb-4 flex items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
               <div className="min-w-0">
                 <p className="text-[13px] font-semibold text-slate-900">
                   {devices.length} trusted {devices.length === 1 ? 'device' : 'devices'}
@@ -340,7 +358,7 @@ export default function DeviceManagement() {
               </div>
             </div>
 
-            <div className="max-h-[440px] space-y-4 overflow-y-auto pr-1">
+            <div className="max-h-[520px] space-y-4 overflow-y-auto pr-0 sm:pr-1">
               {devices.map((device) => {
                 const mobile = isMobileDevice(device.user_agent);
                 const current = isCurrentDevice(device);
@@ -350,9 +368,9 @@ export default function DeviceManagement() {
                 return (
                   <div
                     key={device.trusted_device_id}
-                    className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 sm:px-5"
+                    className="rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-4 sm:px-5"
                   >
-                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                    <div className="flex flex-col gap-4">
                       <div className="min-w-0 flex-1">
                         <div className="flex min-w-0 items-start gap-3">
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-700 shadow-sm">
@@ -360,51 +378,58 @@ export default function DeviceManagement() {
                           </div>
 
                           <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h4 className="min-w-0 text-[14px] font-bold text-slate-900 break-words">
-                                {getReadableDeviceName(device)}
-                              </h4>
+                            <div className="min-w-0 flex-1">
+  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+    <div className="min-w-0">
+      <h4 className="min-w-0 break-words text-[14px] font-bold text-slate-900">
+        {getReadableDeviceName(device)}
+      </h4>
 
-                              {device.is_trusted && (
-                                <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700">
-                                  Trusted
-                                </span>
-                              )}
+      <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">
+        {getReadableDeviceType(device)}
+      </p>
+    </div>
 
-                              {current && (
-                                <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-blue-700">
-                                  Current Device
-                                </span>
-                              )}
+    <div className="flex flex-wrap gap-2 sm:justify-end">
+      {device.is_trusted && (
+        <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700">
+          Trusted
+        </span>
+      )}
 
-                              {device.suspicious_login && (
-                                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-700">
-                                  Suspicious
-                                </span>
-                              )}
+      {current && (
+        <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-blue-700">
+          Current Device
+        </span>
+      )}
 
-                              {device.is_vpn && (
-                                <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-rose-700">
-                                  VPN
-                                </span>
-                              )}
+      {device.suspicious_login && (
+        <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-700">
+          Suspicious
+        </span>
+      )}
 
-                              {device.is_proxy && (
-                                <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-rose-700">
-                                  Proxy
-                                </span>
-                              )}
+      {device.is_vpn && (
+        <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-rose-700">
+          VPN
+        </span>
+      )}
 
-                              {device.is_hosting && (
-                                <span className="rounded-full bg-slate-200 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-700">
-                                  Hosting Network
-                                </span>
-                              )}
-                            </div>
+      {device.is_proxy && (
+        <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-rose-700">
+          Proxy
+        </span>
+      )}
 
-                            <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-slate-400">
-                              {getReadableDeviceType(device)}
-                            </p>
+      {device.is_hosting && (
+        <span className="rounded-full bg-slate-200 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-700">
+          Hosting Network
+        </span>
+      )}
+    </div>
+  </div>
+</div>
+
 
                             {device.suspicious_login && device.suspicious_reason && (
                               <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
@@ -422,31 +447,30 @@ export default function DeviceManagement() {
                               </div>
                             )}
 
-                            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 xl:gap-x-6">
-  <DetailField
-    label="Last Seen"
-    value={formatDateOnly(device.last_seen_at)}
-    subvalue={formatTimeOnly(device.last_seen_at)}
-  />
+                            <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:gap-x-6">
+                              <DetailField
+                                label="Last Seen"
+                                value={formatDateOnly(device.last_seen_at)}
+                                subvalue={formatTimeOnly(device.last_seen_at)}
+                              />
 
-  <DetailField
-    label="Added"
-    value={formatDateOnly(device.created_at)}
-    subvalue={formatTimeOnly(device.created_at)}
-  />
+                              <DetailField
+                                label="Added"
+                                value={formatDateOnly(device.created_at)}
+                                subvalue={formatTimeOnly(device.created_at)}
+                              />
 
-  <DetailField
-    label="Location"
-    value={device.location_label || 'Unknown'}
-    subvalue="Approximate"
-    className="xl:col-span-1"
-  />
+                              <DetailField
+                                label="Location"
+                                value={device.location_label || 'Unknown'}
+                                subvalue="Approximate"
+                              />
 
-  <DetailField
-    label="IP Address"
-    value={maskIpAddress(device.last_ip)}
-  />
-</div>
+                              <DetailField
+                                label="IP Address"
+                                value={maskIpAddress(device.last_ip)}
+                              />
+                            </div>
 
                             <div className="relative mt-5 border-t border-slate-200 pt-5">
                               <button
@@ -463,7 +487,7 @@ export default function DeviceManagement() {
                               </button>
 
                               {showExtra && (
-                                <div className="grid grid-cols-1 gap-4 pt-1 sm:grid-cols-2 xl:grid-cols-4 xl:gap-x-6">
+                                <div className="grid grid-cols-1 gap-4 pt-1 sm:grid-cols-2 lg:grid-cols-4 lg:gap-x-6">
                                   <DetailField
                                     label="Network"
                                     value={device.network_isp || 'Unavailable'}
@@ -519,12 +543,12 @@ export default function DeviceManagement() {
                         </div>
                       </div>
 
-                      <div className="xl:pl-5">
+                      <div className="pt-1">
                         <button
                           type="button"
                           disabled={removingId === device.trusted_device_id}
                           onClick={() => handleRemove(device.trusted_device_id)}
-                          className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-white px-4 py-2.5 text-[13px] font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 xl:w-auto"
+                          className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-white px-4 py-3 text-[13px] font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                         >
                           <Trash2 className="size-4" />
                           {removingId === device.trusted_device_id ? 'Removing...' : 'Remove'}

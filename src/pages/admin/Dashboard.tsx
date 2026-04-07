@@ -69,19 +69,27 @@ const StatCard = ({
   change?: number;
 }) => {
   return (
-    <div className="flex min-h-[112px] flex-col rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md sm:p-5">
-      <div className="mb-3 flex items-center justify-between">
-        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{title}</p>
-        {icon}
+    <div className="flex min-h-[104px] flex-col justify-between rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md sm:min-h-[112px] sm:p-5">
+      <div className="mb-2 flex items-center justify-between gap-3 sm:mb-3">
+        <p className="text-xs font-medium text-gray-500 sm:text-sm">{title}</p>
+        <div className="shrink-0">{icon}</div>
       </div>
 
-      <p className="text-2xl font-bold text-gray-900">{value}</p>
+      <div>
+        <p className="break-words text-xl font-bold leading-tight text-gray-900 sm:text-2xl">
+          {value}
+        </p>
 
-      {typeof change === 'number' && (
-        <span className={`mt-2 text-sm font-medium ${change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-          {change >= 0 ? '↑' : '↓'} {Math.abs(change).toFixed(1)}%
-        </span>
-      )}
+        {typeof change === 'number' && (
+          <span
+            className={`mt-2 inline-block text-xs font-medium sm:text-sm ${
+              change >= 0 ? 'text-green-600' : 'text-red-600'
+            }`}
+          >
+            {change >= 0 ? '↑' : '↓'} {Math.abs(change).toFixed(1)}%
+          </span>
+        )}
+      </div>
     </div>
   );
 };
@@ -477,7 +485,7 @@ const occupancyRate =
           </p>
         </header>
 
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <StatCard
             title="Total Reservations"
             value={reservations.length}

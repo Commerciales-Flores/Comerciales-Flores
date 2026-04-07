@@ -31,8 +31,8 @@ export default function AdminFilterBar({
 }: AdminFilterBarProps) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
+  <div className="flex items-center gap-2 lg:min-w-[320px] lg:flex-1">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
             <input
@@ -56,27 +56,24 @@ export default function AdminFilterBar({
               }`}
             >
               <Filter className="size-4" />
-              <span>Filters</span>
             </button>
           )}
 
           {actions}
         </div>
 
-        {filters ? (
-          <>
-            <div className="hidden w-full border-t border-gray-100 pt-4 lg:block">
-              {filters}
-            </div>
-
-            {showMobileFilters && (
-              <div className="w-full border-t border-gray-100 pt-3 lg:hidden">
-                {filters}
-              </div>
-            )}
-          </>
-        ) : null}
+        {filters && (
+  <div className="hidden w-full border-t border-gray-100 pt-4 lg:block">
+    {filters}
+  </div>
+)}
       </div>
+
+      {filters && showMobileFilters && (
+  <div className="mt-1 w-full border-t border-gray-100 pt-2 lg:hidden">
+    {filters}
+  </div>
+)}
     </div>
   );
 }

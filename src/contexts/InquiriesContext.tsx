@@ -348,19 +348,7 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
     throw new Error('Subject and first message are required.');
   }
 
-  let resolvedUserId = input.userId ?? null;
-
-  if (!resolvedUserId && normalizedEmail) {
-    const { data: matchedUser, error: matchedUserError } = await supabase
-      .from('users')
-      .select('user_id')
-      .eq('email', normalizedEmail)
-      .maybeSingle();
-
-    if (matchedUserError) throw matchedUserError;
-
-    resolvedUserId = matchedUser?.user_id ?? null;
-  }
+  const resolvedUserId = input.userId ?? null;
 
   const senderType: SupportSenderType =
     input.senderType ?? (resolvedUserId ? 'customer' : 'guest');
@@ -385,15 +373,41 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
     last_read_at_support: senderType === 'support' ? now : null,
   };
 
-  const { data: ticketData, error: ticketError } = await supabase
+    const { error: ticketError } = await supabase
     .from('support_tickets')
-    .insert([ticketPayload])
-    .select()
-    .single();
+    .insert([ticketPayload]);
 
   if (ticketError) throw ticketError;
 
-  const newTicket = mapTicket(ticketData);
+  const { data: latestTicketData, error: latestTicketError } = await supabase
+    .from('support_tickets')
+    .select(`
+      ticket_id,
+      public_id,
+      user_id,
+      guest_email,
+      guest_first_name,
+      guest_last_name,
+      subject,
+      status,
+      created_at,
+      updated_at,
+      last_message_at,
+      last_message_by,
+      resolved_at,
+      resolved_by_user,
+      last_read_at_customer,
+      last_read_at_support
+    `)
+    .eq('created_at', now)
+    .eq('subject', normalizedSubject)
+    .maybeSingle();
+
+  if (latestTicketError || !latestTicketData) {
+    throw latestTicketError ?? new Error('Ticket created, but could not load it.');
+  }
+
+  const newTicket = mapTicket(latestTicketData);
 
   const displayName =
     senderType === 'support'

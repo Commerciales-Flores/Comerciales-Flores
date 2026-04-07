@@ -251,6 +251,8 @@ const refreshPaymentsPromiseRef = useRef<Promise<void> | null>(null);
     };
   }, []);
 
+  
+
   const fetchPaymentsPage = useCallback(
     async ({
       page = 1,
@@ -302,6 +304,8 @@ const refreshPaymentsPromiseRef = useRef<Promise<void> | null>(null);
     []
   );
 
+  
+
   const uploadPaymentProof = useCallback(async (file: File): Promise<string | null> => {
     try {
       const fileExt = file.name.split('.').pop();
@@ -343,6 +347,14 @@ const refreshPaymentsPromiseRef = useRef<Promise<void> | null>(null);
         ? normalizeText(paymentData.notes)
         : null;
 
+      console.log('addPayment payload', {
+  effectiveReservationId: paymentData.reservationId,
+  amount: normalizedAmount,
+  method: paymentData.method,
+  status: paymentData.status,
+});
+
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment-and-ledger`,
         {
@@ -353,7 +365,7 @@ const refreshPaymentsPromiseRef = useRef<Promise<void> | null>(null);
             apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
           },
           body: JSON.stringify({
-            reservationId: paymentData.reservationId,
+            effectiveReservationId: paymentData.reservationId,
             amount: normalizedAmount,
             method: paymentData.method,
             status: paymentData.status,
@@ -400,6 +412,19 @@ const refreshPaymentsPromiseRef = useRef<Promise<void> | null>(null);
             : null
       : undefined;
 
+      console.log('updatePayment payload', {
+      paymentId: id,
+      effectiveReservationId: paymentUpdate.reservationId,
+      amount: normalizedAmount,
+      method: paymentUpdate.method,
+      status: paymentUpdate.status,
+      proofOfPayment: paymentUpdate.proofOfPayment ?? null,
+      notes: normalizedNotes,
+      paymentMethodId: paymentUpdate.paymentMethodId ?? null,
+      paymentMethodSnapshot: paymentUpdate.paymentMethodSnapshot ?? null,
+      category: paymentUpdate.category ?? 'payment',
+    });
+
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment-and-ledger`,
         {
@@ -411,7 +436,7 @@ const refreshPaymentsPromiseRef = useRef<Promise<void> | null>(null);
           },
           body: JSON.stringify({
             paymentId: id,
-            reservationId: paymentUpdate.reservationId,
+            effectiveReservationId: paymentUpdate.reservationId,
             amount: normalizedAmount,
             method: paymentUpdate.method,
             status: paymentUpdate.status,

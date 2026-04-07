@@ -810,7 +810,7 @@ className={`mt-5 w-full rounded-2xl border px-4 py-3 text-sm font-semibold min-h
 
           <div className="space-y-6 xl:col-span-8">
             <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
-              <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-6 py-5">
+              <div className="flex flex-col gap-4 border-b border-slate-100 bg-slate-50/70 px-4 py-5 sm:px-6">
   <div>
     <h3 className="text-base font-bold text-slate-900">Profile Information</h3>
     <p className="mt-1 text-sm text-slate-500">
@@ -818,52 +818,44 @@ className={`mt-5 w-full rounded-2xl border px-4 py-3 text-sm font-semibold min-h
     </p>
   </div>
 
-  <div className="relative h-11 w-[272px] shrink-0">
-  <div
-    className={`absolute inset-0 flex justify-end transition-opacity duration-150 ${
-      editing ? 'pointer-events-none opacity-0' : 'opacity-100'
-    }`}
-  >
-    <button
-      type="button"
-      onClick={handleEditStart}
-      className="inline-flex h-11 items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
-    >
-      <Edit3 className="size-4" />
-      Edit Details
-    </button>
-  </div>
+  {!editing ? (
+    <div className="flex w-full sm:justify-end">
+      <button
+        type="button"
+        onClick={handleEditStart}
+        className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 sm:w-auto"
+      >
+        <Edit3 className="size-4" />
+        Edit Details
+      </button>
+    </div>
+  ) : (
+    <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
+      <button
+        type="button"
+        onClick={handleEditCancel}
+        disabled={savingProfile}
+        className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 sm:w-auto"
+      >
+        <X className="size-4" />
+        Cancel
+      </button>
 
-  <div
-    className={`absolute inset-0 flex items-center justify-end gap-2 transition-opacity duration-150 ${
-      editing ? 'opacity-100' : 'pointer-events-none opacity-0'
-    }`}
-  >
-    <button
-      type="button"
-      onClick={handleEditCancel}
-      disabled={savingProfile}
-      className="inline-flex h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
-    >
-      <X className="size-4" />
-      Cancel
-    </button>
-
-    <button
-      type="submit"
-      form="profile-form"
-      disabled={savingProfile}
-      className="inline-flex h-11 items-center gap-2 rounded-2xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 disabled:opacity-50"
-    >
-      {savingProfile ? (
-        <div className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-      ) : (
-        <Save className="size-4" />
-      )}
-      {savingProfile ? 'Saving...' : 'Save Changes'}
-    </button>
-  </div>
-</div>
+      <button
+        type="submit"
+        form="profile-form"
+        disabled={savingProfile}
+        className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 disabled:opacity-50 sm:w-auto"
+      >
+        {savingProfile ? (
+          <div className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+        ) : (
+          <Save className="size-4" />
+        )}
+        {savingProfile ? 'Saving...' : 'Save Changes'}
+      </button>
+    </div>
+  )}
 </div>
 
               <div className="p-6">

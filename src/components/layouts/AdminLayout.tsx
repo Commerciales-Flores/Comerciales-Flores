@@ -56,18 +56,14 @@ export default function AdminLayout() {
     void refreshUsers();
   }, [refreshUsers, usersVersion]);
 
-  const pendingPaymentsCount = useMemo(() => {
-  if (location.pathname === "/admin/payments") return 0;
-
+const pendingPaymentsCount = useMemo(() => {
   return payments.filter(
     (payment: any) =>
       payment?.status === "unpaid" || payment?.status === "partial"
   ).length;
-}, [location.pathname, payments]);
+}, [payments]);
 
-  const pendingInquiriesCount = useMemo(() => {
-  if (location.pathname === "/admin/inquiries") return 0;
-
+const pendingInquiriesCount = useMemo(() => {
   return tickets.filter((ticket: any) => {
     const isUnreadForSupport =
       (ticket?.lastMessageBy === "customer" || ticket?.lastMessageBy === "guest") &&
@@ -76,15 +72,13 @@ export default function AdminLayout() {
 
     return isUnreadForSupport;
   }).length;
-}, [location.pathname, tickets]);
+}, [tickets]);
 
-  const pendingReservationsCount = useMemo(() => {
-  if (location.pathname === "/admin/reservations") return 0;
-
+const pendingReservationsCount = useMemo(() => {
   return reservations.filter(
     (reservation: any) => reservation?.status === "pending"
   ).length;
-}, [location.pathname, reservations]);
+}, [reservations]);
 
 
 

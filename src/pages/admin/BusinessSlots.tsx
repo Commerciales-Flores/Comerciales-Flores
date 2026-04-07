@@ -1,4 +1,5 @@
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import type { JSX } from 'react';
 import { useUnits } from '../../contexts/UnitsContext';
 import type { UnitType } from '../../data/types';
@@ -20,11 +21,17 @@ import {
   Wrench,
   CheckCircle2,
   PauseCircle,
+  Search,
+  Filter,
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import EmptyState from '../../components/common/EmptyState';
 import { formatDate } from '../../utils/date';
-
+import AdminFilterBar, {
+  FILTER_BUTTON_CLASS,
+  FILTER_SELECT_CLASS,
+} from '../../components/common/AdminFilterBar';
+import { AdminFilterGroup } from '../../components/common/AdminFilterGroup';
 
 const UNIT_TYPE_MAP: Record<UnitType, { icon: JSX.Element; label: string; color: string }> = {
   rental_space: {
@@ -1381,151 +1388,147 @@ const UnitsList = React.memo(function UnitsList({
   onManageSlots,
 }: UnitListProps) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-      <div className="hidden overflow-x-auto md:block">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Unit
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Public ID
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Type
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Location
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Price
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Status
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Actions
-              </th>
-            </tr>
-          </thead>
+    <div>
+      <div className="hidden overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm md:block">
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Unit
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Public ID
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Type
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Location
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Price
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Status
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Actions
+                </th>
+              </tr>
+            </thead>
 
-          <tbody className="divide-y divide-gray-200">
-            {units.map((unit) => {
-              const slotStats = slotStatsByUnit.get(unit.id) ?? { total: 0, active: 0 };
+            <tbody className="divide-y divide-gray-200">
+              {units.map((unit) => {
+                const slotStats = slotStatsByUnit.get(unit.id) ?? { total: 0, active: 0 };
 
-              return (
-                <tr key={unit.id} className="transition-colors hover:bg-gray-50">
-  {/* Unit */}
-  <DataCell
-    value={
-      <div>
-        <p className="font-semibold text-gray-900">{unit.name}</p>
+                return (
+                  <tr key={unit.id} className="transition-colors hover:bg-gray-50">
+                    <DataCell
+                      value={
+                        <div>
+                          <p className="font-semibold text-gray-900">{unit.name}</p>
 
-        {unit.type === 'function_hall' && unit.capacity && (
-          <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
-            <Users className="size-3.5" />
-            Capacity: {unit.capacity}
-          </p>
-        )}
+                          {unit.type === 'function_hall' && unit.capacity && (
+                            <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
+                              <Users className="size-3.5" />
+                              Capacity: {unit.capacity}
+                            </p>
+                          )}
 
-        {unit.type === 'parking_slot' && (
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-            <span className="inline-flex items-center gap-1">
-              <Car className="size-3.5" />
-              {slotStats.total} slot(s)
-            </span>
-            <span className="inline-flex items-center gap-1 text-green-600">
-              <CheckCircle2 className="size-3.5" />
-              {slotStats.active} active
-            </span>
-          </div>
-        )}
-      </div>
-    }
-  />
+                          {unit.type === 'parking_slot' && (
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                              <span className="inline-flex items-center gap-1">
+                                <Car className="size-3.5" />
+                                {slotStats.total} slot(s)
+                              </span>
+                              <span className="inline-flex items-center gap-1 text-green-600">
+                                <CheckCircle2 className="size-3.5" />
+                                {slotStats.active} active
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      }
+                    />
 
-  {/* Public ID */}
-  <DataCell value={unit.propertyId || '—'} mono />
+                    <DataCell value={unit.propertyId || '—'} mono />
+                    <DataCell value={<UnitTypeDisplay type={unit.type} />} nowrap />
+                    <DataCell
+                      value={
+                        <div className="flex items-center gap-1.5">
+                          <MapPin className="size-4 text-red-400" />
+                          {unit.location || '—'}
+                        </div>
+                      }
+                    />
+                    <DataCell value={formatCurrency(unit.price)} mono />
+                    <DataCell
+                      value={
+                        <span
+                          className={`inline-block rounded-full px-2 py-1 text-[10px] font-bold ${
+                            unit.available
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-red-100 text-red-700'
+                          }`}
+                        >
+                          {unit.available ? 'AVAILABLE' : 'UNAVAILABLE'}
+                        </span>
+                      }
+                      nowrap
+                    />
 
-  {/* Type */}
-  <DataCell value={<UnitTypeDisplay type={unit.type} />} nowrap />
+                    <ActionCell>
+                      {unit.type === 'parking_slot' && (
+                        <button
+                          onClick={() => onManageSlots(unit.id)}
+                          className="flex h-7 w-7 items-center justify-center rounded-md text-orange-600 hover:bg-orange-50"
+                          title="Manage Slots"
+                        >
+                          <Settings2 className="size-4" />
+                        </button>
+                      )}
 
-  {/* Location */}
-  <DataCell
-    value={
-      <div className="flex items-center gap-1.5">
-        <MapPin className="size-4 text-red-400" />
-        {unit.location || '—'}
-      </div>
-    }
-  />
+                      <button
+                        onClick={() => onEdit(unit.id)}
+                        className="flex h-7 w-7 items-center justify-center rounded-md text-blue-600 hover:bg-blue-50"
+                        title="Edit"
+                      >
+                        <Edit className="size-4" />
+                      </button>
 
-  {/* Price */}
-  <DataCell value={formatCurrency(unit.price)} mono />
-
-  {/* Status */}
-  <DataCell
-    value={
-      <span
-        className={`inline-block rounded-full px-2 py-1 text-[10px] font-bold ${
-          unit.available
-            ? 'bg-green-100 text-green-700'
-            : 'bg-red-100 text-red-700'
-        }`}
-      >
-        {unit.available ? 'AVAILABLE' : 'UNAVAILABLE'}
-      </span>
-    }
-    nowrap
-  />
-
-  {/* Actions */}
-  <ActionCell>
-    {unit.type === 'parking_slot' && (
-      <button
-        onClick={() => onManageSlots(unit.id)}
-        className="flex h-7 w-7 items-center justify-center rounded-md text-orange-600 hover:bg-orange-50"
-        title="Manage Slots"
-      >
-        <Settings2 className="size-4" />
-      </button>
-    )}
-
-    <button
-      onClick={() => onEdit(unit.id)}
-      className="flex h-7 w-7 items-center justify-center rounded-md text-blue-600 hover:bg-blue-50"
-      title="Edit"
-    >
-      <Edit className="size-4" />
-    </button>
-
-    <button
-      onClick={() => onDelete(unit.id)}
-      className="flex h-7 w-7 items-center justify-center rounded-md text-red-600 hover:bg-red-50"
-      title="Delete"
-    >
-      <Trash2 className="size-4" />
-    </button>
-  </ActionCell>
-</tr>
-              );
-            })}
-          </tbody>
-        </table>
+                      <button
+                        onClick={() => onDelete(unit.id)}
+                        className="flex h-7 w-7 items-center justify-center rounded-md text-red-600 hover:bg-red-50"
+                        title="Delete"
+                      >
+                        <Trash2 className="size-4" />
+                      </button>
+                    </ActionCell>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <div className="divide-y divide-gray-200 md:hidden">
+      <div className="space-y-4 md:hidden">
         {units.map((unit) => {
           const slotStats = slotStatsByUnit.get(unit.id) ?? { total: 0, active: 0 };
 
           return (
-            <div key={unit.id} className="space-y-3 p-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="font-bold text-gray-900">{unit.name}</h3>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
+            <div
+              key={unit.id}
+              className="overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate text-base font-bold text-gray-900">{unit.name}</h3>
+
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
                     <UnitTypeDisplay type={unit.type} />
+
                     {unit.propertyId ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">
                         <Hash className="size-3" />
@@ -1535,11 +1538,11 @@ const UnitsList = React.memo(function UnitsList({
                   </div>
                 </div>
 
-                <div className="flex gap-1">
+                <div className="flex shrink-0 gap-1">
                   {unit.type === 'parking_slot' && (
                     <button
                       onClick={() => onManageSlots(unit.id)}
-                      className="rounded-full p-3 text-orange-600 active:bg-orange-50"
+                      className="rounded-full p-2.5 text-orange-600 transition active:bg-orange-50"
                     >
                       <Settings2 className="size-5" />
                     </button>
@@ -1547,29 +1550,29 @@ const UnitsList = React.memo(function UnitsList({
 
                   <button
                     onClick={() => onEdit(unit.id)}
-                    className="rounded-full p-3 text-blue-600 active:bg-blue-50"
+                    className="rounded-full p-2.5 text-blue-600 transition active:bg-blue-50"
                   >
                     <Edit className="size-5" />
                   </button>
 
                   <button
                     onClick={() => onDelete(unit.id)}
-                    className="rounded-full p-3 text-red-600 active:bg-red-50"
+                    className="rounded-full p-2.5 text-red-600 transition active:bg-red-50"
                   >
                     <Trash2 className="size-5" />
                   </button>
                 </div>
               </div>
 
-              <div className="space-y-2 text-sm text-gray-600">
+              <div className="mt-4 space-y-3 text-sm text-gray-600">
                 <div className="flex items-center gap-2">
-                  <MapPin className="size-4 text-red-400" />
-                  <span>{unit.location || '—'}</span>
+                  <MapPin className="size-4 shrink-0 text-red-400" />
+                  <span className="truncate">{unit.location || '—'}</span>
                 </div>
 
                 {unit.type === 'function_hall' && unit.capacity ? (
                   <div className="flex items-center gap-2">
-                    <Users className="size-4 text-gray-400" />
+                    <Users className="size-4 shrink-0 text-gray-400" />
                     <span>Capacity: {unit.capacity}</span>
                   </div>
                 ) : null}
@@ -1588,10 +1591,13 @@ const UnitsList = React.memo(function UnitsList({
                 ) : null}
               </div>
 
-              <div className="flex items-center justify-between border-t pt-3 text-sm">
-                <span className="font-medium text-gray-500">{formatCurrency(unit.price)}</span>
+              <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
+                <span className="text-sm font-semibold text-gray-900">
+                  {formatCurrency(unit.price)}
+                </span>
+
                 <span
-                  className={`rounded-full px-2 py-1 text-[10px] font-bold ${
+                  className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
                     unit.available ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                   }`}
                 >
@@ -2345,7 +2351,7 @@ export default function AdminUnitManagement() {
   const [searchTerm, setSearchTerm] = useState('');
 const [typeFilter, setTypeFilter] = useState<'all' | UnitType>('all');
 const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'available' | 'unavailable'>('all');
-
+const [showMobileFilters, setShowMobileFilters] = useState(false);  
   const selectedUnitToDelete = useMemo(
     () => units.find((unit) => unit.id === unitToDelete) ?? null,
     [units, unitToDelete]
@@ -2423,6 +2429,20 @@ const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'available'
     setEditingUnitId(unitId);
     setShowUnitModal(true);
   }, []);
+
+  const hasActiveSearch = Boolean(searchTerm.trim());
+const hasActiveFilters =
+  hasActiveSearch || typeFilter !== 'all' || availabilityFilter !== 'all';
+
+const resetFilters = useCallback(() => {
+  setSearchTerm('');
+  setTypeFilter('all');
+  setAvailabilityFilter('all');
+}, []);
+
+const closeMobileFilters = useCallback(() => {
+  setShowMobileFilters(false);
+}, []);
 
   const closeUnitModal = useCallback(() => {
     setShowUnitModal(false);
@@ -2732,23 +2752,18 @@ const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'available'
         )}
 
         {!loadingUnits && units.length > 0 && (
-  <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-    <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-      <div className="flex-1">
-        <input
-          type="text"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search by unit name, public ID, or location..."
-          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:w-auto">
+  <AdminFilterBar
+    searchTerm={searchTerm}
+    onSearchChange={setSearchTerm}
+    placeholder="Search by unit name, public ID, or location..."
+    showMobileFilters={showMobileFilters}
+    onToggleMobileFilters={() => setShowMobileFilters((prev) => !prev)}
+    actions={
+      <div className="hidden lg:flex lg:items-center lg:gap-2">
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value as 'all' | UnitType)}
-          className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+          className={FILTER_SELECT_CLASS}
         >
           <option value="all">All Types</option>
           <option value="rental_space">Rental Space</option>
@@ -2763,27 +2778,73 @@ const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'available'
               e.target.value as 'all' | 'available' | 'unavailable'
             )
           }
-          className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+          className={FILTER_SELECT_CLASS}
         >
           <option value="all">All Status</option>
           <option value="available">Available</option>
           <option value="unavailable">Unavailable</option>
         </select>
 
-        <button
-          type="button"
-          onClick={() => {
-            setSearchTerm('');
-            setTypeFilter('all');
-            setAvailabilityFilter('all');
-          }}
-          className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
-        >
-          Clear
-        </button>
+        {(searchTerm.trim() || typeFilter !== 'all' || availabilityFilter !== 'all') && (
+          <button
+            type="button"
+            onClick={() => {
+              setSearchTerm('');
+              setTypeFilter('all');
+              setAvailabilityFilter('all');
+              setShowMobileFilters(false);
+            }}
+            className="inline-flex rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
+          >
+            Clear
+          </button>
+        )}
       </div>
-    </div>
+    }
+    filters={
+  <div className="grid grid-cols-1 gap-2 lg:hidden">
+    <select
+      value={typeFilter}
+      onChange={(e) => setTypeFilter(e.target.value as 'all' | UnitType)}
+      className={FILTER_SELECT_CLASS}
+    >
+      <option value="all">All Types</option>
+      <option value="rental_space">Rental Space</option>
+      <option value="function_hall">Function Hall</option>
+      <option value="parking_slot">Parking Area</option>
+    </select>
+
+    <select
+      value={availabilityFilter}
+      onChange={(e) =>
+        setAvailabilityFilter(
+          e.target.value as 'all' | 'available' | 'unavailable'
+        )
+      }
+      className={FILTER_SELECT_CLASS}
+    >
+      <option value="all">All Status</option>
+      <option value="available">Available</option>
+      <option value="unavailable">Unavailable</option>
+    </select>
+
+    {(searchTerm.trim() || typeFilter !== 'all' || availabilityFilter !== 'all') && (
+      <button
+        type="button"
+        onClick={() => {
+          setSearchTerm('');
+          setTypeFilter('all');
+          setAvailabilityFilter('all');
+          setShowMobileFilters(false);
+        }}
+        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
+      >
+        Clear
+      </button>
+    )}
   </div>
+}
+  />
 )}
 
         <div className="flex-1">

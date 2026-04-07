@@ -565,63 +565,55 @@ export default function AdminProfile() {
 
           <div className="space-y-6 xl:col-span-8">
             <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
-              <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-6 py-5">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Profile Information</h3>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Keep your personal and contact information up to date.
-                  </p>
-                </div>
+              <div className="flex flex-col gap-4 border-b border-slate-100 bg-slate-50/70 px-4 py-5 sm:px-6">
+  <div>
+    <h3 className="text-base font-bold text-slate-900">Profile Information</h3>
+    <p className="mt-1 text-sm text-slate-500">
+      Keep your personal and contact information up to date.
+    </p>
+  </div>
 
-                <div className="relative h-11 w-[272px] shrink-0">
-                  <div
-                    className={`absolute inset-0 flex justify-end transition-opacity duration-150 ${
-                      editing ? 'pointer-events-none opacity-0' : 'opacity-100'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={handleEditStart}
-                      className="inline-flex h-11 items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
-                    >
-                      <Edit3 className="size-4" />
-                      Edit Details
-                    </button>
-                  </div>
+  {!editing ? (
+    <div className="flex w-full sm:justify-end">
+      <button
+        type="button"
+        onClick={handleEditStart}
+        className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 sm:w-auto"
+      >
+        <Edit3 className="size-4" />
+        Edit Details
+      </button>
+    </div>
+  ) : (
+    <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
+      <button
+        type="button"
+        onClick={handleEditCancel}
+        disabled={savingProfile}
+        className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50 sm:w-auto"
+      >
+        <X className="size-4" />
+        Cancel
+      </button>
 
-                  <div
-                    className={`absolute inset-0 flex items-center justify-end gap-2 transition-opacity duration-150 ${
-                      editing ? 'opacity-100' : 'pointer-events-none opacity-0'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={handleEditCancel}
-                      disabled={savingProfile}
-                      className="inline-flex h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      <X className="size-4" />
-                      Cancel
-                    </button>
+      <button
+        type="submit"
+        form="admin-profile-form"
+        disabled={savingProfile}
+        className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 disabled:opacity-50 sm:w-auto"
+      >
+        {savingProfile ? (
+          <div className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+        ) : (
+          <Save className="size-4" />
+        )}
+        {savingProfile ? 'Saving...' : 'Save Changes'}
+      </button>
+    </div>
+  )}
+</div>
 
-                    <button
-                      type="submit"
-                      form="admin-profile-form"
-                      disabled={savingProfile}
-                      className="inline-flex h-11 items-center gap-2 rounded-2xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 disabled:opacity-50"
-                    >
-                      {savingProfile ? (
-                        <div className="size-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                      ) : (
-                        <Save className="size-4" />
-                      )}
-                      {savingProfile ? 'Saving...' : 'Save Changes'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-6">
+              <div className="p-4 sm:p-6">
                 <AnimatePresence mode="wait">
                   {editing ? (
                     <motion.form
@@ -654,36 +646,36 @@ export default function AdminProfile() {
                             Email
                           </label>
 
-                          <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                            <div className="flex min-w-0 items-center gap-3">
-                              <Mail className="size-4 shrink-0 text-slate-400" />
-                              <p className="truncate text-sm font-medium text-slate-800">
-                                {profileForm.email || '—'}
-                              </p>
-                            </div>
+                          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+  <div className="flex min-w-0 items-center gap-3">
+    <Mail className="size-4 shrink-0 text-slate-400" />
+    <p className="truncate text-sm font-medium text-slate-800">
+      {profileForm.email || '—'}
+    </p>
+  </div>
 
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (changingEmail) {
-                                  setEmailForm({
-                                    newEmail: '',
-                                    confirmEmail: '',
-                                    currentPassword: '',
-                                  });
-                                  setShowEmailPassword(false);
-                                }
-                                setChangingEmail((prev) => !prev);
-                              }}
-                              className={`shrink-0 rounded-xl border px-3 py-2 text-xs font-bold transition ${
-                                changingEmail
-                                  ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
-                                  : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                              }`}
-                            >
-                              {changingEmail ? 'Cancel' : 'Change Email'}
-                            </button>
-                          </div>
+  <button
+    type="button"
+    onClick={() => {
+      if (changingEmail) {
+        setEmailForm({
+          newEmail: '',
+          confirmEmail: '',
+          currentPassword: '',
+        });
+        setShowEmailPassword(false);
+      }
+      setChangingEmail((prev) => !prev);
+    }}
+    className={`inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border px-3.5 py-2.5 text-xs font-bold transition sm:w-auto ${
+      changingEmail
+        ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+        : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+    }`}
+  >
+    {changingEmail ? 'Cancel' : 'Change Email'}
+  </button>
+</div>
 
                           <AnimatePresence initial={false}>
                             {changingEmail && (
@@ -743,7 +735,7 @@ export default function AdminProfile() {
                                       type="button"
                                       onClick={() => void handleEmailSubmit()}
                                       disabled={savingEmail}
-                                      className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 disabled:opacity-50"
+                                      className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 disabled:opacity-50 sm:w-auto"
                                     >
                                       {savingEmail ? 'Submitting...' : 'Send Verification'}
                                     </button>

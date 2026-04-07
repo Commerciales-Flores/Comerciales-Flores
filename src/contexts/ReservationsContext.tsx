@@ -563,7 +563,37 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         }
       }
 
-      const cleanDetails = buildReservationDetails(reservationData);
+            const cleanDetails = buildReservationDetails(reservationData);
+
+      if (reservationData.unitType === 'function_hall') {
+        const { data: existing, error: checkError } = await supabase.rpc(
+          'get_blocking_reservations'
+        );
+
+        if (checkError) {
+          console.error('Function hall validation failed:', checkError);
+          throw new Error('Unable to validate function hall availability.');
+        }
+
+        const requestedStart = new Date(reservationData.startDate).getTime();
+        const requestedEnd = new Date(reservationData.endDate).getTime();
+
+        const hasConflict = (existing ?? []).some((row: any) => {
+          if (row.unit_id !== reservationData.unitId) return false;
+          if (row.unit_type !== 'function_hall') return false;
+
+          const existingStart = new Date(row.start_date).getTime();
+          const existingEnd = new Date(row.end_date).getTime();
+
+          return requestedStart <= existingEnd && requestedEnd >= existingStart;
+        });
+
+        if (hasConflict) {
+          throw new Error(
+            'This function hall is already reserved for the selected date(s).'
+          );
+        }
+      }
 
       if (reservationData.unitType === 'parking_slot' && reservationData.slotId) {
         const { data: existing, error: checkError } = await supabase

@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { useUsers } from '../../contexts/UsersContext';
 import { useAuth } from '../../contexts/AuthContext';
 import supabase from '../../supabaseClient';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   useInquiries,
   type SupportMessage,
@@ -17,6 +18,8 @@ import {
   Search,
   PlusCircle,
   ChevronLeft,
+  SlidersHorizontal,
+  X,
 } from 'lucide-react';
 
 const STATUS_STYLES = {
@@ -384,7 +387,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
   return (
     <div className={`flex ${isSupportMessage ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`flex max-w-[88%] gap-3 ${
+        className={`flex max-w-[72%] gap-2 ${
           isSupportMessage ? 'flex-row-reverse' : 'flex-row'
         }`}
       >
@@ -406,13 +409,13 @@ function MessageBubble({ message }: MessageBubbleProps) {
           </span>
 
           <div
-            className={`rounded-2xl px-4 py-3 shadow-sm ${
+            className={`rounded-2xl px-3 py-2 shadow-sm ${
               isSupportMessage
                 ? 'rounded-tr-md bg-blue-600 text-white shadow-blue-100'
                 : 'rounded-tl-md border border-gray-200 bg-gray-50 text-gray-800'
             }`}
           >
-            <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.body}</p>
+            <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{message.body}</p>
           </div>
 
           <span className="mt-1.5 text-[10px] text-gray-400">
@@ -431,7 +434,6 @@ export default function AdminInquiries() {
   const { user: adminUser } = useAuth();
   const {
     tickets,
-    messages,
     fetchTickets,
     createTicket,
     sendTicketMessage,
@@ -450,6 +452,9 @@ export default function AdminInquiries() {
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [showMobileThread, setShowMobileThread] = useState(false);
   const [isComposingNewTicket, setIsComposingNewTicket] = useState(false);
+
+  const [activeMobilePane, setActiveMobilePane] = useState<'contacts' | 'tickets'>('contacts');
+const [showStatusFilters, setShowStatusFilters] = useState(false);
 
   const [filterContactType, setFilterContactType] = useState<'all' | 'user' | 'guest'>('all');
 
@@ -797,11 +802,6 @@ const hasNoFilterResults =
     selectedContactId,
   ]);
 
-  useEffect(() => {
-    if (selectedTicketId) {
-      setShowMobileThread(true);
-    }
-  }, [selectedTicketId]);
 
   useEffect(() => {
   if (!selectedTicket?.id) return;
@@ -811,13 +811,14 @@ const hasNoFilterResults =
 }, [fetchMessagesByTicketId, markTicketRead, selectedTicket?.id]);
 
   const openContact = useCallback((contactId: string) => {
-    setSelectedContactId(contactId);
-    setSelectedTicketId(null);
-    setIsComposingNewTicket(false);
-    setShowMobileThread(false);
-    setNewTicketSubject('');
-    setNewTicketMessage('');
-  }, []);
+  setSelectedContactId(contactId);
+  setSelectedTicketId(null);
+  setIsComposingNewTicket(false);
+  setShowMobileThread(false);
+  setNewTicketSubject('');
+  setNewTicketMessage('');
+  setActiveMobilePane('tickets');
+}, []);
 
   const openTicket = useCallback((ticketId: string) => {
     setSelectedTicketId(ticketId);
@@ -825,11 +826,10 @@ const hasNoFilterResults =
     setShowMobileThread(true);
   }, []);
 
-  const closeMobileThread = useCallback(() => {
-    setShowMobileThread(false);
-    setSelectedTicketId(null);
-    setIsComposingNewTicket(false);
-  }, []);
+ const closeMobileThread = useCallback(() => {
+  setShowMobileThread(false);
+  setIsComposingNewTicket(false);
+}, []);
 
   const startNewTicket = useCallback(() => {
     setSelectedTicketId(null);
@@ -1026,37 +1026,134 @@ const hasNoFilterResults =
 }, [isReopening, reopenTicket, selectedTicket]);
 
   return (
-    <div className="h-[calc(100vh-4rem)] min-h-[900px] bg-white">
+    <div className="min-h-[calc(100vh-4rem)] bg-white">
       <div className="flex h-full flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <div
-          className={`${
-            showMobileThread ? 'hidden md:flex' : 'flex'
-          } shrink-0 flex-col gap-4`}
-        >
-          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-gray-900">
-                Support Center
-              </h1>
-              <p className="mt-1 text-sm text-gray-500">
-                View contacts, start conversations, and continue support threads.
-              </p>
-            </div>
+  className={`${
+    showMobileThread ? 'hidden md:flex' : 'flex'
+  } shrink-0 flex-col gap-4`}
+>
+  <div>
+    <h1 className="text-2xl font-bold tracking-tight text-gray-900">
+      Support Center
+    </h1>
+    <p className="mt-1 text-sm text-gray-500">
+      View contacts, start conversations, and continue support threads.
+    </p>
+  </div>
 
-            <div className="flex overflow-x-auto rounded-2xl border border-gray-200 bg-white p-1 shadow-sm">
-              {(
-                ['all', 'waiting_for_support', 'waiting_for_customer', 'resolved'] as const
-              ).map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => setFilterStatus(status)}
-                  className={`whitespace-nowrap rounded-xl px-3 py-2 text-xs font-semibold transition-all md:px-4 md:text-sm ${
-                    filterStatus === status
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'text-gray-500 hover:bg-gray-50'
-                  }`}
-                >
+  {!isInitialInquiriesLoading && (
+    <div className="space-y-3">
+      <div className="flex items-stretch gap-2">
+  <div className="min-w-0 flex-1 rounded-2xl border border-gray-200 bg-white p-2 shadow-sm">
+    <div className="relative">
+      <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+      <input
+        type="text"
+        placeholder="Search contacts by name, email, or ID..."
+        value={searchTerm}
+        maxLength={100}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+      />
+    </div>
+  </div>
+
+  <button
+    type="button"
+    onClick={() => setShowStatusFilters(true)}
+    className={`inline-flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-2xl border shadow-sm transition ${
+      showStatusFilters
+        ? 'border-blue-300 bg-blue-50 text-blue-700'
+        : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+    }`}
+    aria-label="Open ticket filters"
+  >
+    <SlidersHorizontal className="size-5" />
+  </button>
+</div>
+
+      <div className="flex rounded-2xl border border-gray-200 bg-white p-1 shadow-sm md:hidden">
+        <button
+          type="button"
+          onClick={() => setActiveMobilePane('contacts')}
+          className={`flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+            activeMobilePane === 'contacts'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-gray-600 hover:bg-gray-50'
+          }`}
+        >
+          Contacts
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveMobilePane('tickets')}
+          className={`flex-1 rounded-xl px-4 py-2 text-sm font-semibold transition ${
+            activeMobilePane === 'tickets'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-gray-600 hover:bg-gray-50'
+          }`}
+        >
+          Tickets
+        </button>
+      </div>
+      <AnimatePresence>
+  {showStatusFilters && (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[60] flex items-end justify-center md:hidden"
+    >
+      <button
+        type="button"
+        aria-label="Close ticket filters"
+        className="absolute inset-0 bg-gray-900/40"
+        onClick={() => setShowStatusFilters(false)}
+      />
+
+      <motion.div
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ duration: 0.28, ease: 'easeOut' }}
+        className="relative w-full rounded-t-3xl bg-white p-6 shadow-xl"
+      >
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">
+              Filter tickets by current support status.
+            </h3>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowStatusFilters(false)}
+            className="rounded-full bg-gray-100 p-2"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          {(
+            ['all', 'waiting_for_support', 'waiting_for_customer', 'resolved'] as const
+          ).map((status) => (
+            <button
+              key={status}
+              type="button"
+              onClick={() => {
+                setFilterStatus(status);
+                setShowStatusFilters(false);
+              }}
+              className={`w-full rounded-2xl border-2 px-6 py-4 text-left font-semibold transition-all ${
+                filterStatus === status
+                  ? 'border-blue-600 bg-blue-50 text-blue-700'
+                  : 'border-gray-100 bg-gray-50 text-gray-600'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span>
                   {status === 'all'
                     ? 'All'
                     : status === 'waiting_for_support'
@@ -1064,30 +1161,23 @@ const hasNoFilterResults =
                     : status === 'waiting_for_customer'
                     ? 'Waiting for Customer'
                     : 'Resolved'}
-                  <span className="ml-2 opacity-70">({ticketCounts[status]})</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {!isInitialInquiriesLoading && (
-            <div className="rounded-2xl border border-gray-200 bg-white p-2 shadow-sm">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search contacts by name, email, or ID..."
-                  value={searchTerm}
-                  maxLength={100}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 bg-white py-3 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
-                />
+                </span>
+                <span className="text-sm opacity-80">
+                  ({ticketCounts[status]})
+                </span>
               </div>
-            </div>
-          )}
+            </button>
+          ))}
         </div>
+      </motion.div>
+    </motion.div>
+  )}
+</AnimatePresence>
+    </div>
+  )}
+</div>
 
-        <div className="hidden overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm lg:block">
+        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
           {isInitialInquiriesLoading ? (
             <EmptyState
               icon={
@@ -1105,10 +1195,14 @@ const hasNoFilterResults =
             description="Contacts with user accounts or guest ticket history will appear here."
           />
         ) : (
-            <div className="grid h-full min-h-0 flex-1 grid-cols-[320px_minmax(0,360px)_minmax(0,1fr)] gap-4 p-4">
+            <div className="grid min-h-0 gap-4 p-3 sm:p-4 lg:h-full lg:flex-1 lg:grid-cols-[320px_minmax(0,360px)_minmax(0,1fr)]">
               <div
                 className={`min-h-0 rounded-[2rem] border border-gray-200 bg-white shadow-sm ${
-                  showMobileThread ? 'hidden md:flex' : 'flex'
+                  showMobileThread
+                    ? 'hidden md:flex'
+                    : activeMobilePane === 'contacts'
+                    ? 'flex'
+                    : 'hidden md:flex'
                 } flex-col`}
               >
                 <div className="border-b border-gray-100 p-5">
@@ -1170,12 +1264,27 @@ const hasNoFilterResults =
 
               <div
                 className={`min-h-0 rounded-[2rem] border border-gray-200 bg-white shadow-sm ${
-                  showMobileThread ? 'hidden md:flex' : 'flex'
+                  showMobileThread
+                    ? 'hidden md:flex'
+                    : activeMobilePane === 'tickets'
+                    ? 'flex'
+                    : 'hidden md:flex'
                 } flex-col`}
               >
                 <div className="border-b border-gray-100 p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div>
+
+                      <div className="mb-3 md:hidden">
+                        <button
+                          type="button"
+                          onClick={() => setActiveMobilePane('contacts')}
+                          className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600 transition hover:bg-gray-50"
+                        >
+                          <ChevronLeft className="size-4" />
+                          Back to Contacts
+                        </button>
+                      </div>
                       <h2 className="text-sm font-bold text-gray-900">Tickets</h2>
                       <p className="mt-1 text-[11px] text-gray-500">
                         {selectedContact
