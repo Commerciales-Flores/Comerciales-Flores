@@ -15,6 +15,7 @@ import {
   Clock3,
   Plus,
   FileDown,
+  Download,
   X,
   XCircle,
   Trash2,
@@ -35,9 +36,9 @@ import { uiTypography } from '../../styles/uiTypography';
 import EmptyState from '../../components/common/EmptyState';
 
 const PAYMENT_STATUS_COLORS = {
-  paid: 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200',
-  unpaid: 'bg-amber-100 text-amber-700 ring-1 ring-amber-200',
-  partial: 'bg-sky-100 text-sky-700 ring-1 ring-sky-200',
+  paid: 'border border-emerald-200 bg-emerald-50 text-emerald-700',
+  unpaid: 'border border-amber-200 bg-amber-50 text-amber-700',
+  partial: 'border border-blue-200 bg-blue-50 text-blue-700',
 } as const;
 
 const PAYMENT_STATUS_ICONS = {
@@ -58,6 +59,37 @@ const UNIT_TYPE_COLORS: Record<string, string> = {
   function_hall: 'text-purple-600',
   parking_slot: 'text-orange-600',
 };
+
+type DashboardStatCardProps = {
+  label: string;
+  value: number | string;
+  icon: React.ReactNode;
+};
+
+function DashboardStatCard({ label, value, icon }: DashboardStatCardProps) {
+  return (
+    <div className="flex min-h-[72px] sm:min-h-[104px] flex-col justify-between 
+                    rounded-lg sm:rounded-xl 
+                    border border-gray-200 
+                    bg-white 
+                    p-3 sm:p-4 
+                    shadow-sm">
+      
+      <div className="mb-1 sm:mb-2 flex items-center justify-between gap-2 sm:gap-3">
+        <p className="text-[10px] sm:text-sm font-medium text-gray-500">
+          {label}
+        </p>
+        <div className="shrink-0 [&>svg]:size-4 sm:[&>svg]:size-5">
+          {icon}
+        </div>
+      </div>
+
+      <p className="break-words text-base sm:text-xl font-bold leading-tight text-gray-900">
+        {value}
+      </p>
+    </div>
+  );
+}
 
 function formatPaymentMethod(method?: string | null) {
   if (!method) return 'N/A';
@@ -825,13 +857,17 @@ Thank you for your payment.
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
-        <header>
-          <h1 className={uiTypography.pageTitle}>Payments</h1>
-          <p className={`${uiTypography.pageDescription} mt-1`}>
-            View balances, track progress, submit payments, and download invoices.
-          </p>
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
+        <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className={uiTypography.pageTitle}>Payments</h1>
+            <p className={uiTypography.pageDescription}>
+              View balances, track progress, submit payments, and download invoices.
+            </p>
+          </div>
         </header>
+
+        
 
         {notice && (
           <AppNotice
@@ -844,71 +880,31 @@ Thank you for your payment.
         
 
         {shouldShowOverview && (
-  <section className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm">
-    <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-4 sm:p-6">
-      <div className="rounded-[24px] border border-emerald-100 bg-gradient-to-br from-emerald-50 to-white p-4 shadow-sm">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className={`${uiTypography.miniStatLabel} text-emerald-700/80`}>
-              Total Paid
-            </p>
-            <p className={`${uiTypography.cardTitle} mt-2 text-slate-900`}>
-              {formatCurrency(paymentOverview.totalPaid)}
-            </p>
-          </div>
-          <div className="rounded-2xl bg-emerald-100 p-2.5 text-emerald-700">
-            <CheckCircle2 className="size-5" />
-          </div>
-        </div>
-      </div>
+  <section>
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <DashboardStatCard
+        label="Total Paid"
+        value={formatCurrency(paymentOverview.totalPaid)}
+        icon={<CheckCircle2 className="size-5 text-emerald-500" />}
+      />
 
-      <div className="rounded-[24px] border border-amber-100 bg-gradient-to-br from-amber-50 to-white p-4 sm:p-5 shadow-sm">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className={`${uiTypography.miniStatLabel} text-amber-700/80`}>
-              Pending
-            </p>
-            <p className={`${uiTypography.cardTitle} mt-2 text-slate-900`}>
-              {formatCurrency(paymentOverview.pendingAmount)}
-            </p>
-          </div>
-          <div className="rounded-2xl bg-amber-100 p-2.5 text-amber-700">
-            <Clock3 className="size-5" />
-          </div>
-        </div>
-      </div>
+      <DashboardStatCard
+        label="Pending"
+        value={formatCurrency(paymentOverview.pendingAmount)}
+        icon={<Clock3 className="size-5 text-amber-500" />}
+      />
 
-      <div className="rounded-[24px] border border-rose-100 bg-gradient-to-br from-rose-50 to-white p-4 sm:p-5 shadow-sm">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className={`${uiTypography.miniStatLabel} text-rose-700/80`}>
-              Outstanding
-            </p>
-            <p className={`${uiTypography.cardTitle} mt-2 text-slate-900`}>
-              {formatCurrency(outstandingTotal)}
-            </p>
-          </div>
-          <div className="rounded-2xl bg-rose-100 p-2.5 text-rose-700">
-            <AlertCircle className="size-5" />
-          </div>
-        </div>
-      </div>
+      <DashboardStatCard
+        label="Outstanding"
+        value={formatCurrency(outstandingTotal)}
+        icon={<AlertCircle className="size-5 text-rose-500" />}
+      />
 
-      <div className="rounded-[24px] border border-sky-100 bg-gradient-to-br from-sky-50 to-white p-4 sm:p-5 shadow-sm">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className={`${uiTypography.miniStatLabel} text-sky-700/80`}>
-              Transactions
-            </p>
-            <p className={`${uiTypography.cardTitle} mt-2 text-slate-900`}>
-              {paymentOverview.transactions}
-            </p>
-          </div>
-          <div className="rounded-2xl bg-sky-100 p-2.5 text-sky-700">
-            <CircleDollarSign className="size-5" />
-          </div>
-        </div>
-      </div>
+      <DashboardStatCard
+        label="Transactions"
+        value={paymentOverview.transactions}
+        icon={<CircleDollarSign className="size-5 text-blue-500" />}
+      />
     </div>
   </section>
 )}
@@ -943,15 +939,17 @@ Thank you for your payment.
                     className="rounded-[26px] border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                   >
                     <div className="flex items-start justify-between gap-4">
-                      <div className="min-w-0">
-                        <h3 className={`${uiTypography.sectionTitle} truncate`}>
+                      <div className="min-w-0 leading-tight sm:leading-normal">
+                        <h3 className="truncate text-sm sm:text-base font-semibold text-slate-900">
                           {reservation.unitName}
                         </h3>
-                        <p className={uiTypography.cardSubtitle}>
+
+                        <p className="text-[10px] sm:text-xs text-slate-500">
                           Reservation ID: {reservation.publicId || reservation.id}
                         </p>
+
                         <p
-                          className={`${uiTypography.badgeLabel} mt-1 ${
+                          className={`text-[10px] sm:text-xs ${
                             UNIT_TYPE_COLORS[reservation.unitType] || 'text-slate-400'
                           }`}
                         >
@@ -960,12 +958,20 @@ Thank you for your payment.
                       </div>
 
                       <button
-                        onClick={() => handleMakePayment(reservation.id)}
-                        className={`inline-flex shrink-0 items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-green-500 px-4 py-2.5 min-h-[44px] text-white transition hover:opacity-95 ${uiTypography.buttonText}`}
-                      >
-                        <Plus className="size-4" />
-                        Pay
-                      </button>
+  onClick={() => handleMakePayment(reservation.id)}
+  className={`
+    inline-flex shrink-0 items-center gap-1.5
+    rounded-lg sm:rounded-xl
+    bg-gradient-to-r from-emerald-600 to-green-500
+    px-2.5 py-1.5 sm:px-3 sm:py-2
+    min-h-[32px] sm:min-h-[36px]
+    text-xs sm:text-sm
+    text-white transition hover:opacity-95
+  `}
+>
+  <Plus className="size-3.5 sm:size-4" />
+  Pay
+</button>
                     </div>
 
                     <div className="mt-5">
@@ -986,30 +992,40 @@ Thank you for your payment.
                       </div>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-3">
-                      <div className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
-                        <p className={`${uiTypography.infoBlockLabel} text-slate-400`}>Total</p>
-                        <p className={`${uiTypography.infoBlockValue} text-slate-900`}>
-                          {formatCurrency(reservation.totalAmount)}
-                        </p>
-                      </div>
+                    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3">
+  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200 sm:px-4 sm:py-3">
+    <div className="flex items-center justify-between sm:block">
+      <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-400">
+        Total
+      </p>
+      <p className="text-sm font-semibold text-slate-900 sm:mt-1 sm:text-base">
+        {formatCurrency(reservation.totalAmount)}
+      </p>
+    </div>
+  </div>
 
-                      <div className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
-                        <p className={`${uiTypography.infoBlockLabel} text-slate-400`}>Paid</p>
-                        <p className={`${uiTypography.infoBlockValue} text-emerald-600`}>
-                          {formatCurrency(paid)}
-                        </p>
-                      </div>
+  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200 sm:px-4 sm:py-3">
+    <div className="flex items-center justify-between sm:block">
+      <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-400">
+        Paid
+      </p>
+      <p className="text-sm font-semibold text-emerald-600 sm:mt-1 sm:text-base">
+        {formatCurrency(paid)}
+      </p>
+    </div>
+  </div>
 
-                      <div className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
-                        <p className={`${uiTypography.infoBlockLabel} text-slate-400`}>
-                          Balance
-                        </p>
-                        <p className={`${uiTypography.infoBlockValue} text-rose-600`}>
-                          {formatCurrency(balance)}
-                        </p>
-                      </div>
-                    </div>
+  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200 sm:px-4 sm:py-3">
+    <div className="flex items-center justify-between sm:block">
+      <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-400">
+        Balance
+      </p>
+      <p className="text-sm font-semibold text-rose-600 sm:mt-1 sm:text-base">
+        {formatCurrency(balance)}
+      </p>
+    </div>
+  </div>
+</div>
                   </div>
                 );
               })}
@@ -1031,25 +1047,31 @@ Thank you for your payment.
                   </p>
                 </div>
 
-                <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
-                  <div className="relative w-full lg:w-80">
+                <div className="flex w-full items-stretch gap-2 sm:gap-3 lg:w-auto">
+                  <div className="relative min-w-0 flex-1 lg:w-80 lg:flex-none">
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                     <input
                       type="text"
                       maxLength={100}
-                      placeholder="Search by reservation, amount, method..."
+                      placeholder="Search payments..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className={`w-full rounded-2xl border border-slate-300 bg-white py-3 pl-10 pr-4 text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
+                      className={`w-full rounded-xl border border-slate-300 bg-white py-3 pl-10 pr-4 text-sm outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
                     />
                   </div>
 
                   <button
+                    type="button"
                     onClick={handleExportCSV}
-                    className={`inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-700 px-4 py-3 min-h-[44px] text-white transition hover:opacity-95 ${uiTypography.buttonText}`}
+                    aria-label="Export CSV"
+                    title="Export CSV"
+                    className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-slate-900 to-slate-700 px-3 text-white transition hover:opacity-95 sm:px-4"
                   >
-                    <FileDown className="size-4" />
-                    Export CSV
+                    <Download className="size-4" />
+
+                    <span className="hidden sm:inline">
+                      Export CSV
+                    </span>
                   </button>
                 </div>
               </div>
@@ -1084,35 +1106,50 @@ Thank you for your payment.
                       <div className="border-b border-slate-100 bg-gradient-to-r from-white to-slate-50 px-5 py-4 sm:px-6 gap-3">
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                              <span
-                                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 ${uiTypography.badgeLabel} ${
-                                  PAYMENT_STATUS_COLORS[
-                                    payment.status as keyof typeof PAYMENT_STATUS_COLORS
-                                  ]
-                                }`}
-                              >
-                                <StatusIcon className="size-3.5" />
-                                {String(payment.status)}
-                              </span>
+                            <div className="flex flex-wrap items-start gap-1 sm:gap-2">
+  <span
+    className={`inline-flex items-center gap-1 rounded-full 
+    px-1.5 py-0.5 text-[9px] sm:px-2.5 sm:py-1 sm:text-[11px]
+    font-medium uppercase tracking-[0.06em] sm:tracking-[0.08em]
+    ${
+      PAYMENT_STATUS_COLORS[
+        payment.status as keyof typeof PAYMENT_STATUS_COLORS
+      ]
+    }`}
+  >
+    <StatusIcon className="size-2.5 sm:size-3" />
+    {String(payment.status)}
+  </span>
 
-                              <span className={`inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 ring-1 ring-slate-200 ${uiTypography.helperText} font-medium text-slate-600`}>
-                                <Landmark className="size-3.5" />
-                                {formatPaymentMethod(payment.method)}
-                              </span>
+  <span className="inline-flex items-center gap-1 rounded-full 
+    bg-slate-100 
+    px-1.5 py-0.5 text-[9px] 
+    sm:px-2.5 sm:py-1 sm:text-[11px]
+    font-medium text-slate-600 ring-1 ring-slate-200">
+    <Landmark className="size-2.5 sm:size-3" />
+    {formatPaymentMethod(payment.method)}
+  </span>
 
-                              {ledgerEntry ? (
-                                <span className={`inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 ring-1 ring-emerald-200 ${uiTypography.helperText} font-medium text-emerald-700`}>
-                                  <ReceiptText className="size-3.5" />
-                                  Posted to ledger
-                                </span>
-                              ) : (
-                                <span className={`inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 ring-1 ring-amber-200 ${uiTypography.helperText} font-medium text-amber-700`}>
-                                  <Clock3 className="size-3.5" />
-                                  Awaiting posting
-                                </span>
-                              )}
-                            </div>
+  {ledgerEntry ? (
+    <span className="inline-flex items-center gap-1 rounded-full 
+      bg-emerald-50 
+      px-1.5 py-0.5 text-[9px] 
+      sm:px-2.5 sm:py-1 sm:text-[11px]
+      font-medium text-emerald-700 ring-1 ring-emerald-200">
+      <ReceiptText className="size-2.5 sm:size-3" />
+      Posted
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 rounded-full 
+      bg-amber-50 
+      px-1.5 py-0.5 text-[9px] 
+      sm:px-2.5 sm:py-1 sm:text-[11px]
+      font-medium text-amber-700 ring-1 ring-amber-200">
+      <Clock3 className="size-2.5 sm:size-3" />
+      Pending
+    </span>
+  )}
+</div>
 
                             <div className="mt-3">
                               <h3 className={`${uiTypography.cardTitle} text-slate-900`}>
@@ -1145,154 +1182,105 @@ Thank you for your payment.
                       </div>
 
                       <div className="p-5 sm:p-6">
-  <div className="grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
-    <div className="min-w-0">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h4 className="truncate text-lg font-semibold tracking-tight text-slate-900">
-            {reservation?.unitName ?? 'Unknown Unit'}
-          </h4>
-          <p className="mt-1 text-sm text-slate-500">
-            {reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A'}
-          </p>
-        </div>
+  <div className="space-y-4">
+    <div className="flex flex-wrap items-start justify-between gap-2">
+      <div className="min-w-0">
+        <h4 className="truncate text-sm sm:text-lg font-semibold text-slate-900">
+          {reservation?.unitName ?? 'Unknown Unit'}
+        </h4>
 
-        <div className="flex items-center gap-2">
-          {proofSrc ? (
-            <button
-              type="button"
-              onClick={() => setViewingImage(proofSrc)}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm min-h-[40px] font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              <Eye className="size-4" />
-              Proof
-            </button>
-          ) : (
-            <span className="text-sm text-slate-400">Proof unavailable</span>
-          )}
+        <p className="text-xs text-slate-500">
+          Reservation ID: {reservation?.publicId ?? reservation?.id ?? 'N/A'}
+        </p>
 
+        <p className="text-[11px] text-slate-400">
+          {reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A'}
+        </p>
+      </div>
+
+      <div className="flex items-center gap-2">
+        {proofSrc ? (
           <button
             type="button"
-            onClick={() => handleDownloadInvoice(payment)}
-            className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm min-h-[40px] font-medium transition ${
-              ledgerEntry
-                ? 'bg-slate-900 text-white hover:bg-slate-800'
-                : 'cursor-not-allowed bg-slate-200 text-slate-500'
-            }`}
+            onClick={() => setViewingImage(proofSrc)}
+            className="inline-flex h-8 w-8 sm:h-auto sm:w-auto items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 sm:px-2.5 sm:py-1.5 sm:gap-1.5"
           >
-            <FileDown className="size-4" />
-            Invoice
+            <Eye className="size-3.5" />
+            <span className="hidden sm:inline text-xs font-medium">Proof</span>
           </button>
-        </div>
-      </div>
-
-      <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs sm:text-sm font-semibold uppercase tracking-[0.14em] text-slate-500">
-            Reservation Payment Progress
-          </p>
-          <div className="inline-flex items-center gap-1 text-sm font-semibold text-slate-700">
-            {progress.toFixed(0)}%
-            <ArrowUpRight className="size-4 text-slate-400" />
-          </div>
-        </div>
-
-        <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-sky-500 transition-all duration-500"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-xs sm:text-sm font-semibold uppercase tracking-[0.12em] text-slate-400">
-              Total Bill
-            </p>
-            <p className="mt-1 text-base font-semibold text-slate-900">
-              {formatCurrency(reservation?.totalAmount || 0)}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-xs sm:text-sm font-semibold uppercase tracking-[0.12em] text-slate-400">
-              Paid To Date
-            </p>
-            <p className="mt-1 text-base font-semibold text-emerald-600">
-              {formatCurrency(paidFromLedger)}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-xs sm:text-sm font-semibold uppercase tracking-[0.12em] text-slate-400">
-              Remaining
-            </p>
-            <p className="mt-1 text-base font-semibold text-rose-600">
-              {formatCurrency(remaining)}
-            </p>
-          </div>
-        </div>
+        ) : (
+          <span className="text-[10px] text-slate-400">No proof</span>
+        )}
       </div>
     </div>
 
-    <div className="rounded-[24px] border border-slate-200 bg-white p-4">
-      <p className="text-xs sm:text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">
-        Payment Details
-      </p>
+    <div className="rounded-[18px] sm:rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+  <p className="text-[10px] sm:text-sm font-semibold uppercase tracking-[0.08em] sm:tracking-[0.14em] text-slate-400">
+    Payment Details
+  </p>
 
-      <div className="mt-4 space-y-3 text-sm">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-slate-500">Reservation ID</span>
-          <span className="font-medium text-slate-900">
-            {reservation?.publicId ?? reservation?.id ?? 'N/A'}
-          </span>
-        </div>
-
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-slate-500">Payment Method</span>
-          <span className="font-medium text-slate-900">
-            {formatPaymentMethod(payment.method)}
-          </span>
-        </div>
-
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-slate-500">Status</span>
-          <span className="font-medium text-slate-900">
-            {String(payment.status)}
-          </span>
-        </div>
-
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-slate-500">Ledger Entry</span>
-          <span className="font-medium text-slate-900">
-            {ledgerEntry?.publicId || ledgerEntry?.id || 'N/A'}
-          </span>
-        </div>
-
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-slate-500">Reference No</span>
-          <span className="font-medium text-slate-900">
-            {ledgerEntry?.referenceNo || 'N/A'}
-          </span>
-        </div>
-
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-slate-500">Recorded</span>
-          <span className="font-medium text-slate-900">
-            {ledgerEntry ? formatDate(ledgerEntry.recordedAt) : 'Not yet posted'}
-          </span>
-        </div>
+  <div className="mt-2 sm:mt-3 space-y-1.5 sm:space-y-3 text-[12px] sm:text-sm">
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-1.5 text-slate-500">
+        <ReceiptText className="size-3.5 sm:size-4 text-blue-600" />
+        <span className="text-[11px] sm:text-sm">Reservation ID</span>
       </div>
-
-      {payment.notes && (
-        <div className="mt-4 rounded-2xl bg-slate-50 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
-            Notes
-          </p>
-          <p className="mt-2 text-sm sm:text-base leading-6 text-slate-600">{payment.notes}</p>
-        </div>
-      )}
+      <span className="font-medium text-slate-900 text-right">
+        {reservation?.publicId ?? reservation?.id ?? 'N/A'}
+      </span>
     </div>
+
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-1.5 text-slate-500">
+        <Landmark className="size-3.5 sm:size-4 text-emerald-600" />
+        <span className="text-[11px] sm:text-sm">Payment Method</span>
+      </div>
+      <span className="font-medium text-slate-900 text-right">
+        {formatPaymentMethod(payment.method)}
+      </span>
+    </div>
+
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-1.5 text-slate-500">
+        <CreditCard className="size-3.5 sm:size-4 text-amber-600" />
+        <span className="text-[11px] sm:text-sm">Status</span>
+      </div>
+      <span className="font-medium text-slate-900 text-right capitalize">
+        {String(payment.status)}
+      </span>
+    </div>
+
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-1.5 text-slate-500">
+        <ReceiptText className="size-3.5 sm:size-4 text-violet-600" />
+        <span className="text-[11px] sm:text-sm">Ledger Entry</span>
+      </div>
+      <span className="font-medium text-slate-900 text-right">
+        {ledgerEntry?.publicId || ledgerEntry?.id || 'N/A'}
+      </span>
+    </div>
+
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-1.5 text-slate-500">
+        <ReceiptText className="size-3.5 sm:size-4 text-slate-600" />
+        <span className="text-[11px] sm:text-sm">Reference No</span>
+      </div>
+      <span className="font-medium text-slate-900 text-right">
+        {ledgerEntry?.referenceNo || 'N/A'}
+      </span>
+    </div>
+
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-1.5 text-slate-500">
+        <Clock3 className="size-3.5 sm:size-4 text-rose-600" />
+        <span className="text-[11px] sm:text-sm">Recorded</span>
+      </div>
+      <span className="font-medium text-slate-900 text-right">
+        {ledgerEntry ? formatDate(ledgerEntry.recordedAt) : 'Not yet posted'}
+      </span>
+    </div>
+  </div>
+</div>
   </div>
 </div>
                     </div>

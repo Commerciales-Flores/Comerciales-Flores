@@ -109,6 +109,33 @@ function getExtensionRequestDetails(reservation: any) {
   };
 }
 
+function canCancelReservation(reservation: {
+  status: ReservationStatus;
+  paidAmount?: number;
+  startDate?: string;
+}) {
+  if (
+    ['cancelled', 'completed', 'rejected', 'overdue'].includes(reservation.status)
+  ) {
+    return false;
+  }
+
+  const hasStarted =
+    !!reservation.startDate &&
+    new Date(reservation.startDate).getTime() <= Date.now();
+
+  if (hasStarted) {
+    return false;
+  }
+
+  const hasPayment = Number(reservation.paidAmount || 0) > 0;
+
+  if (reservation.status === 'pending') return true;
+  if (reservation.status === 'approved' && !hasPayment) return true;
+
+  return false;
+}
+
 type ReservationFilterTabsProps = {
   filter: FilterStatus;
   counts: Record<FilterStatus, number>;
@@ -169,47 +196,60 @@ function ReservationFilterBottomSheet({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="fixed inset-0 z-[60] bg-black/40 md:hidden"
-          />
+            className="fixed inset-0 z-[60] md:hidden"
+          >
+            <button
+              type="button"
+              aria-label="Close reservation filters"
+              className="absolute inset-0 bg-gray-900/40"
+              onClick={onClose}
+            />
+          </motion.div>
 
           <motion.div
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed inset-x-0 bottom-0 z-[70] flex max-h-[70vh] flex-col rounded-t-[32px] bg-white shadow-2xl md:hidden"
+            initial={{ y: 40, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 40, opacity: 0 }}
+            transition={{ duration: 0.22 }}
+            className="fixed inset-x-0 bottom-0 z-[70] md:hidden"
           >
-            <div className="border-b p-6">
-              <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-gray-200" />
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-gray-900">Filter reservations</h2>
+            <div className="relative w-full rounded-t-3xl bg-white px-4 pb-4 pt-5 shadow-xl">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    Filter reservations
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Choose which reservation status to show.
+                  </p>
+                </div>
+
                 <button
+                  type="button"
                   onClick={onClose}
                   className="rounded-full bg-gray-100 p-2 transition hover:bg-gray-200"
                 >
-                  <X className="size-5 text-gray-500" />
+                  <X className="size-5 text-gray-600" />
                 </button>
               </div>
-            </div>
 
-            <div className="overflow-y-auto p-6">
-              <div className="grid gap-2">
+              <div className="flex flex-col gap-2">
                 {FILTER_OPTIONS.map((status) => (
                   <button
                     key={status}
+                    type="button"
                     onClick={() => onSelect(status)}
-                    className={`flex w-full items-center justify-between rounded-2xl p-4 text-left font-semibold capitalize transition ${
+                    className={`flex min-h-[44px] items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold capitalize transition ${
                       filter === status
-                        ? 'bg-blue-50 text-blue-600 ring-1 ring-blue-200'
-                        : 'bg-gray-50 text-gray-600'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'border border-gray-200 bg-gray-50 text-gray-700'
                     }`}
                   >
                     <span>{status}</span>
                     <span
-                      className={`rounded-full px-2 py-0.5 text-xs sm:text-sm font-bold ${
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
                         filter === status
-                          ? 'bg-blue-100 text-blue-700'
+                          ? 'bg-white/20 text-white'
                           : 'bg-white text-gray-500'
                       }`}
                     >
@@ -218,6 +258,14 @@ function ReservationFilterBottomSheet({
                   </button>
                 ))}
               </div>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="mt-4 w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+              >
+                Close
+              </button>
             </div>
           </motion.div>
         </>
@@ -229,7 +277,7 @@ function ReservationFilterBottomSheet({
 export default function ClientReservations() {
   const { user } = useAuth();
   const { units } = useClientData();
-  const { getReservationsByUserId, deleteReservation, updateReservation } = useReservations();
+  const { getReservationsByUserId, updateReservation } = useReservations();
 
   const [expandedDetailsId, setExpandedDetailsId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
@@ -239,12 +287,15 @@ export default function ClientReservations() {
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
   );
 
-  const [reservationToDelete, setReservationToDelete] = useState<{
+  const [reservationToCancel, setReservationToCancel] = useState<{
   id: string;
   unitName: string;
+  status: ReservationStatus;
+  paidAmount: number;
+  startDate?: string;
 } | null>(null);
 
-const [isDeletingReservation, setIsDeletingReservation] = useState(false);
+const [isCancellingReservation, setIsCancellingReservation] = useState(false);
 
   const [extensionModalReservationId, setExtensionModalReservationId] = useState<string | null>(null);
   const [extensionMonths, setExtensionMonths] = useState('1');
@@ -319,15 +370,42 @@ const [isDeletingReservation, setIsDeletingReservation] = useState(false);
     setExpandedDetailsId((prev) => (prev === id ? null : id));
   }, []);
 
-  const handleDeleteReservation = useCallback(
-  (reservationId: string, unitName: string) => {
-    setReservationToDelete({
+  const handleCancelReservation = useCallback(
+  (
+    reservationId: string,
+    unitName: string,
+    status: ReservationStatus,
+    paidAmount: number,
+    startDate?: string
+  ) => {
+    setReservationToCancel({
       id: reservationId,
       unitName,
+      status,
+      paidAmount,
+      startDate,
     });
   },
   []
 );
+
+const confirmCancelReservation = useCallback(async () => {
+  if (!reservationToCancel || isCancellingReservation) return;
+
+  try {
+    setIsCancellingReservation(true);
+
+    await updateReservation(reservationToCancel.id, {
+      status: 'cancelled',
+    });
+
+    setReservationToCancel(null);
+  } catch (error) {
+    console.error('Failed to cancel reservation:', error);
+  } finally {
+    setIsCancellingReservation(false);
+  }
+}, [reservationToCancel, isCancellingReservation, updateReservation]);
 
   const toggleExpand = useCallback(
     (id: string) => {
@@ -405,15 +483,18 @@ const [isDeletingReservation, setIsDeletingReservation] = useState(false);
               View and manage your reservation requests
             </p>
           </header>
-
-          {userReservations.length > 0 && (
-            <button
-              onClick={() => setShowFilterMenu(true)}
-              className="rounded-xl border border-gray-200 bg-white p-3 min-h-[44px] shadow-sm transition active:scale-95 md:hidden"
-            >
-              <Filter className="size-5 text-gray-600" />
-            </button>
-          )}
+{userReservations.length > 0 && (
+  <div className="flex w-full justify-end md:hidden">
+    <button
+      type="button"
+      onClick={() => setShowFilterMenu(true)}
+      aria-label="Open reservation filters"
+      className="flex h-10 w-10 items-center justify-center rounded-xl border border-gray-300 bg-white transition hover:bg-gray-50"
+    >
+      <Filter className="size-5 text-gray-600" />
+    </button>
+  </div>
+)}
         </div>
 
         {userReservations.length > 0 && (
@@ -489,112 +570,120 @@ const [isDeletingReservation, setIsDeletingReservation] = useState(false);
                 const extensionDetails = getExtensionRequestDetails(reservation);
                 const eligibleForExtension = canRequestExtension(reservation);
 
+                const canCancel = canCancelReservation({
+                  status,
+                  paidAmount: Number(reservation.paidAmount || 0),
+                  startDate: reservation.startDate,
+                });
+
                 return (
                   <motion.div
                     layout
                     key={reservation.id}
-                    className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm sm:rounded-[22px]"
+                    className="relative mb-4 overflow-visible rounded-2xl border border-gray-100 bg-white shadow-sm sm:rounded-[22px]"
                   >
-                    <div
-                      className={`p-4 sm:p-5 ${isMobile ? 'cursor-pointer' : ''}`}
+                   <div
+                      className={`relative px-3.5 py-3.5 sm:p-5 ${isMobile ? 'cursor-pointer pb-10' : ''}`}
                       onClick={() => toggleExpand(reservation.id)}
                     >
-                      <div className="mb-3 flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className="mb-1.5 flex items-start justify-between gap-2.5">
-                            <div className="min-w-0">
-                              <span className="text-xs font-semibold text-blue-600 sm:text-[13px]">
-                                {getUnitTypeLabel(reservation.unitType)}
-                              </span>
+                      <div className="mb-2 flex items-start justify-between">
+ <div className="min-w-0 flex-1">
+  <div className="mb-0.5 flex items-start justify-between gap-2">
+    <div className="min-w-0">
+      <span className="text-[10px] font-semibold text-blue-600 md:text-[13px]">
+        {getUnitTypeLabel(reservation.unitType)}
+      </span>
 
-                              <p
-                                className={`${uiTypography.helperText} mt-1 truncate text-gray-400 text-xs sm:text-sm`}
-                              >
-                                ID: {reservation.publicId || reservation.id}
-                              </p>
-                            </div>
+      <p
+        className={`${uiTypography.helperText} mt-0.5 truncate text-[10px] text-gray-400 md:text-sm`}
+      >
+        ID: {reservation.publicId || reservation.id}
+      </p>
+    </div>
 
-                            <div className="flex flex-wrap justify-end gap-2">
-                              <span
-                                className={`shrink-0 rounded-full border px-2 py-0.5 text-xs sm:text-sm ${uiTypography.buttonTextBold} shadow-sm ${STATUS_COLORS[status]}`}
-                              >
-                                {STATUS_ICONS[status]} {status.toUpperCase()}
-                              </span>
+    <div className="flex flex-wrap justify-end gap-1">
+      <span
+  className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] md:text-xs ${uiTypography.buttonTextBold} shadow-sm ${STATUS_COLORS[status]}`}
+>
+  {STATUS_ICONS[status]} {status.toUpperCase()}
+</span>
 
-                              {extensionDetails && (
-                                <span className="shrink-0 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs sm:text-sm font-bold text-indigo-700 shadow-sm">
-                                  EXTENSION REQUESTED
-                                </span>
-                              )}
-                            </div>
-                          </div>
+      {extensionDetails && (
+        <span className="shrink-0 rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[9px] md:text-sm font-bold text-indigo-700 shadow-sm">
+          EXTENSION REQUESTED
+        </span>
+      )}
+    </div>
+  </div>
 
-                          <h3
-                            className={`${uiTypography.cardTitle} truncate text-base sm:text-lg text-gray-900`}
-                          >
-                            {reservation.unitName}
-                          </h3>
+  <h3
+    className={`${uiTypography.cardTitle} truncate text-[13px] leading-tight text-gray-900 md:text-lg`}
+  >
+    {reservation.unitName}
+  </h3>
 
-                          <div className="mt-0.5 flex items-center gap-1.5 text-gray-500">
-                            <MapPin className="size-4 text-red-600" />
-                            <span
-                              className={`${uiTypography.bodyText} truncate text-[13px] sm:text-sm`}
-                            >
-                              {unit?.location || 'N/A'}
-                            </span>
-                          </div>
-                        </div>
+  <div className="mt-0.5 flex items-center gap-1 text-gray-500">
+    <MapPin className="size-3 md:size-4 text-red-600" />
+    <span
+      className={`${uiTypography.bodyText} truncate text-[11px] md:text-sm`}
+    >
+      {unit?.location || 'N/A'}
+    </span>
+  </div>
+</div>
+</div>
 
-                        {isMobile && (
+                      <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-gray-100 bg-gray-50/80 p-2 sm:gap-2 sm:p-2.5">
+  <div className="min-w-0">
+    <p
+      className={`${uiTypography.miniStatLabel} mb-0.5 text-[10px] text-gray-500 sm:text-xs`}
+    >
+      Start
+    </p>
+    <p
+      className={`${uiTypography.miniStatValue} truncate text-[11px] text-gray-900 sm:text-sm`}
+    >
+      {formatDate(reservation.startDate)}
+    </p>
+  </div>
+
+  <div className="min-w-0 border-x border-gray-200 px-1.5 sm:px-2">
+    <p
+      className={`${uiTypography.miniStatLabel} mb-0.5 text-[10px] text-gray-500 sm:text-xs`}
+    >
+      End
+    </p>
+    <p
+      className={`${uiTypography.miniStatValue} truncate text-[11px] text-gray-900 sm:text-sm`}
+    >
+      {formatDate(reservation.endDate)}
+    </p>
+  </div>
+
+  <div className="min-w-0 pl-0.5 sm:pl-1">
+    <p
+      className={`${uiTypography.miniStatLabel} mb-0.5 text-[10px] text-gray-500 sm:text-xs`}
+    >
+      Duration
+    </p>
+    <p
+      className={`${uiTypography.miniStatValue} truncate text-[11px] text-gray-900 sm:text-sm`}
+    >
+      {formattedDuration}
+    </p>
+  </div>
+</div>
+                      {isMobile && (
+                        <div className="pointer-events-none absolute inset-x-0 -bottom-5 flex justify-center">
                           <motion.div
                             animate={{ rotate: isCardExpanded ? 180 : 0 }}
-                            className="ml-2 rounded-lg bg-gray-50 p-1"
+                            transition={{ duration: 0.2 }}
+                            className="flex size-10 items-center justify-center rounded-full border border-gray-200 bg-white shadow-md"
                           >
-                            <ChevronDown className="size-5 text-gray-400" />
+                            <ChevronDown className="size-4 text-gray-500" />
                           </motion.div>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2 rounded-xl border border-gray-100 bg-gray-50/80 p-2.5">
-                        <div>
-                          <p
-                            className={`${uiTypography.miniStatLabel} mb-1 text-gray-500 text-xs`}
-                          >
-                            Start
-                          </p>
-                          <p
-                            className={`${uiTypography.miniStatValue} text-gray-900 text-[13px] sm:text-sm`}
-                          >
-                            {formatDate(reservation.startDate)}
-                          </p>
                         </div>
-
-                        <div className="border-x border-gray-200 px-2">
-                          <p
-                            className={`${uiTypography.miniStatLabel} mb-1 text-gray-500 text-xs`}
-                          >
-                            End
-                          </p>
-                          <p
-                            className={`${uiTypography.miniStatValue} text-gray-900 text-[13px] sm:text-sm`}
-                          >
-                            {formatDate(reservation.endDate)}
-                          </p>
-                        </div>
-
-                        <div className="pl-1">
-                          <p
-                            className={`${uiTypography.miniStatLabel} mb-1 text-gray-500 text-xs`}
-                          >
-                            Duration
-                          </p>
-                          <p
-                            className={`${uiTypography.miniStatValue} text-gray-900 text-[13px] sm:text-sm`}
-                          >
-                            {formattedDuration}
-                          </p>
-                        </div>
-                      </div>
+                      )}
                     </div>
 
                     <AnimatePresence>
@@ -626,6 +715,7 @@ const [isDeletingReservation, setIsDeletingReservation] = useState(false);
                                   </p>
                                 </div>
 
+                                {!isMobile && (
                                 <motion.div
                                   animate={{ rotate: isDetailsExpanded ? 180 : 0 }}
                                   transition={{ duration: 0.2 }}
@@ -633,6 +723,7 @@ const [isDeletingReservation, setIsDeletingReservation] = useState(false);
                                 >
                                   <ChevronDown className="size-4 text-gray-500" />
                                 </motion.div>
+                              )}
                               </button>
 
                               <AnimatePresence initial={false}>
@@ -878,15 +969,15 @@ const [isDeletingReservation, setIsDeletingReservation] = useState(false);
                               </div>
 
                               {['approved', 'confirmed', 'completed'].includes(reservation.status) && (
-                                <div className="mb-3">
+                                <div className="mb-3 pt-1 md:pt-3">
                                   <div
-                                    className={`${uiTypography.helperText} flex justify-between text-gray-500 mb-1 text-xs sm:text-sm`}
+                                    className={`${uiTypography.helperText} flex justify-between text-gray-500 mb-2 text-xs sm:text-sm`}
                                   >
                                     <span>Payment Progress</span>
                                     <span>{paymentProgress.toFixed(0)}%</span>
                                   </div>
 
-                                  <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                                  <div className="w-full bg-gray-100 rounded-full h-1.5 md:h-2 overflow-hidden">
                                     <motion.div
                                       initial={{ width: 0 }}
                                       animate={{ width: `${paymentProgress}%` }}
@@ -967,10 +1058,17 @@ const [isDeletingReservation, setIsDeletingReservation] = useState(false);
                                 Requested {formatDate(reservation.requestDate)}
                               </span>
 
-                              {reservation.status === 'pending' && (
+                              {canCancel && (
                                 <button
+                                  type="button"
                                   onClick={() =>
-                                    handleDeleteReservation(reservation.id, reservation.unitName)
+                                    handleCancelReservation(
+                                      reservation.id,
+                                      reservation.unitName,
+                                      status,
+                                      Number(reservation.paidAmount || 0),
+                                      reservation.startDate
+                                    )
                                   }
                                   className={`w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 min-h-[44px] bg-red-600 text-white text-[13px] sm:text-sm ${uiTypography.buttonText} rounded-xl hover:bg-red-700 transition-colors shadow-sm`}
                                 >
@@ -1096,7 +1194,7 @@ const [isDeletingReservation, setIsDeletingReservation] = useState(false);
         </AnimatePresence>
       </div>
       <AnimatePresence>
-  {reservationToDelete && (
+  {reservationToCancel && (
     <>
       <motion.div
         initial={{ opacity: 0 }}
@@ -1104,8 +1202,8 @@ const [isDeletingReservation, setIsDeletingReservation] = useState(false);
         exit={{ opacity: 0 }}
         className="fixed inset-0 z-[80] bg-black/50"
         onClick={() => {
-          if (isDeletingReservation) return;
-          setReservationToDelete(null);
+          if (isCancellingReservation) return;
+          setReservationToCancel(null);
         }}
       />
 
@@ -1124,8 +1222,8 @@ const [isDeletingReservation, setIsDeletingReservation] = useState(false);
 
             <button
               onClick={() => {
-                if (isDeletingReservation) return;
-                setReservationToDelete(null);
+                if (isCancellingReservation) return;
+                setReservationToCancel(null);
               }}
               className="rounded-full bg-gray-100 p-2 transition hover:bg-gray-200"
             >
@@ -1133,21 +1231,25 @@ const [isDeletingReservation, setIsDeletingReservation] = useState(false);
             </button>
           </div>
 
-          <div className="px-6 py-5">
+          <div className="space-y-3 px-6 py-5">
             <p className="text-sm text-gray-600">
               Are you sure you want to cancel your reservation for{' '}
               <span className="font-semibold text-gray-900">
-                "{reservationToDelete.unitName}"
+                "{reservationToCancel.unitName}"
               </span>
               ?
             </p>
+
+            <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+              This will mark the reservation as cancelled instead of deleting it.
+            </div>
           </div>
 
           <div className="flex gap-3 border-t border-gray-100 px-6 py-5">
             <button
               type="button"
-              onClick={() => setReservationToDelete(null)}
-              disabled={isDeletingReservation}
+              onClick={() => setReservationToCancel(null)}
+              disabled={isCancellingReservation}
               className="flex-1 rounded-2xl border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
             >
               Keep Reservation
@@ -1155,19 +1257,11 @@ const [isDeletingReservation, setIsDeletingReservation] = useState(false);
 
             <button
               type="button"
-              disabled={isDeletingReservation}
-              onClick={async () => {
-                try {
-                  setIsDeletingReservation(true);
-                  await deleteReservation(reservationToDelete.id);
-                  setReservationToDelete(null);
-                } finally {
-                  setIsDeletingReservation(false);
-                }
-              }}
+              disabled={isCancellingReservation}
+              onClick={confirmCancelReservation}
               className="flex-1 rounded-2xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
             >
-              {isDeletingReservation ? 'Cancelling...' : 'Yes, Cancel'}
+              {isCancellingReservation ? 'Cancelling...' : 'Yes, Cancel'}
             </button>
           </div>
         </div>

@@ -274,20 +274,21 @@ export default function ClientDashboard() {
             </p>
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-            <Link
-              to="/client/properties"
-              className={`inline-flex min-h-[44px] items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm ${uiTypography.buttonText} text-white shadow-sm transition hover:bg-blue-700 sm:min-h-0 sm:text-xs`}
-            >
-              Browse Properties
-            </Link>
-            <Link
-              to="/client/reservations"
-              className={`inline-flex min-h-[44px] items-center justify-center rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm ${uiTypography.buttonText} text-gray-700 transition hover:bg-gray-50 sm:min-h-0 sm:text-xs`}
-            >
-              My Reservations
-            </Link>
-          </div>
+          <div className=" hidden grid grid-cols-2 gap-2 sm:flex sm:flex-row sm:flex-wrap">
+  <Link
+    to="/client/properties"
+    className={`inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-blue-600 px-3 py-2.5 text-xs ${uiTypography.buttonText} text-white shadow-sm transition hover:bg-blue-700 sm:min-h-0 sm:w-auto`}
+  >
+    Browse Properties
+  </Link>
+
+  <Link
+    to="/client/reservations"
+    className={`inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-xs ${uiTypography.buttonText} text-gray-700 transition hover:bg-gray-50 sm:min-h-0 sm:w-auto`}
+  >
+    My Reservations
+  </Link>
+</div>
         </header>
 
         <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-5">

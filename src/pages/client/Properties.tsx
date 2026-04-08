@@ -2394,29 +2394,31 @@ const calendarLegend = (
                       </p>
 
                       <div className="mb-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
-                        <p className="mb-1 text-sm text-gray-600">Price</p>
-                        <div className="text-lg font-bold text-blue-600">
-                          {formatCurrency(selectedUnitData.price)}{" "}
-                          <span className="text-sm font-medium text-gray-500">
-                            {getPriceLabel(selectedUnitData.type)}
-                          </span>
-                        </div>
-                        {selectedUnitData.minimumPaymentPercent && (
-                          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-xs text-amber-800">
-                            Minimum initial payment:{" "}
-                            <strong>{selectedUnitData.minimumPaymentPercent}%</strong> of total amount.
-                          </div>
-                        )}
+  <p className="mb-1 text-xs sm:text-sm text-gray-600">Price</p>
 
-                        <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-xs text-gray-600">
-                          {selectedUnitData.type === "rental_space" &&
-                            "Payments follow your selected billing cycle."}
-                          {selectedUnitData.type === "function_hall" &&
-                            "Partial payments are allowed until the event is fully paid."}
-                          {selectedUnitData.type === "parking_slot" &&
-                            "Partial payments may be allowed, but monthly dues must be completed on time."}
-                        </div>
-                      </div>
+  <div className="text-base sm:text-lg font-bold text-blue-600">
+    {formatCurrency(selectedUnitData.price)}{" "}
+    <span className="text-xs sm:text-sm font-medium text-gray-500">
+      {getPriceLabel(selectedUnitData.type)}
+    </span>
+  </div>
+
+  {selectedUnitData.minimumPaymentPercent && (
+    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs sm:text-sm text-amber-800">
+      Minimum initial payment:{" "}
+      <strong>{selectedUnitData.minimumPaymentPercent}%</strong> of total amount.
+    </div>
+  )}
+
+  <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs sm:text-sm text-gray-600">
+    {selectedUnitData.type === "rental_space" &&
+      "Payments follow your selected billing cycle."}
+    {selectedUnitData.type === "function_hall" &&
+      "Partial payments are allowed until the event is fully paid."}
+    {selectedUnitData.type === "parking_slot" &&
+      "Partial payments may be allowed, but monthly dues must be completed on time."}
+  </div>
+</div>
 
                       <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
                         <p>
