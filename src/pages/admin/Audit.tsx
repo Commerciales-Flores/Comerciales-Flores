@@ -1,198 +1,767 @@
-import { useState, useMemo } from 'react';
-import { Search } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useAdminData } from '../../contexts/AdminDataContext';
+import { useRecords } from '../../contexts/RecordsContext';
+import { useUsers } from '../../contexts/UsersContext';
+import { DataTable, DataCell } from '../../components/common/DataTable';
+import TableBadge from '../../components/common/TableBadge';
+import AdminFilterBar, {
+  FILTER_BUTTON_CLASS,
+  FILTER_SELECT_CLASS,
+} from '../../components/common/AdminFilterBar';
+import { AdminFilterGroup } from '../../components/common/AdminFilterGroup';
+import {
+  Search,
+  Tag,
+  Layers,
+  Hash,
+  Filter,
+  RotateCcw,
+  X,
+  Inbox,
+} from 'lucide-react';
+import EmptyState from '../../components/common/EmptyState';
 
-// Mock audit data (Replace with backend later)
-const MOCK_AUDIT_LOGS = [
-  {
-    id: 'LOG023',
-    action: 'DEACTIVATE',
-    module: 'Customer',
-    target: 'USER2',
-    performedBy: 'Admin1',
-    date: '2026-02-22T14:05:00',
-    details: 'Customer marked inactive',
-  },
-  {
-    id: 'LOG024',
-    action: 'CREATE',
-    module: 'Booking',
-    target: 'BOOK102',
-    performedBy: 'Admin1',
-    date: '2026-02-23T09:12:00',
-    details: 'New reservation created',
-  },
+type AuditFormattedDate =
+  | string
+  | {
+      date: string;
+      time: string;
+    };
+
+type AuditRow = {
+  id: string;
+  publicId?: string;
+  action: string;
+  module: string;
+  target: string;
+  performedBy: string;
+  date: string;
+  details: string;
+  timestampMs: number;
+  formattedDate: AuditFormattedDate;
+};
+
+const ACTION_OPTIONS = [
+  'All',
+  'CREATE',
+  'UPDATE',
+  'DELETE',
+
+  'DEACTIVATE',
+
+  'LOGIN',
+  'LOGIN_FAILED',
+  'LOGIN_APPROVED',
+  'LOGOUT',
+  'SESSION_EXPIRED',
+
+  'DEVICE_VERIFIED',
+  'DEVICE_REMOVED',
+
+  'PAYMENT_CREATED',
+  'PAYMENT_UPDATED',
+  'PAYMENT_APPROVED',
+  'PAYMENT_REJECTED',
+  'PAYMENT_PROOF_UPLOADED',
+
+  'ACCOUNT_DELETION_REQUESTED',
+  'ACCOUNT_DELETION_APPROVED',
 ];
 
+const MODULE_OPTIONS = [
+  'All',
+  'users',
+  'units',
+  'reservations',
+  'payments',
+  'ledger',
+  'trusted_devices',
+  'support_tickets',
+  'support_messages',
+];
+
+const ACTION_STYLES: Record<string, string> = {
+  CREATE: 'bg-green-100 text-green-800',
+  UPDATE: 'bg-yellow-100 text-yellow-800',
+  DELETE: 'bg-red-100 text-red-800',
+  DEACTIVATE: 'bg-gray-200 text-gray-800',
+  LOGIN: 'bg-blue-100 text-blue-800',
+  LOGIN_FAILED: 'bg-rose-100 text-rose-800',
+  LOGIN_APPROVED: 'bg-emerald-100 text-emerald-800',
+  LOGOUT: 'bg-purple-100 text-purple-800',
+  SESSION_EXPIRED: 'bg-orange-100 text-orange-800',
+  PAYMENT_CREATED: 'bg-sky-100 text-sky-800',
+  PAYMENT_UPDATED: 'bg-amber-100 text-amber-800',
+  PAYMENT_APPROVED: 'bg-emerald-100 text-emerald-800',
+  PAYMENT_REJECTED: 'bg-rose-100 text-rose-800',
+  PAYMENT_PROOF_UPLOADED: 'bg-indigo-100 text-indigo-800',
+  DEFAULT: 'bg-blue-100 text-blue-800',
+};
+
+function useDebouncedValue<T>(value: T, delay = 250) {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [value, delay]);
+
+  return debounced;
+}
+
+function getActionStyle(action: string) {
+  return ACTION_STYLES[action] ?? ACTION_STYLES.DEFAULT;
+}
+
+function NoResultsState() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+      className="flex flex-col items-center justify-center text-center"
+    >
+      <div className="mb-4 rounded-3xl bg-gray-50 p-5 shadow-sm">
+        <Filter className="size-10 text-blue-500" />
+      </div>
+      <h3 className="text-lg font-bold text-gray-900">No matching audit logs found</h3>
+      <p className="mt-1 text-sm text-gray-500">Try adjusting your search or filter settings.</p>
+    </motion.div>
+  );
+}
+
+function DesktopFilterBar({
+  searchTerm,
+  setSearchTerm,
+  selectedAction,
+  setSelectedAction,
+  selectedModule,
+  setSelectedModule,
+  startDate,
+  setStartDate,
+  endDate,
+  setEndDate,
+  modules,
+  resetFilters,
+}: {
+  searchTerm: string;
+  setSearchTerm: (value: string) => void;
+  selectedAction: string;
+  setSelectedAction: (value: string) => void;
+  selectedModule: string;
+  setSelectedModule: (value: string) => void;
+  startDate: string;
+  setStartDate: (value: string) => void;
+  endDate: string;
+  setEndDate: (value: string) => void;
+  modules: string[];
+  resetFilters: () => void;
+}) {
+  return (
+    <div className="relative z-10 space-y-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
+        <input
+          type="text"
+          placeholder="Search logs..."
+          value={searchTerm}
+          maxLength={100}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
+      <div className="hidden grid-cols-4 gap-4 md:grid">
+        <select
+          value={selectedAction}
+          onChange={(e) => setSelectedAction(e.target.value)}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          {ACTION_OPTIONS.map((action) => (
+            <option key={action} value={action}>
+              {action === 'All' ? 'All Actions' : action}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={selectedModule}
+          onChange={(e) => setSelectedModule(e.target.value)}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          {modules.map((m) => (
+            <option key={m} value={m}>
+              {m === 'All' ? 'All Modules' : m.charAt(0).toUpperCase() + m.slice(1)}
+            </option>
+          ))}
+        </select>
+
+        <input
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+        />
+
+        <input
+          type="date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+
+      <div className="hidden justify-end pt-2 md:flex">
+        <button
+          onClick={resetFilters}
+          className="flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline"
+        >
+          <RotateCcw className="size-3" /> Clear Filters
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
 export default function AdminAudit() {
-  const [logs] = useState(MOCK_AUDIT_LOGS);
+  const { getUserById, getUnitById } = useAdminData();
+  const { fetchAuditLogsPage } = useRecords();
+
+  const [rows, setRows] = useState<AuditRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(25);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAction, setSelectedAction] = useState('All');
   const [selectedModule, setSelectedModule] = useState('All');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
 
-  const filteredLogs = useMemo(() => {
-    return logs
-      .filter((log) => {
-        const matchesSearch =
-          log.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          log.target.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          log.performedBy.toLowerCase().includes(searchTerm.toLowerCase());
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 250);
 
-        const matchesAction =
-          selectedAction === 'All' || log.action === selectedAction;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const [pageInput, setPageInput] = useState('1');
 
-        const matchesModule =
-          selectedModule === 'All' || log.module === selectedModule;
+  const { refreshUsers } = useUsers();
 
-        const logDate = new Date(log.date);
-        const matchesStart =
-          !startDate || logDate >= new Date(startDate);
-        const matchesEnd =
-          !endDate || logDate <= new Date(endDate);
+  useEffect(() => {
+    void refreshUsers();
+  }, [refreshUsers]);
 
-        return (
-          matchesSearch &&
-          matchesAction &&
-          matchesModule &&
-          matchesStart &&
-          matchesEnd
-        );
-      })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Latest first
-  }, [logs, searchTerm, selectedAction, selectedModule, startDate, endDate]);
+  useEffect(() => {
+    setPageInput(String(page));
+  }, [page]);
+
+  const handlePageJump = useCallback(() => {
+    const parsed = parseInt(pageInput, 10);
+
+    if (Number.isNaN(parsed)) {
+      setPageInput(String(page));
+      return;
+    }
+
+    const nextPage = Math.min(Math.max(parsed, 1), totalPages);
+    setPage(nextPage);
+    setPageInput(String(nextPage));
+  }, [pageInput, page, totalPages]);
+
+  const formatUserLabel = useCallback(
+  (userId?: string) => {
+    if (!userId) return '—';
+
+    const user = getUserById(userId);
+
+    if (!user) {
+      return `USR-${userId.slice(0, 8).toUpperCase()}`;
+    }
+
+    if (user.publicId) return user.publicId;
+
+    return `USR-${userId.slice(0, 8).toUpperCase()}`;
+  },
+  [getUserById]
+);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchTerm, selectedAction, selectedModule, startDate, endDate]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAuditLogs = async () => {
+      setLoading(true);
+
+      try {
+        const result = await fetchAuditLogsPage({
+          searchTerm: debouncedSearchTerm,
+          action: selectedAction,
+          module: selectedModule,
+          startDate,
+          endDate,
+          page,
+          pageSize,
+        });
+
+        if (cancelled) return;
+
+        const mapped: AuditRow[] = result.data.map((log) => {
+          const safeTimestamp = log.timestamp?.includes('T')
+            ? log.timestamp
+            : log.timestamp?.replace(' ', 'T');
+
+          const parsedDate = safeTimestamp ? new Date(safeTimestamp) : null;
+          const timestampMs = parsedDate?.getTime() ?? Number.NaN;
+
+          const actorLabel = formatUserLabel(log.userId);
+
+          const isUserTarget = log.targetTable === 'users';
+          const isUnitTarget = log.targetTable === 'units';
+          const isReservationTarget = log.targetTable === 'reservations';
+
+          const unitTarget =
+            isUnitTarget && log.targetId ? getUnitById(log.targetId) : undefined;
+
+          const reservationPublicIdFromNotes =
+            log.notes?.match(/\bRSV-[A-Z0-9]+\b/i)?.[0] ?? null;
+
+          const targetLabel = isUserTarget
+            ? formatUserLabel(log.targetId)
+            : isUnitTarget
+              ? log.targetPublicId || unitTarget?.propertyId || log.targetId || '—'
+              : isReservationTarget
+                ? log.targetPublicId || reservationPublicIdFromNotes || log.targetId || '—'
+                : log.targetPublicId || log.targetId || '—';
+
+
+          const paymentPublicIdFromNotes =
+            log.notes?.match(/\bPAY-[A-Z0-9]+\b/i)?.[0] ?? null;
+
+          let detailsText = log.notes ?? 'No additional details';
+
+          if (log.targetTable === 'reservations' && reservationPublicIdFromNotes) {
+            detailsText = detailsText.replace(
+              /reservation\s+[a-f0-9-]{36}/i,
+              `reservation ${reservationPublicIdFromNotes}`
+            );
+          }
+
+          if (log.targetTable === 'payments') {
+            if (paymentPublicIdFromNotes) {
+              detailsText = detailsText.replace(
+                /payment\s+[a-f0-9-]{36}/i,
+                `payment ${paymentPublicIdFromNotes}`
+              );
+            }
+
+            if (reservationPublicIdFromNotes) {
+              detailsText = detailsText.replace(
+                /reservation\s+[a-f0-9-]{36}/i,
+                `reservation ${reservationPublicIdFromNotes}`
+              );
+            }
+          }
+
+          return {
+            id: log.id,
+            publicId: log.publicId,
+            action: log.action,
+            module: log.targetTable || '',
+            target: targetLabel,
+            performedBy: actorLabel,
+            date: log.timestamp,
+            details: detailsText,
+            timestampMs,
+            formattedDate: Number.isNaN(timestampMs)
+              ? 'Invalid date'
+              : {
+                  date: parsedDate!.toLocaleDateString('en-PH', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: '2-digit',
+                  }),
+                  time: parsedDate!.toLocaleTimeString('en-PH', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: true,
+                  }),
+                },
+          };
+        });
+
+        setRows(mapped);
+        setTotalCount(result.count);
+      } catch (error) {
+        console.error('Failed to load audit logs:', error);
+        if (!cancelled) {
+          setRows([]);
+          setTotalCount(0);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadAuditLogs();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    fetchAuditLogsPage,
+    formatUserLabel,
+    getUnitById,
+    debouncedSearchTerm,
+    selectedAction,
+    selectedModule,
+    startDate,
+    endDate,
+    page,
+    pageSize,
+  ]);
+
+  const hasActiveSearch = Boolean(debouncedSearchTerm.trim());
+  const hasActiveFilters =
+    hasActiveSearch ||
+    selectedAction !== 'All' ||
+    selectedModule !== 'All' ||
+    Boolean(startDate) ||
+    Boolean(endDate);
+
+  const hasNoLogs = !loading && totalCount === 0 && !hasActiveFilters;
+  const hasNoSearchResults = !loading && totalCount === 0 && hasActiveFilters;
+
+  const shouldShowFilters =
+  !loading && (!hasNoLogs || hasActiveFilters);
+
+  const handlePageInputKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        handlePageJump();
+      }
+    },
+    [handlePageJump]
+  );
+
+  const resetFilters = useCallback(() => {
+    setSearchTerm('');
+    setSelectedAction('All');
+    setSelectedModule('All');
+    setStartDate('');
+    setEndDate('');
+  }, []);
+
+const closeMobileFilters = useCallback(() => {
+  setShowMobileFilters(false);
+}, []);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="mb-2">Audit Log</h1>
-        <p className="text-gray-600">
-          Monitor all administrative and system activities.
-        </p>
-      </div>
-
-      {/* Search & Filters */}
-      <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-4">
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search by ID, action, target, or user..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+    <div className="min-h-screen bg-white">
+      <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Audit Log</h1>
+          <p className="text-sm text-gray-500">
+            Monitor all administrative and system activities.
+          </p>
         </div>
 
-        {/* Filters Row */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Action Filter */}
+        {shouldShowFilters && (
+  <AdminFilterBar
+    searchTerm={searchTerm}
+    onSearchChange={setSearchTerm}
+    placeholder="Search logs..."
+    showMobileFilters={showMobileFilters}
+    onToggleMobileFilters={() => setShowMobileFilters((prev) => !prev)}
+    filters={
+      <AdminFilterGroup align="between">
+        <div className="grid w-full grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
           <select
             value={selectedAction}
             onChange={(e) => setSelectedAction(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2"
+            className={FILTER_SELECT_CLASS}
           >
-            <option value="All">All Actions</option>
-            <option value="CREATE">Create</option>
-            <option value="UPDATE">Update</option>
-            <option value="DEACTIVATE">Deactivate</option>
-            <option value="DELETE">Delete</option>
+            {ACTION_OPTIONS.map((action) => (
+              <option key={action} value={action}>
+                {action === 'All' ? 'All Actions' : action}
+              </option>
+            ))}
           </select>
 
-          {/* Module Filter */}
           <select
             value={selectedModule}
             onChange={(e) => setSelectedModule(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2"
+            className={FILTER_SELECT_CLASS}
           >
-            <option value="All">All Modules</option>
-            <option value="Customer">Customer</option>
-            <option value="Reservation">Reservation</option>
-            <option value="Payment">Payment</option>
+            {MODULE_OPTIONS.map((module) => (
+              <option key={module} value={module}>
+                {module === 'All'
+                  ? 'All Modules'
+                  : module.charAt(0).toUpperCase() + module.slice(1)}
+              </option>
+            ))}
           </select>
 
-          {/* Start Date */}
           <input
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2"
+            className={FILTER_SELECT_CLASS}
           />
 
-          {/* End Date */}
           <input
             type="date"
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2"
+            className={FILTER_SELECT_CLASS}
           />
         </div>
-      </div>
 
-      {/* Audit Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                {['Log ID', 'Action', 'Module', 'Target', 'Performed By', 'Date', 'Details'].map((header) => (
-                  <th
-                    key={header}
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    {header}
-                  </th>
-                ))}
-              </tr>
-            </thead>
+        {hasActiveFilters && (
+          <div className="w-full lg:w-auto">
+            <button
+              type="button"
+              onClick={() => {
+                resetFilters();
+                setShowMobileFilters(false);
+              }}
+              className={`${FILTER_BUTTON_CLASS} w-full justify-center lg:w-auto`}
+            >
+              Clear
+            </button>
+          </div>
+        )}
+      </AdminFilterGroup>
+    }
+  />
+)}
 
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredLogs.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
-                    No audit logs found
-                  </td>
-                </tr>
+        <div className="relative z-10 flex-1 pb-24">
+          <div className="hidden md:block">
+  {loading ? (
+    <EmptyState
+      icon={
+        <div className="flex items-center justify-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+        </div>
+      }
+      title="Loading audit..."
+      description="Please wait while audit records are being retrieved."
+    />
+  ) : hasNoLogs ? (
+    <EmptyState
+      icon={<Inbox className="size-10 text-blue-500" />}
+      title="No audit logs yet"
+      description="Administrative and system activities will appear here once actions are recorded."
+    />
+  ) : hasNoSearchResults ? (
+    <div className="rounded-2xl border border-gray-200 bg-white px-6 py-20 shadow-sm">
+      <NoResultsState />
+    </div>
+  ) : (
+    <DataTable
+      headers={[
+        <span className="block w-[120px]">Log ID</span>,
+        <span className="block w-[120px]">Action</span>,
+        <span className="block w-[100px]">Module</span>,
+        <span className="block w-[120px]">Target</span>,
+        <span className="block w-[120px]">Performed By</span>,
+        <span className="block w-[130px]">Date</span>,
+        <span className="block">Details</span>,
+      ]}
+    >
+      {rows.map((log) => (
+        <tr key={log.id} className="transition-colors hover:bg-gray-50/70">
+          <DataCell value={log.publicId ?? log.id} mono />
+          <DataCell
+            nowrap
+            value={
+              <TableBadge className={getActionStyle(log.action)}>
+                {log.action}
+              </TableBadge>
+            }
+          />
+          <DataCell value={log.module} />
+          <DataCell value={log.target} mono />
+          <DataCell value={log.performedBy} mono />
+          <DataCell
+            value={
+              typeof log.formattedDate === 'string' ? (
+                log.formattedDate
               ) : (
-                filteredLogs.map((log) => (
-                  <tr key={log.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">
-                      {log.id}
-                    </td>
+                <div className="leading-tight">
+                  <div className="font-medium text-gray-900">
+                    {log.formattedDate.date}
+                  </div>
+                  <div className="mt-1 text-xs text-gray-400">
+                    {log.formattedDate.time}
+                  </div>
+                </div>
+              )
+            }
+          />
+          <DataCell
+            value={
+              <div className="whitespace-normal break-words leading-snug text-gray-600">
+                {log.details}
+              </div>
+            }
+            className="align-top"
+          />
+        </tr>
+      ))}
+    </DataTable>
+  )}
+</div>
 
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span className="px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800">
-                        {log.action}
+          <div className="space-y-4 md:hidden">
+            {loading ? (
+              <EmptyState
+                icon={
+                  <div className="flex items-center justify-center">
+                    <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+                  </div>
+                }
+                title="Loading audit..."
+                description="Please wait while audit records are being retrieved."
+              />
+            ) : hasNoLogs ? (
+              <div className="rounded-2xl border border-gray-200 bg-white px-6 py-16 shadow-sm">
+                <EmptyState
+                  icon={<Inbox className="size-10 text-blue-500" />}
+                  title="No audit logs yet"
+                  description="Administrative and system activities will appear here once actions are recorded."
+                />
+              </div>
+            ) : hasNoSearchResults ? (
+              <div className="rounded-2xl border border-gray-200 bg-white px-6 py-16 shadow-sm">
+                <NoResultsState />
+              </div>
+            ) : (
+              rows.map((log) => (
+                <div
+                  key={log.id}
+                  className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+                >
+                  <div className="flex items-start justify-between border-b border-gray-100 pb-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Hash className="size-3.5 shrink-0 text-gray-400" />
+                      <span className="truncate font-mono text-xs text-gray-400">
+                        {log.publicId ?? log.id}
                       </span>
-                    </td>
+                    </div>
 
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {log.module}
-                    </td>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${getActionStyle(log.action)}`}
+                    >
+                      {log.action}
+                    </span>
+                  </div>
 
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">
-                      {log.target}
-                    </td>
+                  <div className="grid grid-cols-2 gap-x-2 gap-y-3 text-sm">
+                    <div className="flex flex-col gap-1">
+                      <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-gray-400">
+                        <Layers className="size-3" /> Module
+                      </span>
+                      <span className="text-sm text-gray-600">{log.module || '—'}</span>
+                    </div>
 
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {log.performedBy}
-                    </td>
+                    <div className="flex flex-col gap-1">
+                      <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-gray-400">
+                        <Tag className="size-3" /> Target
+                      </span>
+                      <span className="text-sm text-gray-700">{log.target || '—'}</span>
+                    </div>
 
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(log.date).toLocaleString()}
-                    </td>
+                    <div className="col-span-2 flex flex-col gap-1">
+                      <span className="text-[10px] font-bold uppercase text-gray-400">
+                        Performed By
+                      </span>
+                      <span className="text-sm font-semibold text-gray-900">
+                        {log.performedBy || '—'}
+                      </span>
+                    </div>
 
-                    <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
-                      {log.details}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                    <div className="col-span-2 flex flex-col gap-1">
+                      <span className="text-[10px] font-bold uppercase text-gray-400">
+                        Date
+                      </span>
+                      {typeof log.formattedDate === 'string' ? (
+                        <span className="text-sm text-gray-500">{log.formattedDate}</span>
+                      ) : (
+                        <div className="leading-tight">
+                          <div className="text-sm font-medium text-gray-900">
+                            {log.formattedDate.date}
+                          </div>
+                          <div className="mt-1 text-xs text-gray-400">
+                            {log.formattedDate.time}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-gray-50 p-3">
+                    <p className="text-sm leading-snug text-gray-500">
+                      {log.details || '—'}
+                    </p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {!loading && !hasNoLogs && totalPages > 1 && (
+            <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-gray-500">
+                Page {page} of {totalPages} • {totalCount} total logs
+              </p>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+                >
+                  Previous
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">Go to</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={totalPages}
+                    value={pageInput}
+                    onChange={(e) => setPageInput(e.target.value)}
+                    onKeyDown={handlePageInputKeyDown}
+                    className="w-20 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={handlePageJump}
+                    className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+                  >
+                    Go
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

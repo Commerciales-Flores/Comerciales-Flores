@@ -31,13 +31,13 @@ export default function LogoutConfirmModal({
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/40"
         onClick={handleClose}
       />
 
       {/* Modal */}
       <div
-        className={`relative bg-white w-full max-w-sm rounded-2xl shadow-xl p-6 transform transition-all duration-200 ${
+        className={`relative bg-white w-full max-w-sm mx-4 rounded-2xl shadow-xl p-6 transform transition-all duration-200 ${
           isVisible ? "scale-100 opacity-100" : "scale-95 opacity-0"
         }`}
       >
@@ -49,6 +49,7 @@ export default function LogoutConfirmModal({
           <X className="size-5" />
         </button>
 
+        {/* Icon */}
         <div className="flex justify-center mb-4">
           <div className="bg-red-100 rounded-full p-4 flex items-center justify-center">
             <LogOut className="size-8 text-red-600" />
@@ -63,18 +64,18 @@ export default function LogoutConfirmModal({
           Are you sure you want to log out of your account?
         </p>
 
-        {/* Buttons side by side */}
-        <div className="flex gap-3">
+        {/* Buttons */}
+        <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={handleClose}
-            className="flex-1 py-2.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
+            className="flex-1 py-3 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
           >
             Cancel
           </button>
 
           <button
             onClick={onConfirm}
-            className="flex-1 py-2.5 rounded-lg bg-red-600 text-white hover:bg-red-700 transition"
+            className="flex-1 py-3 rounded-lg bg-red-600 text-white hover:bg-red-700 transition"
           >
             Logout
           </button>

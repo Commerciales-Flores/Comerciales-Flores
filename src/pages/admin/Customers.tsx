@@ -1,323 +1,1634 @@
-import { useState } from 'react';
-import { useData } from '../../contexts/DataContext';
-import { Search, Eye, Plus, X } from 'lucide-react';
+import { useState, useMemo, useEffect, useCallback, type KeyboardEvent } from 'react';
+import { useUsers } from '../../contexts/UsersContext';
+import { useAuth } from '../../contexts/AuthContext';
+import type { UnitType } from '../../data/types';
+import supabase from '../../supabaseClient';
+import { useNotifications } from '../../contexts/NotificationContext';
+import { DataTable, DataCell, ActionCell } from '../../components/common/DataTable';
+import TableBadge from '../../components/common/TableBadge';
+import { formatDateTime, formatDate } from '../../utils/date';
+import AddressPicker from '../../components/common/AddressPicker';
+import PasswordStrengthIndicator from '../../components/common/PasswordStrengthIndicator';
+import FormField from '../../components/common/FormField';
+import { isPasswordPolicyValid } from '../../utils/passwordStrength';
+import AdminUserForm from '../../components/forms/AdminUserForm';
+import {
+  normalizeName,
+  normalizeEmail,
+  normalizePHPhone,
+} from '../../utils/DataNormalization';
+import AdminFilterBar, {
+  FILTER_BUTTON_CLASS,
+  FILTER_SELECT_CLASS,
+} from '../../components/common/AdminFilterBar';
+import { AdminFilterGroup } from '../../components/common/AdminFilterGroup';
+import {
+  Eye,
+  Plus,
+  X,
+  Check,
+  UserX,
+  Mail,
+  Phone,
+  MapPin,
+  ShieldCheck,
+  ShieldAlert,
+  Building2,
+  Hash,
+  RotateCcw,
+  AlertTriangle,
+  Inbox,
+  Filter,
+  Clock3,
+  Briefcase,
+  CalendarDays,
+  Wallet,
+  Download,
+} from 'lucide-react';
+import { motion } from 'framer-motion';
+import EmptyState from '../../components/common/EmptyState';
 
-// Mock users data
-const MOCK_CUSTOMERS = [
-  {
-    id: 'USER2',
-    first_name: 'John',
-    last_name: 'Doe',
-    email: 'client@example.com',
-    contactNumber: '+63 918 765 4321',
-    address: '123 Business Avenue, Manila, Philippines 1000', // Added address
-    role: 'customer',
-    is_active: true,
-  },
-];
+type CustomerRow = {
+  id: string;
+  publicId?: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  contactNumber?: string;
+  address?: string;
+  is_active?: boolean;
+  lastLogin?: string | null;
 
-export default function AdminCustomers() {
-  const { reservations } = useData();
-  const [customers, setCustomers] = useState(MOCK_CUSTOMERS);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
-  const [showAddModal, setShowAddModal] = useState(false);
-  // ✅ UPDATED newCustomer STATE
-const [newCustomer, setNewCustomer] = useState({
+  hasActiveOccupancy?: boolean;
+  activeUnitName?: string | null;
+  activeUnitType?: UnitType | null;
+  activeSince?: string | null;
+
+  hasUpcomingBooking?: boolean;
+  hasUnpaidBalance?: boolean;
+
+  deactivationBlocked?: boolean;
+  deactivationReason?: string | null;
+
+  deletionRequested?: boolean;
+  deletionStatus?: 'pending' | 'approved' | 'rejected' | null;
+  deletionRequestReason?: string | null;
+
+  initials: string;
+  searchableText: string;
+};
+
+type NewCustomerForm = {
+  first_name: string;
+  last_name: string;
+  email: string;
+  contactNumber: string;
+  address: string;
+  latitude: string;
+  longitude: string;
+  password: string;
+  confirmPassword: string;
+  role: 'client';
+  is_active: boolean;
+};
+
+const INITIAL_CUSTOMER_FORM: NewCustomerForm = {
   first_name: '',
   last_name: '',
   email: '',
   contactNumber: '',
-  address: '', // Added address field
+  address: '',
+  latitude: '',
+  longitude: '',
   password: '',
-  role: 'customer',
+  confirmPassword: '',
+  role: 'client',
   is_active: true,
-});
-
-
-  const filteredCustomers = customers.filter(c =>
-    `${c.first_name} ${c.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const customer = selectedCustomer ? customers.find(c => c.id === selectedCustomer) : null;
-  const customerReservations = customer ? reservations.filter(b => b.userId === customer.id) : [];
-
-
-
-  const handleAddCustomer = () => {
-    const newId = (Math.random() * 10000).toFixed(0); // mock ID
-    setCustomers([...customers, { ...newCustomer, id: newId }]);
-    setShowAddModal(false);
-    setNewCustomer({
-      first_name: '',
-      last_name: '',
-      email: '',
-      contactNumber: '',
-      address: '',
-      password: '',
-      role: 'customer',
-      is_active: true,
-    });
-    // TODO: call backend CREATE API & log in AuditLog
-  };
-
-  const handleDeactivate = (id: string) => {
-  setCustomers(prevCustomers =>
-    prevCustomers.map(c => 
-      c.id === id ? { ...c, is_active: false } : c
-    )
-  );
-  // TODO: call backend to update user status and log changes in AuditLog
 };
 
-  // --- Render ---
+type DeletionDecisionAction = 'approve' | 'reject';
+
+function useDebouncedValue<T>(value: T, delay = 250) {
+  const [debounced, setDebounced] = useState(value);
+
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [value, delay]);
+
+  return debounced;
+}
+
+
+
+function formatLastLogin(value?: string | null) {
+  if (!value) return 'No login yet';
+  return formatDateTime(value);
+}
+
+function formatUnitTypeLabel(value?: UnitType | null) {
+  switch (value) {
+    case 'rental_space':
+      return 'Rental Space';
+    case 'function_hall':
+      return 'Function Hall';
+    case 'parking_slot':
+      return 'Parking Slot';
+    default:
+      return 'Unknown';
+  }
+}
+
+function getDeactivationReason(target?: Pick<CustomerRow, 'deactivationReason'> | null) {
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="mb-2">Customer Management</h1>
-          <p className="text-gray-600">View and manage customer accounts</p>
-        </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-1 px-3 py-2 bg-blue-600 text-white rounded"
-        >
-          <Plus size={16} /> Add Customer
-        </button>
+    target?.deactivationReason ??
+    'This customer cannot be deactivated due to current business status or recent account activity.'
+  );
+}
+
+function NoCustomerResults() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+      className="flex flex-col items-center justify-center text-center"
+    >
+      <div className="mb-4 rounded-3xl bg-gray-50 p-5 shadow-sm">
+        <Filter className="size-10 text-gray-400" />
+      </div>
+      <h3 className="text-lg font-bold text-gray-900">No matching customers found</h3>
+      <p className="mt-1 max-w-sm text-sm text-gray-500">
+        Try adjusting your search or filters by name, email, user ID, account status, or deletion request status.
+      </p>
+    </motion.div>
+  );
+}
+
+function CustomerDetailItem({
+  icon,
+  label,
+  value,
+}: {
+  icon: JSX.Element;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex min-w-0 items-start gap-3 rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-3">
+      <div className="shrink-0 rounded-lg bg-white p-2 text-blue-500 shadow-sm">
+        {icon}
       </div>
 
-      {/* Search */}
-      <div className="bg-white p-4 rounded-lg border border-gray-200">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search customers by name or email..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+      <div className="min-w-0">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">
+          {label}
+        </p>
+
+        <p className="break-words text-sm font-medium leading-relaxed text-gray-800">
+          {value || '—'}
+        </p>
       </div>
+    </div>
+  );
+}
 
-      {/* Customers Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            {/* ✅ UPDATED TABLE HEADER */}
-<thead className="bg-gray-50 border-b border-gray-200">
-  <tr>
-    <th className="px-6 py-3 text-left text-xs text-gray-500 uppercase tracking-wider">
-      Name
-    </th>
-    {/* I'll add the User ID here as well, as it's useful for admins to see at a glance */}
-    <th className="px-6 py-3 text-left text-xs text-gray-500 uppercase tracking-wider">
-      User ID
-    </th>
-    <th className="px-6 py-3 text-left text-xs text-gray-500 uppercase tracking-wider">
-      Email
-    </th>
-    <th className="px-6 py-3 text-left text-xs text-gray-500 uppercase tracking-wider">
-      Contact
-    </th>
-    {/* --- This is the new column --- */}
-    <th className="px-6 py-3 text-left text-xs text-gray-500 uppercase tracking-wider">
-      Address
-    </th>
-    {/* ----------------------------- */}
-    <th className="px-6 py-3 text-left text-xs text-gray-500 uppercase tracking-wider">
-      Status
-    </th>
-    <th className="px-6 py-3 text-left text-xs text-gray-500 uppercase tracking-wider">
-      Actions
-    </th>
-  </tr>
-</thead>
+function mapUserToCustomerRow(u: any): CustomerRow {
+  const first = u.firstName ?? '';
+  const last = u.lastName ?? '';
+  const publicId = u.publicId ?? u.id;
+  const contact = u.phone ?? '';
+  const address = u.address ?? '';
+  const email = u.email ?? '';
 
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredCustomers.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                    No customers found
-                  </td>
-                </tr>
-              ) : (
+  return {
+    id: u.id,
+    publicId: u.publicId,
+    firstName: first,
+    lastName: last,
+    email,
+    contactNumber: contact,
+    address,
+    is_active: u.isActive,
+    lastLogin: u.lastLogin ?? null,
 
-filteredCustomers.map((c) => (
-  <tr key={c.id} className="hover:bg-gray-50">
-    <td className="px-6 py-4 whitespace-nowrap">
-      {c.first_name} {c.last_name}
-    </td>
-    {/* Added User ID cell */}
-    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
-      {c.id}
-    </td>
-    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-      {c.email}
-    </td>
-    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-      {c.contactNumber}
-    </td>
-    {/* --- This is the new data cell --- */}
-    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 max-w-xs truncate" title={c.address}>
-      {c.address}
-    </td>
-    {/* ---------------------------------- */}
-    <td className="px-6 py-4 whitespace-nowrap">
-      <span
-        className={`px-2 py-1 text-xs rounded-full ${
-          c.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-        }`}
-      >
-        {c.is_active ? 'Active' : 'Inactive'}
-      </span>
-    </td>
-    <td className="px-6 py-4 whitespace-nowrap text-sm flex gap-2">
-      <button
-        onClick={() => setSelectedCustomer(c.id)}
-        className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-        title="View Details"
-      >
-        <Eye className="size-4" />
-      </button>
-      {c.is_active && (
-        <button
-          onClick={() => handleDeactivate(c.id)}
-          className="p-1 text-red-600 hover:bg-red-50 rounded"
-          title="Deactivate Customer"
-        >
-          <X className="size-4" />
-        </button>
-      )}
-    </td>
-  </tr>
-))
+    hasActiveOccupancy: u.hasActiveOccupancy ?? false,
+    activeUnitName: u.activeUnitName ?? null,
+    activeUnitType: u.activeUnitType ?? null,
+    activeSince: u.activeSince ?? null,
 
-              )}
-            </tbody>
-          </table>
+    hasUpcomingBooking: u.hasUpcomingReservation ?? false,
+    hasUnpaidBalance: u.hasUnpaidBalance ?? false,
+
+    deactivationBlocked: u.deactivationBlocked ?? false,
+    deactivationReason: u.deactivationReason ?? null,
+
+    deletionRequested: u.deletionRequested ?? false,
+    deletionStatus: u.deletionStatus ?? null,
+    deletionRequestReason: u.deletionRequestReason ?? null,
+
+    initials: `${first[0] ?? ''}${last[0] ?? ''}`,
+    searchableText: [
+      first,
+      last,
+      email,
+      publicId,
+      contact,
+      address,
+      u.activeUnitName ?? '',
+      u.activeUnitType ?? '',
+      u.deletionStatus ?? '',
+      u.deletionRequestReason ?? '',
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase(),
+  };
+}
+
+function StatusBadge({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className: string;
+}) {
+  return (
+    <span
+      className={`inline-flex max-w-full items-center rounded-full px-2 py-1 text-[10px] font-bold leading-none ${className}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+
+
+export default function AdminCustomers() {
+  const { fetchUsersPage, updateUserStatus, clearUsersCache, version } = useUsers();
+  const { user } = useAuth();
+  const { sendDeletionStatusNotification } = useNotifications();
+
+  const [rows, setRows] = useState<CustomerRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(25);
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [accountFilter, setAccountFilter] = useState<'all' | 'active' | 'inactive'>('all');
+const [deletionFilter, setDeletionFilter] = useState<
+  'all' | 'pending' | 'approved' | 'rejected' | 'none'
+>('all');
+const [businessFilter, setBusinessFilter] = useState<
+  'all' | 'occupied' | 'upcoming' | 'unpaid'
+>('all');
+const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+const [confirmDeactivateId, setConfirmDeactivateId] = useState<string | null>(null);
+const [showPassword, setShowPassword] = useState(false);
+const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+const [newCustomer, setNewCustomer] = useState<NewCustomerForm>(INITIAL_CUSTOMER_FORM);
+const [newCustomerErrors, setNewCustomerErrors] = useState<Partial<Record<string, string>>>({});
+const [pageInput, setPageInput] = useState('1');
+
+  const [isSubmittingDeletionDecision, setIsSubmittingDeletionDecision] = useState(false);
+  const [deletionDecisionState, setDeletionDecisionState] = useState<{
+    target: CustomerRow | null;
+    action: DeletionDecisionAction | null;
+  }>({
+    target: null,
+    action: null,
+  });
+
+  const [restrictionModal, setRestrictionModal] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
+
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, 250);
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+
+  const filteredRows = rows;
+
+
+const confirmTarget = useMemo(
+  () =>
+    confirmDeactivateId
+      ? rows.find((r) => r.id === confirmDeactivateId) ?? null
+      : null,
+  [rows, confirmDeactivateId]
+);
+  const hasActiveSearch = debouncedSearchTerm.trim() !== '';
+const hasActiveFilters =
+  accountFilter !== 'all' ||
+  deletionFilter !== 'all' ||
+  businessFilter !== 'all';
+
+const hasNoCustomers = !loading && !hasActiveSearch && !hasActiveFilters && totalCount === 0;
+const hasNoSearchResults =
+  !loading && (hasActiveSearch || hasActiveFilters) && rows.length === 0;
+
+  const shouldShowFilters =
+  !loading && (!hasNoCustomers || hasActiveSearch || hasActiveFilters);
+
+  const customer = useMemo(
+  () =>
+    selectedCustomer
+      ? rows.find((c) => c.id === selectedCustomer) ?? null
+      : null,
+  [rows, selectedCustomer]
+);
+
+
+  const openRestrictionModal = useCallback((message: string) => {
+    setRestrictionModal({
+      title: 'Deactivation Restricted',
+      message,
+    });
+  }, []);
+
+  const canSubmitNewCustomer = useMemo(() => {
+    return (
+      newCustomer.first_name.trim() !== '' &&
+      newCustomer.email.trim() !== '' &&
+      newCustomer.password.trim() !== ''
+    );
+  }, [newCustomer.first_name, newCustomer.email, newCustomer.password]);
+
+  const handlePageJump = useCallback(() => {
+    const parsed = parseInt(pageInput, 10);
+
+    if (Number.isNaN(parsed)) {
+      setPageInput(String(page));
+      return;
+    }
+
+    const nextPage = Math.min(Math.max(parsed, 1), totalPages);
+    setPage(nextPage);
+    setPageInput(String(nextPage));
+  }, [pageInput, page, totalPages]);
+
+  const handlePageInputKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        handlePageJump();
+      }
+    },
+    [handlePageJump]
+  );
+
+  const requestDeactivate = useCallback(
+    (target: CustomerRow | null) => {
+      if (!target) return;
+      if (!(target.is_active ?? true)) return;
+
+      if (target.deactivationBlocked) {
+        setConfirmDeactivateId(null);
+        openRestrictionModal(getDeactivationReason(target));
+        return;
+      }
+
+      setConfirmDeactivateId(target.id);
+    },
+    [openRestrictionModal]
+  );
+
+  const closeDeactivateModal = useCallback(() => {
+    setConfirmDeactivateId(null);
+  }, []);
+
+  const closeCustomerModal = useCallback(() => {
+    setSelectedCustomer(null);
+    setConfirmDeactivateId(null);
+  }, []);
+
+  const closeAddModal = useCallback(() => {
+    setShowAddModal(false);
+    setShowPassword(false);
+  }, []);
+
+  const updateNewCustomerField = useCallback(
+  (field: keyof NewCustomerForm, value: string | number | boolean | null | undefined) => {
+    setNewCustomer((prev) => ({
+      ...prev,
+      [field]: value as NewCustomerForm[keyof NewCustomerForm],
+    }));
+  },
+  []
+);
+
+  const handleAddCustomer = useCallback(async () => {
+    if (!canSubmitNewCustomer) return;
+
+    setShowAddModal(false);
+    setNewCustomer(INITIAL_CUSTOMER_FORM);
+    setShowPassword(false);
+  }, [canSubmitNewCustomer]);
+
+  const reloadUsers = useCallback(async () => {
+  const result = await fetchUsersPage({
+    page,
+    pageSize,
+    searchTerm: debouncedSearchTerm,
+    accountFilter,
+    deletionFilter,
+    businessFilter,
+    useExactCount: false,
+  });
+
+  setRows(result.data.map(mapUserToCustomerRow));
+  setTotalCount(result.count);
+}, [
+  fetchUsersPage,
+  page,
+  pageSize,
+  debouncedSearchTerm,
+  accountFilter,
+  deletionFilter,
+  businessFilter,
+]);
+
+  const toggleStatus = useCallback(
+  async (id: string, status: boolean) => {
+    try {
+      const success = await updateUserStatus(id, status);
+
+      if (!success) {
+        const target = rows.find((row) => row.id === id) ?? confirmTarget ?? null;
+        setConfirmDeactivateId(null);
+        openRestrictionModal(getDeactivationReason(target));
+        return;
+      }
+
+      setRows((prev) =>
+        prev.map((row) =>
+          row.id === id
+            ? {
+                ...row,
+                is_active: status,
+              }
+            : row
+        )
+      );
+
+      setConfirmDeactivateId(null);
+
+      if (!status && selectedCustomer === id) {
+        setSelectedCustomer(null);
+      }
+    } catch (error) {
+      console.error('Failed to update user status:', error);
+      setConfirmDeactivateId(null);
+    }
+  },
+  [updateUserStatus, rows, confirmTarget, selectedCustomer, openRestrictionModal]
+);
+
+  const openDeletionDecisionModal = useCallback(
+    (target: CustomerRow | null, action: DeletionDecisionAction) => {
+      if (!target || isSubmittingDeletionDecision) return;
+      if (target.deletionStatus !== 'pending') return;
+
+      setDeletionDecisionState({
+        target,
+        action,
+      });
+    },
+    [isSubmittingDeletionDecision]
+  );
+
+  const closeDeletionDecisionModal = useCallback(() => {
+    if (isSubmittingDeletionDecision) return;
+
+    setDeletionDecisionState({
+      target: null,
+      action: null,
+    });
+  }, [isSubmittingDeletionDecision]);
+
+  const handleDeletionDecision = useCallback(async () => {
+    const target = deletionDecisionState.target;
+    const action = deletionDecisionState.action;
+
+    if (!target || !action || isSubmittingDeletionDecision) return;
+
+    try {
+      setIsSubmittingDeletionDecision(true);
+
+      const nextStatus = action === 'approve' ? 'approved' : 'rejected';
+      const nextNote =
+        action === 'approve'
+          ? 'Deletion request was approved after admin review.'
+          : 'Deletion request was rejected after admin review.';
+
+      const { data, error } = await supabase
+        .from('account_deletion_requests')
+        .update({
+          status: nextStatus,
+          admin_note: nextNote,
+          reviewed_at: new Date().toISOString(),
+          reviewed_by: user?.id ?? null,
+        })
+        .eq('user_id', target.id)
+        .eq('status', 'pending')
+        .select('id')
+        .limit(1);
+
+      if (error) {
+        console.error(`Failed to ${action} deletion request:`, error);
+        setRestrictionModal({
+          title: action === 'approve' ? 'Approval Failed' : 'Update Failed',
+          message:
+            action === 'approve'
+              ? 'Failed to approve the deletion request.'
+              : 'Failed to reject the deletion request.',
+        });
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        await reloadUsers();
+        setDeletionDecisionState({
+          target: null,
+          action: null,
+        });
+        setRestrictionModal({
+          title: 'Already Processed',
+          message: 'This account deletion request was already processed.',
+        });
+        return;
+      }
+
+      await sendDeletionStatusNotification({
+        userId: target.id,
+        status: nextStatus,
+      });
+      clearUsersCache();
+      await reloadUsers();
+      setSelectedCustomer(null);
+      setDeletionDecisionState({
+        target: null,
+        action: null,
+      });
+
+      setRestrictionModal({
+        title: nextStatus === 'approved' ? 'Request Approved' : 'Request Rejected',
+        message:
+          nextStatus === 'approved'
+            ? 'The deletion request has been approved. The user may now proceed with account deletion.'
+            : 'The account deletion request has been rejected.',
+      });
+    } catch (error) {
+      console.error(`Failed to ${action} deletion request:`, error);
+      setRestrictionModal({
+        title: action === 'approve' ? 'Approval Failed' : 'Update Failed',
+        message: 'An unexpected error occurred while processing the request.',
+      });
+    } finally {
+      setIsSubmittingDeletionDecision(false);
+    }
+  }, [
+    deletionDecisionState,
+    isSubmittingDeletionDecision,
+    reloadUsers,
+    sendDeletionStatusNotification,
+    user?.id,
+    clearUsersCache,
+  ]);
+
+  const handleExportCustomer = useCallback(
+    async (target: CustomerRow | null) => {
+      if (!target) return;
+
+      try {
+        const { data: profile, error: profileError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('user_id', target.id)
+          .maybeSingle();
+
+        if (profileError) {
+          console.error('Failed to fetch customer profile for export:', profileError);
+          setRestrictionModal({
+            title: 'Export Failed',
+            message: 'Failed to load customer profile for export.',
+          });
+          return;
+        }
+
+        const { data: reservations, error: reservationsError } = await supabase
+          .from('reservations')
+          .select('*')
+          .eq('user_id', target.id)
+          .order('created_at', { ascending: false });
+
+        if (reservationsError) {
+          console.error('Failed to fetch reservations for export:', reservationsError);
+          setRestrictionModal({
+            title: 'Export Failed',
+            message: 'Failed to load reservation history for export.',
+          });
+          return;
+        }
+
+        const { data: payments, error: paymentsError } = await supabase
+          .from('payments')
+          .select('*')
+          .eq('user_id', target.id)
+          .order('date', { ascending: false });
+
+        if (paymentsError) {
+          console.error('Failed to fetch payments for export:', paymentsError);
+          setRestrictionModal({
+            title: 'Export Failed',
+            message: 'Failed to load payment history for export.',
+          });
+          return;
+        }
+
+        const { data: reviews, error: reviewsError } = await supabase
+          .from('reviews')
+          .select('*')
+          .eq('user_id', target.id)
+          .order('date', { ascending: false });
+
+        if (reviewsError) {
+          console.error('Failed to fetch reviews for export:', reviewsError);
+        }
+
+        const exportPayload = {
+          exported_at: new Date().toISOString(),
+          exported_by_admin_id: user?.id ?? null,
+          customer: {
+            id: target.id,
+            publicId: target.publicId ?? null,
+            firstName: target.firstName,
+            lastName: target.lastName,
+            email: target.email,
+            contactNumber: target.contactNumber ?? null,
+            address: target.address ?? null,
+            isActive: target.is_active ?? true,
+            lastLogin: target.lastLogin ?? null,
+            deletionStatus: target.deletionStatus ?? null,
+            deletionRequestReason: target.deletionRequestReason ?? null,
+          },
+          profile,
+          reservations: reservations ?? [],
+          payments: payments ?? [],
+          reviews: reviews ?? [],
+          summary: {
+            reservationCount: reservations?.length ?? 0,
+            paymentCount: payments?.length ?? 0,
+            reviewCount: reviews?.length ?? 0,
+            verifiedPaymentTotal:
+              payments
+                ?.filter((payment) => payment.status === 'verified')
+                .reduce((sum, payment) => sum + Number(payment.amount || 0), 0) ?? 0,
+          },
+        };
+
+        const blob = new Blob([JSON.stringify(exportPayload, null, 2)], {
+          type: 'application/json',
+        });
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const safeName = `${target.firstName}_${target.lastName}`.replace(/\s+/g, '_');
+        const safePublicId = (target.publicId ?? target.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+
+        link.href = url;
+        link.download = `customer_export_${safeName}_${safePublicId}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        setRestrictionModal({
+          title: 'Export Ready',
+          message: 'Customer record has been downloaded as JSON.',
+        });
+      } catch (error) {
+        console.error('Failed to export customer data:', error);
+        setRestrictionModal({
+          title: 'Export Failed',
+          message: 'An unexpected error occurred while exporting customer data.',
+        });
+      }
+    },
+    [user?.id]
+  );
+
+
+  useEffect(() => {
+    setPageInput(String(page));
+  }, [page]);
+
+  useEffect(() => {
+  setPage((prev) => (prev === 1 ? prev : 1));
+}, [debouncedSearchTerm, accountFilter, deletionFilter, businessFilter]);
+
+  useEffect(() => {
+  let cancelled = false;
+
+  const loadUsers = async () => {
+    const startedAt = performance.now();
+    setLoading(true);
+    console.log('[Customers] ⏱️ Load started');
+
+    try {
+      const result = await fetchUsersPage({
+        page,
+        pageSize,
+        searchTerm: debouncedSearchTerm,
+        accountFilter,
+        deletionFilter,
+        businessFilter,
+        useExactCount: false,
+      });
+
+      if (cancelled) return;
+
+      setRows(result.data.map(mapUserToCustomerRow));
+      setTotalCount(result.count);
+    } catch (error) {
+      console.error('Failed to load users page:', error);
+
+      if (!cancelled) {
+        setRows([]);
+        setTotalCount(0);
+      }
+    } finally {
+      if (!cancelled) {
+        setLoading(false);
+        const endedAt = performance.now();
+        console.log(
+          `[Customers] ✅ Load complete in ${(endedAt - startedAt).toFixed(2)} ms`
+        );
+      }
+    }
+  };
+
+  void loadUsers();
+
+  return () => {
+    cancelled = true;
+  };
+}, [
+  fetchUsersPage,
+  page,
+  pageSize,
+  debouncedSearchTerm,
+  accountFilter,
+  deletionFilter,
+  businessFilter,
+  version,
+]);
+
+
+  useEffect(() => {
+    if (!confirmDeactivateId) return;
+
+    if (!confirmTarget || confirmTarget.deactivationBlocked || !(confirmTarget.is_active ?? true)) {
+      setConfirmDeactivateId(null);
+    }
+  }, [confirmDeactivateId, confirmTarget]);
+
+  useEffect(() => {
+    if (!deletionDecisionState.target) return;
+
+    const latestTarget = rows.find((row) => row.id === deletionDecisionState.target?.id) ?? null;
+
+    if (!latestTarget || latestTarget.deletionStatus !== 'pending') {
+      setDeletionDecisionState({
+        target: null,
+        action: null,
+      });
+    }
+  }, [rows, deletionDecisionState.target]);
+
+  return (
+    <div className="min-h-screen bg-white">
+      <div className="flex flex-col gap-4 p-4 sm:p-6 lg:p-8">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900">
+              Customer Management
+            </h1>
+            <p className="text-sm text-gray-500">
+              Monitor account status, recent activity, and business engagement.
+            </p>
+          </div>
+
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="hidden cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-100 transition-all active:scale-95 hover:bg-blue-700 lg:flex"
+          >
+            <Plus className="size-5" />
+            <span className="hidden font-medium sm:inline">Add Customer</span>
+          </button>
         </div>
-      </div>
 
-      {/* Add Customer Modal */}
-      {showAddModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2>Add Customer</h2>
-              <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-600">
-                <X size={24} />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <input
-                type="text"
-                placeholder="First Name"
-                value={newCustomer.first_name}
-                onChange={(e) => setNewCustomer({...newCustomer, first_name: e.target.value})}
-                className="w-full border px-2 py-1 rounded"
-              />
-              <input
-                type="text"
-                placeholder="Last Name"
-                value={newCustomer.last_name}
-                onChange={(e) => setNewCustomer({...newCustomer, last_name: e.target.value})}
-                className="w-full border px-2 py-1 rounded"
-              />
-              <input
-                type="email"
-                placeholder="Email"
-                value={newCustomer.email}
-                onChange={(e) => setNewCustomer({...newCustomer, email: e.target.value})}
-                className="w-full border px-2 py-1 rounded"
-              />
-              <input
-                type="text"
-                placeholder="Contact Number"
-                value={newCustomer.contactNumber}
-                onChange={(e) => setNewCustomer({...newCustomer, contactNumber: e.target.value})}
-                className="w-full border px-2 py-1 rounded"
-              />
-              <input
-    type="text"
-    placeholder="Address"
-    value={newCustomer.address}
-    onChange={(e) => setNewCustomer({...newCustomer, address: e.target.value})}
-    className="w-full border px-2 py-1 rounded"
+        {shouldShowFilters && (
+  <AdminFilterBar
+    searchTerm={searchTerm}
+    onSearchChange={setSearchTerm}
+    placeholder="Search by name, email, ID, or business status..."
+    showMobileFilters={showMobileFilters}
+    onToggleMobileFilters={() => setShowMobileFilters((prev) => !prev)}
+    filters={
+      <AdminFilterGroup align="between">
+        <div className="grid w-full grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+          <select
+            value={accountFilter}
+            onChange={(e) =>
+              setAccountFilter(e.target.value as 'all' | 'active' | 'inactive')
+            }
+            className={FILTER_SELECT_CLASS}
+          >
+            <option value="all">All Accounts</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+
+          <select
+            value={deletionFilter}
+            onChange={(e) =>
+              setDeletionFilter(
+                e.target.value as 'all' | 'pending' | 'approved' | 'rejected' | 'none'
+              )
+            }
+            className={FILTER_SELECT_CLASS}
+          >
+            <option value="all">All Requests</option>
+            <option value="pending">Pending Deletion</option>
+            <option value="approved">Approved Deletion</option>
+            <option value="rejected">Rejected Deletion</option>
+            <option value="none">No Request</option>
+          </select>
+
+          <select
+            value={businessFilter}
+            onChange={(e) =>
+              setBusinessFilter(
+                e.target.value as 'all' | 'occupied' | 'upcoming' | 'unpaid'
+              )
+            }
+            className={FILTER_SELECT_CLASS}
+          >
+            <option value="all">All Business Status</option>
+            <option value="occupied">Occupied</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="unpaid">Unpaid</option>
+          </select>
+        </div>
+
+        {(hasActiveSearch || hasActiveFilters) && (
+          <div className="flex w-full justify-end lg:w-auto">
+            <button
+              type="button" 
+              onClick={() => {
+                setSearchTerm('');
+                setAccountFilter('all');
+                setDeletionFilter('all');
+                setBusinessFilter('all');
+                setShowMobileFilters(false);
+              }}
+              className={FILTER_BUTTON_CLASS}
+            >
+              Clear
+            </button>
+          </div>
+        )}
+      </AdminFilterGroup>
+    }
   />
-              <input
-                type="password"
-                placeholder="Password"
-                value={newCustomer.password}
-                onChange={(e) => setNewCustomer({...newCustomer, password: e.target.value})}
-                className="w-full border px-2 py-1 rounded"
-              />
-              <button
-                onClick={handleAddCustomer}
-                className="w-full py-2 bg-blue-600 text-white rounded"
+)}
+
+        <div className="grid grid-cols-1 gap-4 lg:hidden">
+          {loading ? (
+            <EmptyState
+              icon={
+                <div className="flex items-center justify-center">
+                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+                </div>
+              }
+              title="Loading customers..."
+              description="Fetching customer data, activity, and account status. This may take a few seconds on first load, but will be faster next time."
+            />
+          ) : hasNoCustomers ? (
+            <EmptyState
+              icon={<Inbox className="size-10 text-blue-500" />}
+              title="No active customers yet"
+              description="Customer accounts will appear here once users register or are added by an administrator."
+            />
+          ) : hasNoSearchResults ? (
+            <div className="rounded-2xl border border-gray-200 bg-white px-6 py-16 shadow-sm">
+              <NoCustomerResults />
+            </div>
+          ) : (
+            filteredRows.map((c) => (
+              <div
+                key={c.id}
+                className="flex cursor-pointer items-center justify-between rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-colors active:bg-gray-50"
+                onClick={() => setSelectedCustomer(c.id)}
               >
-                Add Customer
+                <div className="min-w-0 flex items-center gap-4">
+                  <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-lg font-bold text-blue-700">
+                    {c.initials}
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="break-words font-bold leading-tight text-gray-900">
+                      {c.firstName} {c.lastName}
+                    </p>
+                    <p className="mt-0.5 break-words text-[10px] font-mono text-gray-400">
+                      {c.publicId ?? c.id}
+                    </p>
+                    <p className="mt-1 break-words text-xs text-gray-500">{c.email || '—'}</p>
+                    <p className="mt-1 break-words text-[11px] text-gray-400">
+                      {formatLastLogin(c.lastLogin)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="ml-2 flex shrink-0 flex-col items-end gap-2">
+                  <div className="flex flex-col items-end gap-1">
+                    <StatusBadge
+                      className={
+                        c.is_active ?? true
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-red-100 text-red-700'
+                      }
+                    >
+                      {(c.is_active ?? true) ? 'Active' : 'Inactive'}
+                    </StatusBadge>
+
+                    {c.hasActiveOccupancy && (
+                      <StatusBadge className="bg-amber-100 text-amber-700">Occupied</StatusBadge>
+                    )}
+
+                    {c.hasUpcomingBooking && (
+                      <StatusBadge className="bg-blue-100 text-blue-700">Upcoming</StatusBadge>
+                    )}
+
+                    {c.hasUnpaidBalance && (
+                      <StatusBadge className="bg-rose-100 text-rose-700">Unpaid</StatusBadge>
+                    )}
+
+                    {c.deletionStatus === 'pending' && (
+                      <StatusBadge className="bg-purple-100 text-purple-700">Pending</StatusBadge>
+                    )}
+                  </div>
+
+                  <Eye size={20} className="rounded-lg bg-blue-50 p-1 text-blue-500" />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="hidden lg:block">
+  {loading ? (
+    <EmptyState
+      icon={
+        <div className="flex items-center justify-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+        </div>
+      }
+      title="Loading customers..."
+      description="Fetching customer data, activity, and account status. This may take a few seconds on first load, but will be faster next time."
+    />
+  ) : hasNoCustomers ? (
+    <EmptyState
+      icon={<Inbox className="size-10 text-blue-500" />}
+      title="No active customers yet"
+      description="Customer accounts will appear here once users register or are added by an administrator."
+    />
+  ) : hasNoSearchResults ? (
+    <div className="rounded-2xl border border-gray-200 bg-white px-6 py-20 shadow-sm">
+      <NoCustomerResults />
+    </div>
+  ) : (
+    <DataTable
+      headers={[
+        'Customer',
+        'User ID',
+        'Email',
+        'Contact',
+        'Last Login',
+        'Business',
+        'Account',
+        'Actions',
+      ]}
+    >
+      {filteredRows.map((c) => (
+        <tr key={c.id} className="transition-colors hover:bg-gray-50/70">
+          <DataCell
+            value={
+              <div>
+                <p className="break-words font-semibold text-gray-900">
+                  {c.firstName} {c.lastName}
+                </p>
+              </div>
+            }
+          />
+
+          <DataCell value={c.publicId ?? c.id} mono />
+          <DataCell value={c.email} />
+          <DataCell value={c.contactNumber} />
+          <DataCell value={formatLastLogin(c.lastLogin)} />
+
+          <DataCell
+            value={
+              <div className="flex flex-wrap gap-2">
+                {c.hasActiveOccupancy ? (
+                  <TableBadge className="bg-amber-100 text-amber-700">
+                    Occupied
+                  </TableBadge>
+                ) : (
+                  <TableBadge className="bg-gray-100 text-gray-600">
+                    No occupancy
+                  </TableBadge>
+                )}
+
+                {c.hasUpcomingBooking && (
+                  <TableBadge className="bg-blue-100 text-blue-700">
+                    Upcoming
+                  </TableBadge>
+                )}
+
+                {c.hasUnpaidBalance && (
+                  <TableBadge className="bg-rose-100 text-rose-700">
+                    Unpaid
+                  </TableBadge>
+                )}
+              </div>
+            }
+          />
+
+          <DataCell
+            nowrap
+            value={
+              <div className="flex flex-wrap gap-2">
+                <TableBadge
+                  className={
+                    c.is_active
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-red-100 text-red-700'
+                  }
+                >
+                  {c.is_active ? 'Active' : 'Inactive'}
+                </TableBadge>
+
+                {c.deletionStatus === 'pending' && (
+                  <TableBadge className="bg-purple-100 text-purple-700">
+                    Pending
+                  </TableBadge>
+                )}
+
+                {c.deletionStatus === 'approved' && (
+                  <TableBadge className="bg-purple-100 text-purple-700">
+                    Approved
+                  </TableBadge>
+                )}
+
+                {c.deletionStatus === 'rejected' && (
+                  <TableBadge className="bg-slate-100 text-slate-700">
+                    Rejected
+                  </TableBadge>
+                )}
+              </div>
+            }
+          />
+
+          <ActionCell>
+            <button
+              onClick={() => setSelectedCustomer(c.id)}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-blue-600 hover:bg-blue-100"
+              title="View details"
+            >
+              <Eye size={16} />
+            </button>
+
+            <button
+              onClick={() => void handleExportCustomer(c)}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-slate-600 hover:bg-blue-100"
+              title="Export customer"
+            >
+              <Download size={16} />
+            </button>
+
+            {c.deletionStatus === 'pending' ? (
+              <>
+                <button
+                  onClick={() => openDeletionDecisionModal(c, 'approve')}
+                  disabled={isSubmittingDeletionDecision}
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-indigo-600 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Approve deletion"
+                >
+                  <Check size={16} />
+                </button>
+
+                <button
+                  onClick={() => openDeletionDecisionModal(c, 'reject')}
+                  disabled={isSubmittingDeletionDecision}
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-slate-600 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Reject deletion"
+                >
+                  <X size={16} />
+                </button>
+              </>
+            ) : c.deletionStatus === 'approved' ? (
+              <span className="inline-flex h-8 items-center rounded-md px-2 text-[11px] font-bold text-emerald-700">
+                Awaiting user deletion
+              </span>
+            ) : c.is_active ? (
+              <button
+                onClick={() => requestDeactivate(c)}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-red-500 hover:bg-red-50"
+                title="Deactivate account"
+              >
+                <UserX size={16} />
+              </button>
+            ) : (
+              <button
+                onClick={() => void toggleStatus(c.id, true)}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-green-600 hover:bg-green-50"
+                title="Reactivate account"
+              >
+                <RotateCcw size={16} />
+              </button>
+            )}
+          </ActionCell>
+        </tr>
+      ))}
+    </DataTable>
+  )}
+</div>
+
+        {!loading && !hasNoCustomers && totalPages > 1 && (
+          <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-gray-500">
+              Page {page} of {totalPages} • {totalCount} total customers
+            </p>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+              >
+                Previous
+              </button>
+
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500">Go to</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  value={pageInput}
+                  onChange={(e) => setPageInput(e.target.value)}
+                  onKeyDown={handlePageInputKeyDown}
+                  className="w-20 rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  onClick={handlePageJump}
+                  className="rounded-lg bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700"
+                >
+                  Go
+                </button>
+              </div>
+
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+              >
+                Next
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ✅ START: NEW READ-ONLY CUSTOMER DETAILS MODAL */}
-{customer && (
-  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-    <div className="bg-white rounded-lg max-w-lg w-full max-h-[90vh] flex flex-col">
-      {/* --- Modal Header --- */}
-      <div className="p-6 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
-        <h2 className="text-lg font-semibold">Customer Details</h2>
         <button
-          onClick={() => setSelectedCustomer(null)}
-          className="text-gray-400 hover:text-gray-600 transition-colors"
+          onClick={() => setShowAddModal(true)}
+          className="fixed bottom-6 right-6 z-50 flex size-16 items-center justify-center rounded-full border-4 border-white bg-blue-600 text-white shadow-2xl transition-all hover:scale-110 active:scale-95 lg:hidden"
         >
-          <X className="size-6" />
+          <Plus size={32} strokeWidth={3} />
         </button>
-      </div>
 
-      {/* --- Modal Body --- */}
-      <div className="p-6 space-y-6 overflow-y-auto">
-        {/* Read-Only Customer Info */}
-        {/* ✅ UPDATED MODAL WITH ADDRESS */}
-<div className="space-y-4 text-sm">
-  {/* User ID, First Name, Last Name... */}
-  <div className="flex justify-between py-2 border-b border-gray-100">
-    <span className="text-gray-600">Email:</span>
-    <span className="font-medium text-gray-900">{customer.email}</span>
-  </div>
-  <div className="flex justify-between py-2 border-b border-gray-100">
-    <span className="text-gray-600">Contact Number:</span>
-    <span className="font-medium text-gray-900">{customer.contactNumber}</span>
-  </div>
+        {restrictionModal && (
+          <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/40 p-4">
+            <div className="animate-in zoom-in-95 fade-in-0 w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl duration-200">
+              <div className="flex flex-col items-center gap-4 text-center">
+                <div className="flex size-14 items-center justify-center rounded-full bg-amber-50 text-amber-500">
+                  <AlertTriangle size={32} />
+                </div>
 
-  {/* --- This is the new field --- */}
-  <div className="flex justify-between py-2 border-b border-gray-100">
-    <span className="text-gray-600">Address:</span>
-    <span className="font-medium text-gray-900 text-right">{customer.address}</span>
-  </div>
-  {/* ----------------------------- */}
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">{restrictionModal.title}</h3>
+                  <p className="mt-1 text-sm text-gray-500">{restrictionModal.message}</p>
+                </div>
 
-  <div className="flex justify-between py-2 border-b border-gray-100">
-    <span className="text-gray-600">Status:</span>
-    <span
-      className={`px-2 py-1 text-xs rounded-full ${
-        customer.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-      }`}
+                <div className="mt-2 flex w-full">
+                  <button
+                    onClick={() => setRestrictionModal(null)}
+                    className="w-full rounded-xl bg-amber-500 py-3 font-bold text-white shadow-lg shadow-amber-200 transition-all hover:bg-amber-600"
+                  >
+                    Understood
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {deletionDecisionState.target && deletionDecisionState.action && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
+            <div className="animate-in zoom-in-95 fade-in-0 w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl duration-200">
+              <div className="flex flex-col items-center gap-4 text-center">
+                <div className="flex size-14 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+                  {deletionDecisionState.action === 'approve' ? (
+                    <Check size={28} />
+                  ) : (
+                    <X size={28} />
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    {deletionDecisionState.action === 'approve'
+                      ? 'Approve Deletion Request'
+                      : 'Reject Deletion Request'}
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    {deletionDecisionState.action === 'approve'
+                      ? 'Are you sure you want to approve this account deletion request?'
+                      : 'Are you sure you want to reject this account deletion request?'}
+                  </p>
+                </div>
+
+                <div className="mt-2 flex w-full gap-3">
+                  <button
+                    onClick={closeDeletionDecisionModal}
+                    disabled={isSubmittingDeletionDecision}
+                    className="flex-1 rounded-xl bg-gray-100 py-3 font-bold text-gray-600 transition-all hover:bg-gray-200 disabled:opacity-50"
+                  >
+                    Cancel  
+                  </button>
+
+                  <button
+                    onClick={() => void handleDeletionDecision()}
+                    disabled={isSubmittingDeletionDecision}
+                    className={`flex-1 rounded-xl py-3 font-bold text-white transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+                      deletionDecisionState.action === 'approve'
+                        ? 'bg-indigo-600 hover:bg-indigo-700'
+                        : 'bg-slate-700 hover:bg-slate-800'
+                    }`}
+                  >
+                    {isSubmittingDeletionDecision
+                      ? deletionDecisionState.action === 'approve'
+                        ? 'Approving...'
+                        : 'Rejecting...'
+                      : deletionDecisionState.action === 'approve'
+                        ? 'Approve'
+                        : 'Reject'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {confirmTarget && !confirmTarget.deactivationBlocked && (confirmTarget.is_active ?? true) && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4">
+            <div className="animate-in zoom-in-95 fade-in-0 w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl duration-200">
+              <div className="flex flex-col items-center gap-4 text-center">
+                <div className="flex size-14 items-center justify-center rounded-full bg-red-50 text-red-500">
+                  <AlertTriangle size={32} />
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Confirm Deactivation</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Are you sure you want to deactivate this user? They will no longer be able to
+                    log in.
+                  </p>
+                </div>
+
+                <div className="mt-2 flex w-full gap-3">
+                  <button
+                    onClick={closeDeactivateModal}
+                    className="flex-1 rounded-xl bg-gray-100 py-3 font-bold text-gray-600 transition-all hover:bg-gray-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => void toggleStatus(confirmTarget.id, false)}
+                    className="flex-1 rounded-xl bg-red-600 py-3 font-bold text-white shadow-lg shadow-red-200 transition-all hover:bg-red-700"
+                  >
+                    Deactivate
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {customer && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
+            <div className="animate-in zoom-in-95 flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-[2.5rem] bg-white shadow-xl duration-200">
+              <div className="relative flex h-28 shrink-0 items-end bg-gradient-to-br from-blue-600 to-blue-800 px-8 pb-4">
+                <button
+                  onClick={closeCustomerModal}
+                  className="absolute right-5 top-5 rounded-full bg-white/10 p-2 text-white transition-all hover:bg-white/20"
+                >
+                  <X size={20} />
+                </button>
+
+                <div className="absolute -bottom-12 left-8 size-28 rounded-[2rem] bg-white p-2 shadow-xl">
+                  <div className="flex h-full w-full items-center justify-center rounded-[1.5rem] bg-blue-50 text-4xl font-bold text-blue-600">
+                    {customer.initials}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-8 pb-8 pt-16">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h2 className="break-words text-xl font-semibold text-gray-900">
+                      {customer.firstName} {customer.lastName}
+                    </h2>
+                    <p className="mt-1 flex items-center gap-1.5 break-words text-sm font-mono uppercase text-gray-400">
+                      <Hash size={12} /> {customer.publicId ?? customer.id}
+                    </p>
+                  </div>
+
+                  <div
+                    className={`shrink-0 flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[11px] font-medium ${
+                      customer.is_active ?? true
+                        ? 'bg-green-50 text-green-600'
+                        : 'bg-red-50 text-red-600'
+                    }`}
+                  >
+                    {(customer.is_active ?? true) ? (
+                      <ShieldCheck size={14} />
+                    ) : (
+                      <ShieldAlert size={14} />
+                    )}
+                    {(customer.is_active ?? true) ? 'Active' : 'Inactive'}
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {customer.hasActiveOccupancy && (
+                    <StatusBadge className="bg-amber-100 text-amber-800">Occupied</StatusBadge>
+                  )}
+
+                  {customer.hasUpcomingBooking && (
+                    <StatusBadge className="bg-blue-100 text-blue-800">
+                      Upcoming Booking
+                    </StatusBadge>
+                  )}
+
+                  {customer.hasUnpaidBalance && (
+                    <StatusBadge className="bg-rose-100 text-rose-800">
+                      Unpaid Balance
+                    </StatusBadge>
+                  )}
+
+                  {customer.deletionStatus === 'pending' && (
+                    <StatusBadge className="bg-purple-100 text-purple-800">
+                      Deletion Pending
+                    </StatusBadge>
+                  )}
+
+                  {customer.deletionStatus === 'approved' && (
+                    <StatusBadge className="bg-indigo-100 text-indigo-800">Approved</StatusBadge>
+                  )}
+
+                  {customer.deletionStatus === 'rejected' && (
+                    <StatusBadge className="bg-slate-100 text-slate-700">Rejected</StatusBadge>
+                  )}
+                </div>
+
+                <div className="mt-8 space-y-5">
+                  <CustomerDetailItem
+                    icon={<Mail size={18} />}
+                    label="Email Address"
+                    value={customer.email || '—'}
+                  />
+                  <CustomerDetailItem
+                    icon={<Phone size={18} />}
+                    label="Contact Number"
+                    value={customer.contactNumber || '—'}
+                  />
+                  <CustomerDetailItem
+                    icon={<MapPin size={18} />}
+                    label="Physical Address"
+                    value={customer.address || '—'}
+                  />
+                  <CustomerDetailItem
+                    icon={<Clock3 size={18} />}
+                    label="Last Login"
+                    value={formatLastLogin(customer.lastLogin)}
+                  />
+
+                  {customer.hasActiveOccupancy && (
+                    <CustomerDetailItem
+                      icon={<Briefcase size={18} />}
+                      label="Active Occupancy"
+                      value={
+                        customer.activeUnitName
+                          ? `${customer.activeUnitName}${
+                              customer.activeUnitType
+                                ? ` (${formatUnitTypeLabel(customer.activeUnitType)})`
+                                : ''
+                            }`
+                          : customer.activeUnitType
+                            ? formatUnitTypeLabel(customer.activeUnitType)
+                            : 'Yes'
+                      }
+                    />
+                  )}
+
+                  {customer.activeSince && (
+                    <CustomerDetailItem
+                      icon={<CalendarDays size={18} />}
+                      label="Occupancy Since"
+                      value={formatDate(customer.activeSince)}
+                    />
+                  )}
+
+                  {customer.hasUnpaidBalance && (
+                    <CustomerDetailItem
+                      icon={<Wallet size={18} />}
+                      label="Payment Status"
+                      value="This customer has unpaid balance records."
+                    />
+                  )}
+                </div>
+
+                {customer.deactivationBlocked && customer.deactivationReason && (
+                  <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-amber-700">
+                      Deactivation Restricted
+                    </p>
+                    <p className="mt-1 break-words text-sm text-amber-800">
+                      {customer.deactivationReason}
+                    </p>
+                  </div>
+                )}
+
+                <div className="mt-8 flex flex-col gap-3">
+  <div className="flex flex-col gap-2 sm:flex-row">
+    <button
+      onClick={closeCustomerModal}
+      className="flex-1 rounded-xl bg-gray-100 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-200"
     >
-      {customer.is_active ? 'Active' : 'Inactive'}
-    </span>
-  </div>
-</div>
+      Close details
+    </button>
 
+    <button
+      type="button"
+      onClick={() => void handleExportCustomer(customer)}
+      className="flex-1 rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+    >
+      Export JSON
+    </button>
+
+    {customer.deletionStatus === 'approved' ? (
+      <div className="flex-1 rounded-xl border border-emerald-200 bg-emerald-50 py-2.5 text-center text-sm font-medium text-emerald-700">
+        Awaiting user deletion
+      </div>
+    ) : (customer.is_active ?? true) ? (
+      <button
+        type="button"
+        onClick={() => requestDeactivate(customer)}
+        className={`flex-1 rounded-xl border py-2.5 text-sm font-medium transition ${
+          customer.deactivationBlocked
+            ? 'border-amber-200 bg-amber-50 text-amber-700'
+            : 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100'
+        }`}
+      >
+        {customer.deactivationBlocked ? 'Cannot deactivate' : 'Deactivate'}
+      </button>
+    ) : (
+      <button
+        onClick={() => void toggleStatus(customer.id, true)}
+        className="flex-1 rounded-xl border border-green-200 bg-green-50 py-2.5 text-sm font-medium text-green-600 hover:bg-green-100"
+      >
+        Reactivate
+      </button>
+    )}
+  </div>
+
+  {customer.deletionStatus === 'pending' && (
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <button
+        type="button"
+        onClick={() => openDeletionDecisionModal(customer, 'approve')}
+        disabled={isSubmittingDeletionDecision}
+        className="rounded-xl bg-indigo-600 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {isSubmittingDeletionDecision &&
+        deletionDecisionState.target?.id === customer.id &&
+        deletionDecisionState.action === 'approve'
+          ? 'Approving...'
+          : 'Approve deletion'}
+      </button>
+
+      <button
+        type="button"
+        onClick={() => openDeletionDecisionModal(customer, 'reject')}
+        disabled={isSubmittingDeletionDecision}
+        className="rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {isSubmittingDeletionDecision &&
+        deletionDecisionState.target?.id === customer.id &&
+        deletionDecisionState.action === 'reject'
+          ? 'Rejecting...'
+          : 'Reject request'}
+      </button>
+    </div>
+  )}
+
+  {customer.deletionStatus === 'approved' && (
+    <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+      <p className="text-xs font-semibold text-emerald-700">
+        Request approved
+      </p>
+      <p className="mt-1 text-sm text-emerald-800">
+        This request has been approved. The user must complete the final account
+        deletion from their profile.
+      </p>
+    </div>
+  )}
+</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showAddModal && (
+  <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-900/60 p-4">
+    <div className="flex min-h-full items-center justify-center">
+      <div className="w-full sm:max-w-4xl h-[92vh] sm:h-auto sm:max-h-[92vh] rounded-t-[2rem] sm:rounded-[2rem] border border-gray-200 bg-gray-50 shadow-[0_20px_60px_rgba(15,23,42,0.18)] flex flex-col overflow-hidden">
+        <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-5 sm:px-8">
+          <div className="flex items-start gap-3">
+            <div className="rounded-2xl bg-blue-600 p-3 text-white">
+              <Building2 className="size-5" />
+            </div>
+
+            <div>
+              <h2 className="text-lg font-bold tracking-tight text-gray-900 sm:text-xl">
+                Add Customer
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Create a customer account from the admin panel.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={closeAddModal}
+            className="rounded-2xl border border-gray-300 bg-white p-2 text-gray-500 transition hover:bg-gray-50 hover:text-gray-700"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+
+<div className="flex-1 overflow-y-auto">
+        <AdminUserForm  
+          newCustomer={newCustomer}
+          newCustomerErrors={newCustomerErrors}
+          canSubmitNewCustomer={canSubmitNewCustomer}
+          updateNewCustomerField={updateNewCustomerField}
+          setNewCustomer={setNewCustomer}
+          setNewCustomerErrors={setNewCustomerErrors}
+          normalizeName={normalizeName}
+          normalizeEmail={normalizeEmail}
+          normalizePHPhone={normalizePHPhone}
+          isPasswordPolicyValid={isPasswordPolicyValid}
+          handleSubmit={handleAddCustomer}
+          onCancel={closeAddModal}
+          FormField={FormField}
+          AddressPicker={AddressPicker}
+          PasswordStrengthIndicator={PasswordStrengthIndicator}
+          submitLabel="Create Customer"
+        />
+        </div>
       </div>
     </div>
   </div>
 )}
-{/* ✅ END: NEW READ-ONLY CUSTOMER DETAILS MODAL */}
+      </div>
     </div>
   );
 }

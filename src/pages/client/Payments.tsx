@@ -1,93 +1,1085 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useData } from '../../contexts/DataContext';
+import { useReservations } from '../../contexts/ReservationsContext';
+import { usePayments } from '../../contexts/PaymentsContext';
+import { useRecords } from '../../contexts/RecordsContext';
 import { useNotifications } from '../../contexts/NotificationContext';
-import { CreditCard, CheckCircle, Clock, Plus, Download, FileDown, X, XCircle, Paperclip, Trash2 } from 'lucide-react'; // Added FileDown and Ximport { formatCurrency } from '../../utils/currency';
-import { getPropertyTypeLabel } from '../../utils/propertyHelpers';
-import Papa from 'papaparse'; // Import PapaParse for CSV export
+import type { LedgerEntry } from '../../data/types';
+import { usePaymentMethods } from '../../contexts/PaymentMethodsContext';
+import { formatDate } from '../../utils/date';
+import supabase from '../../supabaseClient';
+import AppNotice from '../../components/common/AppNotice';
+import { AnimatePresence, motion } from 'framer-motion';
+import { normalizeLowercaseText } from "../../utils/DataNormalization";
+import {
+  CreditCard,
+  CheckCircle2,
+  Clock3,
+  Plus,
+  FileDown,
+  Download,
+  X,
+  XCircle,
+  Trash2,
+  Eye,
+  Search,
+  Wallet,
+  Landmark,
+  Image as ImageIcon,
+  ReceiptText,
+  CircleDollarSign,
+  AlertCircle,
+  ChevronDown,
+  Filter,
+} from 'lucide-react';
+import { getUnitTypeLabel } from '../../utils/propertyHelpers';
+import Papa from 'papaparse';
 import { formatCurrency } from '../../utils/currency';
+import { uiTypography } from '../../styles/uiTypography';
+import EmptyState from '../../components/common/EmptyState';
+
+const PAYMENT_STATUS_COLORS = {
+  paid: 'border border-emerald-200 bg-emerald-50 text-emerald-700',
+  unpaid: 'border border-amber-200 bg-amber-50 text-amber-700',
+  partial: 'border border-blue-200 bg-blue-50 text-blue-700',
+} as const;
+
+const PAYMENT_STATUS_ICONS = {
+  paid: CheckCircle2,
+  unpaid: Clock3,
+  partial: Clock3,
+} as const;
+
+const buildInitialPaymentForm = (defaultMethod = 'gcash') => ({
+  amount: '',
+  method: defaultMethod,
+  proofOfPayment: '',
+  notes: '',
+});
+
+const UNIT_TYPE_COLORS: Record<string, string> = {
+  rental_space: 'text-indigo-600',
+  function_hall: 'text-purple-600',
+  parking_slot: 'text-orange-600',
+};
+
+type DashboardStatCardProps = {
+  label: string;
+  value: number | string;
+  icon: React.ReactNode;
+};
+
+function DashboardStatCard({ label, value, icon }: DashboardStatCardProps) {
+  return (
+    <div className="flex min-h-[104px] flex-col justify-between rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:min-h-[112px] sm:p-5">
+      <div className="mb-2 flex items-center justify-between gap-3 sm:mb-3">
+        <p className="text-xs font-medium text-gray-500 sm:text-sm">
+          {label}
+        </p>
+        <div className="shrink-0">{icon}</div>
+      </div>
+
+      <p className="break-words text-xl font-bold leading-tight text-gray-900 sm:text-2xl">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function formatPaymentMethod(method?: string | null) {
+  if (!method) return 'N/A';
+
+  return method
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+function sanitizeFilenamePart(value?: string | null, fallback = 'file') {
+  const cleaned = String(value || '')
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '') // remove invalid filename chars
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^\.+|\.+$/g, '')
+    .slice(0, 60);
+
+  return cleaned || fallback;
+}
+
+function resolveProofImageSrc(value?: string | null) {
+  if (!value) return '';
+
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('data:image/')
+  ) {
+    return trimmed;
+  }
+
+  const { data } = supabase.storage.from('payment_proofs').getPublicUrl(trimmed);
+  return data.publicUrl || '';
+}
+
+function resolvePaymentMethodQrSrc(
+  method:
+    | {
+        qrImageUrl?: string | null;
+        qrImagePath?: string | null;
+      }
+    | null
+    | undefined
+) {
+  if (!method) return '';
+
+  const directUrl = method.qrImageUrl?.trim();
+  if (directUrl) return directUrl;
+
+  const path = method.qrImagePath?.trim();
+  if (!path) return '';
+
+  const { data } = supabase.storage.from('payment_method_qr').getPublicUrl(path);
+  return data.publicUrl || '';
+}
+
+function formatFileDate(value?: string | Date | null) {
+  const date = getSafeDate(value);
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+
+function getSafeDate(value?: string | Date | null) {
+  if (!value) return new Date(0);
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? new Date(0) : date;
+}
+
+function clampPercentage(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
+}
+
+function getReservationProgress(totalAmount?: number, paidAmount?: number) {
+  if (!totalAmount || totalAmount <= 0) return 0;
+  return clampPercentage((Number(paidAmount || 0) / Number(totalAmount)) * 100);
+}
+
+function getMinimumFirstPaymentAmount(
+  reservation:
+    | {
+        totalAmount?: number | null;
+        minimumPaymentPercentSnapshot?: number | null;
+      }
+    | null
+    | undefined
+) {
+  if (!reservation) return 0;
+
+  const percent = Number(reservation.minimumPaymentPercentSnapshot || 0);
+  const total = Number(reservation.totalAmount || 0);
+
+  if (!percent || !total) return 0;
+  return (total * percent) / 100;
+}
+
+function getMinimumSubsequentPaymentAmount(paidAmount?: number | null) {
+  return Number(paidAmount || 0) > 0 ? 500 : 0;
+}
+
+type PaymentFilterStatus = 'all' | 'paid' | 'partial' | 'unpaid';
+
+const PAYMENT_FILTER_OPTIONS: PaymentFilterStatus[] = [
+  'all',
+  'paid',
+  'partial',
+  'unpaid',
+];
+
+type PaymentFilterTabsProps = {
+  filter: PaymentFilterStatus;
+  counts: Record<PaymentFilterStatus, number>;
+  onChange: (status: PaymentFilterStatus) => void;
+};
+
+function PaymentFilterTabs({
+  filter,
+  counts,
+  onChange,
+}: PaymentFilterTabsProps) {
+  return (
+    <div className="hidden w-fit gap-1 rounded-xl bg-gray-100/80 p-1 md:flex">
+      {PAYMENT_FILTER_OPTIONS.map((status) => (
+        <button
+          key={status}
+          type="button"
+          onClick={() => onChange(status)}
+          className={`rounded-lg px-5 py-2 text-sm font-medium capitalize transition-all ${
+            filter === status
+              ? 'bg-white text-blue-600 shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <span className="inline-flex items-center gap-2">
+            <span>{status}</span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                filter === status
+                  ? 'bg-blue-50 text-blue-600'
+                  : 'bg-white text-gray-500'
+              }`}
+            >
+              {counts[status]}
+            </span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+type PaymentFilterBottomSheetProps = {
+  isOpen: boolean;
+  filter: PaymentFilterStatus;
+  counts: Record<PaymentFilterStatus, number>;
+  onClose: () => void;
+  onSelect: (status: PaymentFilterStatus) => void;
+};
+
+function PaymentFilterBottomSheet({
+  isOpen,
+  filter,
+  counts,
+  onClose,
+  onSelect,
+}: PaymentFilterBottomSheetProps) {
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] md:hidden"
+          >
+            <button
+              type="button"
+              aria-label="Close payment filters"
+              className="absolute inset-0 bg-gray-900/40"
+              onClick={onClose}
+            />
+          </motion.div>
+
+          <motion.div
+            initial={{ y: 40, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 40, opacity: 0 }}
+            transition={{ duration: 0.22 }}
+            className="fixed inset-x-0 bottom-0 z-[70] md:hidden"
+          >
+            <div className="relative w-full rounded-t-3xl bg-white px-4 pb-4 pt-5 shadow-xl">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">
+                    Filter payments
+                  </h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Choose which payment status to show.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-full bg-gray-100 p-2 transition hover:bg-gray-200"
+                >
+                  <X className="size-5 text-gray-600" />
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                {PAYMENT_FILTER_OPTIONS.map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => onSelect(status)}
+                    className={`flex min-h-[44px] items-center justify-between rounded-xl px-3 py-2.5 text-sm font-semibold capitalize transition ${
+                      filter === status
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'border border-gray-200 bg-gray-50 text-gray-700'
+                    }`}
+                  >
+                    <span>{status}</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                        filter === status
+                          ? 'bg-white/20 text-white'
+                          : 'bg-white text-gray-500'
+                      }`}
+                    >
+                      {counts[status]}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="mt-4 w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+}
 
 export default function ClientPayments() {
   const { user } = useAuth();
-  const { getReservationsByUserId, getPaymentsByUserId, addPayment } = useData();
+  const { getReservationsByUserId } = useReservations();
+  const { getPaymentsByUserId, addPayment, uploadPaymentProof } = usePayments();
+  const { ledgers } = useRecords();
   const { sendSystemNotification } = useNotifications();
+
+  const [notice, setNotice] = useState<{
+    message: string;
+    variant?: 'error' | 'warning' | 'success' | 'info';
+  } | null>(null);
+
+  const ITEMS_PER_PAGE = 5;
+
+const [currentPage, setCurrentPage] = useState(1);
+const [isMobile, setIsMobile] = useState(() =>
+  typeof window !== 'undefined' ? window.innerWidth < 768 : false
+);
+const [expandedPaymentId, setExpandedPaymentId] = useState<string | null>(null);
+const [expandedPaymentDetailsId, setExpandedPaymentDetailsId] = useState<string | null>(null);
+const [filterStatus, setFilterStatus] = useState<PaymentFilterStatus>('all');
+const [showFilterMenu, setShowFilterMenu] = useState(false);
+
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState<string | null>(null);
-    const [viewingImage, setViewingImage] = useState<string | null>(null);
-
-    const [proofFile, setProofFile] = useState<File | null>(null);
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
+  const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofPreviewUrl, setProofPreviewUrl] = useState<string | null>(null);
-  
-  const [paymentForm, setPaymentForm] = useState({
-    amount: '',
-    method: 'gcash' as any,
-    proofOfPayment: '',
-    notes: ''
-  });
+  const [searchQuery, setSearchQuery] = useState('');
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [paymentForm, setPaymentForm] = useState(buildInitialPaymentForm());
 
-  const userReservations = getReservationsByUserId(user?.id || '');
-  const userPayments = getPaymentsByUserId(user?.id || '');
+  const { activePaymentMethods, getPaymentMethodByCode } = usePaymentMethods();
 
-  const eligibleReservations = userReservations.filter(
-    b => b.status === 'completed' && b.paidAmount < b.totalAmount
+  const defaultPaymentMethod = useMemo(() => {
+    return activePaymentMethods[0]?.methodCode ?? 'gcash';
+  }, [activePaymentMethods]);
+
+  const selectedPaymentMethodConfig = useMemo(() => {
+    return getPaymentMethodByCode(paymentForm.method) ?? null;
+  }, [getPaymentMethodByCode, paymentForm.method]);
+
+  const selectedPaymentMethodQrSrc = useMemo(() => {
+  return resolvePaymentMethodQrSrc(selectedPaymentMethodConfig);
+}, [selectedPaymentMethodConfig]);
+
+  const fullName = useMemo(
+    () => `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim(),
+    [user?.firstName, user?.lastName]
   );
 
-  // ✅ Updated file change handler to create a preview
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
+  const userReservations = useMemo(
+    () => getReservationsByUserId(user?.id || ''),
+    [getReservationsByUserId, user?.id]
+  );
+
+  const userPayments = useMemo(
+    () => getPaymentsByUserId(user?.id || ''),
+    [getPaymentsByUserId, user?.id]
+  );
+
+  const userLedger = useMemo(() => {
+    return ledgers.filter(
+      (entry) => entry.userId === user?.id && entry.reservationId
+    );
+  }, [ledgers, user?.id]);
+
+  const reservationMap = useMemo(() => {
+    return new Map(userReservations.map((reservation) => [reservation.id, reservation]));
+  }, [userReservations]);
+
+  const ledgerByPaymentId = useMemo(() => {
+    const map = new Map<string, LedgerEntry>();
+
+    userLedger.forEach((entry: LedgerEntry) => {
+      if (entry.paymentId) {
+        map.set(entry.paymentId, entry);
+      }
+    });
+
+    return map;
+  }, [userLedger]);
+
+  const ledgerTotalsByReservationId = useMemo(() => {
+  const map = new Map<
+    string,
+    {
+      paid: number;
+      refunds: number;
+      discounts: number;
+      penalties: number;
+      adjustments: number;
+      netPaid: number;
+    }
+  >();
+
+  userLedger.forEach((entry) => {
+    if (!entry.reservationId) return;
+
+    const current = map.get(entry.reservationId) ?? {
+      paid: 0,
+      refunds: 0,
+      discounts: 0,
+      penalties: 0,
+      adjustments: 0,
+      netPaid: 0,
+    };
+
+    const amount = Number(entry.amount || 0);
+
+    switch (entry.entryType) {
+      case 'payment':
+      case 'deposit':
+      case 'balance':
+        current.paid += amount;
+        break;
+      case 'refund':
+        current.refunds += amount;
+        break;
+      case 'discount':
+        current.discounts += amount;
+        break;
+      case 'penalty':
+        current.penalties += amount;
+        break;
+      case 'adjustment':
+        current.adjustments += amount;
+        break;
+    }
+
+    current.netPaid =
+      current.paid -
+      current.refunds -
+      current.discounts +
+      current.penalties +
+      current.adjustments;
+
+    map.set(entry.reservationId, current);
+  });
+
+  return map;
+}, [userLedger]);
+
+const getReservationPaidFromLedger = useCallback(
+  (reservationId?: string | null) => {
+    if (!reservationId) return 0;
+    return Number(ledgerTotalsByReservationId.get(reservationId)?.netPaid || 0);
+  },
+  [ledgerTotalsByReservationId]
+);
+
+const getReservationRemainingFromLedger = useCallback(
+  (reservation?: { id: string; totalAmount?: number | null } | null) => {
+    if (!reservation) return 0;
+
+    const total = Number(reservation.totalAmount || 0);
+    const paid = getReservationPaidFromLedger(reservation.id);
+
+    return Math.max(0, total - paid);
+  },
+  [getReservationPaidFromLedger]
+);
+
+  const hasPayments = userPayments.length > 0;
+
+  const filterCounts = useMemo(() => {
+  return {
+    all: userPayments.length,
+    paid: userPayments.filter((payment) => payment.status === 'paid').length,
+    partial: userPayments.filter((payment) => payment.status === 'partial').length,
+    unpaid: userPayments.filter((payment) => payment.status === 'unpaid').length,
+  };
+}, [userPayments]);
+
+  const eligibleReservations = useMemo(() => {
+  return userReservations.filter((reservation) => {
+    const paid = getReservationPaidFromLedger(reservation.id);
+
+    return (
+      ['approved', 'confirmed', 'completed'].includes(reservation.status) &&
+      paid < Number(reservation.totalAmount || 0)
+    );
+  });
+}, [userReservations, getReservationPaidFromLedger]); 
+
+  const filteredPayments = useMemo(() => {
+  const query = normalizeLowercaseText(searchQuery);
+
+  const list = userPayments.filter((payment) => {
+    const matchesFilter =
+      filterStatus === 'all' ? true : payment.status === filterStatus;
+
+    if (!matchesFilter) return false;
+
+    if (!query) return true;
+
+    const reservation = reservationMap.get(payment.reservationId);
+    const ledgerEntry = ledgerByPaymentId.get(payment.id);
+
+    return (
+      payment.id.toLowerCase().includes(query) ||
+      String(payment.method).toLowerCase().includes(query) ||
+      payment.notes?.toLowerCase().includes(query) ||
+      payment.amount.toString().includes(query) ||
+      payment.status?.toLowerCase().includes(query) ||
+      reservation?.unitName?.toLowerCase().includes(query) ||
+      reservation?.publicId?.toLowerCase().includes(query) ||
+      reservation?.id?.toLowerCase().includes(query) ||
+      ledgerEntry?.referenceNo?.toLowerCase().includes(query) ||
+      ledgerEntry?.description?.toLowerCase().includes(query)
+    );
+  });
+
+  return [...list].sort(
+    (a, b) => getSafeDate(b.date).getTime() - getSafeDate(a.date).getTime()
+  );
+}, [userPayments, reservationMap, ledgerByPaymentId, searchQuery, filterStatus]);
+
+  
+
+  
+
+  const totalPages = useMemo(() => {
+  return Math.max(1, Math.ceil(filteredPayments.length / ITEMS_PER_PAGE));
+}, [filteredPayments.length, ITEMS_PER_PAGE]);
+
+const paginatedPayments = useMemo(() => {
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  return filteredPayments.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+}, [filteredPayments, currentPage, ITEMS_PER_PAGE]);
+
+  const paymentOverview = useMemo(() => {
+  const totalPaid = userLedger
+  .filter((e) => e.reservationId) // ensure linked
+  .filter((e) =>
+    ['payment', 'deposit', 'balance'].includes(e.entryType)
+  )
+  .reduce((sum, e) => sum + e.amount, 0);
+
+  const refunds = userLedger
+    .filter((e) => e.entryType === 'refund')
+    .reduce((sum, e) => sum + e.amount, 0);
+
+  const discounts = userLedger
+    .filter((e) => e.entryType === 'discount')
+    .reduce((sum, e) => sum + e.amount, 0);
+
+  const penalties = userLedger
+    .filter((e) => e.entryType === 'penalty')
+    .reduce((sum, e) => sum + e.amount, 0);
+
+  const netPaid = totalPaid - refunds - discounts + penalties;
+
+  const grandTotal = userReservations.reduce(
+    (sum, r) => sum + Number(r.totalAmount || 0),
+    0
+  );
+
+  const totalPaidAcrossReservations = userReservations.reduce(
+  (sum, r) => sum + getReservationPaidFromLedger(r.id),
+    0
+  );
+
+  const overallProgress = getReservationProgress(
+    grandTotal,
+    totalPaidAcrossReservations
+  );
+
+  const pendingAmount = userPayments
+  .filter((p) => p.status === 'unpaid')
+  .reduce((sum, p) => sum + p.amount, 0);
+
+  const partialAmount = userPayments
+  .filter((p) => p.status === 'partial')
+  .reduce((sum, p) => sum + p.amount, 0);
+
+  return {
+    totalPaid: netPaid,
+    pendingAmount: pendingAmount, // optional (can remove entirely)
+    partialAmount: partialAmount,
+    transactions: userPayments.length,
+    grandTotal,
+    totalPaidAcrossReservations,
+    overallProgress,
+  };
+}, [userLedger, userReservations, userPayments]);
+
+  const outstandingTotal = useMemo(() => {
+    return eligibleReservations.reduce((sum, reservation) => {
+      return sum + getReservationRemainingFromLedger(reservation);
+    }, 0);
+  }, [eligibleReservations, getReservationRemainingFromLedger]);
+
+  const clearProofPreview = useCallback(() => {
+    setProofFile(null);
+    setProofPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+  }, []);
+
+  const resetPaymentModalState = useCallback(() => {
+    setShowPaymentModal(false);
+    setSelectedReservation(null);
+    setPaymentForm(buildInitialPaymentForm(defaultPaymentMethod));
+    setPaymentSuccess(false);
+    setIsSubmitting(false);
+    clearProofPreview();
+  }, [clearProofPreview, defaultPaymentMethod]);
+
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const isValidType = ['image/png', 'image/jpeg', 'image/jpg'].includes(file.type);
+      if (!isValidType) {
+        setNotice({
+          message: 'Please upload a PNG, JPG, or JPEG image.',
+          variant: 'warning',
+        });
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        setNotice({
+          message: 'File must be under 5MB.',
+          variant: 'warning',
+        });
+        return;
+      }
+
       setProofFile(file);
 
-      // Create a temporary URL for the preview
-      const previewUrl = URL.createObjectURL(file);
-      setProofPreviewUrl(previewUrl);
+      setProofPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(file);
+      });
+    },
+    []
+  );
+
+  const handleRemoveImage = useCallback(() => {
+    clearProofPreview();
+  }, [clearProofPreview, defaultPaymentMethod]);
+
+  const handleMakePayment = useCallback(
+    (reservationId: string) => {
+      setSelectedReservation(reservationId);
+      setPaymentForm(buildInitialPaymentForm(defaultPaymentMethod));
+      setPaymentSuccess(false);
+      setIsSubmitting(false);
+      clearProofPreview();
+      setShowPaymentModal(true);
+    },
+    [clearProofPreview, defaultPaymentMethod]
+  );
+
+  const selectedReservationData = useMemo(() => {
+    if (!selectedReservation) return null;
+    return reservationMap.get(selectedReservation) ?? null;
+  }, [selectedReservation, reservationMap]);
+
+  const selectedReservationBalance = useMemo(() => {
+  if (!selectedReservationData) return 0;
+  return getReservationRemainingFromLedger(selectedReservationData);
+}, [selectedReservationData, getReservationRemainingFromLedger]);
+
+  const selectedReservationMinimumFirstPayment = useMemo(() => {
+    return getMinimumFirstPaymentAmount(selectedReservationData);
+  }, [selectedReservationData]);
+
+  const selectedReservationMinimumSubsequentPayment = useMemo(() => {
+  if (!selectedReservationData) return 0;
+
+  return getMinimumSubsequentPaymentAmount(
+    getReservationPaidFromLedger(selectedReservationData.id)
+  );
+}, [selectedReservationData, getReservationPaidFromLedger]);
+
+const rentalMonthlyAmount = useMemo(() => {
+  if (!selectedReservationData || selectedReservationData.unitType !== 'rental_space') return 0;
+
+  const duration = Number(selectedReservationData.duration || 0);
+  const total = Number(selectedReservationData.totalAmount || 0);
+
+  if (!duration || !total) return 0;
+
+  return total / duration;
+}, [selectedReservationData]);
+
+const rentalRequiredPayment = useMemo(() => {
+  if (!selectedReservationData || selectedReservationData.unitType !== 'rental_space') return 0;
+
+  const cycle = selectedReservationData.paymentCycle;
+
+  if (cycle === 'quarterly') {
+    return Math.min(rentalMonthlyAmount * 3, selectedReservationBalance);
+  }
+
+  if (cycle === 'full') {
+    return selectedReservationBalance;
+  }
+
+  return Math.min(rentalMonthlyAmount, selectedReservationBalance);
+}, [
+  selectedReservationData,
+  rentalMonthlyAmount,
+  selectedReservationBalance,
+]);
+
+  const handlePaymentSubmit = useCallback(
+  async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!selectedReservation || !user || isSubmitting) return;
+
+    const reservation = reservationMap.get(selectedReservation);
+    if (!reservation) return;
+
+    const amount = parseFloat(paymentForm.amount);
+    const balance = getReservationRemainingFromLedger(reservation);
+
+    if (Number.isNaN(amount) || amount <= 0 || amount > balance) {
+      setNotice({
+        message: 'Please enter a valid payment amount.',
+        variant: 'warning',
+      });
+      return;
+    }
+
+    // 🔥 Rental enforcement
+    if (reservation.unitType === 'rental_space') {
+      if (amount < rentalRequiredPayment) {
+        setNotice({
+          message: `Minimum required payment is ${formatCurrency(
+            rentalRequiredPayment
+          )} based on your ${reservation.paymentCycle} billing.`,
+          variant: 'warning',
+        });
+        return;
+      }
+    }
+
+    try {
+      setIsSubmitting(true);
+
+      let uploadedProofPath = '';
+
+      if (proofFile) {
+        const uploaded = await uploadPaymentProof(proofFile);
+
+        if (!uploaded) {
+          throw new Error('Failed to upload proof of payment.');
+        }
+
+        uploadedProofPath = uploaded;
+      }
+
+      await Promise.resolve(
+        addPayment({
+          reservationId: selectedReservation,
+          userId: user.id,
+          amount,
+          method: paymentForm.method as any,
+          paymentMethodId: selectedPaymentMethodConfig?.id ?? null,
+          paymentMethodSnapshot: selectedPaymentMethodConfig
+            ? {
+                method_code: selectedPaymentMethodConfig.methodCode,
+                display_name: selectedPaymentMethodConfig.displayName,
+                account_name: selectedPaymentMethodConfig.accountName,
+                account_number: selectedPaymentMethodConfig.accountNumber,
+                mobile_number: selectedPaymentMethodConfig.mobileNumber,
+                bank_name: selectedPaymentMethodConfig.bankName,
+                branch_name: selectedPaymentMethodConfig.branchName,
+                qr_image_path: selectedPaymentMethodConfig.qrImagePath,
+                instructions: selectedPaymentMethodConfig.instructions,
+              }
+            : null,
+          status: 'unpaid',
+          proofOfPayment: uploadedProofPath,
+          notes: paymentForm.notes,
+        })
+      );
+
+      sendSystemNotification(
+        user.id,
+        'Payment Submitted',
+        `Your payment of ${formatCurrency(amount)} for ${reservation.unitName} is pending verification.`
+      );
+
+      setPaymentSuccess(true);
+
+      setTimeout(() => {
+        resetPaymentModalState();
+      }, 1800);
+    } catch (error) {
+      console.error('Failed to submit payment:', error);
+      setNotice({
+        message: 'Failed to submit payment. Please try again.',
+        variant: 'error',
+      });
+      setIsSubmitting(false);
+    }
+  },
+  [
+    selectedReservation,
+    user,
+    isSubmitting,
+    reservationMap,
+    paymentForm.amount,
+    paymentForm.method,
+    paymentForm.notes,
+    addPayment,
+    uploadPaymentProof,
+    selectedPaymentMethodConfig,
+    proofFile,
+    sendSystemNotification,
+    resetPaymentModalState,
+    getReservationRemainingFromLedger,
+  ]
+);
+
+  const handleDownloadInvoice = useCallback(
+    (payment: any) => {
+      const reservation = reservationMap.get(payment.reservationId);
+      const ledgerEntry = ledgerByPaymentId.get(payment.id);
+
+      if (!ledgerEntry) {
+        setNotice({ 
+          message:
+            'Invoice is not available yet. It can be downloaded once this payment has been verified.',
+          variant: 'info',
+        });
+        return;
+      }
+
+      const invoiceNumber = ledgerEntry.id || payment.id;
+      const invoiceDate = ledgerEntry.recordedAt || payment.date;
+      const amount = Number(ledgerEntry.amount ?? payment.amount) || 0;
+      const paidToDate = getReservationPaidFromLedger(payment.reservationId);
+        const remaining = Math.max(
+          0,
+          Number(reservation?.totalAmount || 0) - paidToDate
+        );
+
+      const invoiceContent = `
+========================================
+INVOICE
+========================================
+
+INVOICE NO:      ${invoiceNumber}
+INVOICE DATE:    ${formatDate(invoiceDate)}
+
+----------------------------------------
+CUSTOMER
+----------------------------------------
+Name:            ${fullName || 'N/A'}
+Email:           ${user?.email ?? 'N/A'}
+
+----------------------------------------
+PAYMENT
+----------------------------------------
+Payment ID:      ${payment.id}
+Method:          ${formatPaymentMethod(ledgerEntry.method || payment.method)}
+Status:          ${String(ledgerEntry.status || payment.status || 'N/A').toUpperCase()}
+Submitted On:    ${formatDate(payment.date)}
+Reference No:    ${ledgerEntry.referenceNo || 'N/A'}
+
+----------------------------------------
+LEDGER ENTRY
+----------------------------------------
+Ledger ID:       ${ledgerEntry.id}
+Entry Type:      ${formatPaymentMethod(ledgerEntry.entryType)}
+Recorded Date:   ${formatDate(ledgerEntry.recordedAt)}
+Amount:          ${formatCurrency(amount)}
+
+----------------------------------------
+RESERVATION
+----------------------------------------
+Reservation ID:  ${reservation?.publicId ?? reservation?.id ?? 'N/A'}
+Unit:            ${reservation?.unitName ?? 'N/A'}
+Unit Type:       ${reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A'}
+Total Bill:      ${formatCurrency(reservation?.totalAmount || 0)}
+Paid To Date:    ${formatCurrency(paidToDate)}
+Remaining:       ${formatCurrency(remaining)}
+
+----------------------------------------
+DESCRIPTION
+----------------------------------------
+${ledgerEntry.description?.trim() || 'No description provided.'}
+
+----------------------------------------
+NOTES
+----------------------------------------
+${ledgerEntry.notes?.trim() || payment.notes?.trim() || 'No notes provided.'}
+
+Thank you for your payment.
+      `.trim();
+
+      const blob = new Blob([invoiceContent], {
+        type: 'text/plain;charset=utf-8',
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const reservationLabel = sanitizeFilenamePart(
+        reservation?.publicId || reservation?.unitName || 'reservation'
+      );
+
+      const invoiceLabel = sanitizeFilenamePart(
+        ledgerEntry?.publicId ||
+          `pay-${String(payment.id).replace(/-/g, '').slice(-6).toUpperCase()}`,
+        'invoice'
+      );
+
+      const invoiceDateLabel = formatFileDate(invoiceDate);
+
+      link.download = `Invoice-${reservationLabel}-${invoiceLabel}-${invoiceDateLabel}.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    },
+    [ledgerByPaymentId, reservationMap, fullName, user?.email]
+  );
+
+  const handleExportCSV = useCallback(() => {
+    const csvData = userPayments.map((payment) => {
+      const reservation = reservationMap.get(payment.reservationId);
+      const ledgerEntry = ledgerByPaymentId.get(payment.id);
+
+      return {
+        'Payment ID': payment.id,
+        'Payment Date': formatDate(payment.date),
+        'Reservation ID': reservation?.publicId ?? payment.reservationId,
+        'Unit Name': reservation?.unitName ?? 'N/A',
+        'Unit Type': reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A',
+        Amount: payment.amount,
+        'Payment Method': formatPaymentMethod(payment.method),
+        'Payment Status': payment.status,
+        'Ledger ID': ledgerEntry?.id ?? '',
+        'Ledger Entry Type': ledgerEntry?.entryType ?? '',
+        'Ledger Status': ledgerEntry?.status ?? '',
+        'Reference No': ledgerEntry?.referenceNo ?? '',
+        Notes: payment.notes ?? '',
+      };
+    });
+
+
+    const csv = Papa.unparse(csvData);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement('a');
+    link.href = url;
+    const customerLabel = sanitizeFilenamePart(fullName || user?.email || 'customer');
+    const exportDateLabel = formatFileDate(new Date());
+
+    link.download = `payment-history-${customerLabel}-${exportDateLabel}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [userPayments, reservationMap, ledgerByPaymentId, fullName]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (viewingImage) {
+          setViewingImage(null);
+          return;
+        }
+
+        if (showPaymentModal) {
+          resetPaymentModalState();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewingImage, showPaymentModal, resetPaymentModalState]);
+
+  useEffect(() => {
+  setCurrentPage(1);
+  setExpandedPaymentId(null);
+  setExpandedPaymentDetailsId(null);
+}, [searchQuery, filterStatus]);
+
+useEffect(() => {
+  if (currentPage > totalPages) {
+    setCurrentPage(totalPages);
+  }
+}, [currentPage, totalPages]);
+
+useEffect(() => {
+  const handleResize = () => {
+    const mobile = window.innerWidth < 768;
+    setIsMobile(mobile);
+
+    if (!mobile) {
+      setExpandedPaymentId(null);
+      setExpandedPaymentDetailsId(null);
     }
   };
 
-  // ✅ Function to clear the file selection
-  const handleRemoveImage = () => {
-    setProofFile(null);
-    setProofPreviewUrl(null);
-  };
-  // No changes to handleMakePayment or handlePaymentSubmit
-  const handleMakePayment = (reservationId: string) => {
-    setSelectedReservation(reservationId);
-    setShowPaymentModal(true);
-    setPaymentForm({ amount: '', method: 'gcash', proofOfPayment: '', notes: '' });
-  };
+  handleResize();
+  window.addEventListener('resize', handleResize);
+  return () => window.removeEventListener('resize', handleResize);
+}, []);
 
-  
+const togglePaymentExpand = useCallback(
+  (id: string) => {
+    if (!isMobile) return;
+    setExpandedPaymentId((prev) => (prev === id ? null : id));
+  },
+  [isMobile]
+);
 
-  const handlePaymentSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedReservation || !user) return;
-    const reservation = userReservations.find(b => b.id === selectedReservation);
-    if (!reservation) return;
-    const amount = parseFloat(paymentForm.amount);
-    addPayment({
-      reservationId: selectedReservation,
-      userId: user.id,
-      amount,
-      method: paymentForm.method,
-      status: 'unpaid',
-      proofOfPayment: proofPreviewUrl || '',
-      notes: paymentForm.notes
-    });
-    sendSystemNotification(
-      user.id,
-      'Payment Submitted',
-      `Your payment of ${formatCurrency(amount)} for ${reservation.propertyName} has been submitted and is pending verification.`
-    );
-    setPaymentSuccess(true);
-    setTimeout(() => {
-      setShowPaymentModal(false);
-      setPaymentSuccess(false);
-    }, 2000);
-  };
+const togglePaymentDetails = useCallback((id: string) => {
+  setExpandedPaymentDetailsId((prev) => (prev === id ? null : id));
+}, []);
+
+
+const handleFilterChange = useCallback((status: PaymentFilterStatus) => {
+  setFilterStatus(status);
+}, []);
+
+const handleFilterSelectFromSheet = useCallback((status: PaymentFilterStatus) => {
+  setFilterStatus(status);
+  setShowFilterMenu(false);
+}, []);
 
   useEffect(() => {
-    // This function will be called when the component unmounts
     return () => {
       if (proofPreviewUrl) {
         URL.revokeObjectURL(proofPreviewUrl);
@@ -95,385 +1087,965 @@ export default function ClientPayments() {
     };
   }, [proofPreviewUrl]);
 
-  const paymentStatusColors = {
-    paid: 'bg-green-100 text-green-800',
-    unpaid: 'bg-yellow-100 text-yellow-800',
-    partial: 'bg-blue-100 text-blue-800'
-  };
-
-  const paymentStatusIcons = {
-    paid: CheckCircle,
-    unpaid: Clock,
-    partial: Clock
-  };
-
-  // ✅ START: NEW INVOICE & CSV EXPORT FUNCTIONS
-  const handleDownloadInvoice = (payment: any) => {
-    const reservation = userReservations.find(b => b.id === payment.reservationId);
-    const invoiceContent = `
-      ========================================
-      PAYMENT INVOICE
-      ========================================
-
-      INVOICE ID:   ${payment.id}
-      PAYMENT DATE: ${new Date(payment.date).toLocaleDateString()}
-
-      ----------------------------------------
-      BILLED TO
-      ----------------------------------------
-      Name:    ${user?.name}
-      Email:   ${user?.email}
-
-      ----------------------------------------
-      RESERVATION DETAILS
-      ----------------------------------------
-      Reservation ID:   ${reservation?.id}
-      Property:     ${reservation?.propertyName}
-      Property Type: ${getPropertyTypeLabel(reservation?.propertyType || 'rental_space')}
-      Reservation Date: ${new Date(reservation?.startDate || '').toLocaleDateString()}
-
-      ----------------------------------------
-      PAYMENT DETAILS
-      ----------------------------------------
-      Description:    Payment for ${reservation?.propertyName}
-      Payment Method: ${payment.method.replace('_', ' ')}
-      Amount Paid:    ${formatCurrency(payment.amount)}
-
-      ----------------------------------------
-      STATUS:         ${payment.status.toUpperCase()}
-      ----------------------------------------
-
-      Thank you for your business!
-    `;
-
-    const blob = new Blob([invoiceContent], { type: 'text/plain;charset=utf-8' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `Invoice-${payment.id}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handleExportCSV = () => {
-    const csvData = userPayments.map(payment => {
-      const reservation = userReservations.find(b => b.id === payment.reservationId);
-      return {
-        'Payment ID': payment.id,
-        'Payment Date': new Date(payment.date).toLocaleDateString(),
-        'Reservation ID': payment.reservationId,
-        'Property Name': reservation ?.propertyName,
-        'Property Type': reservation ? getPropertyTypeLabel(reservation.propertyType) : 'N/A',
-        'Amount': payment.amount,
-        'Payment Method': payment.method,
-        'Payment Status': payment.status,
-        'Notes': payment.notes
-      };
-    });
-
-    const csv = Papa.unparse(csvData);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `payment_history_${user?.name?.replace(' ', '_') || 'export'}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-  // ✅ END: NEW INVOICE & CSV EXPORT FUNCTIONS
+  const shouldShowOverview = hasPayments || eligibleReservations.length > 0;
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="mb-2">Payments</h1>
-          <p className="text-gray-600">Manage your payment records</p>
-        </div>
-      </div>
+    <div className="min-h-screen bg-white">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
+        <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className={uiTypography.pageTitle}>Payments</h1>
+            <p className={uiTypography.pageDescription}>
+              View balances, track progress, submit payments, and download invoices.
+            </p>
+          </div>
+        </header>
 
-      {/* Pending Payments Section is unchanged */}
-      {eligibleReservations.length > 0 && (
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 className="mb-4">Balance due</h2>
-          <div className="space-y-3">
-            {eligibleReservations.map((reservation) => {
-              const balance = reservation.totalAmount - reservation.paidAmount;
-              return (
-                <div key={reservation.id} className="flex justify-between items-center p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <div className="flex-1">
-                    <h3 className="text-gray-900">{reservation.propertyName}</h3>
-                    <p className="text-sm text-gray-600">Reservation ID: {reservation.id}</p>
-                    <div className="mt-2 text-sm">
-                      <span className="text-gray-600">Total: {formatCurrency(reservation.totalAmount)}</span>
-                      <span className="mx-2">•</span>
-                      <span className="text-green-600">Paid: {formatCurrency(reservation.paidAmount)}</span>
-                      <span className="mx-2">•</span>
-                      <span className="text-red-600">Balance: {formatCurrency(balance)}</span>
-                    </div>
-                  </div>
-                  <button onClick={() => handleMakePayment(reservation.id)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                    <Plus className="size-4" />
-                    Make Payment
-                  </button>
+        
+
+        {notice && (
+          <AppNotice
+            message={notice.message}
+            variant={notice.variant}
+            onClose={() => setNotice(null)}
+            autoHideMs={4000}
+          />
+        )}
+        
+
+        {shouldShowOverview && (
+  <section>
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <DashboardStatCard
+        label="Total Paid"
+        value={formatCurrency(paymentOverview.totalPaid)}
+        icon={<CheckCircle2 className="size-5 text-emerald-500" />}
+      />
+
+      <DashboardStatCard
+        label="Pending"
+        value={formatCurrency(paymentOverview.pendingAmount)}
+        icon={<Clock3 className="size-5 text-amber-500" />}
+      />
+
+      <DashboardStatCard
+        label="Outstanding"
+        value={formatCurrency(outstandingTotal)}
+        icon={<AlertCircle className="size-5 text-rose-500" />}
+      />
+
+      <DashboardStatCard
+        label="Transactions"
+        value={paymentOverview.transactions}
+        icon={<CircleDollarSign className="size-5 text-blue-500" />}
+      />
+    </div>
+  </section>
+)}
+
+        {eligibleReservations.length > 0 && (
+          <section className="rounded-[32px] border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-100 px-5 py-5 sm:px-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className={uiTypography.sectionTitle}>Balance due</h2>
+                  <p className={uiTypography.sectionDescription}>
+                    You have {eligibleReservations.length}{' '}
+                    {eligibleReservations.length === 1 ? 'reservation' : 'reservations'} with
+                    remaining balances.
+                  </p>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+              </div>
+            </div>
 
-      {/* ✅ START: REFACTORED PAYMENT HISTORY SECTION */}
-      <div className="bg-white rounded-lg border border-gray-200">
-        <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-          <h2>Payment History</h2>
-          {userPayments.length > 0 && (
-            <button
-              onClick={handleExportCSV}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition-colors"
-            >
-              <FileDown className="size-4" />
-              Export as .csv
-            </button>
-          )}
-        </div>
-
-        {userPayments.length === 0 ? (
-          <div className="p-12 text-center">
-            <CreditCard className="size-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-gray-600 mb-2">No payments yet</h3>
-            <p className="text-sm text-gray-500">Your payment records will appear here</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-200">
-            {/* NEW CARD-BASED LAYOUT */}
-            {[...userPayments]
-              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-              .map((payment) => {
-                const reservation = userReservations.find(r => r.id === payment.reservationId );
-                const StatusIcon = paymentStatusIcons[payment.status];
+            <div className="grid gap-4 p-5 sm:p-6 xl:grid-cols-2">
+              {eligibleReservations.map((reservation) => {
+                const paid = getReservationPaidFromLedger(reservation.id);
+                const balance = Math.max(0, Number(reservation.totalAmount || 0) - paid);
+                const progress = getReservationProgress(
+                  Number(reservation.totalAmount || 0),
+                  paid
+                );
 
                 return (
-                  <div key={payment.id} className="p-6 hover:bg-gray-50/50">
-                    {/* -- Card Header -- */}
-                    <div className="flex justify-between items-start gap-4">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className={`inline-flex items-center gap-1.5 px-2 py-1 text-xs rounded-full ${paymentStatusColors[payment.status]}`}>
-                            <StatusIcon className="size-3" />
-                            {payment.status.toUpperCase()}
-                          </span>
-<span className="text-xs font-semibold text-gray-500 tracking-wider">{getPropertyTypeLabel(reservation?.propertyType || 'rental_space').toUpperCase()}</span>                        </div>
-                        <h3 className="font-bold text-gray-800">{formatCurrency(payment.amount)}</h3>
-                        <p className="text-sm text-gray-500">Paid on {new Date(payment.date).toLocaleDateString()}</p>
+                  <div
+                    key={reservation.id}
+                    className="rounded-[26px] border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 leading-tight sm:leading-normal">
+                        <h3 className="truncate text-sm sm:text-base font-semibold text-slate-900">
+                          {reservation.unitName}
+                        </h3>
+
+                        <p className="text-[10px] sm:text-xs text-slate-500">
+                          Reservation ID: {reservation.publicId || reservation.id}
+                        </p>
+
+                        <p
+                          className={`text-[10px] sm:text-xs ${
+                            UNIT_TYPE_COLORS[reservation.unitType] || 'text-slate-400'
+                          }`}
+                        >
+                          {getUnitTypeLabel(reservation.unitType)}
+                        </p>
                       </div>
+
                       <button
-                        onClick={() => handleDownloadInvoice(payment)}
-                        className="flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
-                      >
-                        <Download className="size-4" />
-                        Invoice
-                      </button>
+  onClick={() => handleMakePayment(reservation.id)}
+  className={`
+    inline-flex shrink-0 items-center gap-1.5
+    rounded-lg sm:rounded-xl
+    bg-gradient-to-r from-emerald-600 to-green-500
+    px-2.5 py-1.5 sm:px-3 sm:py-2
+    min-h-[32px] sm:min-h-[36px]
+    text-xs sm:text-sm
+    text-white transition hover:opacity-95
+  `}
+>
+  <Plus className="size-3.5 sm:size-4" />
+  Pay
+</button>
                     </div>
 
-                    {/* -- Card Body -- */}
-                    <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                      <h4 className="text-sm font-semibold mb-2">{reservation?.propertyName}</h4>
-                      {/* ✅ START: NEW, SIMPLIFIED CARD DETAILS */}
-<div className="grid sm:grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-sm">
-  <div className="flex justify-between md:block">
-    <span className="text-gray-600">Reservation ID: </span>
-    <span className="text-gray-900">{reservation?.id}</span>
-  </div>
-  <div className="flex justify-between md:block">
-    <span className="text-gray-600">Method: </span>
-    <span className="text-gray-900 capitalize">{payment.method.replace('_', ' ')}</span>
-  </div>
-  {reservation?.paymentCycle && (
-    <div className="flex justify-between md:block">
-      <span className="text-gray-600">Cycle: </span>
-      <span className="text-gray-900 capitalize">{reservation.paymentCycle}</span>
+                    <div className="mt-5">
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className={`${uiTypography.miniStatLabel} text-slate-500`}>
+                          Payment Progress
+                        </p>
+                        <p className={`${uiTypography.miniStatValue} text-slate-700`}>
+                          {progress.toFixed(0)}%
+                        </p>
+                      </div>
+
+                      <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-sky-500 transition-all duration-500"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3">
+  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200 sm:px-4 sm:py-3">
+    <div className="flex items-center justify-between sm:block">
+      <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-400">
+        Total
+      </p>
+      <p className="text-sm font-semibold text-slate-900 sm:mt-1 sm:text-base">
+        {formatCurrency(reservation.totalAmount)}
+      </p>
     </div>
-  )}
-  <div className="flex justify-between md:block">
-    <span className="text-gray-600">Total Bill: </span>
-    <span className="text-gray-900">{formatCurrency(reservation?.totalAmount || 0)}</span>
   </div>
-  <div className="flex justify-between md:block">
-    <span className="text-gray-600">Total Paid: </span>
-    <span className="font-semibold text-green-600">{formatCurrency(reservation?.paidAmount || 0)}</span>
+
+  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200 sm:px-4 sm:py-3">
+    <div className="flex items-center justify-between sm:block">
+      <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-400">
+        Paid
+      </p>
+      <p className="text-sm font-semibold text-emerald-600 sm:mt-1 sm:text-base">
+        {formatCurrency(paid)}
+      </p>
+    </div>
   </div>
-  <div className="flex justify-between md:block">
-    <span className="text-gray-600">Balance: </span>
-    <span className="font-semibold text-red-600">{formatCurrency((reservation?.totalAmount || 0) - (reservation?.paidAmount || 0))}</span>
+
+  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200 sm:px-4 sm:py-3">
+    <div className="flex items-center justify-between sm:block">
+      <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-slate-400">
+        Balance
+      </p>
+      <p className="text-sm font-semibold text-rose-600 sm:mt-1 sm:text-base">
+        {formatCurrency(balance)}
+      </p>
+    </div>
   </div>
 </div>
-{/* ✅ END: NEW, SIMPLIFIED CARD DETAILS */}
-
-                      {payment.notes && (
-                        <div className="mt-2 pt-2 border-t border-gray-200">
-                          <p className="text-sm"><strong>Notes:</strong> {payment.notes}</p>
-                        </div>
-                      )}
-                      {payment.proofOfPayment && (
-  <div className="mt-2 pt-2 border-t border-gray-200">
-    <button
-      onClick={() => setViewingImage(payment.proofOfPayment || null)}
-      className="text-sm text-blue-600 hover:underline font-medium"
-    >
-      View Proof of Payment
-    </button>
-  </div>
-)}
-                    </div>
                   </div>
                 );
               })}
-          </div>
+            </div>
+          </section>
+        )}
+
+        {hasPayments ? (
+          <section className="rounded-[32px] border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-100 px-5 py-5 sm:px-6">
+  <div className="flex flex-col gap-4">
+    <div>
+      <h2 className={`${uiTypography.sectionTitle} flex items-center gap-2`}>
+        <Clock3 className="size-5 text-slate-500" />
+        Payment history
+      </h2>
+      <p className={uiTypography.sectionDescription}>
+        Review submitted payments and download invoice copies once verified.
+      </p>
+    </div>
+
+    <div className="flex w-full flex-col gap-3">
+      <div className="flex w-full items-stretch gap-2 sm:gap-3">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            maxLength={100}
+            placeholder="Search payments..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(normalizeLowercaseText(e.target.value))}
+            className={`w-full rounded-xl border border-slate-300 bg-white py-3 pl-10 pr-4 text-sm outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowFilterMenu(true)}
+          aria-label="Open payment filters"
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-50 md:hidden"
+        >
+          <Filter className="size-4" />
+        </button>
+
+        <button
+          type="button"
+          onClick={handleExportCSV}
+          aria-label="Export CSV"
+          title="Export CSV"
+          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-slate-900 to-slate-700 px-3 text-white transition hover:opacity-95 sm:px-4"
+        >
+          <Download className="size-4" />
+          <span className="hidden sm:inline">Export CSV</span>
+        </button>
+      </div>
+
+      <PaymentFilterTabs
+        filter={filterStatus}
+        counts={filterCounts}
+        onChange={handleFilterChange}
+      />
+    </div>
+  </div>
+</div>
+
+            {filteredPayments.length > 0 ? (
+              <div className="grid gap-4 p-5 sm:p-6">
+                {paginatedPayments.map((payment) => {
+                  const reservation = reservationMap.get(payment.reservationId);
+                  const ledgerEntry = ledgerByPaymentId.get(payment.id);
+                  const StatusIcon =
+                    PAYMENT_STATUS_ICONS[
+                      payment.status as keyof typeof PAYMENT_STATUS_ICONS
+                    ];
+                  const proofSrc = resolveProofImageSrc(payment.proofOfPayment);
+                  const isCardExpanded = !isMobile || expandedPaymentId === payment.id;
+                  const isDetailsExpanded = expandedPaymentDetailsId === payment.id;
+
+                  return (
+                    <div
+                          key={payment.id}
+                          className="relative overflow-hidden rounded-[26px] border border-slate-200 bg-gradient-to-br from-white via-white to-slate-50 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                        >
+                        <div
+                          className={`border-b border-slate-100 bg-gradient-to-r from-white to-slate-50 px-5 py-4 sm:px-6 gap-3 ${isMobile ? 'cursor-pointer pb-10' : ''}`}
+                          onClick={() => togglePaymentExpand(payment.id)}
+                        >                        <div className="flex items-start justify-between gap-4">
+                                                  <div className="min-w-0 flex-1">
+                                                    <div className="flex flex-wrap items-start gap-1 sm:gap-2">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full 
+                            px-1.5 py-0.5 text-[9px] sm:px-2.5 sm:py-1 sm:text-[11px]
+                            font-medium uppercase tracking-[0.06em] sm:tracking-[0.08em]
+                            ${
+                              PAYMENT_STATUS_COLORS[
+                                payment.status as keyof typeof PAYMENT_STATUS_COLORS
+                              ]
+                            }`}
+                          >
+                            <StatusIcon className="size-2.5 sm:size-3" />
+                            {String(payment.status)}
+                          </span>
+
+                            <span className="inline-flex items-center gap-1 rounded-full 
+                              bg-slate-100 
+                              px-1.5 py-0.5 text-[9px] 
+                              sm:px-2.5 sm:py-1 sm:text-[11px]
+                              font-medium text-slate-600 ring-1 ring-slate-200">
+                              <Landmark className="size-2.5 sm:size-3" />
+                              {formatPaymentMethod(payment.method)}
+                            </span>
+
+                                {ledgerEntry ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full 
+                                    bg-emerald-50 
+                                    px-1.5 py-0.5 text-[9px] 
+                                    sm:px-2.5 sm:py-1 sm:text-[11px]
+                                    font-medium text-emerald-700 ring-1 ring-emerald-200">
+                                    <ReceiptText className="size-2.5 sm:size-3" />
+                                    Posted
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded-full 
+                                    bg-amber-50 
+                                    px-1.5 py-0.5 text-[9px] 
+                                    sm:px-2.5 sm:py-1 sm:text-[11px]
+                                    font-medium text-amber-700 ring-1 ring-amber-200">
+                                    <Clock3 className="size-2.5 sm:size-3" />
+                                    Pending
+                                  </span>
+                                )}
+                              </div>
+
+                            <div className="mt-3">
+                              <h3 className={`${uiTypography.cardTitle} text-slate-900`}>
+                                {formatCurrency(payment.amount)}
+                              </h3>
+                              <p className={uiTypography.cardSubtitle}>
+                                Paid on {formatDate(payment.date)}
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadInvoice(payment)}
+                            className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border shadow-sm transition ${
+                              ledgerEntry
+                                ? 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                            }`}
+                            title={
+                              ledgerEntry
+                                ? 'Download invoice'
+                                : 'Invoice available after ledger posting'
+                            }
+                            aria-label="Download invoice"
+                          >
+                            <FileDown className="size-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <AnimatePresence>
+                          {isCardExpanded && (
+                            <motion.div
+                              initial={isMobile ? { height: 0, opacity: 0 } : false}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="p-5 sm:p-6">
+                                <div className="space-y-4">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <h4 className="truncate text-sm sm:text-lg font-semibold text-slate-900">
+                                  {reservation?.unitName ?? 'Unknown Unit'}
+                                </h4>
+
+                                <p className="text-xs text-slate-500">
+                                  Reservation ID: {reservation?.publicId ?? reservation?.id ?? 'N/A'}
+                                </p>
+
+                                <p className="text-[11px] text-slate-400">
+                                  {reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A'}
+                                </p>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                {proofSrc ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setViewingImage(proofSrc)}
+                                    className="inline-flex h-8 w-8 sm:h-auto sm:w-auto items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 sm:px-2.5 sm:py-1.5 sm:gap-1.5"
+                                  >
+                                    <Eye className="size-3.5" />
+                                    <span className="hidden sm:inline text-xs font-medium">Proof</span>
+                                  </button>
+                                ) : (
+                                  <span className="text-[10px] text-slate-400">No proof</span>
+                                )}
+                              </div>
+                            </div>
+                        <div className="border-t border-slate-100 pt-2">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              togglePaymentDetails(payment.id);
+                            }}
+                            className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-left transition hover:bg-slate-100"
+                          >
+                            <div>
+                        <p className={`${uiTypography.miniStatLabel} text-gray-500`}>        Payment Details
+                              </p>
+                              <p className={`${uiTypography.helperText} mt-0.5 text-xs sm:text-sm text-gray-400`}>
+                                View reservation ID, method, status, ledger, reference, and recorded date
+                              </p>
+                            </div>
+
+
+                            {!isMobile && (
+                              <motion.div
+                                animate={{ rotate: isDetailsExpanded ? 180 : 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="rounded-lg bg-white p-1 shadow-sm"
+                              >
+                                <ChevronDown className="size-4 text-slate-500" />
+                              </motion.div>
+                            )}
+                          </button>
+
+                          <AnimatePresence initial={false}>
+                            {isDetailsExpanded && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: 'auto', opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.2 }}
+                                className="overflow-hidden"
+                              >
+                                <div className="mt-3 rounded-[18px] sm:rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
+                                  <div className="space-y-1.5 sm:space-y-3 text-[12px] sm:text-sm">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-1.5 text-slate-500">
+                                        <ReceiptText className="size-3.5 sm:size-4 text-blue-600" />
+                                        <span className="text-[11px] sm:text-sm">Reservation ID</span>
+                                      </div>
+                                      <span className="font-medium text-slate-900 text-right">
+                                        {reservation?.publicId ?? reservation?.id ?? 'N/A'}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-1.5 text-slate-500">
+                                        <Landmark className="size-3.5 sm:size-4 text-emerald-600" />
+                                        <span className="text-[11px] sm:text-sm">Payment Method</span>
+                                      </div>
+                                      <span className="font-medium text-slate-900 text-right">
+                                        {formatPaymentMethod(payment.method)}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-1.5 text-slate-500">
+                                        <CreditCard className="size-3.5 sm:size-4 text-amber-600" />
+                                        <span className="text-[11px] sm:text-sm">Status</span>
+                                      </div>
+                                      <span className="font-medium text-slate-900 text-right capitalize">
+                                        {String(payment.status)}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-1.5 text-slate-500">
+                                        <ReceiptText className="size-3.5 sm:size-4 text-violet-600" />
+                                        <span className="text-[11px] sm:text-sm">Ledger Entry</span>
+                                      </div>
+                                      <span className="font-medium text-slate-900 text-right">
+                                        {ledgerEntry?.publicId || ledgerEntry?.id || 'N/A'}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-1.5 text-slate-500">
+                                        <ReceiptText className="size-3.5 sm:size-4 text-slate-600" />
+                                        <span className="text-[11px] sm:text-sm">Reference No</span>
+                                      </div>
+                                      <span className="font-medium text-slate-900 text-right">
+                                        {ledgerEntry?.referenceNo || 'N/A'}
+                                      </span>
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="flex items-center gap-1.5 text-slate-500">
+                                        <Clock3 className="size-3.5 sm:size-4 text-rose-600" />
+                                        <span className="text-[11px] sm:text-sm">Recorded</span>
+                                      </div>
+                                      <span className="font-medium text-slate-900 text-right">
+                                        {ledgerEntry ? formatDate(ledgerEntry.recordedAt) : 'Not yet posted'}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                            </div>
+                        </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                    </div>
+                    
+                  );
+                })}
+
+                {totalPages > 1 && (
+  <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-100 px-5 pb-5 pt-2 sm:flex-row sm:px-6 sm:pb-6">
+    <p className="text-xs text-slate-500 sm:text-sm">
+      Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}–
+      {Math.min(currentPage * ITEMS_PER_PAGE, filteredPayments.length)} of{" "}
+      {filteredPayments.length} payments
+    </p>
+
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+        disabled={currentPage === 1}
+        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        Previous
+      </button>
+
+      <div className="flex items-center gap-1">
+        {Array.from({ length: totalPages }, (_, index) => index + 1).map(
+          (page) => (
+            <button
+              key={page}
+              type="button"
+              onClick={() => setCurrentPage(page)}
+              className={`min-w-[40px] rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                currentPage === page
+                  ? "bg-blue-600 text-white"
+                  : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              {page}
+            </button>
+          )
         )}
       </div>
-      {/* ✅ END: REFACTORED PAYMENT HISTORY SECTION */}
-      
-      {/* Payment Summary section is unchanged */}
-      {/* ✅ START: NEW, SMALLER SUMMARY CARDS */}
-{userPayments.length > 0 && (
-  <div className="grid md:grid-cols-3 gap-6">
-    <div className="bg-white p-6 rounded-lg border border-gray-200">
-      <p className="text-sm text-gray-600 mb-2">Total Paid</p>
-      <p className="text-xl font-semibold text-green-600">{formatCurrency(userPayments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0))}</p>
-    </div>
-    <div className="bg-white p-6 rounded-lg border border-gray-200">
-      <p className="text-sm text-gray-600 mb-2">Pending Verification</p>
-      <p className="text-xl font-semibold text-yellow-600">{formatCurrency(userPayments.filter(p => p.status === 'unpaid').reduce((sum, p) => sum + p.amount, 0))}</p>
-    </div>
-    <div className="bg-white p-6 rounded-lg border border-gray-200">
-      <p className="text-sm text-gray-600 mb-2">Total Transactions</p>
-      <p className="text-xl font-semibold text-gray-900">{userPayments.length}</p>
+
+      <button
+        type="button"
+        onClick={() =>
+          setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+        }
+        disabled={currentPage === totalPages}
+        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        Next
+      </button>
     </div>
   </div>
 )}
-{/* ✅ END: NEW, SMALLER SUMMARY CARDS */}
-
-
-      {/* Make Payment Modal is unchanged */}
-      {showPaymentModal && selectedReservation && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">          
-                    <div className="bg-white rounded-lg max-w-md w-full flex flex-col max-h-[90vh]">
-            <div className="flex-shrink-0 p-6 border-b flex justify-between items-center">              
-              <h2 className="text-lg font-semibold">Make Payment</h2>
-              <button onClick={() => setShowPaymentModal(false)} className="text-gray-400 hover:text-gray-600"><XCircle className="size-6"/></button>
-            </div>
-            {paymentSuccess ? (
-              <div className="p-10 text-center">
-                  <CheckCircle className="size-16 text-green-500 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">Payment Submitted!</h3>
-                  <p className="text-gray-600">Your payment is pending admin verification. You can now close this window.</p>
               </div>
+
+              
             ) : (
-<form id="payment-form" onSubmit={handlePaymentSubmit} className="p-6 space-y-4 overflow-y-auto">                {(() => {
-                  const reservation = userReservations.find(r => r.id === selectedReservation);
-                  if (!reservation) return null;
-                  const balance = reservation.totalAmount - reservation.paidAmount;
-                  return (
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <p className="text-sm text-gray-600 mb-2">{reservation.propertyName}</p>
-                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between"><span className="text-gray-600">Total Amount:</span><span className="text-gray-900">{formatCurrency(reservation.totalAmount)}</span></div>
-                        <div className="flex justify-between"><span className="text-gray-600">Paid Amount:</span><span className="text-green-600">{formatCurrency(reservation.paidAmount)}</span></div>
-                        <div className="flex justify-between border-t border-gray-200 pt-1 mt-1"><span className="font-semibold text-gray-900">Outstanding Balance:</span><span className="font-semibold text-red-600">{formatCurrency(balance)}</span></div>
-                      </div>
-                    </div>
-                  );
-                })()}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Amount (₱)</label>
-                  <input type="number" required min="0.01" step="0.01" max={(() => { const reservation = userReservations.find(r => r.id === selectedReservation); return reservation ? reservation.totalAmount - reservation.paidAmount : 0; })()} value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="0.00" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
-                  <select value={paymentForm.method} onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value as any })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="gcash">GCash</option><option value="cash">Cash</option><option value="cheque">Cheque</option><option value="paymaya">PayMaya</option><option value="bank_transfer">Bank Transfer</option><option value="credit_card">Credit/Debit Card</option>
-                  </select>
-                </div>
+              <div className="p-6 sm:p-8">
+                <EmptyState
+                  icon={<Search className="size-10 text-blue-500" />}
+                  title="No matching payments found"
+                  description={
+                    searchQuery.trim()
+                      ? `No ${filterStatus === 'all' ? '' : `${filterStatus} `}payments matched "${searchQuery.trim()}".`
+                      : filterStatus === 'all'
+                        ? 'Try searching by reservation ID, unit name, amount, payment method, or status.'
+                        : `No ${filterStatus} payments found.`
+                  }
+                />
 
-                 {/* ✅ START: NEW FILE UPLOAD WITH PREVIEW */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Proof of Payment</label>
-
-                  {/* If no image is selected, show the upload button */}
-                  {!proofPreviewUrl && (
-                    <label
-                      htmlFor="file-upload"
-                      className="relative cursor-pointer w-full flex justify-center items-center gap-2 px-4 py-4 border-2 border-gray-300 border-dashed rounded-lg text-sm text-gray-600 hover:border-blue-500 hover:text-blue-600 transition-colors"
-                    >
-                      <Paperclip className="size-4" />
-                      <span>Choose File to Upload</span>
-                      <input id="file-upload" name="file-upload" type="file" className="sr-only" onChange={handleFileChange} accept="image/png, image/jpeg, image/jpg" />
-                    </label>
-                  )}
-
-                  {/* If an image IS selected, show the preview and a remove button */}
-                  {proofPreviewUrl && (
-                    <div className="relative group w-36 h-36">
-                      <img src={proofPreviewUrl} alt="Proof preview" className="w-full h-full object-cover rounded-lg shadow-sm" />
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-lg">
-                        <button
-                          type="button"
-                          onClick={handleRemoveImage}
-                          className="flex items-center gap-2 px-3 py-1.5 text-xs bg-red-600 text-white rounded-full hover:bg-red-700"
-                          title="Remove Image"
-                        >
-                          <Trash2 className="size-4" />
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  <p className="text-xs text-gray-500 mt-2">Please upload a screenshot or photo of your receipt (PNG, JPG).</p>
+                <div className="mt-5 flex justify-center">
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className={`inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 min-h-[44px] text-slate-700 transition hover:bg-slate-50 ${uiTypography.buttonText}`}
+                  >
+                    Clear Search
+                  </button>
                 </div>
-                {/* ✅ END: NEW FILE UPLOAD WITH PREVIEW */}
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Notes (Optional)</label>
-                  <textarea value={paymentForm.notes} onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Any additional information" />
-                </div>
-                <div className="flex gap-3 pt-4">
-                  <button type="button" onClick={() => setShowPaymentModal(false)} className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
-                  <button type="submit" form="payment-form" className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">Submit Payment</button>                </div>
-              </form>
+              </div>
             )}
-          </div>
-        </div>
-      )}
-      {/* ✅ START: NEW IMAGE VIEWER MODAL */}
-      {viewingImage && (
-        <div
-          className="fixed inset-0 z-50 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
-          onClick={() => setViewingImage(null)} // Click backdrop to close
-        >
-          {/* Close Button (Top Right) */}
-          <button
-            onClick={() => setViewingImage(null)}
-            className="absolute top-4 right-4 z-50 text-white bg-black/50 rounded-full p-2 hover:bg-black/75 transition-colors"
-            aria-label="Close image viewer"
-          >
-            <X className="size-6" />
-          </button>
+          </section>
+        ) : eligibleReservations.length === 0 ? (
+          <EmptyState
+  icon={<CreditCard className="size-10 text-blue-500" />}
+  title="No payments yet"
+  description="Your payment history will appear here once you make a payment for an approved reservation."
+/>
+        ) : null}
 
-          {/* Image Container */}
+        {showPaymentModal && selectedReservation && (
           <div
-            className="relative max-w-4xl max-h-[90vh] p-4"
-            onClick={(e) => e.stopPropagation()} // Prevent click inside image from closing modal
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 shadow-lg"
+            onClick={resetPaymentModalState}
           >
-            <img
-              src={viewingImage}
-              alt="Proof of Payment"
-              className="w-full h-full object-contain rounded-lg shadow-2xl"
-            />
+            <div
+              className={`flex max-h-[95vh] w-full flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl ${
+                paymentSuccess ? 'max-w-sm' : 'max-w-lg'
+              }`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div
+                className={`border-b border-slate-100 bg-white ${
+                  paymentSuccess ? 'px-5 py-4' : 'px-6 py-5'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className={uiTypography.modalTitle}>Make Payment</h2>
+                    <p className={uiTypography.modalBody}>
+                      Submit your payment and upload proof for verification.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={resetPaymentModalState}
+                    className="rounded-xl p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                  >
+                    <XCircle className="size-6" />
+                  </button>
+                </div>
+              </div>
+
+              {paymentSuccess ? (
+                <div className="px-5 py-6 text-center">
+                  <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-500">
+                    <CheckCircle2 className="size-7" />
+                  </div>
+
+                  <h3 className="text-base font-bold text-slate-900">
+                    Payment Submitted
+                  </h3>
+
+                  <p className="mt-1 text-sm text-slate-600">
+                    Your payment is now pending admin verification.
+                  </p>
+                </div>
+              ) : (
+                <form
+                  id="payment-form"
+                  onSubmit={handlePaymentSubmit}
+                  className="space-y-5 overflow-y-auto p-6"
+                >
+                  <div className="grid gap-5">
+                    {selectedReservationData && (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500">Remaining Balance</span>
+                          <span className="font-semibold text-slate-900">
+                            {formatCurrency(selectedReservationBalance)}
+                          </span>
+                        </div>
+
+                        {selectedReservationData.unitType === 'rental_space' ? (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-500">Monthly Rate</span>
+                              <span className="font-semibold text-slate-900">
+                                {formatCurrency(rentalMonthlyAmount)}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <span className="text-slate-500">
+                                {selectedReservationData.paymentCycle === 'quarterly'
+                                  ? 'Quarterly Required'
+                                  : selectedReservationData.paymentCycle === 'full'
+                                  ? 'Full Payment Required'
+                                  : 'Monthly Required'}
+                              </span>
+                              <span className="font-semibold text-slate-900">
+                                {formatCurrency(rentalRequiredPayment)}
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            {getReservationPaidFromLedger(selectedReservationData.id) <= 0 &&
+                              selectedReservationMinimumFirstPayment > 0 && (
+                                <div className="flex items-center justify-between">
+                                  <span className="text-slate-500">
+                                    Minimum First Payment
+                                    {selectedReservationData.minimumPaymentPercentSnapshot
+                                      ? ` (${selectedReservationData.minimumPaymentPercentSnapshot}%)`
+                                      : ''}
+                                  </span>
+                                  <span className="font-semibold text-slate-900">
+                                    {formatCurrency(selectedReservationMinimumFirstPayment)}
+                                  </span>
+                                </div>
+                              )}
+
+                            {getReservationPaidFromLedger(selectedReservationData.id) > 0 && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-slate-500">Minimum Subsequent Payment</span>
+                                <span className="font-semibold text-slate-900">
+                                  {formatCurrency(selectedReservationMinimumSubsequentPayment)}
+                                </span>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+                    <div>
+                      <label className={`${uiTypography.formLabel} mb-2 ml-0`}>
+                        Payment Amount (₱)
+                      </label>
+                      <div>
+                      <div className="relative">
+                        <Wallet className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="number"
+                          required
+                          min="0.01"
+                          step="0.01"
+                          max={selectedReservationBalance}
+                          value={paymentForm.amount}
+                          onChange={(e) => {
+                            const value = e.target.value;
+
+                            // Limit to 10 digits + 2 decimals (e.g. 9999999999.99)
+                            if (!/^\d{0,10}(\.\d{0,2})?$/.test(value)) return;
+
+                            setPaymentForm((prev) => ({
+                              ...prev,
+                              amount: value,
+                            }));
+                          }}
+                          className={`w-full rounded-2xl border border-slate-300 py-3 pl-10 pr-4 text-sm sm:text-base outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
+                          placeholder="0.00"
+                        />
+                      </div>
+
+                      {selectedReservationData?.unitType === 'rental_space' && (
+                        <p className="mt-2 text-xs text-amber-600">
+                          This payment must cover at least {formatCurrency(rentalRequiredPayment)} based on your billing cycle.
+                        </p>
+                      )}
+                    </div>
+                    </div>
+
+                    <div>
+                      <label className={`${uiTypography.formLabel} mb-2 ml-0`}>
+                        Payment Method
+                      </label>
+                      <select
+                        value={paymentForm.method}
+                        onChange={(e) =>
+                          setPaymentForm((prev) => ({
+                            ...prev,
+                            method: e.target.value,
+                          }))
+                        }
+                        className={`w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
+                      >
+                        {activePaymentMethods.map((method) => (
+                          <option key={method.id} value={method.methodCode}>
+                            {method.displayName}
+                          </option>
+                        ))}
+                      </select>
+                      {selectedPaymentMethodConfig && (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <h3 className={`${uiTypography.formLabel} mb-2 ml-0`}>
+                          Send payment to {selectedPaymentMethodConfig.displayName}
+                        </h3>
+
+                        <div className={`space-y-2 ${uiTypography.bodyText} text-slate-600`}>
+                          {selectedPaymentMethodConfig.bankName && (
+                            <p>Bank: {selectedPaymentMethodConfig.bankName}</p>
+                          )}
+                          {selectedPaymentMethodConfig.branchName && (
+                            <p>Branch: {selectedPaymentMethodConfig.branchName}</p>
+                          )}
+                          {selectedPaymentMethodConfig.accountName && (
+                            <p>Account Name: {selectedPaymentMethodConfig.accountName}</p>
+                          )}
+                          {selectedPaymentMethodConfig.accountNumber && (
+                            <p>Account Number: {selectedPaymentMethodConfig.accountNumber}</p>
+                          )}
+                          {selectedPaymentMethodConfig.mobileNumber && (
+                            <p>Mobile Number: {selectedPaymentMethodConfig.mobileNumber}</p>
+                          )}
+                        </div>
+
+                        {selectedPaymentMethodQrSrc && (
+                          <div className="mt-4">
+                            <button
+                              type="button"
+                              onClick={() => setViewingImage(selectedPaymentMethodQrSrc)}
+                              className="group relative block rounded-xl border border-slate-200 bg-white p-2 transition hover:border-sky-300 hover:shadow-sm"
+                              title="Click to enlarge QR code"
+                            >
+                              <img
+                                src={selectedPaymentMethodQrSrc}
+                                alt={`${selectedPaymentMethodConfig.displayName} QR`}
+                                className="h-56 w-56 rounded-lg object-contain"
+                                loading="lazy"
+                                decoding="async"
+                              />
+
+                              <div className="absolute inset-x-2 bottom-2 rounded-lg bg-slate-900/70 px-3 py-1.5 text-center text-xs font-medium text-white opacity-0 transition group-hover:opacity-100">
+                                Click to enlarge
+                              </div>
+                            </button>
+                          </div>
+                        )}
+
+                        {selectedPaymentMethodConfig.instructions && (
+                          <div className="mt-4 rounded-xl bg-white p-3 text-sm text-slate-600">
+                            {selectedPaymentMethodConfig.instructions}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    </div>
+
+                    <div>
+                      <label className={`${uiTypography.formLabel} mb-2 ml-0`}>
+                        Proof of Payment
+                      </label>
+
+                      {!proofPreviewUrl ? (
+                        <label
+                          htmlFor="file-upload"
+                          className="flex min-h-[180px] w-full cursor-pointer flex-col items-center justify-center gap-3 rounded-[24px] border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center transition hover:border-sky-400 hover:bg-sky-50/50"
+                        >
+                          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-sky-600 shadow-sm ring-1 ring-slate-200">
+                            <ImageIcon className="size-6" />
+                          </div>
+
+                          <div>
+                            <p className={`${uiTypography.buttonTextBold} text-slate-800`}>
+                              Upload receipt or screenshot
+                            </p>
+                            <p className={`${uiTypography.helperText} mt-1`}>
+                              PNG, JPG, or JPEG supported
+                            </p>
+                          </div>
+
+                          <input
+                            id="file-upload"
+                            name="file-upload"
+                            type="file"
+                            className="sr-only"
+                            onChange={handleFileChange}
+                            accept="image/png, image/jpeg, image/jpg"
+                          />
+                        </label>
+                      ) : (
+                        <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-3">
+                          <div className="flex items-start gap-3">
+                            <img
+                              src={proofPreviewUrl}
+                              alt="Proof preview"
+                              className="h-24 w-24 shrink-0 rounded-2xl object-cover shadow-sm"
+                            />
+
+                            <div className="min-w-0 flex-1">
+                              <p className={`${uiTypography.buttonTextBold} truncate text-slate-900`}>
+                                {proofFile?.name || 'Uploaded receipt'}
+                              </p>
+                              <p className={`${uiTypography.helperText} mt-1`}>
+                                Make sure the amount and date are visible.
+                              </p>
+
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingImage(proofPreviewUrl)}
+                                  className={`inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 min-h-[40px] text-slate-700 transition hover:bg-slate-50 ${uiTypography.buttonText}`}
+                                >
+                                  <Eye className="size-3.5" />
+                                  Preview
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={handleRemoveImage}
+                                  className={`inline-flex items-center gap-2 rounded-xl bg-rose-600 px-3 py-2 min-h-[40px] text-white transition hover:bg-rose-700 ${uiTypography.buttonText}`}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      <p className={`${uiTypography.helperText} mt-2`}>
+                        Uploading proof helps speed up admin verification.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className={`${uiTypography.formLabel} mb-2 ml-0`}>
+                        Notes (Optional)
+                      </label>
+                      <textarea
+                      maxLength={500}
+                        value={paymentForm.notes}
+                        onChange={(e) =>
+                          setPaymentForm((prev) => ({
+                            ...prev,
+                            notes: e.target.value,
+                          }))
+                        }
+                        rows={4}
+                        className={`w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
+                        placeholder="Add reference numbers or extra payment details"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={resetPaymentModalState}
+                      className={`flex-1 rounded-2xl border border-slate-300 bg-white px-4 py-3 min-h-[44px] text-slate-700 transition hover:bg-slate-50 ${uiTypography.buttonText}`}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      form="payment-form"
+                      disabled={isSubmitting}
+                      className={`flex-1 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-700 px-4 py-3 min-h-[44px] text-white transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-60 ${uiTypography.buttonText}`}
+                    >
+                      {isSubmitting ? 'Submitting...' : 'Submit Payment'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-      {/* ✅ END: NEW IMAGE VIEWER MODAL */}
-      
+        )}
+
+        {viewingImage && (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md"
+            onClick={() => setViewingImage(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Proof of payment viewer"
+          >
+            <button
+              onClick={() => setViewingImage(null)}
+              className="absolute right-6 top-6 rounded-xl p-1 text-white/70 transition hover:bg-white/10 hover:text-white"
+              title="Close (Esc)"
+            >
+              <X className="size-8" />
+            </button>
+
+            <div
+              className="relative max-h-screen max-w-full p-2 sm:max-w-5xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={viewingImage || ''}
+                alt="Proof of Payment Receipt"
+                className="max-h-[85vh] max-w-full rounded-2xl border border-white/10 object-contain shadow-2xl"
+              />
+              <p className={`mt-4 text-center text-white/60 ${uiTypography.helperText}`}>
+                Click outside to close
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

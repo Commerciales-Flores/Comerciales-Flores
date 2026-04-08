@@ -1,6 +1,6 @@
-import type { PropertyType } from '../contexts/DataContext';
+import type { UnitType, PaymentCycle } from '../contexts/DataContext';
 
-export function getPropertyTypeLabel(type: PropertyType): string {
+export function getUnitTypeLabel(type: UnitType): string {
   switch (type) {
     case 'rental_space':
       return 'Rental Space (Unit)';
@@ -13,7 +13,7 @@ export function getPropertyTypeLabel(type: PropertyType): string {
   }
 }
 
-export function getMinimumDuration(type: PropertyType): { value: number; unit: string } {
+export function getMinimumDuration(type: UnitType): { value: number; unit: string } {
   switch (type) {
     case 'rental_space':
       return { value: 1, unit: 'year' };
@@ -24,7 +24,7 @@ export function getMinimumDuration(type: PropertyType): { value: number; unit: s
   }
 }
 
-export function getPriceLabel(type: PropertyType): string {
+export function getPriceLabel(type: UnitType): string {
   switch (type) {
     case 'rental_space':
       return 'per month';
@@ -35,17 +35,22 @@ export function getPriceLabel(type: PropertyType): string {
   }
 }
 
-export function calculateTotalAmount(type: PropertyType, price: number, duration: number, paymentCycle?: string): number {
+export function calculateTotalAmount(
+  type: UnitType,
+  price: number,
+  duration: number,
+  _paymentCycle?: PaymentCycle // underscore avoids unused warning
+): number {
   switch (type) {
     case 'rental_space':
-      // Duration is in months, price is monthly
       return price * duration;
+
     case 'function_hall':
-      // Duration is in days, price is daily
       return price * duration;
+
     case 'parking_slot':
-      // Duration is in months, price is monthly
       return price * duration;
+
     default:
       return price * duration;
   }
