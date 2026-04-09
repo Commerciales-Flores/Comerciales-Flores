@@ -39,6 +39,7 @@ interface UsersContextType {
     count: number;
   }>;
   updateUserStatus: (id: string, isActive: boolean) => Promise<boolean>;
+  updateUserMessagingBlock: (id: string, blocked: boolean) => Promise<boolean>;
   clearUsersCache: () => void;
 }
 
@@ -60,6 +61,7 @@ function mapUserRow(row: any): User {
     latitude: row.latitude ?? null,
     longitude: row.longitude ?? null,
     isActive: Boolean(row.is_active),
+    isMessagingBlocked: Boolean(row.is_messaging_blocked),
     profilePictureUrl: row.profile_picture_url ?? undefined,
     lastLogin: row.last_login ?? undefined,
     phoneVerified: Boolean(row.phone_verified),
@@ -235,6 +237,7 @@ export function UsersProvider({ children }: { children: ReactNode }) {
               phone_verified_at,
               address_confirmed,
               address_confirmed_at,
+              is_messaging_blocked,
               created_at
             `)
             .eq('role', 'client')
@@ -481,6 +484,29 @@ console.log('admin_customer_overview:', { data, error, count });
     [clearUsersPageCache]
   );
 
+  const updateUserMessagingBlock = useCallback(
+  async (id: string, blocked: boolean) => {
+    const { error } = await supabase
+      .from('users')
+      .update({ is_messaging_blocked: blocked })
+      .eq('user_id', id);
+
+    if (error) {
+      console.error('Error updating messaging block:', error);
+      return false;
+    }
+
+    setUsers((prev) =>
+      prev.map((user) =>
+        user.id === id ? { ...user, isMessagingBlocked: blocked } : user
+      )
+    );
+
+    return true;
+  },
+  []
+);
+
   const getUserById = useCallback(
     (id: string) => users.find((user) => user.id === id),
     [users]
@@ -570,6 +596,7 @@ console.log('admin_customer_overview:', { data, error, count });
       fetchUsersPage,
       updateUserStatus,
       clearUsersCache,
+      updateUserMessagingBlock,
     }),
     [
       users,
@@ -581,6 +608,7 @@ console.log('admin_customer_overview:', { data, error, count });
       fetchUsersPage,
       updateUserStatus,
       clearUsersCache,
+      updateUserMessagingBlock,
     ]
   );
 

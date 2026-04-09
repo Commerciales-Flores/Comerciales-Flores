@@ -28,6 +28,9 @@ import { motion } from 'framer-motion';
 import EmptyState from '../../components/common/EmptyState';
 import { useUsers } from '../../contexts/UsersContext';
 import type { ReservationDetails } from '../../data/types';
+import AdminFilterBar, {
+  FILTER_SELECT_CLASS,
+} from '../../components/common/AdminFilterBar';
 
 
 type ReservationFilterStatus =
@@ -319,7 +322,7 @@ const hasMeasuredRef = useRef(false);
 
   useEffect(() => {
     setPage(1);
-  }, [filterStatus, debouncedSearch]);
+  }, [filterStatus]);
 
   useEffect(() => {
     void loadReservationsPage();
@@ -343,29 +346,19 @@ const hasMeasuredRef = useRef(false);
     });
   }, [reservations, getUserById, getUnitById]);
 
-  const reservationCounts = useMemo(() => {
-    return enrichedReservations.reduce(
-      (acc, reservation) => {
-        acc.all += 1;
-        if (reservation.status === 'pending') acc.pending += 1;
-        if (reservation.status === 'confirmed') acc.confirmed += 1;
-        if (reservation.status === 'overdue') acc.overdue += 1;
-        if (reservation.status === 'completed') acc.completed += 1;
-        if (reservation.status === 'cancelled') acc.cancelled += 1;
-        if (reservation.status === 'rejected') acc.rejected += 1;
-        return acc;
-      },
-      {
-        all: 0,
-        pending: 0,
-        confirmed: 0,
-        overdue: 0,
-        completed: 0,
-        cancelled: 0,
-        rejected: 0,
-      }
-    );
-  }, [enrichedReservations]);
+
+  const filteredReservations = useMemo(() => {
+  const term = debouncedSearch.toLowerCase();
+
+  if (!term) return enrichedReservations;
+
+  return enrichedReservations.filter(r =>
+    r.fullName?.toLowerCase().includes(term) ||
+    r.reservationPublicId?.toLowerCase().includes(term) ||
+    r.userPublicId?.toLowerCase().includes(term) ||
+    r.unitName?.toLowerCase().includes(term)
+  );
+}, [enrichedReservations, debouncedSearch]);
 
   const selectedReservationData = useMemo(() => {
     return selectedReservation
@@ -627,75 +620,76 @@ const hasMeasuredRef = useRef(false);
         </div>
 
         {shouldShowFilters && (
-          <div className="space-y-4">
-            <div className="flex lg:hidden items-center gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
-                <input
-                  type="text"
-                  maxLength={100}
-                  placeholder="Search..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none shadow-sm"
-                />
-              </div>
+  <AdminFilterBar
+    searchTerm={searchTerm}
+    onSearchChange={setSearchTerm}
+    placeholder="Search by reservation ID, user ID, unit, or customer."
+    showMobileFilters={isFilterPanelOpen}
+    onToggleMobileFilters={() => setIsFilterPanelOpen((prev) => !prev)}
+    actions={
+      <div className="hidden lg:flex lg:items-center lg:gap-2">
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value as ReservationFilterStatus)}
+          className={FILTER_SELECT_CLASS}
+        >
+          <option value="all">All Status</option>
+          <option value="pending">Pending</option>
+          <option value="confirmed">Confirmed</option>
+          <option value="overdue">Overdue</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="rejected">Rejected</option>
+        </select>
 
-              <button
-                onClick={() => setIsFilterPanelOpen(true)}
-                className="p-3 bg-white border border-gray-200 rounded-2xl text-gray-600 shadow-sm relative"
-              >
-                <SlidersHorizontal className="size-6" />
-                {filterStatus !== 'all' && (
-                  <span className="absolute top-2 right-2 size-2.5 bg-blue-600 rounded-full border-2 border-white" />
-                )}
-              </button>
-            </div>
-
-            <div className="hidden lg:block space-y-4">
-              <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-5 text-gray-400" />
-                  <input
-                    type="text"
-                    maxLength={100}
-                    placeholder="Search by ID, Unit, or Customer..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  />
-                </div>
-              </div>
-
-              <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-                <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-                  {(['all', 'pending', 'confirmed', 'overdue', 'completed', 'cancelled', 'rejected'] as const).map((status) => (
-                    <button
-                      key={status}
-                      onClick={() => setFilterStatus(status)}
-                      className={`px-4 py-1.5 text-sm rounded-xl whitespace-nowrap transition-all border font-medium ${
-                        filterStatus === status
-                          ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-                      }`}
-                    >
-                      {status.charAt(0).toUpperCase() + status.slice(1)}
-                      <span
-                        className={`ml-2 rounded-full px-2 py-0.5 text-xs ${
-                          filterStatus === status
-                            ? 'bg-white/20 text-white'
-                            : 'bg-black/10 text-gray-700'
-                        }`}
-                      >
-                        {reservationCounts[status]}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+        {(searchTerm.trim() || filterStatus !== 'all') && (
+          <button
+            type="button"
+            onClick={() => {
+              setSearchTerm('');
+              setFilterStatus('all');
+              setIsFilterPanelOpen(false);
+            }}
+            className="inline-flex rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
+          >
+            Clear
+          </button>
         )}
+      </div>
+    }
+    filters={
+      <div className="grid grid-cols-1 gap-2 lg:hidden">
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value as ReservationFilterStatus)}
+          className={FILTER_SELECT_CLASS}
+        >
+          <option value="all">All Status</option>
+          <option value="pending">Pending</option>
+          <option value="confirmed">Confirmed</option>
+          <option value="overdue">Overdue</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="rejected">Rejected</option>
+        </select>
+
+        {(searchTerm.trim() || filterStatus !== 'all') && (
+          <button
+            type="button"
+            onClick={() => {
+              setSearchTerm('');
+              setFilterStatus('all');
+              setIsFilterPanelOpen(false);
+            }}
+            className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
+          >
+            Clear Filters
+          </button>
+        )}
+      </div>
+    }
+  />
+)}
 
         <div className="flex-1">
           {shouldShowLoadingState ? (
@@ -736,7 +730,7 @@ const hasMeasuredRef = useRef(false);
           ) : (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:hidden gap-4">
-                {enrichedReservations.map((reservation) => (
+                {filteredReservations.map((reservation) => (
                   <div
                     key={reservation.id}
                     className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm space-y-4"
@@ -876,20 +870,22 @@ const hasMeasuredRef = useRef(false);
               </div>
 
               <div className="hidden lg:block">
-                <DataTable
-                  headers={[
-                    'Reservation ID',
-                    'User ID',
-                    'Unit',
-                    'Date Range',
-                    'Amount',
-                    'Visit Type',
-                    'Visit Status',
-                    'Reservation Status',
-                    'Actions',
-                  ]}
-                >
-                  {enrichedReservations.map((reservation) => (
+                <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                  <div className="overflow-x-auto">
+                    <DataTable
+                      headers={[
+                        <span className="block">Reservation ID</span>,
+                        <span className="block">User ID</span>,
+                        <span className="block">Unit</span>,
+                        <span className="block">Date Range</span>,
+                        <span className="block">Amount</span>,
+                        <span className="block">Visit Type</span>,
+                        <span className="block">Visit Status</span>,
+                        <span className="block">Reservation Status</span>,
+                        <span className="block">Actions</span>,
+                      ]}
+                    >
+                  {filteredReservations.map((reservation) => (
                     <tr key={reservation.id} className="transition-colors hover:bg-blue-50/30">
                       <DataCell
                         value={reservation.reservationPublicId}
@@ -928,13 +924,13 @@ const hasMeasuredRef = useRef(false);
                       <DataCell
                         className="w-[180px]"
                         value={
-                          <div className="flex flex-col gap-1">
-                            <span className="font-semibold text-gray-900">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-sm font-medium text-gray-900">
                               {formatCurrency(reservation.totalAmount)}
                             </span>
 
                             <span
-                              className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                              className={`w-fit rounded-full px-2 py-0.5 text-xs font-medium ${
                                 isFullyPaid(reservation)
                                   ? 'bg-green-100 text-green-700'
                                   : hasRecordedPayment(reservation)
@@ -985,10 +981,10 @@ const hasMeasuredRef = useRef(false);
                       <DataCell
                         className="w-[160px]"
                         value={
-                          <span className="text-xs font-semibold uppercase text-indigo-600">
+                          <span className="text-xs font-medium capitalize text-indigo-600">
                             {reservation.modeOfVisit === 'onsite'
-                              ? reservation.visitStatus || 'requested'
-                              : 'not applicable'}
+                              ? reservation.visitStatus || 'Requested'
+                              : 'Not applicable'}
                           </span>
                         }
                       />
@@ -996,9 +992,9 @@ const hasMeasuredRef = useRef(false);
                       <DataCell
                         className="w-[180px]"
                         value={
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap gap-1.5">
                             <span
-                              className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold ${
+                              className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${
                                 statusColors[reservation.status as keyof typeof statusColors]
                               }`}
                             >
@@ -1006,8 +1002,8 @@ const hasMeasuredRef = useRef(false);
                             </span>
 
                             {getExtensionRequestDetails(reservation) && canHandleExtension(reservation) && (
-                              <span className="inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-700">
-                                EXTENSION REQUESTED
+                              <span className="inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                                Extension requested
                               </span>
                             )}
                           </div>
@@ -1090,6 +1086,8 @@ const hasMeasuredRef = useRef(false);
                     </tr>
                   ))}
                 </DataTable>
+                  </div>
+                </div>
               </div>
             </>
           )}

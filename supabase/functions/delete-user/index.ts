@@ -279,8 +279,8 @@ serve(async (req) => {
     }
 
     const { error: publicDeleteError } = await admin.rpc('delete_user_safe', {
-  p_user_id: requestedUserId,
-})
+      p_user_id: requestedUserId,
+    })
 
 if (publicDeleteError) {
   return jsonResponse(

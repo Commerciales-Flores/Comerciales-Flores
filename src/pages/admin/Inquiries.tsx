@@ -70,6 +70,7 @@ type SupportContact = {
   isActive: boolean;
   openTicketCount: number;
   unreadForSupportCount: number;
+  isMessagingBlocked?: boolean;
   latestTicketAt: string;
 };
 
@@ -498,6 +499,7 @@ export default function AdminInquiries() {
   sendTicketMessage,
   reopenTicket,
   fetchMessagesByTicketId,
+  markTicketResolved,
   markTicketRead,
   isLoadingMessages,
   isLoadingTickets,
@@ -603,6 +605,8 @@ const ticketMessageMeta = useMemo(() => {
 
     return { byUserId, byGuestEmail };
   }, [normalizedTickets]);
+
+  
 
   useEffect(() => {
   let cancelled = false;
@@ -790,6 +794,54 @@ const contacts = useMemo(() => {
     email: selectedContact.email ?? null,
   };
 }, [selectedContact]);
+
+const [isUpdatingBlockStatus, setIsUpdatingBlockStatus] = useState(false);
+
+const handleBlockUser = useCallback(async () => {
+  if (!selectedContact?.userId || selectedContact.type !== 'user' || isUpdatingBlockStatus) {
+    return;
+  }
+
+  setIsUpdatingBlockStatus(true);
+
+  try {
+    const { error } = await supabase
+      .from('users')
+      .update({ is_messaging_blocked: true })
+      .eq('user_id', selectedContact.userId);
+
+    if (error) throw error;
+
+    await refreshUsers(true);
+  } catch (error) {
+    console.error('Failed to block user messaging:', error);
+  } finally {
+    setIsUpdatingBlockStatus(false);
+  }
+}, [isUpdatingBlockStatus, refreshUsers, selectedContact]);
+
+const handleUnblockUser = useCallback(async () => {
+  if (!selectedContact?.userId || selectedContact.type !== 'user' || isUpdatingBlockStatus) {
+    return;
+  }
+
+  setIsUpdatingBlockStatus(true);
+
+  try {
+    const { error } = await supabase
+      .from('users')
+      .update({ is_messaging_blocked: false })
+      .eq('user_id', selectedContact.userId);
+
+    if (error) throw error;
+
+    await refreshUsers(true);
+  } catch (error) {
+    console.error('Failed to unblock user messaging:', error);
+  } finally {
+    setIsUpdatingBlockStatus(false);
+  }
+}, [isUpdatingBlockStatus, refreshUsers, selectedContact]);
 
   const ticketsForSelectedContact = useMemo(() => {
     if (!selectedContact) return [];
@@ -1155,6 +1207,20 @@ const hasNoFilterResults =
   sendTicketMessage,
 ]);
 
+const handleResolve = useCallback(async () => {
+  if (!selectedTicket || isReopening) return;
+
+  setIsReopening(true);
+
+  try {
+    await markTicketResolved(selectedTicket.id);
+  } catch (error) {
+    console.error('Failed to resolve ticket:', error);
+  } finally {
+    setIsReopening(false);
+  }
+}, [isReopening, markTicketResolved, selectedTicket]);
+
   const handleReopen = useCallback(async () => {
   if (!selectedTicket || isReopening) return;
 
@@ -1501,13 +1567,14 @@ const hasNoFilterResults =
                     </div>
 
                     {selectedContact?.type === 'user' && (
-                      <div>
+                      <div className="flex items-center gap-2">
+
                         <button
                           type="button"
                           onClick={startNewTicket}
                           className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-95"
                         >
-                          New Ticket
+                          New
                         </button>
                       </div>
                     )}
@@ -1579,75 +1646,115 @@ const hasNoFilterResults =
               >
                 <div className="flex items-center justify-between gap-3 border-b border-gray-100 p-5">
                   <div className="flex min-w-0 items-center gap-3">
-  <button
-    type="button"
-    onClick={closeMobileThread}
-    className="inline-flex size-9 items-center justify-center rounded-xl border border-gray-200 text-gray-500 transition hover:bg-gray-50 md:hidden"
-  >
-    <ChevronLeft className="size-5" />
-  </button>
+                        <button
+                          type="button"
+                          onClick={closeMobileThread}
+                          className="inline-flex size-9 items-center justify-center rounded-xl border border-gray-200 text-gray-500 transition hover:bg-gray-50 md:hidden"
+                        >
+                          <ChevronLeft className="size-5" />
+                        </button>
 
-  <div className="min-w-0 flex-1">
-    <div className="flex min-w-0 items-center gap-2">
-      <h2 className="min-w-0 flex-1 truncate text-sm font-bold text-gray-900">
-        {isComposingNewTicket
-          ? 'Start Conversation'
-          : selectedTicket?.subject || 'Conversation'}
-      </h2>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <h2 className="min-w-0 flex-1 truncate text-sm font-bold text-gray-900">
+                              {isComposingNewTicket
+                                ? 'Start Conversation'
+                                : selectedTicket?.subject || 'Conversation'}
+                            </h2>
 
-      {!isComposingNewTicket && selectedContact?.type === 'guest' && (
-        <span className="shrink-0 inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-          Guest Inquiry
-        </span>
-      )}
-    </div>
+                            {!isComposingNewTicket && selectedContact?.type === 'guest' && (
+                              <span className="shrink-0 inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                                Guest Inquiry
+                              </span>
+                            )}
+                          </div>
 
-    <p className="mt-1 text-[11px] text-gray-500">
-      {isComposingNewTicket
-        ? selectedContact
-          ? `Starting a new conversation with ${
-              [selectedContact.firstName, selectedContact.lastName]
-                .filter(Boolean)
-                .join(' ')
-                .trim() || selectedContact.email
-            }`
-          : 'Create a new support conversation'
-        : selectedTicket
-        ? `Ticket ${
-            selectedTicket.publicId ??
-            `#${selectedTicket.id.slice(-6).toUpperCase()}`
-          } • ${
-            selectedTicket.status === 'resolved'
-              ? 'Resolved'
-              : selectedTicket.status === 'waiting_for_support'
-              ? 'Waiting for Support'
-              : 'Waiting for Customer'
-          }`
-        : 'No conversation selected'}
-    </p>
-  </div>
-</div>
+                          <p className="mt-1 text-[11px] text-gray-500">
+                            {isComposingNewTicket
+                              ? selectedContact
+                                ? `Starting a new conversation with ${
+                                    [selectedContact.firstName, selectedContact.lastName]
+                                      .filter(Boolean)
+                                      .join(' ')
+                                      .trim() || selectedContact.email
+                                  }`
+                                : 'Create a new support conversation'
+                              : selectedTicket
+                              ? `Ticket ${
+                                  selectedTicket.publicId ??
+                                  `#${selectedTicket.id.slice(-6).toUpperCase()}`
+                                } • ${
+                                  selectedTicket.status === 'resolved'
+                                    ? 'Resolved'
+                                    : selectedTicket.status === 'waiting_for_support'
+                                    ? 'Waiting for Support'
+                                    : 'Waiting for Customer'
+                                }`
+                              : 'No conversation selected'}
+                          </p>
+                        </div>
+                      </div>
 
-                  {!isComposingNewTicket && selectedTicket?.status === 'resolved' && (
-                    <button
-                      type="button"
-                      onClick={handleReopen}
-                      disabled={isReopening}
-                      className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-xs font-bold text-green-700 transition hover:bg-green-100 disabled:opacity-70"
-                    >
-                      {isReopening ? 'Reopening...' : 'Reopen'}
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                      {!isComposingNewTicket && selectedContact?.type === 'user' && (
+                        <button
+                          type="button"
+                          onClick={
+                            selectedContact.isMessagingBlocked
+                              ? handleUnblockUser
+                              : handleBlockUser
+                          }
+                          disabled={isUpdatingBlockStatus}
+                          className={`rounded-xl px-3 py-2 text-xs font-bold transition disabled:opacity-70 ${
+                            selectedContact.isMessagingBlocked
+                              ? 'border border-green-200 bg-green-50 text-green-700 hover:bg-green-100'
+                              : 'border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                          }`}
+                        >
+                          {isUpdatingBlockStatus
+                            ? selectedContact.isMessagingBlocked
+                              ? 'Unblocking...'
+                              : 'Blocking...'
+                            : selectedContact.isMessagingBlocked
+                            ? 'Unblock'
+                            : 'Block'}
+                        </button>
+                      )}
 
-                  {isComposingNewTicket && (
-                    <button
-                      type="button"
-                      onClick={cancelNewTicket}
-                      className="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 transition hover:bg-gray-50"
-                    >
-                      Cancel
-                    </button>
-                  )}
+                      {!isComposingNewTicket &&
+                        selectedTicket &&
+                        selectedTicket.status !== 'resolved' && (
+                          <button
+                            type="button"
+                            onClick={handleResolve}
+                            disabled={isReopening}
+                            className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-70"
+                          >
+                            {isReopening ? 'Resolving...' : 'Resolve'}
+                          </button>
+                      )}
+
+                      {!isComposingNewTicket && selectedTicket?.status === 'resolved' && (
+                        <button
+                          type="button"
+                          onClick={handleReopen}
+                          disabled={isReopening}
+                          className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-xs font-bold text-green-700 transition hover:bg-green-100 disabled:opacity-70"
+                        >
+                          {isReopening ? 'Reopening...' : 'Reopen'}
+                        </button>
+                      )}
+
+                      {isComposingNewTicket && (
+                        <button
+                          type="button"
+                          onClick={cancelNewTicket}
+                          className="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 transition hover:bg-gray-50"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
                 </div>
 
                 {isComposingNewTicket ? (

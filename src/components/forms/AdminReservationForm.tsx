@@ -336,6 +336,7 @@ export default function AdminReservationForm({
   }, [activePaymentMethods]);
 
   const [formError, setFormError] = useState<string | null>(null);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [showCalendar, setShowCalendar] = useState(false);
   const [isSlotPanelOpen, setIsSlotPanelOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -348,6 +349,7 @@ export default function AdminReservationForm({
     if (!unit) return;
     setFormState(buildInitialForm(unit.type, defaultPaymentMethod));
     setFormError(null);
+    setFormErrors({});
     setShowCalendar(false);
     setIsSlotPanelOpen(false);
   }, [unit?.id, unit?.type, defaultPaymentMethod]);
@@ -523,6 +525,40 @@ export default function AdminReservationForm({
     return <div className="p-4 text-sm text-red-500">Error: User information could not be found.</div>;
   }
 
+  const handleFieldBlur = (field: string, value: string) => {
+    const trimmedValue = typeof value === 'string' ? value.trim() : String(value);
+
+    if (!trimmedValue) {
+      let errorMessage = '';
+      switch (field) {
+        case 'vehicleType':
+          errorMessage = 'Vehicle type is required.';
+          break;
+        case 'plateNumber':
+          errorMessage = 'Plate number is required.';
+          break;
+        case 'eventPurpose':
+          errorMessage = 'Event purpose is required.';
+          break;
+        case 'attendees':
+          errorMessage = 'Number of attendees is required.';
+          break;
+        case 'businessType':
+          errorMessage = 'Business type is required.';
+          break;
+        default:
+          return;
+      }
+
+      if (errorMessage) {
+        setFormErrors((prev) => ({
+          ...prev,
+          [field]: errorMessage,
+        }));
+      }
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -552,11 +588,13 @@ export default function AdminReservationForm({
 
     if (unit.type === 'rental_space' && !formState.businessType.trim()) {
       setFormError('Please enter the business type.');
+      setFormErrors({ businessType: 'Business type is required.' });
       return;
     }
 
     if (unit.type === 'function_hall' && !formState.eventPurpose.trim()) {
       setFormError('Please enter the event purpose.');
+      setFormErrors({ eventPurpose: 'Event purpose is required.' });
       return;
     }
 
@@ -576,6 +614,7 @@ export default function AdminReservationForm({
         setFormError(
           `Please enter a valid number of attendees (${RESERVATION_LIMITS.attendees.min} - ${maxAllowedAttendees}).`
         );
+        setFormErrors({ attendees: 'Number of attendees is required.' });
         return;
       }
     }
@@ -585,6 +624,12 @@ export default function AdminReservationForm({
       (!formState.vehicleType.trim() || !formState.plateNumber.trim())
     ) {
       setFormError('Please enter vehicle type and plate number.');
+      if (!formState.vehicleType.trim()) {
+        setFormErrors((prev) => ({ ...prev, vehicleType: 'Vehicle type is required.' }));
+      }
+      if (!formState.plateNumber.trim()) {
+        setFormErrors((prev) => ({ ...prev, plateNumber: 'Plate number is required.' }));
+      }
       return;
     }
 
@@ -717,7 +762,7 @@ export default function AdminReservationForm({
       className="space-y-5 rounded-[2rem] bg-gray-50 p-4 sm:p-6"
     >
       <div className="rounded-[2rem] border border-gray-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-3">
             <div className="rounded-2xl bg-gray-900 p-3 text-white">
               <Warehouse className="size-5" />
@@ -862,15 +907,27 @@ export default function AdminReservationForm({
                 placeholder="e.g., Retail, Office, Restaurant"
                 maxLength={INPUT_LIMITS.eventPurpose}
                 value={formState.businessType}
-                onChange={(e) =>
+                onChange={(e) => {
                   setFormState((prev) => ({
                     ...prev,
                     businessType: e.target.value,
-                  }))
-                }
+                  }));
+                  setFormErrors((prev) => {
+                    if (!prev.businessType) return prev;
+                    const next = { ...prev };
+                    delete next.businessType;
+                    return next;
+                  });
+                }}
+                onBlur={(e) => handleFieldBlur("businessType", e.target.value)}
                 className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
                 disabled={isSubmitting}
               />
+              {formErrors.businessType && (
+                <p className="mt-1 text-xs text-red-600">
+                  {formErrors.businessType}
+                </p>
+              )}
             </div>
 
             <div>
@@ -971,15 +1028,27 @@ export default function AdminReservationForm({
                     RESERVATION_LIMITS.attendees.max
                   )}`}
                   value={formState.attendees}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setFormState((prev) => ({
                       ...prev,
                       attendees: e.target.value,
-                    }))
-                  }
+                    }));
+                    setFormErrors((prev) => {
+                      if (!prev.attendees) return prev;
+                      const next = { ...prev };
+                      delete next.attendees;
+                      return next;
+                    });
+                  }}
+                  onBlur={(e) => handleFieldBlur("attendees", e.target.value)}
                   className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
                   disabled={isSubmitting}
                 />
+                {formErrors.attendees && (
+                  <p className="mt-1 text-xs text-red-600">
+                    {formErrors.attendees}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -989,15 +1058,27 @@ export default function AdminReservationForm({
                 type="text"
                 placeholder="e.g., Wedding, Conference"
                 value={formState.eventPurpose}
-                onChange={(e) =>
+                onChange={(e) => {
                   setFormState((prev) => ({
                     ...prev,
                     eventPurpose: e.target.value,
-                  }))
-                }
+                  }));
+                  setFormErrors((prev) => {
+                    if (!prev.eventPurpose) return prev;
+                    const next = { ...prev };
+                    delete next.eventPurpose;
+                    return next;
+                  });
+                }}
+                onBlur={(e) => handleFieldBlur("eventPurpose", e.target.value)}
                 className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
                 disabled={isSubmitting}
               />
+              {formErrors.eventPurpose && (
+                <p className="mt-1 text-xs text-red-600">
+                  {formErrors.eventPurpose}
+                </p>
+              )}
             </div>
           </div>
         </SectionCard>
@@ -1214,15 +1295,27 @@ export default function AdminReservationForm({
                   maxLength={INPUT_LIMITS.vehicleType}
                   placeholder="e.g., Sedan, SUV, Motorcycle"
                   value={formState.vehicleType}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setFormState((prev) => ({
                       ...prev,
                       vehicleType: e.target.value,
-                    }))
-                  }
+                    }));
+                    setFormErrors((prev) => {
+                      if (!prev.vehicleType) return prev;
+                      const next = { ...prev };
+                      delete next.vehicleType;
+                      return next;
+                    });
+                  }}
+                  onBlur={(e) => handleFieldBlur("vehicleType", e.target.value)}
                   className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
                   disabled={isSubmitting}
                 />
+                {formErrors.vehicleType && (
+                  <p className="mt-1 text-xs text-red-600">
+                    {formErrors.vehicleType}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -1232,15 +1325,27 @@ export default function AdminReservationForm({
                   placeholder="e.g., ABC 1234"
                   maxLength={INPUT_LIMITS.plateNumber}
                   value={formState.plateNumber}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setFormState((prev) => ({
                       ...prev,
                       plateNumber: e.target.value.toUpperCase(),
-                    }))
-                  }
+                    }));
+                    setFormErrors((prev) => {
+                      if (!prev.plateNumber) return prev;
+                      const next = { ...prev };
+                      delete next.plateNumber;
+                      return next;
+                    });
+                  }}
+                  onBlur={(e) => handleFieldBlur("plateNumber", e.target.value)}
                   className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
                   disabled={isSubmitting}
                 />
+                {formErrors.plateNumber && (
+                  <p className="mt-1 text-xs text-red-600">
+                    {formErrors.plateNumber}
+                  </p>
+                )}
               </div>
             </div>
           </div>

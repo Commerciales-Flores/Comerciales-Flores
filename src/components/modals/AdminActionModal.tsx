@@ -623,7 +623,7 @@ export default function AdminActionModal({
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-500">
                 Administrator Tools
               </p>
-              <h2 className="mt-1 text-lg font-extrabold text-gray-900">
+              <h2 className="text-lg font-bold tracking-tight text-gray-900 sm:text-xl">
                 New {actionType === 'payment' ? 'Payment' : 'Reservation'}
               </h2>
               <p className="mt-1 text-sm text-gray-500">

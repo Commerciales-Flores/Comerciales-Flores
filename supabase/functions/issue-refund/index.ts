@@ -269,7 +269,7 @@ serve(async (req) => {
 
     await admin.from('audit_log').insert({
       user_id: user.id,
-      action: 'LEDGER_REFUND_ENTRY_CREATED',
+      action: 'LEDGER_REFUND_CREATED',
       target_table: 'ledger',
       target_id: insertedLedger.ledger_id,
       target_public_id: insertedLedger.public_id ?? null,

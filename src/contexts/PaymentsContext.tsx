@@ -13,6 +13,7 @@ import type {
   Payment,
   PaymentMethod,
   PaymentStatus,
+  PaymentReviewStatus,
 } from '../data/types';
 
 import {
@@ -51,6 +52,10 @@ interface PaymentsContextType {
     notes?: string | null;
     referenceNo?: string | null;
   }) => Promise<void>;
+  hasPendingPayment: (
+  reservationId: string,
+  category?: 'payment' | 'advance_deposit' | 'security_deposit'
+) => boolean;
 }
 
 const PaymentsContext = createContext<PaymentsContextType | undefined>(undefined);
@@ -64,6 +69,7 @@ function mapPaymentRow(row: any): Payment {
     amount: Number(row.amount),
     method: row.method as PaymentMethod,
     status: row.status as PaymentStatus,
+    reviewStatus: (row.review_status ?? 'pending') as PaymentReviewStatus,
     proofOfPayment: row.proofOfPayment,
     date: row.date,
     notes: row.notes,
@@ -123,7 +129,7 @@ const refreshPaymentsPromiseRef = useRef<Promise<void> | null>(null);
     const { data, error } = await supabase
       .from('payments')
       .select(
-        'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category'
+        'payment_id, public_id, reservation_id, user_id, amount, method, status, review_status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category'
       )
       .order('created_at', { ascending: false });
 
@@ -266,7 +272,7 @@ const refreshPaymentsPromiseRef = useRef<Promise<void> | null>(null);
       let query = supabase
         .from('payments')
         .select(
-          'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category',
+          'payment_id, public_id, reservation_id, user_id, amount, method, status, review_status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category',
           { count: 'planned' }
         )
         .order('date', { ascending: false });
@@ -329,72 +335,84 @@ const refreshPaymentsPromiseRef = useRef<Promise<void> | null>(null);
     }
   }, []);
 
+  const hasPendingPayment = useCallback(
+  (reservationId: string, category: PaymentCategory = 'payment') => {
+    return payments.some(
+      (p) =>
+        p.reservationId === reservationId &&
+        p.category === category &&
+        p.reviewStatus === 'pending'
+    );
+  },
+  [payments]
+);
+
   const addPayment = useCallback(
-    async (
-      paymentData: Omit<Payment, 'id' | 'createdAt' | 'updatedAt' | 'date'>
-    ): Promise<string> => {
-      const accessToken = await getAccessTokenOrThrow();
-
-      const normalizedAmount = Number(
-        normalizeMoneyString(String(paymentData.amount))
+  async (
+    paymentData: Omit<Payment, 'id' | 'createdAt' | 'updatedAt' | 'date'>
+  ): Promise<string> => {
+    // ✅ Check for pending payments first
+    if (hasPendingPayment(paymentData.reservationId, paymentData.category)) {
+      throw new Error(
+        'You already have a pending payment for this reservation. Please wait for it to be verified before submitting another.'
       );
+    }
 
-      if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
-        throw new Error('Invalid payment amount.');
+    const accessToken = await getAccessTokenOrThrow();
+
+    const normalizedAmount = Number(
+      normalizeMoneyString(String(paymentData.amount))
+    );
+
+    if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+      throw new Error('Invalid payment amount.');
+    }
+
+    const normalizedNotes = paymentData.notes
+      ? normalizeText(paymentData.notes)
+      : null;
+
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment-and-ledger`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          effectiveReservationId: paymentData.reservationId,
+          amount: normalizedAmount,
+          method: paymentData.method,
+          status: paymentData.status,
+          reviewStatus: paymentData.reviewStatus ?? 'pending',
+          proofOfPayment: paymentData.proofOfPayment ?? null,
+          notes: normalizedNotes,
+          paymentMethodId: paymentData.paymentMethodId ?? null,
+          paymentMethodSnapshot: paymentData.paymentMethodSnapshot ?? null,
+          category: paymentData.category ?? 'payment',
+        }),
       }
+    );
 
-      const normalizedNotes = paymentData.notes
-        ? normalizeText(paymentData.notes)
-        : null;
+    const payload = await response.json().catch(() => null);
 
-      console.log('addPayment payload', {
-  effectiveReservationId: paymentData.reservationId,
-  amount: normalizedAmount,
-  method: paymentData.method,
-  status: paymentData.status,
-});
+    if (!response.ok || !payload?.success) {
+      throw new Error(payload?.error || 'Failed to create payment.');
+    }
 
+    const newPayment = mapPaymentRow(payload.payment);
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment-and-ledger`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-          },
-          body: JSON.stringify({
-            effectiveReservationId: paymentData.reservationId,
-            amount: normalizedAmount,
-            method: paymentData.method,
-            status: paymentData.status,
-            proofOfPayment: paymentData.proofOfPayment ?? null,
-            notes: normalizedNotes,
-            paymentMethodId: paymentData.paymentMethodId ?? null,
-            paymentMethodSnapshot: paymentData.paymentMethodSnapshot ?? null,
-            category: paymentData.category ?? 'payment',
-          }),
-        }
-      );
+    setPayments((prev) => {
+      if (prev.some((item) => item.id === newPayment.id)) return prev;
+      return sortPaymentsByCreatedAt([newPayment, ...prev]);
+    });
 
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || 'Failed to create payment.');
-      }
-
-      const newPayment = mapPaymentRow(payload.payment);
-
-      setPayments((prev) => {
-        if (prev.some((item) => item.id === newPayment.id)) return prev;
-        return sortPaymentsByCreatedAt([newPayment, ...prev]);
-      });
-
-      return newPayment.id;
-    },
-    []
-  );
+    return newPayment.id;
+  },
+  [hasPendingPayment]
+);
 
   const updatePayment = useCallback(
     async (id: string, paymentUpdate: Partial<Payment>): Promise<void> => {
@@ -411,6 +429,16 @@ const refreshPaymentsPromiseRef = useRef<Promise<void> | null>(null);
             ? normalizeText(paymentUpdate.notes)
             : null
       : undefined;
+
+      if (
+        paymentUpdate.reviewStatus === 'pending' &&
+        paymentUpdate.reservationId &&
+        hasPendingPayment(paymentUpdate.reservationId, paymentUpdate.category ?? 'payment')
+      ) {
+        throw new Error(
+          'Cannot update to pending because another payment is already pending for this reservation.'
+        );
+      }
 
       console.log('updatePayment payload', {
       paymentId: id,
@@ -440,6 +468,7 @@ const refreshPaymentsPromiseRef = useRef<Promise<void> | null>(null);
             amount: normalizedAmount,
             method: paymentUpdate.method,
             status: paymentUpdate.status,
+            reviewStatus: paymentUpdate.reviewStatus,
             proofOfPayment: paymentUpdate.proofOfPayment ?? null,
             notes: normalizedNotes,
             paymentMethodId: paymentUpdate.paymentMethodId ?? null,
@@ -539,6 +568,7 @@ const refreshPaymentsPromiseRef = useRef<Promise<void> | null>(null);
       getPaymentsByUserId,
       fetchPaymentsPage,
       issueRefund,
+      hasPendingPayment,
     }),
     [
       payments,
@@ -550,6 +580,7 @@ const refreshPaymentsPromiseRef = useRef<Promise<void> | null>(null);
       getPaymentsByUserId,
       fetchPaymentsPage,
       issueRefund,
+      hasPendingPayment,
     ]
   );
 

@@ -1,10 +1,11 @@
 import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import type { JSX } from 'react';
 import { useUnits } from '../../contexts/UnitsContext';
 import type { UnitType } from '../../data/types';
 import supabase from '../../supabaseClient';
-import { DataCell, ActionCell } from '../../components/common/DataTable';
+import { DataCell, ActionCell, DataTable } from '../../components/common/DataTable';
+import { normalizeAmountInput, finalizeAmountInput } from '../../utils/priceNormalization';
 import {
   Plus,
   Edit,
@@ -21,17 +22,14 @@ import {
   Wrench,
   CheckCircle2,
   PauseCircle,
-  Search,
   Filter,
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import EmptyState from '../../components/common/EmptyState';
 import { formatDate } from '../../utils/date';
 import AdminFilterBar, {
-  FILTER_BUTTON_CLASS,
   FILTER_SELECT_CLASS,
 } from '../../components/common/AdminFilterBar';
-import { AdminFilterGroup } from '../../components/common/AdminFilterGroup';
 
 const UNIT_TYPE_MAP: Record<UnitType, { icon: JSX.Element; label: string; color: string }> = {
   rental_space: {
@@ -157,6 +155,25 @@ const SLOT_STATUS_STYLES: Record<
     label: 'Maintenance',
   },
 };
+
+function NoPropertyResults() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+      className="flex flex-col items-center justify-center text-center"
+    >
+      <div className="mb-4 rounded-3xl bg-gray-50 p-5 shadow-sm">
+        <Filter className="size-10 text-gray-400" />
+      </div>
+      <h3 className="text-lg font-bold text-gray-900">No matching properties found</h3>
+      <p className="mt-1 max-w-sm text-sm text-gray-500">
+        Try adjusting your search or filters by unit name, type, location, or availability.
+      </p>
+    </motion.div>
+  );
+}
 
 function parseCommaSeparated(value: string) {
   return value
@@ -1000,15 +1017,33 @@ const [formError, setFormError] = useState<string | null>(null);
               </label>
               <input
                 id="price"
-                type="number"
+                type="text"
+                inputMode="decimal"
                 required
-                min="500"
-                step="0.01"
                 value={unitForm.price}
-                onChange={(e) => updateFormField('price', e.target.value)}
+                onChange={(e) =>
+                  updateFormField(
+                    'price',
+                    normalizeAmountInput(e.target.value, {
+                      max: 999_999_999.99,
+                      decimals: 2,
+                      allowEmpty: true,
+                    })
+                  )
+                }
+                onBlur={(e) =>
+                  updateFormField(
+                    'price',
+                    finalizeAmountInput(e.target.value, {
+                      min: 500,
+                      max: 999_999_999.99,
+                      decimals: 2,
+                      allowEmpty: true,
+                    })
+                  )
+                }
                 placeholder="e.g. 25000"
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
-
               />
               <p className="ml-1 text-[11px] text-slate-400">
                 Minimum price is ₱500.
@@ -1378,6 +1413,9 @@ type UnitListProps = {
   onEdit: (unitId: string) => void;
   onDelete: (unitId: string) => void;
   onManageSlots: (unitId: string) => void;
+  loading: boolean;
+  hasNoProperties: boolean;
+  hasNoSearchResults: boolean;
 };
 
 const UnitsList = React.memo(function UnitsList({
@@ -1386,227 +1424,269 @@ const UnitsList = React.memo(function UnitsList({
   onEdit,
   onDelete,
   onManageSlots,
+  loading,
+  hasNoProperties,
+  hasNoSearchResults,
 }: UnitListProps) {
   return (
     <div>
-      <div className="hidden overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm md:block">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Unit
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Public ID
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Location
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Price
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Actions
-                </th>
-              </tr>
-            </thead>
+      <div className="grid grid-cols-1 gap-4 lg:hidden">
+        {loading ? (
+          <EmptyState
+            icon={
+              <div className="flex items-center justify-center">
+                <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+              </div>
+            }
+            title="Loading properties..."
+            description="Fetching units, availability, and unit details."
+          />
+        ) : hasNoProperties ? (
+          <EmptyState
+            icon={<Building2 className="size-10 text-blue-500" />}
+            title="No properties yet"
+            description="Units will appear here once rental spaces, halls, or parking areas are added."
+          />
+        ) : hasNoSearchResults ? (
+          <div className="rounded-2xl border border-gray-200 bg-white px-6 py-16 shadow-sm">
+            <NoPropertyResults />
+          </div>
+        ) : (
+          units.map((unit) => {
+            const slotStats = slotStatsByUnit.get(unit.id) ?? { total: 0, active: 0 };
 
-            <tbody className="divide-y divide-gray-200">
-              {units.map((unit) => {
-                const slotStats = slotStatsByUnit.get(unit.id) ?? { total: 0, active: 0 };
+            return (
+              <div
+                key={unit.id}
+                className="overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-base font-bold text-gray-900">{unit.name}</h3>
 
-                return (
-                  <tr key={unit.id} className="transition-colors hover:bg-gray-50">
-                    <DataCell
-                      value={
-                        <div>
-                          <p className="font-semibold text-gray-900">{unit.name}</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <UnitTypeDisplay type={unit.type} />
 
-                          {unit.type === 'function_hall' && unit.capacity && (
-                            <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
-                              <Users className="size-3.5" />
-                              Capacity: {unit.capacity}
-                            </p>
-                          )}
-
-                          {unit.type === 'parking_slot' && (
-                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                              <span className="inline-flex items-center gap-1">
-                                <Car className="size-3.5" />
-                                {slotStats.total} slot(s)
-                              </span>
-                              <span className="inline-flex items-center gap-1 text-green-600">
-                                <CheckCircle2 className="size-3.5" />
-                                {slotStats.active} active
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      }
-                    />
-
-                    <DataCell value={unit.propertyId || '—'} mono />
-                    <DataCell value={<UnitTypeDisplay type={unit.type} />} nowrap />
-                    <DataCell
-                      value={
-                        <div className="flex items-center gap-1.5">
-                          <MapPin className="size-4 text-red-400" />
-                          {unit.location || '—'}
-                        </div>
-                      }
-                    />
-                    <DataCell value={formatCurrency(unit.price)} mono />
-                    <DataCell
-                      value={
-                        <span
-                          className={`inline-block rounded-full px-2 py-1 text-[10px] font-bold ${
-                            unit.available
-                              ? 'bg-green-100 text-green-700'
-                              : 'bg-red-100 text-red-700'
-                          }`}
-                        >
-                          {unit.available ? 'AVAILABLE' : 'UNAVAILABLE'}
+                      {unit.propertyId ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">
+                          <Hash className="size-3" />
+                          {unit.propertyId}
                         </span>
-                      }
-                      nowrap
-                    />
+                      ) : null}
+                    </div>
+                  </div>
 
-                    <ActionCell>
-                      {unit.type === 'parking_slot' && (
-                        <button
-                          onClick={() => onManageSlots(unit.id)}
-                          className="flex h-7 w-7 items-center justify-center rounded-md text-orange-600 hover:bg-orange-50"
-                          title="Manage Slots"
-                        >
-                          <Settings2 className="size-4" />
-                        </button>
-                      )}
-
+                  <div className="flex shrink-0 gap-1">
+                    {unit.type === 'parking_slot' && (
                       <button
-                        onClick={() => onEdit(unit.id)}
-                        className="flex h-7 w-7 items-center justify-center rounded-md text-blue-600 hover:bg-blue-50"
-                        title="Edit"
+                        type="button"
+                        onClick={() => onManageSlots(unit.id)}
+                        className="rounded-full p-2.5 text-orange-600 transition active:bg-orange-50"
+                        title="Manage Slots"
                       >
-                        <Edit className="size-4" />
+                        <Settings2 className="size-5" />
                       </button>
+                    )}
 
-                      <button
-                        onClick={() => onDelete(unit.id)}
-                        className="flex h-7 w-7 items-center justify-center rounded-md text-red-600 hover:bg-red-50"
-                        title="Delete"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
-                    </ActionCell>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                    <button
+                      type="button"
+                      onClick={() => onEdit(unit.id)}
+                      className="rounded-full p-2.5 text-blue-600 transition active:bg-blue-50"
+                      title="Edit"
+                    >
+                      <Edit className="size-5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onDelete(unit.id)}
+                      className="rounded-full p-2.5 text-red-600 transition active:bg-red-50"
+                      title="Delete"
+                    >
+                      <Trash2 className="size-5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-3 text-sm text-gray-600">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="size-4 shrink-0 text-red-400" />
+                    <span className="truncate">{unit.location || '—'}</span>
+                  </div>
+
+                  {unit.type === 'function_hall' && unit.capacity ? (
+                    <div className="flex items-center gap-2">
+                      <Users className="size-4 shrink-0 text-gray-400" />
+                      <span>Capacity: {unit.capacity}</span>
+                    </div>
+                  ) : null}
+
+                  {unit.type === 'parking_slot' ? (
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
+                      <span className="inline-flex items-center gap-1">
+                        <Car className="size-3.5" />
+                        {slotStats.total} slot(s)
+                      </span>
+                      <span className="inline-flex items-center gap-1 text-green-600">
+                        <CheckCircle2 className="size-3.5" />
+                        {slotStats.active} active
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
+                  <span className="text-sm font-semibold text-gray-900">
+                    {formatCurrency(unit.price)}
+                  </span>
+
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                      unit.available
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-red-100 text-red-700'
+                    }`}
+                  >
+                    {unit.available ? 'AVAILABLE' : 'UNAVAILABLE'}
+                  </span>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
 
-      <div className="space-y-4 md:hidden">
-        {units.map((unit) => {
-          const slotStats = slotStatsByUnit.get(unit.id) ?? { total: 0, active: 0 };
-
-          return (
-            <div
-              key={unit.id}
-              className="overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <h3 className="truncate text-base font-bold text-gray-900">{unit.name}</h3>
-
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <UnitTypeDisplay type={unit.type} />
-
-                    {unit.propertyId ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">
-                        <Hash className="size-3" />
-                        {unit.propertyId}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="flex shrink-0 gap-1">
-                  {unit.type === 'parking_slot' && (
-                    <button
-                      onClick={() => onManageSlots(unit.id)}
-                      className="rounded-full p-2.5 text-orange-600 transition active:bg-orange-50"
-                    >
-                      <Settings2 className="size-5" />
-                    </button>
-                  )}
-
-                  <button
-                    onClick={() => onEdit(unit.id)}
-                    className="rounded-full p-2.5 text-blue-600 transition active:bg-blue-50"
-                  >
-                    <Edit className="size-5" />
-                  </button>
-
-                  <button
-                    onClick={() => onDelete(unit.id)}
-                    className="rounded-full p-2.5 text-red-600 transition active:bg-red-50"
-                  >
-                    <Trash2 className="size-5" />
-                  </button>
-                </div>
+      <div className="hidden lg:block">
+        {loading ? (
+          <EmptyState
+            icon={
+              <div className="flex items-center justify-center">
+                <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
               </div>
+            }
+            title="Loading properties..."
+            description="Fetching units, availability, and unit details."
+          />
+        ) : hasNoProperties ? (
+          <EmptyState
+            icon={<Building2 className="size-10 text-blue-500" />}
+            title="No properties yet"
+            description="Units will appear here once rental spaces, halls, or parking areas are added."
+          />
+        ) : hasNoSearchResults ? (
+          <div className="rounded-2xl border border-gray-200 bg-white px-6 py-20 shadow-sm">
+            <NoPropertyResults />
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+            <div className="overflow-x-auto">
+              <DataTable
+                headers={[
+                  <span className="block">Unit</span>,
+                  <span className="block">Public ID</span>,
+                  <span className="block">Type</span>,
+                  <span className="block">Location</span>,
+                  <span className="block">Price</span>,
+                  <span className="block">Status</span>,
+                  <span className="block">Actions</span>,
+                ]}
+              >
+                {units.map((unit) => {
+                  const slotStats = slotStatsByUnit.get(unit.id) ?? { total: 0, active: 0 };
 
-              <div className="mt-4 space-y-3 text-sm text-gray-600">
-                <div className="flex items-center gap-2">
-                  <MapPin className="size-4 shrink-0 text-red-400" />
-                  <span className="truncate">{unit.location || '—'}</span>
-                </div>
+                  return (
+                    <tr key={unit.id} className="transition-colors hover:bg-gray-50">
+                      <DataCell
+                        value={
+                          <div>
+                            <p className="font-semibold text-gray-900">{unit.name}</p>
 
-                {unit.type === 'function_hall' && unit.capacity ? (
-                  <div className="flex items-center gap-2">
-                    <Users className="size-4 shrink-0 text-gray-400" />
-                    <span>Capacity: {unit.capacity}</span>
-                  </div>
-                ) : null}
+                            {unit.type === 'function_hall' && unit.capacity && (
+                              <p className="mt-1 flex items-center gap-1 text-xs text-gray-500">
+                                <Users className="size-3.5" />
+                                Capacity: {unit.capacity}
+                              </p>
+                            )}
 
-                {unit.type === 'parking_slot' ? (
-                  <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
-                    <span className="inline-flex items-center gap-1">
-                      <Car className="size-3.5" />
-                      {slotStats.total} slot(s)
-                    </span>
-                    <span className="inline-flex items-center gap-1 text-green-600">
-                      <CheckCircle2 className="size-3.5" />
-                      {slotStats.active} active
-                    </span>
-                  </div>
-                ) : null}
-              </div>
+                            {unit.type === 'parking_slot' && (
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                                <span className="inline-flex items-center gap-1">
+                                  <Car className="size-3.5" />
+                                  {slotStats.total} slot(s)
+                                </span>
+                                <span className="inline-flex items-center gap-1 text-green-600">
+                                  <CheckCircle2 className="size-3.5" />
+                                  {slotStats.active} active
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        }
+                      />
 
-              <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
-                <span className="text-sm font-semibold text-gray-900">
-                  {formatCurrency(unit.price)}
-                </span>
+                      <DataCell value={unit.propertyId || '—'} mono />
+                      <DataCell value={<UnitTypeDisplay type={unit.type} />} nowrap />
+                      <DataCell
+                        value={
+                          <div className="flex items-center gap-1.5">
+                            <MapPin className="size-4 text-red-400" />
+                            {unit.location || '—'}
+                          </div>
+                        }
+                      />
+                      <DataCell value={formatCurrency(unit.price)} mono />
+                      <DataCell
+                        value={
+                          <span
+                            className={`inline-block rounded-full px-2 py-1 text-[10px] font-bold ${
+                              unit.available
+                                ? 'bg-green-100 text-green-700'
+                                : 'bg-red-100 text-red-700'
+                            }`}
+                          >
+                            {unit.available ? 'AVAILABLE' : 'UNAVAILABLE'}
+                          </span>
+                        }
+                        nowrap
+                      />
 
-                <span
-                  className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
-                    unit.available ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                  }`}
-                >
-                  {unit.available ? 'AVAILABLE' : 'UNAVAILABLE'}
-                </span>
-              </div>
+                      <ActionCell>
+                        {unit.type === 'parking_slot' && (
+                          <button
+                            type="button"
+                            onClick={() => onManageSlots(unit.id)}
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-orange-600 hover:bg-orange-50"
+                            title="Manage Slots"
+                          >
+                            <Settings2 className="size-4" />
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => onEdit(unit.id)}
+                          className="flex h-7 w-7 items-center justify-center rounded-md text-blue-600 hover:bg-blue-50"
+                          title="Edit"
+                        >
+                          <Edit className="size-4" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => onDelete(unit.id)}
+                          className="flex h-7 w-7 items-center justify-center rounded-md text-red-600 hover:bg-red-50"
+                          title="Delete"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </ActionCell>
+                    </tr>
+                  );
+                })}
+              </DataTable>
             </div>
-          );
-        })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2337,6 +2417,7 @@ export default function AdminUnitManagement() {
 
   const [unitToDelete, setUnitToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  
 
   const [showSlotManager, setShowSlotManager] = useState(false);
   const [selectedParkingUnitId, setSelectedParkingUnitId] = useState<string | null>(null);
@@ -2875,12 +2956,15 @@ const closeMobileFilters = useCallback(() => {
   </div>
 ) : (
   <UnitsList
-    units={filteredUnits}
-    slotStatsByUnit={slotStatsByUnit}
-    onEdit={handleEdit}
-    onDelete={handleDelete}
-    onManageSlots={openSlotManager}
-  />
+  units={filteredUnits}
+  slotStatsByUnit={slotStatsByUnit}
+  onEdit={handleEdit}
+  onDelete={handleDelete}
+  onManageSlots={openSlotManager}
+  loading={loadingUnits}
+  hasNoProperties={!loadingUnits && units.length === 0}
+  hasNoSearchResults={!loadingUnits && units.length > 0 && filteredUnits.length === 0}
+/>
 )
           )}
         </div>

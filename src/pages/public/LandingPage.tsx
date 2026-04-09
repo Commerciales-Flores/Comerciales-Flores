@@ -105,45 +105,102 @@ export default function LandingPage() {
     };
   }, [units]);
 
-  const reviewSummaryByUnitId = useMemo(() => {
-    const temp = new Map<string, { total: number; count: number }>();
-
-    for (const review of reviews) {
-      if (!review.unit_id) continue;
-
-      if (!temp.has(review.unit_id)) {
-        temp.set(review.unit_id, { total: 0, count: 0 });
-      }
-
-      const entry = temp.get(review.unit_id)!;
-      entry.total += review.rating || 0;
-      entry.count += 1;
+ const reviewSummaryByUnitId = useMemo(() => {
+  const temp = new Map<
+    string,
+    {
+      total: number;
+      count: number;
+      latestComment: string;
+      latestTimestamp: number;
     }
+  >();
 
-    const result = new Map<string, { avg: number; count: number }>();
+  for (const review of reviews) {
+    if (!review.unit_id) continue;
 
-    for (const [unitId, entry] of temp.entries()) {
-      result.set(unitId, {
-        avg: entry.count > 0 ? entry.total / entry.count : 0,
-        count: entry.count,
+    if (!temp.has(review.unit_id)) {
+      temp.set(review.unit_id, {
+        total: 0,
+        count: 0,
+        latestComment: "",
+        latestTimestamp: 0,
       });
     }
 
-    return result;
-  }, [reviews]);
+    const entry = temp.get(review.unit_id)!;
+    entry.total += review.rating || 0;
+    entry.count += 1;
 
-  const featuredSlides = useMemo(() => {
-    return featuredProperties.map((unit, index) => {
+    const comment =
+      typeof review.comment === "string" ? review.comment.trim() : "";
+
+    const ts = new Date(
+      review.created_at ?? review.updated_at ?? 0
+    ).getTime();
+
+    if (comment && ts >= entry.latestTimestamp) {
+      entry.latestComment = comment;
+      entry.latestTimestamp = ts;
+    }
+  }
+
+  const result = new Map<
+    string,
+    {
+      avg: number;
+      count: number;
+      latestComment: string;
+      latestTimestamp: number;
+    }
+  >();
+
+  for (const [unitId, entry] of temp.entries()) {
+    result.set(unitId, {
+      avg: entry.count ? entry.total / entry.count : 0,
+      count: entry.count,
+      latestComment: entry.latestComment,
+      latestTimestamp: entry.latestTimestamp,
+    });
+  }
+
+  return result;
+}, [reviews]);
+
+const featuredSlides = useMemo(() => {
+  return featuredProperties
+    .map((unit) => {
       const summary = reviewSummaryByUnitId.get(unit.id);
 
       return {
         unit,
-        index,
         averageRating: summary?.avg ?? 0,
         reviewCount: summary?.count ?? 0,
+        latestComment: summary?.latestComment ?? "",
+        latestTimestamp: summary?.latestTimestamp ?? 0,
       };
+    })
+    .sort((a, b) => {
+      // prioritize ones with comments
+      const aHas = !!a.latestComment;
+      const bHas = !!b.latestComment;
+
+      if (aHas !== bHas) return aHas ? -1 : 1;
+
+      // newest comment first
+      if (b.latestTimestamp !== a.latestTimestamp) {
+        return b.latestTimestamp - a.latestTimestamp;
+      }
+
+      // more reviews next
+      if (b.reviewCount !== a.reviewCount) {
+        return b.reviewCount - a.reviewCount;
+      }
+
+      // higher rating next
+      return b.averageRating - a.averageRating;
     });
-  }, [featuredProperties, reviewSummaryByUnitId]);
+}, [featuredProperties, reviewSummaryByUnitId]);
 
   const activeFeaturedUnit = featuredProperties[currentSlide] ?? null;
 
@@ -705,8 +762,8 @@ export default function LandingPage() {
                   animate={{ x: `-${currentSlide * 100}%` }}
                   transition={{ type: "spring", stiffness: 50, damping: 15 }}
                 >
-                  {featuredSlides.map(({ unit, index, averageRating, reviewCount }) => {
-                    const isActiveSlide = currentSlide === index;
+                  {featuredSlides.map(({ unit, averageRating, reviewCount, latestComment }, index) => {
+                    const isActiveSlide = index === currentSlide; 
 
                     return (
                       <div
@@ -792,8 +849,18 @@ export default function LandingPage() {
                                 )}
                               </div>
 
-                              <p className="mb-6 line-clamp-3 text-sm leading-relaxed text-slate-600 md:mb-8 md:line-clamp-4 md:text-lg">
-                                {unit.description}
+                              <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-400 md:text-sm">
+                                {latestComment ? "Latest Review" : "Description"}
+                              </p>
+
+                              <p
+                                className={`mb-6 line-clamp-3 text-sm leading-relaxed md:mb-8 md:line-clamp-4 md:text-lg ${
+                                  latestComment
+                                    ? "italic text-slate-500"
+                                    : "text-slate-600"
+                                }`}
+                              >
+                                {latestComment || unit.description}
                               </p>
 
                               <div className="mt-auto flex items-center justify-between border-t border-slate-200 pt-4 md:pt-6">

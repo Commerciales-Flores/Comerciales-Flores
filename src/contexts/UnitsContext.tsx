@@ -458,20 +458,24 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
         parkingSlotsRes,
         activeParkingRes,
       ] = await Promise.all([
-        supabase.from('units').select(`
-          unit_id,
-          public_id,
-          unit_type,
-          title,
-          is_available,
-          price,
-          location,
-          images,
-          videos,
-          minimum_payment_percent,
-          contract_file_path,
-          contract_file_name
-        `),
+        supabase
+          .from('units')
+          .select(`
+            unit_id,
+            public_id,
+            unit_type,
+            title,
+            is_available,
+            price,
+            location,
+            images,
+            videos,
+            minimum_payment_percent,
+            contract_file_path,
+            contract_file_name,
+            is_deleted
+          `)
+          .eq('is_deleted', false),
         supabase.from('rental_units').select('unit_id, title, description, policies, features'),
         supabase.from('function_units').select(
           'unit_id, title, description, policies, features, capacity'
@@ -1232,99 +1236,51 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
   );
 
   const deleteUnit = useCallback(
-    async (id: string): Promise<void> => {
-      try {
-        const existingUnit = units.find((unit) => unit.id === id);
-        if (!existingUnit) return;
+  async (id: string): Promise<void> => {
+    try {
+      const existingUnit = units.find((unit) => unit.id === id);
+      if (!existingUnit) return;
 
-        const contractPathToDelete = existingUnit.contractFilePath ?? null;
-        const imagePathsToDelete = existingUnit.imagePaths ?? [];
-        const videoPathsToDelete = existingUnit.videoPaths ?? [];
+      const { error } = await supabase.rpc('soft_delete_unit', {
+        p_unit_id: id,
+      });
 
-        const slotImagesToDelete = parkingSlots
-          .filter((slot) => slot.unitId === id)
-          .map((slot) => slot.imagePath)
-          .filter((path): path is string => Boolean(path));
-
-        if (existingUnit.type === 'parking_slot') {
-          const { error: slotDeleteError } = await supabase
-            .from('parking_slots')
-            .delete()
-            .eq('unit_id', id);
-
-          if (slotDeleteError) throw slotDeleteError;
-        }
-
-        const tableName = getUnitConfig(existingUnit.type).table;
-
-        const { error: specificError } = await supabase.from(tableName).delete().eq('unit_id', id);
-        if (specificError) throw specificError;
-
-        const { error: baseError } = await supabase.from('units').delete().eq('unit_id', id);
-        if (baseError) throw baseError;
-
-        if (imagePathsToDelete.length > 0) {
-          try {
-            await removeStorageFiles(PROPERTY_MEDIA_BUCKET, imagePathsToDelete);
-          } catch (storageError) {
-            console.error('Failed to remove unit images during unit deletion:', storageError);
-          }
-        }
-
-        if (videoPathsToDelete.length > 0) {
-          try {
-            await removeStorageFiles(PROPERTY_MEDIA_BUCKET, videoPathsToDelete);
-          } catch (storageError) {
-            console.error('Failed to remove unit videos during unit deletion:', storageError);
-          }
-        }
-
-        if (slotImagesToDelete.length > 0) {
-          try {
-            await removeStorageFiles(PROPERTY_MEDIA_BUCKET, slotImagesToDelete);
-          } catch (storageError) {
-            console.error(
-              'Failed to remove parking slot images during unit deletion:',
-              storageError
-            );
-          }
-        }
-
-        if (contractPathToDelete) {
-          try {
-            await removeStorageFile(UNIT_CONTRACTS_BUCKET, contractPathToDelete);
-          } catch (storageError) {
-            console.error('Failed to remove contract file during unit deletion:', storageError);
-          }
-        }
-
-        setUnits((prev) => prev.filter((unit) => unit.id !== id));
-        setParkingSlots((prev) => prev.filter((slot) => slot.unitId !== id));
-
-        if (user?.id) {
-          try {
-            await addAuditLog({
-              userId: user.id,
-              action: 'DELETE',
-              targetTable: 'units',
-              targetId: id,
-              targetPublicId: existingUnit.propertyId,
-              beforeValue: existingUnit,
-              afterValue: undefined,
-              changedFields: Object.keys(existingUnit),
-              notes: `Deleted unit ${existingUnit.name}`,
-            });
-          } catch (auditError) {
-            console.error('Failed to audit unit deletion:', auditError);
-          }
-        }
-      } catch (error) {
-        console.error('Error deleting unit:', error);
+      if (error) {
         throw error;
       }
-    },
-    [addAuditLog, parkingSlots, units, user?.id]
-  );
+
+      setUnits((prev) => prev.filter((unit) => unit.id !== id));
+      setParkingSlots((prev) => prev.filter((slot) => slot.unitId !== id));
+
+      if (user?.id) {
+        try {
+          await addAuditLog({
+            userId: user.id,
+            action: 'DELETE',
+            targetTable: 'units',
+            targetId: id,
+            targetPublicId: existingUnit.propertyId,
+            beforeValue: existingUnit,
+            afterValue: {
+              ...existingUnit,
+              is_deleted: true,
+              deleted_at: new Date().toISOString(),
+              available: false,
+            },
+            changedFields: ['is_deleted', 'deleted_at', 'available'],
+            notes: `Soft deleted unit ${existingUnit.name}`,
+          });
+        } catch (auditError) {
+          console.error('Failed to audit unit deletion:', auditError);
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting unit:', error);
+      throw error;
+    }
+  },
+  [addAuditLog, units, user?.id]
+);
 
   const getUnitById = useCallback(
     (id: string) => units.find((unit) => unit.id === id),

@@ -481,6 +481,8 @@ const senderType: SupportSenderType =
   return newTicket;
 }, []);
 
+
+
   const sendTicketMessage = useCallback(
   async (
     ticketId: string,
@@ -491,6 +493,20 @@ const senderType: SupportSenderType =
 
     if (!cleanedBody) {
       throw new Error('Message body is required.');
+    }
+
+    if (input.senderType === 'customer' && input.senderUserId) {
+      const { data: userRow, error: userError } = await supabase
+        .from('users')
+        .select('is_messaging_blocked')
+        .eq('user_id', input.senderUserId)
+        .maybeSingle();
+
+      if (userError) throw userError;
+
+      if (userRow?.is_messaging_blocked) {
+        throw new Error('Your messaging access has been disabled. Please contact support through other available channels.');
+      }
     }
 
     const normalizedSenderName = input.senderName

@@ -318,7 +318,6 @@ type TicketDetailProps = {
   isUpdatingStatus: boolean;
   onReplyChange: (value: string) => void;
   onSendReply: () => void;
-  onResolve: () => void;
   onReopen: () => void;
   onBack: () => void;
   onClose: () => void;
@@ -333,7 +332,6 @@ const TicketDetail = React.memo(function TicketDetail({
   isUpdatingStatus,
   onReplyChange,
   onSendReply,
-  onResolve,
   onReopen,
   onBack,
   onClose,
@@ -459,7 +457,7 @@ const TicketDetail = React.memo(function TicketDetail({
             <div>
               <p className="text-xs font-semibold">Support replied</p>
               <p className="text-xs sm:text-sm text-blue-700">
-                You can reply back here or mark this ticket as resolved.
+                You can reply back here if the issue is still present.
               </p>
             </div>
           </div>
@@ -491,16 +489,6 @@ const TicketDetail = React.memo(function TicketDetail({
             />
 
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
-              <button
-                type="button"
-                onClick={onResolve}
-                disabled={isUpdatingStatus}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-bold min-h-[44px] text-green-700 transition-all hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <CheckCircle className="size-4" />
-                {isUpdatingStatus ? 'Updating...' : 'Mark as Resolved'}
-              </button>
-
               <button
                 type="button"
                 onClick={onSendReply}
@@ -649,7 +637,6 @@ export default function ClientMessages() {
   fetchMessagesByTicketId,
   createTicket,
   sendTicketMessage,
-  markTicketResolved,
   reopenTicket,
   markTicketRead,
 } = useInquiries();
@@ -910,25 +897,6 @@ const handleFilterSelectFromSheet = useCallback((status: TicketFilterStatus) => 
   user,
 ]);
 
-  const handleResolve = useCallback(async () => {
-    if (!selectedTicket || isUpdatingStatus) return;
-
-    setIsUpdatingStatus(true);
-
-    try {
-      await markTicketResolved(selectedTicket.id);
-
-      if (user?.id) {
-        sendSystemNotification(
-          user.id,
-          'Ticket Resolved',
-          `You marked "${selectedTicket.subject}" as resolved.`
-        );
-      }
-    } finally {
-      setIsUpdatingStatus(false);
-    }
-  }, [isUpdatingStatus, markTicketResolved, selectedTicket, sendSystemNotification, user]);
 
   const handleReopen = useCallback(async () => {
     if (!selectedTicket || isUpdatingStatus) return;
@@ -1085,7 +1053,6 @@ const handleFilterSelectFromSheet = useCallback((status: TicketFilterStatus) => 
           isUpdatingStatus={isUpdatingStatus}
           onReplyChange={(value) => handleReplyChange(selectedTicket.id, value)}
           onSendReply={handleSendReply}
-          onResolve={handleResolve}
           onReopen={handleReopen}
           onBack={deselectTicket}
           onClose={deselectTicket}
@@ -1106,7 +1073,6 @@ const handleFilterSelectFromSheet = useCallback((status: TicketFilterStatus) => 
         isUpdatingStatus={isUpdatingStatus}
         onReplyChange={(value) => handleReplyChange(selectedTicket.id, value)}
         onSendReply={handleSendReply}
-        onResolve={handleResolve}
         onReopen={handleReopen}
         onBack={deselectTicket}
         onClose={deselectTicket}

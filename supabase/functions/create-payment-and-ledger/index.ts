@@ -11,6 +11,7 @@ type PaymentMethod =
   | null;
 
 type PaymentStatus = 'paid' | 'partial' | 'unpaid';
+type PaymentReviewStatus = 'pending' | 'approved' | 'rejected';
 type PaymentCycle = 'monthly' | 'quarterly' | 'full' | null;
 type PaymentCategory = 'payment' | 'advance_deposit' | 'security_deposit';
 
@@ -282,28 +283,30 @@ serve(async (req) => {
     const body = await req.json();
 
     const {
-  effectiveReservationId: bodyReservationId,
-  amount,
-  method,
-  status,
-  proofOfPayment = null,
-  notes = null,
-  paymentMethodId = null,
-  paymentMethodSnapshot = null,
-  category = 'payment',
-  paymentId = null,
-}: {
-  effectiveReservationId: string | null;
-  amount: number;
-  method: PaymentMethod;
-  status: PaymentStatus;
-  proofOfPayment?: string | null;
-  notes?: string | null;
-  paymentMethodId?: string | null;
-  paymentMethodSnapshot?: Record<string, unknown> | null;
-  category?: PaymentCategory;
-  paymentId?: string | null;
-} = body;
+      effectiveReservationId: bodyReservationId,
+      amount,
+      method,
+      status,
+      reviewStatus = 'pending', 
+      proofOfPayment = null,
+      notes = null,
+      paymentMethodId = null,
+      paymentMethodSnapshot = null,
+      category = 'payment',
+      paymentId = null,
+    }: {
+      effectiveReservationId: string | null;
+      amount: number;
+      method: PaymentMethod;
+      status: PaymentStatus;
+      reviewStatus?: PaymentReviewStatus;
+      proofOfPayment?: string | null;
+      notes?: string | null;
+      paymentMethodId?: string | null;
+      paymentMethodSnapshot?: Record<string, unknown> | null;
+      category?: PaymentCategory;
+      paymentId?: string | null;
+    } = body;
 
 let effectiveReservationId = bodyReservationId;
 
@@ -396,6 +399,7 @@ let effectiveReservationId = bodyReservationId;
             amount: submittedAmount,
             method,
             status,
+            review_status: reviewStatus,
             proofOfPayment,
             date: paymentDate,
             notes,
@@ -405,7 +409,7 @@ let effectiveReservationId = bodyReservationId;
           },
         ])
         .select(
-          'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category',
+          'payment_id, public_id, reservation_id, user_id, amount, method, status, review_status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category',
         )
         .single();
 
@@ -415,7 +419,7 @@ let effectiveReservationId = bodyReservationId;
       const { data: existingPayment, error: paymentFetchError } = await admin
         .from('payments')
         .select(
-          'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category',
+          'payment_id, public_id, reservation_id, user_id, amount, method, status, review_status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category',
         )
         .eq('payment_id', paymentId)
         .maybeSingle();
@@ -425,7 +429,7 @@ let effectiveReservationId = bodyReservationId;
       }
 
       const isApprovingNow =
-        existingPayment.status !== 'paid' && status === 'paid';
+        existingPayment.review_status !== 'approved' && reviewStatus === 'approved';
 
       let sanitizedAmount = submittedAmount;
 
@@ -464,6 +468,7 @@ let effectiveReservationId = bodyReservationId;
           amount: sanitizedAmount,
           method,
           status,
+          review_status: reviewStatus,
           proofOfPayment,
           notes,
           payment_method_id: paymentMethodId,
@@ -473,7 +478,7 @@ let effectiveReservationId = bodyReservationId;
         })
         .eq('payment_id', paymentId)
         .select(
-          'payment_id, public_id, reservation_id, user_id, amount, method, status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category',
+          'payment_id, public_id, reservation_id, user_id, amount, method, status, review_status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category',
         )
         .single();
 
@@ -481,7 +486,7 @@ let effectiveReservationId = bodyReservationId;
       finalPaymentRow = updated;
     }
 
-    if (finalPaymentRow.status === 'paid') {
+    if (finalPaymentRow.review_status === 'approved') {
       const { data: existingLedger, error: existingLedgerError } = await admin
         .from('ledger')
         .select('ledger_id')
@@ -553,10 +558,12 @@ let effectiveReservationId = bodyReservationId;
     }
 
     const auditAction = paymentId
-      ? status === 'paid'
-        ? 'PAYMENT_APPROVED'
-        : 'PAYMENT_UPDATED'
-      : 'PAYMENT_CREATED';
+    ? reviewStatus === 'approved'
+      ? 'PAYMENT_APPROVED'
+      : reviewStatus === 'rejected'
+      ? 'PAYMENT_REJECTED'
+      : 'PAYMENT_UPDATED'
+    : 'PAYMENT_CREATED';
 
     await admin.from('audit_log').insert([
       {

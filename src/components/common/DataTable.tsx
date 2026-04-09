@@ -10,7 +10,7 @@ export function DataTable({ headers, children, className = '' }: DataTableProps)
   return (
     <div className={`rounded-2xl border border-gray-200 bg-white shadow-sm ${className}`}>
       <div className="overflow-x-auto">
-        <table className="min-w-full table-auto">
+        <table className="w-full table-fixed">
           <thead className="bg-gray-50">
             <tr>
               {headers.map((header, index) => (

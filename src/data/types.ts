@@ -8,6 +8,7 @@ export type ReservationStatus =
   | 'overdue'
   | 'rejected';
 
+export type PaymentReviewStatus = 'pending' | 'approved' | 'rejected';
 export type PaymentStatus = 'unpaid' | 'partial' | 'paid';
 export type PaymentMethod =
   | 'cash'
@@ -149,6 +150,7 @@ export interface Payment {
   notes?: string;
   createdAt?: string;
   updatedAt?: string;
+  reviewStatus?: PaymentReviewStatus;
 
   paymentMethodId?: string | null;
 paymentMethodSnapshot?: Record<string, any> | null;
@@ -217,6 +219,8 @@ export interface User {
   addressConfirmed: boolean;
   addressConfirmedAt?: string | null;
   createdAt?: string;
+
+  isMessagingBlocked?: boolean;
 
   hasActiveOccupancy?: boolean;
   activeUnitName?: string | null;

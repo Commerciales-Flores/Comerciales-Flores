@@ -11,6 +11,7 @@ import supabase from '../../supabaseClient';
 import AppNotice from '../../components/common/AppNotice';
 import { AnimatePresence, motion } from 'framer-motion';
 import { normalizeLowercaseText } from "../../utils/DataNormalization";
+import { finalizeAmountInput, normalizeAmountInput } from '../../utils/priceNormalization';
 import {
   CreditCard,
   CheckCircle2,
@@ -347,7 +348,7 @@ function PaymentFilterBottomSheet({
 export default function ClientPayments() {
   const { user } = useAuth();
   const { getReservationsByUserId } = useReservations();
-  const { getPaymentsByUserId, addPayment, uploadPaymentProof } = usePayments();
+  const { getPaymentsByUserId, addPayment, uploadPaymentProof, hasPendingPayment } = usePayments();
   const { ledgers } = useRecords();
   const { sendSystemNotification } = useNotifications();
 
@@ -376,6 +377,7 @@ const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentForm, setPaymentForm] = useState(buildInitialPaymentForm());
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const { activePaymentMethods, getPaymentMethodByCode } = usePaymentMethods();
 
@@ -652,6 +654,7 @@ const paginatedPayments = useMemo(() => {
     setPaymentForm(buildInitialPaymentForm(defaultPaymentMethod));
     setPaymentSuccess(false);
     setIsSubmitting(false);
+    setFormErrors({});
     clearProofPreview();
   }, [clearProofPreview, defaultPaymentMethod]);
 
@@ -690,12 +693,35 @@ const paginatedPayments = useMemo(() => {
     clearProofPreview();
   }, [clearProofPreview, defaultPaymentMethod]);
 
+  const handleFieldBlur = useCallback((field: string, value: string) => {
+    const trimmedValue = typeof value === 'string' ? value.trim() : String(value);
+
+    if (!trimmedValue) {
+      let errorMessage = '';
+      switch (field) {
+        case 'amount':
+          errorMessage = 'Payment amount is required.';
+          break;
+        default:
+          return;
+      }
+
+      if (errorMessage) {
+        setFormErrors((prev) => ({
+          ...prev,
+          [field]: errorMessage,
+        }));
+      }
+    }
+  }, []);
+
   const handleMakePayment = useCallback(
     (reservationId: string) => {
       setSelectedReservation(reservationId);
       setPaymentForm(buildInitialPaymentForm(defaultPaymentMethod));
       setPaymentSuccess(false);
       setIsSubmitting(false);
+      setFormErrors({});
       clearProofPreview();
       setShowPaymentModal(true);
     },
@@ -768,6 +794,7 @@ const rentalRequiredPayment = useMemo(() => {
     const balance = getReservationRemainingFromLedger(reservation);
 
     if (Number.isNaN(amount) || amount <= 0 || amount > balance) {
+      setFormErrors({ amount: 'Please enter a valid payment amount.' });
       setNotice({
         message: 'Please enter a valid payment amount.',
         variant: 'warning',
@@ -864,6 +891,7 @@ const rentalRequiredPayment = useMemo(() => {
     sendSystemNotification,
     resetPaymentModalState,
     getReservationRemainingFromLedger,
+    rentalRequiredPayment,
   ]
 );
 
@@ -1160,6 +1188,7 @@ const handleFilterSelectFromSheet = useCallback((status: PaymentFilterStatus) =>
 
             <div className="grid gap-4 p-5 sm:p-6 xl:grid-cols-2">
               {eligibleReservations.map((reservation) => {
+                const hasPending = hasPendingPayment(reservation.id, 'payment');
                 const paid = getReservationPaidFromLedger(reservation.id);
                 const balance = Math.max(0, Number(reservation.totalAmount || 0) - paid);
                 const progress = getReservationProgress(
@@ -1192,20 +1221,25 @@ const handleFilterSelectFromSheet = useCallback((status: PaymentFilterStatus) =>
                       </div>
 
                       <button
-  onClick={() => handleMakePayment(reservation.id)}
-  className={`
-    inline-flex shrink-0 items-center gap-1.5
-    rounded-lg sm:rounded-xl
-    bg-gradient-to-r from-emerald-600 to-green-500
-    px-2.5 py-1.5 sm:px-3 sm:py-2
-    min-h-[32px] sm:min-h-[36px]
-    text-xs sm:text-sm
-    text-white transition hover:opacity-95
-  `}
->
-  <Plus className="size-3.5 sm:size-4" />
-  Pay
-</button>
+                        onClick={() => !hasPending && handleMakePayment(reservation.id)}
+                        disabled={hasPending}
+                        className={`
+                          inline-flex shrink-0 items-center gap-1.5
+                          rounded-lg sm:rounded-xl
+                          px-2.5 py-1.5 sm:px-3 sm:py-2
+                          min-h-[32px] sm:min-h-[36px]
+                          text-xs sm:text-sm
+                          text-white transition
+                          ${
+                            hasPending
+                              ? 'bg-gray-300 cursor-not-allowed'
+                              : 'bg-gradient-to-r from-emerald-600 to-green-500 hover:opacity-95'
+                          }
+                        `}
+                      >
+                        <Plus className="size-3.5 sm:size-4" />
+                        {hasPending ? 'Pending' : 'Pay'}
+                      </button>
                     </div>
 
                     <div className="mt-5">
@@ -1787,27 +1821,47 @@ const handleFilterSelectFromSheet = useCallback((status: PaymentFilterStatus) =>
                       <div className="relative">
                         <Wallet className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="decimal"
                           required
-                          min="0.01"
-                          step="0.01"
-                          max={selectedReservationBalance}
                           value={paymentForm.amount}
                           onChange={(e) => {
-                            const value = e.target.value;
-
-                            // Limit to 10 digits + 2 decimals (e.g. 9999999999.99)
-                            if (!/^\d{0,10}(\.\d{0,2})?$/.test(value)) return;
-
                             setPaymentForm((prev) => ({
                               ...prev,
-                              amount: value,
+                              amount: normalizeAmountInput(e.target.value, {
+                                max: selectedReservationBalance,
+                                decimals: 2,
+                                allowEmpty: true,
+                              }),
                             }));
+                            setFormErrors((prev) => {
+                              if (!prev.amount) return prev;
+                              const next = { ...prev };
+                              delete next.amount;
+                              return next;
+                            });
                           }}
-                          className={`w-full rounded-2xl border border-slate-300 py-3 pl-10 pr-4 text-sm sm:text-base outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
-                          placeholder="0.00"
-                        />
+                          onBlur={(e) => {
+                            setPaymentForm((prev) => ({
+                              ...prev,
+                              amount: finalizeAmountInput(e.target.value, {
+                                min: 0.01,
+                                max: selectedReservationBalance,
+                                decimals: 2,
+                                allowEmpty: true,
+                              }),
+                            }));
+                            handleFieldBlur("amount", e.target.value);
+                          }}
+                            className={`w-full rounded-2xl border border-slate-300 py-3 pl-10 pr-4 text-sm sm:text-base outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
+                            placeholder="0.00"
+                          />
                       </div>
+                      {formErrors.amount && (
+                        <p className="mt-1 text-xs text-red-600">
+                          {formErrors.amount}
+                        </p>
+                      )}
 
                       {selectedReservationData?.unitType === 'rental_space' && (
                         <p className="mt-2 text-xs text-amber-600">

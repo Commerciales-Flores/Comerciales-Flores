@@ -569,7 +569,7 @@ const closeMobileFilters = useCallback(() => {
     <DataTable
       headers={[
         <span className="block w-[120px]">Log ID</span>,
-        <span className="block w-[120px]">Action</span>,
+        <span className="block w-[220px]">Action</span>,
         <span className="block w-[100px]">Module</span>,
         <span className="block w-[120px]">Target</span>,
         <span className="block w-[120px]">Performed By</span>,
@@ -608,13 +608,13 @@ const closeMobileFilters = useCallback(() => {
             }
           />
           <DataCell
-            value={
-              <div className="whitespace-normal break-words leading-snug text-gray-600">
-                {log.details}
-              </div>
-            }
-            className="align-top"
-          />
+  value={
+    <div className="max-w-[300px] whitespace-normal break-words leading-snug text-gray-600">
+      {log.details}
+    </div>
+  }
+  className="align-top"
+/>
         </tr>
       ))}
     </DataTable>

@@ -43,7 +43,6 @@ import {
 import EmptyState from '../../components/common/EmptyState';
 
 type DurationType = "hours" | "days" | "months" | "years";
-type PriceRange = "all" | "0-1000" | "1001-5000" | "5001-10000" | "10001+";
 type VisitMode = "online" | "onsite";
 type PaymentIntent = "pay_onsite" | "pay_later";
 type PaymentMethod = PaymentMethodCode;
@@ -136,14 +135,6 @@ interface ReservationForm {
   appointmentTime?: string;
   agreedToPolicies: boolean;
 }
-
-const PRICE_RANGE_OPTIONS: { value: PriceRange; label: string }[] = [
-  { value: "all", label: "All Prices" },
-  { value: "0-1000", label: "₱0 - ₱1,000" },
-  { value: "1001-5000", label: "₱1,001 - ₱5,000" },
-  { value: "5001-10000", label: "₱5,001 - ₱10,000" },
-  { value: "10001+", label: "₱10,001+" },
-];
 
 const FALLBACK_IMAGE =
   "https://placehold.co/1200x800/e5e7eb/6b7280?text=No+Image";
@@ -743,12 +734,184 @@ if (activeOtherReservation) {
   };
 }
 
+type PriceFilterModalProps = {
+  isOpen: boolean;
+  minPrice: number | null;
+  maxPrice: number | null;
+  onMinPriceChange: (value: number | null) => void;
+  onMaxPriceChange: (value: number | null) => void;
+  onApply: () => void;
+  onReset: () => void;
+  onClose: () => void;
+};
+
+function PriceFilterModal({
+  isOpen,
+  minPrice,
+  maxPrice,
+  onMinPriceChange,
+  onMaxPriceChange,
+  onApply,
+  onReset,
+  onClose,
+}: PriceFilterModalProps) {
+  if (!isOpen) return null;
+
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-40"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <motion.div
+        initial={{ opacity: 0, y: -10, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.15 }}
+        className="absolute left-1/2 top-full z-50 mt-2 w-80 -translate-x-1/2 rounded-2xl border border-slate-200 bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="space-y-4 p-5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-900">Set Range</h3>
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-slate-400 transition-colors hover:text-slate-600"
+              aria-label="Close filter"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+
+          {/* Price Range Slider */}
+{/* Price Range Slider */}
+<div className="space-y-3">
+  <label className="text-xs font-semibold uppercase tracking-widest text-slate-600">
+    Price Range (₱)
+  </label>
+
+ <div className="relative h-6">
+  {/* Background Track */}
+  <div className="absolute inset-0 top-1/2 -translate-y-1/2 h-1 w-full rounded-full bg-slate-200" />
+
+  {/* Active Range */}
+  <div
+    className="absolute top-1/2 -translate-y-1/2 h-1 rounded-full bg-blue-500"
+    style={{
+      left: `${((minPrice ?? 0) / 100000) * 100}%`,
+      width: `${(((maxPrice ?? 100000) - (minPrice ?? 0)) / 100000) * 100}%`,
+    }}
+  />
+
+  {/* Min Slider */}
+  <input
+    type="range"
+    min={0}
+    max={100000}
+    step={500}
+    value={minPrice ?? 0}
+    onChange={(e) =>
+      onMinPriceChange(Math.min(Number(e.target.value), maxPrice ?? 100000))
+    }
+    className="absolute inset-0 h-full w-full appearance-none bg-transparent pointer-events-none
+      [&::-webkit-slider-thumb]:pointer-events-auto
+      [&::-webkit-slider-thumb]:appearance-none
+      [&::-webkit-slider-thumb]:h-4
+      [&::-webkit-slider-thumb]:w-4
+      [&::-webkit-slider-thumb]:rounded-full
+      [&::-webkit-slider-thumb]:border-2
+      [&::-webkit-slider-thumb]:border-white
+      [&::-webkit-slider-thumb]:bg-blue-600
+      [&::-webkit-slider-thumb]:shadow
+      [&::-webkit-slider-thumb]:-mt-1.5
+      [&::-moz-range-thumb]:pointer-events-auto
+      [&::-moz-range-thumb]:h-4
+      [&::-moz-range-thumb]:w-4
+      [&::-moz-range-thumb]:rounded-full
+      [&::-moz-range-thumb]:border-2
+      [&::-moz-range-thumb]:border-white
+      [&::-moz-range-thumb]:bg-blue-600
+      [&::-moz-range-thumb]:shadow"
+  />
+
+  {/* Max Slider */}
+  <input
+    type="range"
+    min={0}
+    max={100000}
+    step={500}
+    value={maxPrice ?? 100000}
+    onChange={(e) =>
+      onMaxPriceChange(Math.max(Number(e.target.value), minPrice ?? 0))
+    }
+    className="absolute inset-0 h-full w-full appearance-none bg-transparent pointer-events-none
+      [&::-webkit-slider-thumb]:pointer-events-auto
+      [&::-webkit-slider-thumb]:appearance-none
+      [&::-webkit-slider-thumb]:h-4
+      [&::-webkit-slider-thumb]:w-4
+      [&::-webkit-slider-thumb]:rounded-full
+      [&::-webkit-slider-thumb]:border-2
+      [&::-webkit-slider-thumb]:border-white
+      [&::-webkit-slider-thumb]:bg-blue-600
+      [&::-webkit-slider-thumb]:shadow
+      [&::-webkit-slider-thumb]:-mt-1.5
+      [&::-moz-range-thumb]:pointer-events-auto
+      [&::-moz-range-thumb]:h-4
+      [&::-moz-range-thumb]:w-4
+      [&::-moz-range-thumb]:rounded-full
+      [&::-moz-range-thumb]:border-2
+      [&::-moz-range-thumb]:border-white
+      [&::-moz-range-thumb]:bg-blue-600
+      [&::-moz-range-thumb]:shadow"
+  />
+</div>
+
+  <div className="flex justify-between text-xs font-medium text-slate-600">
+    <span>{formatCurrency(minPrice ?? 0)}</span>
+    <span>{formatCurrency(maxPrice ?? 100000)}</span>
+  </div>
+</div>
+
+          {/* Price Display */}
+          {(minPrice !== null || maxPrice !== null) && (
+            <div className="rounded-lg bg-blue-50 p-3 text-xs text-blue-700">
+              Filter: {minPrice ? formatCurrency(minPrice) : '₱0'} - {maxPrice ? formatCurrency(maxPrice) : 'No limit'}
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onReset}
+              className="flex-1 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-50"
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={onApply}
+              className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-all hover:bg-blue-700"
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
 export default function ClientUnits() {
   const { user } = useAuth();
   const { addReservation, reservations } = useClientData();
   const { reviews } = useReviews();
   const { units, parkingSlots } = useUnits();
   const { sendSystemNotification } = useNotifications();
+
+  const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
 
   const [notice, setNotice] = useState<{
     message: string;
@@ -782,6 +945,13 @@ export default function ClientUnits() {
         sanitized = sanitizePlainText(value);
     }
 
+    setFormErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+
     setReservationForm((prev) => ({
       ...prev,
       [field]: sanitized,
@@ -790,11 +960,49 @@ export default function ClientUnits() {
   []
 );
 
+  const handleFieldBlur = useCallback((field: keyof ReservationForm, value: string) => {
+    const trimmedValue = typeof value === 'string' ? value.trim() : String(value);
+
+    if (!trimmedValue) {
+      let errorMessage = '';
+      switch (field) {
+        case 'vehicleType':
+          errorMessage = 'Vehicle type is required.';
+          break;
+        case 'plateNumber':
+          errorMessage = 'Plate number is required.';
+          break;
+        case 'eventPurpose':
+          errorMessage = 'Event purpose is required.';
+          break;
+        case 'attendees':
+          errorMessage = 'Number of attendees is required.';
+          break;
+        case 'businessType':
+          errorMessage = 'Business type is required.';
+          break;
+        default:
+          return;
+      }
+
+      if (errorMessage) {
+        setFormErrors((prev) => ({
+          ...prev,
+          [field]: errorMessage,
+        }));
+      }
+    }
+  }, []);
+
   const [isSlotPanelOpen, setIsSlotPanelOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<UnitType | "all">("all");
   const [filterLocation, setFilterLocation] = useState<string>("all");
-  const [priceRange, setPriceRange] = useState<PriceRange>("all");
+  const [minPriceFilter, setMinPriceFilter] = useState<number | null>(null);
+  const [maxPriceFilter, setMaxPriceFilter] = useState<number | null>(null);
+  const [showPriceFilterModal, setShowPriceFilterModal] = useState(false);
+  const [tempMinPrice, setTempMinPrice] = useState<number | null>(null);
+  const [tempMaxPrice, setTempMaxPrice] = useState<number | null>(null);
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [showReservationModal, setShowReservationModal] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -802,6 +1010,7 @@ export default function ClientUnits() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [reservationSuccess, setReservationSuccess] = useState(false);
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const [isSelectingRangeEnd, setIsSelectingRangeEnd] = useState(false);
 
@@ -819,6 +1028,7 @@ export default function ClientUnits() {
   );
 
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
+  const priceFilterButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const handleCardVideoEnter = useCallback((unitId: string) => {
   setHoveredCardId(unitId);
@@ -849,7 +1059,8 @@ useEffect(() => {
   });
 
   setHoveredCardId(null);
-}, [searchTerm, filterType, filterLocation, priceRange]);
+}, [searchTerm, filterType, filterLocation, minPriceFilter, maxPriceFilter]);
+
 
 useEffect(() => {
   if (showReservationModal) {
@@ -874,6 +1085,8 @@ useEffect(() => {
   useEffect(() => {
     setCurrentImageIndex(0);
   }, [selectedUnitId]);
+  
+
   
 
   
@@ -910,6 +1123,62 @@ useEffect(() => {
     return units.find((u) => u.id === selectedUnitId) ?? null;
   }, [selectedUnitId, units]);
 
+  const getReviewTimestamp = (review: any) =>
+  new Date(review.created_at ?? review.updated_at ?? 0).getTime();
+
+const getReviewerName = (review: any) => {
+  const fullName = [review.first_name, review.last_name].filter(Boolean).join(" ").trim();
+  return (
+    fullName ||
+    review.user_name ||
+    review.customer_name ||
+    review.name ||
+    "Anonymous User"
+  );
+};
+
+const getReviewerAvatar = (review: any) =>
+  review.profile_picture ||
+  review.avatar_url ||
+  review.profileImage ||
+  review.user_avatar ||
+  "";
+
+const getReviewerInitials = (name: string) =>
+  name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+
+const latestReviewByUnitId = useMemo(() => {
+  const map = new Map<string, any>();
+
+  for (const review of reviews) {
+    if (!review.unit_id) continue;
+
+    const existing = map.get(review.unit_id);
+    const currentTs = getReviewTimestamp(review);
+    const existingTs = existing ? getReviewTimestamp(existing) : 0;
+
+    if (!existing || currentTs >= existingTs) {
+      map.set(review.unit_id, review);
+    }
+  }
+
+  return map;
+}, [reviews]);
+
+const selectedUnitReviews = useMemo(() => {
+  if (!selectedUnitData) return [];
+
+  return reviews
+    .filter((review) => review.unit_id === selectedUnitData.id)
+    .sort((a, b) => getReviewTimestamp(b) - getReviewTimestamp(a))
+    .slice(0, 3);
+}, [reviews, selectedUnitData]);
+
   const selectedUnitBlockingReservations = useMemo(() => {
   if (!selectedUnitData) return [];
 
@@ -926,6 +1195,22 @@ useEffect(() => {
       status: r.status,
     }));
 }, [blockingReservations, selectedUnitData]);
+
+useEffect(() => {
+  setCurrentReviewIndex(0);
+}, [selectedUnitId]);
+
+useEffect(() => {
+  if (selectedUnitReviews.length <= 1 || !showReservationModal) return;
+
+  const timer = window.setInterval(() => {
+    setCurrentReviewIndex((prev) =>
+      prev === selectedUnitReviews.length - 1 ? 0 : prev + 1
+    );
+  }, 5000);
+
+  return () => window.clearInterval(timer);
+}, [selectedUnitReviews.length, showReservationModal]);
 
 
 
@@ -1178,25 +1463,27 @@ useEffect(() => {
       const matchesLocation =
         filterLocation === "all" || unit.location === filterLocation;
 
-      let matchesPrice = true;
-      switch (priceRange) {
-        case "0-1000":
-          matchesPrice = unit.price <= 1000;
-          break;
-        case "1001-5000":
-          matchesPrice = unit.price > 1000 && unit.price <= 5000;
-          break;
-        case "5001-10000":
-          matchesPrice = unit.price > 5000 && unit.price <= 10000;
-          break;
-        case "10001+":
-          matchesPrice = unit.price > 10000;
-          break;
-      }
+      const matchesPrice =
+        (minPriceFilter === null || unit.price >= minPriceFilter) &&
+        (maxPriceFilter === null || unit.price <= maxPriceFilter);
 
       return matchesSearch && matchesType && matchesLocation && matchesPrice;
     });
-  }, [units, searchTerm, filterType, filterLocation, priceRange]);
+  }, [units, searchTerm, filterType, filterLocation, minPriceFilter, maxPriceFilter]);
+
+  const filteredUnitCards = useMemo(() => {
+  return filteredUnits.map((unit) => {
+    const latestReview = latestReviewByUnitId.get(unit.id);
+    const latestReviewComment =
+      typeof latestReview?.comment === "string" ? latestReview.comment.trim() : "";
+
+    return {
+      unit,
+      latestReviewComment,
+      averageRating: latestReviewByUnitId.get(unit.id)?.rating ?? 0,
+    };
+  });
+}, [filteredUnits, latestReviewByUnitId]);
   
 
   const reservedSlotIds = useMemo(() => {
@@ -1487,6 +1774,29 @@ const getParkingSlotState = useCallback(
   [ownReservedSlotIds, reservedSlotIds]
 );
 
+const openPriceFilterModal = useCallback(() => {
+  setTempMinPrice(minPriceFilter);
+  setTempMaxPrice(maxPriceFilter);
+  setShowPriceFilterModal(true);
+}, [minPriceFilter, maxPriceFilter]);
+
+const closePriceFilterModal = useCallback(() => {
+  setShowPriceFilterModal(false);
+}, []);
+
+const applyPriceFilter = useCallback(() => {
+  setMinPriceFilter(tempMinPrice);
+  setMaxPriceFilter(tempMaxPrice);
+  setShowPriceFilterModal(false);
+}, [tempMinPrice, tempMaxPrice]);
+
+const resetPriceFilter = useCallback(() => {
+  setTempMinPrice(null);
+  setTempMaxPrice(null);
+  setMinPriceFilter(null);
+  setMaxPriceFilter(null);
+  setShowPriceFilterModal(false);
+}, []);
 
   const handleCloseReservationModal = useCallback(() => {
     setShowReservationModal(false);
@@ -1530,7 +1840,71 @@ const getParkingSlotState = useCallback(
 
   setIsTimeSelectOpen(false);
 }, []);
+const validateReservationForm = useCallback(() => {
+  const errors: Record<string, string> = {};
 
+  if (!selectedUnitData) return errors;
+
+  if (!reservationForm.agreedToPolicies) {
+    errors.agreedToPolicies = 'You must agree to the policies.';
+  }
+
+  if (requiresAppointment) {
+    if (!reservationForm.appointmentDate) {
+      errors.appointmentDate = 'Appointment date is required.';
+    }
+    if (!reservationForm.appointmentTime) {
+      errors.appointmentTime = 'Appointment time is required.';
+    }
+  }
+
+  if (selectedUnitData.type === 'rental_space') {
+    if (!reservationForm.startDate) {
+      errors.startDate = 'Start date is required.';
+    }
+    if (!reservationForm.endDate) {
+      errors.endDate = 'End date is required.';
+    }
+    if (!reservationForm.businessType.trim()) {
+      errors.businessType = 'Business type is required.';
+    }
+  }
+
+  if (selectedUnitData.type === 'function_hall') {
+    if (!reservationForm.startDate) {
+      errors.startDate = 'Start date is required.';
+    }
+    if (!reservationForm.endDate) {
+      errors.endDate = 'End date is required.';
+    }
+    if (!reservationForm.eventPurpose.trim()) {
+      errors.eventPurpose = 'Event purpose is required.';
+    }
+    if (!reservationForm.attendees.trim()) {
+      errors.attendees = 'Number of attendees is required.';
+    }
+  }
+
+  if (selectedUnitData.type === 'parking_slot') {
+    if (!reservationForm.slotId) {
+      errors.slotId = 'Please select a parking slot.';
+    }
+    if (!reservationForm.vehicleType.trim()) {
+      errors.vehicleType = 'Vehicle type is required.';
+    }
+    if (!reservationForm.plateNumber.trim()) {
+      errors.plateNumber = 'Plate number is required.';
+    }
+    if (!reservationForm.startDate) {
+      errors.startDate = 'Start date is required.';
+    }
+    if (!reservationForm.endDate) {
+      errors.endDate = 'End date is required.';
+    }
+  }
+
+  return errors;
+}, [reservationForm, requiresAppointment, selectedUnitData]);
 
   const handleReservationSubmit = useCallback(
   async (e: React.FormEvent) => {
@@ -1540,6 +1914,16 @@ const getParkingSlotState = useCallback(
     if (!selectedUnitData || !user) return;
 
     const isViewingOnly = reservationIntent === "viewing_only";
+    const errors = validateReservationForm();
+      setFormErrors(errors);
+
+      if (Object.keys(errors).length > 0) {
+        setNotice({
+          message: 'Please complete the required fields.',
+          variant: 'warning',
+        });
+        return;
+      }
 
     const blockingReservations = selectedUnitBlockingReservations;
 
@@ -2008,17 +2392,33 @@ const calendarLegend = (
                 <option value="parking_slot">Parking Slots</option>
               </select>
 
-              <select
-                value={priceRange}
-                onChange={(e) => setPriceRange(e.target.value as PriceRange)}
-                className="rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              <div className="relative">
+              <button
+                ref={priceFilterButtonRef}
+                type="button"
+                onClick={openPriceFilterModal}
+                className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-medium shadow-sm transition ${
+                  minPriceFilter !== null || maxPriceFilter !== null
+                    ? "border-blue-200 bg-blue-50 text-blue-700"
+                    : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                }`}
               >
-                {PRICE_RANGE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                {minPriceFilter !== null || maxPriceFilter !== null
+                  ? `₱${minPriceFilter || '0'} - ₱${maxPriceFilter || '∞'}`
+                  : 'All Prices'}
+              </button>
+
+              <PriceFilterModal
+                isOpen={showPriceFilterModal}
+                minPrice={tempMinPrice}
+                maxPrice={tempMaxPrice}
+                onMinPriceChange={setTempMinPrice}
+                onMaxPriceChange={setTempMaxPrice}
+                onApply={applyPriceFilter}
+                onReset={resetPriceFilter}
+                onClose={closePriceFilterModal}
+              />
+            </div>
 
               <select
                 value={filterLocation}
@@ -2037,9 +2437,9 @@ const calendarLegend = (
 
        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
   {filteredUnits.length > 0 ? (
-    filteredUnits.map((unit) => {
+    filteredUnitCards.map(({ unit, latestReviewComment }) => {
       const unitReviews = reviews.filter(
-        (r) => r.unit_id === (unit.id)
+        (r) => r.unit_id === unit.id
       );
 
       const averageRating =
@@ -2048,13 +2448,13 @@ const calendarLegend = (
             unitReviews.length
           : 0;
 
-            const availability = unitAvailabilityMap.get(unit.id) ?? {
-              status: "available",
-              badgeText: "Available",
-              badgeTone: "green" as const,
-              reserveDisabled: false,
-              reserveLabel: "Reserve Now",
-            };
+      const availability = unitAvailabilityMap.get(unit.id) ?? {
+        status: "available",
+        badgeText: "Available",
+        badgeTone: "green" as const,
+        reserveDisabled: false,
+        reserveLabel: "Reserve Now",
+      };
 
       return (
       <div
@@ -2108,11 +2508,19 @@ const calendarLegend = (
             </h3>
           </div>
 
-          <div className="mt-1 min-h-[40px]">
-            <p className="line-clamp-2 text-sm text-gray-600">
-              {unit.description?.trim() || "No description available"}
-            </p>
-          </div>
+          <div className="mt-2 min-h-[56px]">
+          <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
+            {latestReviewComment ? "Latest Review" : "Description"}
+          </p>
+
+          <p
+            className={`line-clamp-2 text-sm leading-relaxed ${
+              latestReviewComment ? "italic text-slate-500" : "text-slate-500"
+            }`}
+          >
+            {latestReviewComment || unit.description?.trim() || "No description available."}
+          </p>
+        </div>
 
           <div className="mt-2 space-y-1 min-h-[40px]">
             {unit.location ? (
@@ -2240,22 +2648,36 @@ const calendarLegend = (
                 </select>
               </div>
 
-              <div className="mb-4">
-                <label className="mb-1 block text-sm text-gray-600">
-                  Price Range
-                </label>
-                <select
-                  value={priceRange}
-                  onChange={(e) => setPriceRange(e.target.value as PriceRange)}
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                >
-                  {PRICE_RANGE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <div className="relative mb-4">
+              <label className="mb-1 block text-sm text-gray-600">
+                Price Range
+              </label>
+
+              <button
+                type="button"
+                onClick={openPriceFilterModal}
+                className={`w-full rounded-xl border px-3 py-2 text-left text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 ${
+                  minPriceFilter !== null || maxPriceFilter !== null
+                    ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                    : 'border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {minPriceFilter !== null || maxPriceFilter !== null
+                  ? `₱${minPriceFilter || '0'} - ₱${maxPriceFilter || '∞'}`
+                  : 'All Prices'}
+              </button>
+
+              <PriceFilterModal
+                isOpen={showPriceFilterModal}
+                minPrice={tempMinPrice}
+                maxPrice={tempMaxPrice}
+                onMinPriceChange={setTempMinPrice}
+                onMaxPriceChange={setTempMaxPrice}
+                onApply={applyPriceFilter}
+                onReset={resetPriceFilter}
+                onClose={closePriceFilterModal}
+              />
+            </div>
 
               <div className="mb-6">
                 <label className="mb-1 block text-sm text-gray-600">
@@ -2478,9 +2900,146 @@ const calendarLegend = (
                         </div>
                       )}
 
-                      <p className="mb-4 text-sm leading-relaxed text-gray-600">
-                        {selectedUnitData.description}
-                      </p>
+                      <div className="mb-4 space-y-4">
+  <p className="text-sm leading-relaxed text-gray-600">
+    {selectedUnitData.description}
+  </p>
+
+  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+  <div className="mb-3 flex items-center justify-between">
+    <div>
+      <h3 className="text-sm font-bold tracking-[0.14em] text-slate-900">
+        Recent Reviews
+      </h3>
+      <p className="mt-1 text-xs text-slate-500">
+        Feedback from recent users of this unit.
+      </p>
+    </div>
+
+    {selectedUnitReviews.length > 1 && (
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() =>
+            setCurrentReviewIndex((prev) =>
+              prev === 0 ? selectedUnitReviews.length - 1 : prev - 1
+            )
+          }
+          className="rounded-full border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-50"
+          aria-label="Previous review"
+        >
+          <ChevronLeft className="size-4" />
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            setCurrentReviewIndex((prev) =>
+              prev === selectedUnitReviews.length - 1 ? 0 : prev + 1
+            )
+          }
+          className="rounded-full border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-50"
+          aria-label="Next review"
+        >
+          <ChevronRight className="size-4" />
+        </button>
+      </div>
+    )}
+  </div>
+
+  {selectedUnitReviews.length > 0 ? (
+    <>
+      <div className="overflow-hidden rounded-2xl">
+        <motion.div
+          className="flex"
+          animate={{ x: `-${currentReviewIndex * 100}%` }}
+          transition={{ type: "spring", stiffness: 60, damping: 18 }}
+        >
+          {selectedUnitReviews.map((review) => {
+            const reviewerName = getReviewerName(review);
+            const reviewerAvatar = getReviewerAvatar(review);
+            const reviewerInitials = getReviewerInitials(reviewerName);
+            const hasComment =
+              typeof review.comment === "string" && review.comment.trim();
+
+            return (
+              <div
+                key={review.review_id ?? `${review.unit_id}-${getReviewTimestamp(review)}`}
+                className="w-full flex-shrink-0"
+              >
+                <div className="min-h-[180px] rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                  <div className="flex items-start gap-3">
+                    {reviewerAvatar ? (
+                      <img
+                        src={reviewerAvatar}
+                        alt={reviewerName}
+                        className="size-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex size-10 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">
+                        {reviewerInitials}
+                      </div>
+                    )}
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-900">
+                            {reviewerName}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {Number(review.rating ?? 0).toFixed(1)} / 5
+                          </p>
+                        </div>
+
+                        <div className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
+                          ★ {Number(review.rating ?? 0).toFixed(1)}
+                        </div>
+                      </div>
+
+                      {hasComment ? (
+                        <p className="mt-3 line-clamp-4 text-sm italic leading-relaxed text-slate-600">
+                          “{review.comment?.trim()}”
+                        </p>
+                      ) : (
+                        <p className="mt-3 text-sm text-slate-400">
+                          No written comment provided.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </motion.div>
+      </div>
+
+      {selectedUnitReviews.length > 1 && (
+        <div className="mt-3 flex justify-center gap-2">
+          {selectedUnitReviews.map((_, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => setCurrentReviewIndex(idx)}
+              className={`h-2 rounded-full transition-all ${
+                currentReviewIndex === idx ? "w-6 bg-blue-600" : "w-2 bg-slate-300"
+              }`}
+              aria-label={`Go to review ${idx + 1}`}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  ) : (
+    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center">
+      <p className="text-sm font-medium text-slate-500">
+        No reviews yet for this unit.
+      </p>
+    </div>
+  )}
+</div>
+</div>
 
                       <div className="mb-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
   <p className="mb-1 text-xs sm:text-sm text-gray-600">Price</p>
@@ -2556,6 +3115,11 @@ const calendarLegend = (
           }
           className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
         />
+        {formErrors.appointmentDate && (
+          <p className="mt-1 text-xs text-red-600">
+            {formErrors.appointmentDate}
+          </p>
+        )}
       </div>
 
       <div className="mt-4">
@@ -2649,6 +3213,11 @@ const calendarLegend = (
             }
             className="mt-1 size-4 text-blue-600 focus:ring-blue-500"
           />
+          {formErrors.paymentIntent && (
+            <p className="mt-1 text-xs text-red-600">
+              {formErrors.paymentIntent}
+            </p>
+          )}
           <div>
             <p className="text-sm font-medium text-gray-900">
               Book Viewing Only
@@ -2679,6 +3248,11 @@ const calendarLegend = (
             }
             className="mt-1 size-4 text-blue-600 focus:ring-blue-500"
           />
+          {formErrors.paymentIntent && (
+            <p className="mt-1 text-xs text-red-600">
+              {formErrors.paymentIntent}
+            </p>
+          )}
           <div>
             <p className="text-sm font-medium text-gray-900">
               Reserve with On-site Visit
@@ -2830,9 +3404,15 @@ const calendarLegend = (
                               maxLength={50}
                               value={reservationForm.vehicleType}
                               onChange={(e) => updateReservationField("vehicleType", e.target.value)}
+                              onBlur={(e) => handleFieldBlur("vehicleType", e.target.value)}
                               className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                               placeholder="e.g., Sedan, SUV, Motorcycle"
                             />
+                            {formErrors.vehicleType && (
+                              <p className="mt-1 text-xs text-red-600">
+                                {formErrors.vehicleType}
+                              </p>
+                            )}
                           </div>
 
                           <div>
@@ -2844,10 +3424,16 @@ const calendarLegend = (
                               required
                               maxLength={20}
                               value={reservationForm.plateNumber}
-                              onChange={(e) => updateReservationField("businessType", e.target.value)}
+                              onChange={(e) => updateReservationField("plateNumber", e.target.value)}
+                              onBlur={(e) => handleFieldBlur("plateNumber", e.target.value)}
                               className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base uppercase outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                               placeholder="ABC 1234"
                             />
+                            {formErrors.plateNumber && (
+                              <p className="mt-1 text-xs text-red-600">
+                                {formErrors.plateNumber}
+                              </p>
+                            )}
                           </div>
                         </>
                       )}
@@ -3074,9 +3660,16 @@ const calendarLegend = (
                               maxLength={150}
                               value={reservationForm.eventPurpose}
                               onChange={(e) => updateReservationField("eventPurpose", e.target.value)}
+                              onBlur={(e) => handleFieldBlur("eventPurpose", e.target.value)}
                               className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                               placeholder="e.g., Wedding, Conference, Birthday"
                             />
+                            {formErrors.eventPurpose && (
+                              <p className="mt-1 text-xs text-red-600">
+                                {formErrors.eventPurpose}
+                              </p>
+                            )}
+
                           </div>
 
                           <div>
@@ -3094,8 +3687,15 @@ const calendarLegend = (
                               step={1}
                               value={reservationForm.attendees}
                               onChange={(e) => updateReservationField("attendees", e.target.value)}
+                              onBlur={(e) => handleFieldBlur("attendees", e.target.value)}
                               className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                             />
+                            {formErrors.attendees && (
+                              <p className="mt-1 text-xs text-red-600">
+                                {formErrors.attendees}
+                              </p>
+                            )}
+
                           </div>
                         </>
                       )}
@@ -3200,6 +3800,11 @@ const calendarLegend = (
                             }}
                             className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                           />
+                          {formErrors.duration && (
+                            <p className="mt-1 text-xs text-red-600">
+                              {formErrors.duration}
+                            </p>
+                          )}
                           <p className="mt-2 text-xs text-gray-500">
                             Minimum 12 months (1 year), maximum {RESERVATION_LIMITS.rental_space.maxMonths} months.
                           </p>
@@ -3298,15 +3903,16 @@ const calendarLegend = (
                               required
                               maxLength={100}
                               value={reservationForm.businessType}
-                              onChange={(e) =>
-                                setReservationForm((prev) => ({
-                                  ...prev,
-                                  businessType: sanitizePlainText(e.target.value),
-                                }))
-                              }
+                              onChange={(e) => updateReservationField("businessType", e.target.value)}
+                              onBlur={(e) => handleFieldBlur("businessType", e.target.value)}
                               className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                               placeholder="e.g., Retail, Office, Restaurant"
                             />
+                            {formErrors.businessType && (
+                              <p className="mt-1 text-xs text-red-600">
+                                {formErrors.businessType}
+                              </p>
+                            )}
                           </div>
                         </>
                       )}
@@ -3400,7 +4006,11 @@ const calendarLegend = (
                         </span>
                       </label>
                       </div>
-                
+                          {formErrors.agreedToPolicies && (
+                            <p className="mt-1 text-xs text-red-600">
+                              {formErrors.agreedToPolicies}
+                            </p>
+                          )}
 
                       <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
                         <p className="mb-1 text-sm text-gray-600">
@@ -3546,6 +4156,7 @@ const calendarLegend = (
             </div>
           </div>
         )}
+
       </div>
     </div>
   );

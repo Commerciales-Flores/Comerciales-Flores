@@ -25,41 +25,40 @@ const variantStyles: Record<
   }
 > = {
   error: {
-    icon: <AlertCircle className="size-4 text-red-700" />,
+    icon: <AlertCircle className="size-4 text-rose-100" />,
     title: 'Error',
-    iconWrapper: 'bg-red-200/80',
-    container: 'border-red-300 bg-red-100',
-    titleClass: 'text-red-900',
-    messageClass: 'text-red-800',
-    closeButtonClass: 'text-red-500 hover:bg-red-200/70 hover:text-red-700',
+    iconWrapper: 'bg-white/20',
+    container: 'border-rose-500 bg-rose-600 text-white',
+    titleClass: 'text-white',
+    messageClass: 'text-white/90',
+    closeButtonClass: 'text-white/70 hover:bg-white/20 hover:text-white',
   },
   warning: {
-    icon: <TriangleAlert className="size-4 text-amber-700" />,
+    icon: <TriangleAlert className="size-4 text-orange-200" />,
     title: 'Warning',
-    iconWrapper: 'bg-amber-200/80',
-    container: 'border-amber-300 bg-amber-100',
-    titleClass: 'text-amber-900',
-    messageClass: 'text-amber-800',
-    closeButtonClass: 'text-amber-500 hover:bg-amber-200/70 hover:text-amber-700',
+    iconWrapper: 'bg-white/20',
+    container: 'border-orange-600 bg-orange-700 text-white',
+    titleClass: 'text-white',
+    messageClass: 'text-white/90',
+    closeButtonClass: 'text-white/70 hover:bg-white/20 hover:text-white',
   },
   success: {
-    icon: <CheckCircle2 className="size-4 text-emerald-700" />,
+    icon: <CheckCircle2 className="size-4 text-emerald-100" />,
     title: 'Success',
-    iconWrapper: 'bg-emerald-200/80',
-    container: 'border-emerald-300 bg-emerald-100',
-    titleClass: 'text-emerald-900',
-    messageClass: 'text-emerald-800',
-    closeButtonClass:
-      'text-emerald-500 hover:bg-emerald-200/70 hover:text-emerald-700',
+    iconWrapper: 'bg-white/20',
+    container: 'border-emerald-500 bg-emerald-600 text-white',
+    titleClass: 'text-white',
+    messageClass: 'text-white/90',
+    closeButtonClass: 'text-white/70 hover:bg-white/20 hover:text-white',
   },
   info: {
-    icon: <Info className="size-4 text-blue-700" />,
+    icon: <Info className="size-4 text-blue-100" />,
     title: 'Notice',
-    iconWrapper: 'bg-blue-200/80',
-    container: 'border-blue-300 bg-blue-100',
-    titleClass: 'text-blue-900',
-    messageClass: 'text-blue-800',
-    closeButtonClass: 'text-blue-500 hover:bg-blue-200/70 hover:text-blue-700',
+    iconWrapper: 'bg-white/20',
+    container: 'border-blue-500 bg-blue-600 text-white',
+    titleClass: 'text-white',
+    messageClass: 'text-white/90',
+    closeButtonClass: 'text-white/70 hover:bg-white/20 hover:text-white',
   },
 };
 
@@ -71,7 +70,6 @@ export default function AppNotice({
   autoHideMs,
 }: AppNoticeProps) {
   const [isVisible, setIsVisible] = useState(false);
-
   const style = variantStyles[variant];
 
   useEffect(() => {
@@ -102,10 +100,10 @@ export default function AppNotice({
 
   return (
     <div
-      className={`fixed right-4 top-4 z-50 w-[calc(100%-2rem)] max-w-sm transform rounded-2xl border px-4 py-3 text-sm shadow-lg transition-all duration-200 ${style.container} ${
+      className={`fixed right-4 top-4 z-[200] w-[calc(100%-2rem)] max-w-sm transform rounded-2xl border px-4 py-3 text-sm shadow-[0_20px_40px_rgba(0,0,0,0.2)] transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] ${style.container} ${
         isVisible
-          ? 'translate-y-0 opacity-100'
-          : '-translate-y-2 opacity-0 pointer-events-none'
+          ? 'translate-x-0 opacity-100'
+          : 'translate-x-8 opacity-0 pointer-events-none'
       } ${className}`}
       role="alert"
       aria-live="polite"
@@ -118,7 +116,9 @@ export default function AppNotice({
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className={`text-sm font-semibold ${style.titleClass}`}>{style.title}</p>
+          <p className={`text-sm font-bold tracking-tight ${style.titleClass}`}>
+            {style.title}
+          </p>
           <p className={`mt-1 leading-relaxed ${style.messageClass}`}>{message}</p>
         </div>
 

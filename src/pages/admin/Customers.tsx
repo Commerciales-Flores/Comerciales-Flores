@@ -6,7 +6,7 @@ import supabase from '../../supabaseClient';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { DataTable, DataCell, ActionCell } from '../../components/common/DataTable';
 import TableBadge from '../../components/common/TableBadge';
-import { formatDateTime, formatDate } from '../../utils/date';
+import { formatDateTime, formatDate, formatTime } from '../../utils/date';
 import AddressPicker from '../../components/common/AddressPicker';
 import PasswordStrengthIndicator from '../../components/common/PasswordStrengthIndicator';
 import FormField from '../../components/common/FormField';
@@ -44,6 +44,7 @@ import {
   CalendarDays,
   Wallet,
   Download,
+  User,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import EmptyState from '../../components/common/EmptyState';
@@ -270,6 +271,8 @@ export default function AdminCustomers() {
   const { user } = useAuth();
   const { sendDeletionStatusNotification } = useNotifications();
 
+  const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
+
   const [rows, setRows] = useState<CustomerRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
@@ -288,8 +291,6 @@ const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
 const [confirmDeactivateId, setConfirmDeactivateId] = useState<string | null>(null);
-const [showPassword, setShowPassword] = useState(false);
-const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 const [newCustomer, setNewCustomer] = useState<NewCustomerForm>(INITIAL_CUSTOMER_FORM);
 const [newCustomerErrors, setNewCustomerErrors] = useState<Partial<Record<string, string>>>({});
 const [pageInput, setPageInput] = useState('1');
@@ -354,10 +355,18 @@ const hasNoSearchResults =
   const canSubmitNewCustomer = useMemo(() => {
     return (
       newCustomer.first_name.trim() !== '' &&
+      newCustomer.last_name.trim() !== '' &&
       newCustomer.email.trim() !== '' &&
-      newCustomer.password.trim() !== ''
+      newCustomer.password.trim() !== '' &&
+      newCustomer.confirmPassword.trim() !== ''
     );
-  }, [newCustomer.first_name, newCustomer.email, newCustomer.password]);
+  }, [
+    newCustomer.first_name,
+    newCustomer.last_name,
+    newCustomer.email,
+    newCustomer.password,
+    newCustomer.confirmPassword,
+  ]);
 
   const handlePageJump = useCallback(() => {
     const parsed = parseInt(pageInput, 10);
@@ -406,10 +415,11 @@ const hasNoSearchResults =
     setConfirmDeactivateId(null);
   }, []);
 
-  const closeAddModal = useCallback(() => {
-    setShowAddModal(false);
-    setShowPassword(false);
-  }, []);
+ const closeAddModal = useCallback(() => {
+  setShowAddModal(false);
+  setNewCustomer(INITIAL_CUSTOMER_FORM);
+  setNewCustomerErrors({});
+}, []);;
 
   const updateNewCustomerField = useCallback(
   (field: keyof NewCustomerForm, value: string | number | boolean | null | undefined) => {
@@ -417,19 +427,56 @@ const hasNoSearchResults =
       ...prev,
       [field]: value as NewCustomerForm[keyof NewCustomerForm],
     }));
+
+    setNewCustomerErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
   },
   []
 );
 
-  const handleAddCustomer = useCallback(async () => {
-    if (!canSubmitNewCustomer) return;
+const validateNewCustomer = useCallback(() => {
+  const errors: Partial<Record<string, string>> = {};
 
-    setShowAddModal(false);
-    setNewCustomer(INITIAL_CUSTOMER_FORM);
-    setShowPassword(false);
-  }, [canSubmitNewCustomer]);
+  if (!newCustomer.first_name.trim()) {
+    errors.first_name = 'First name is required.';
+  }
 
-  const reloadUsers = useCallback(async () => {
+  if (!newCustomer.last_name.trim()) {
+    errors.last_name = 'Last name is required.';
+  }
+
+  if (!newCustomer.email.trim()) {
+    errors.email = 'Email address is required.';
+  }
+
+  if (!newCustomer.password.trim()) {
+    errors.password = 'Password is required.';
+  } else if (!isPasswordPolicyValid(newCustomer.password)) {
+    errors.password = 'Password does not meet the required policy.';
+  }
+
+  if (!newCustomer.confirmPassword.trim()) {
+    errors.confirmPassword = 'Please confirm the password.';
+  } else if (newCustomer.password !== newCustomer.confirmPassword) {
+    errors.confirmPassword = 'Passwords do not match.';
+  }
+
+  if (
+    newCustomer.address.trim() &&
+    (!newCustomer.latitude.trim() || !newCustomer.longitude.trim())
+  ) {
+    errors.address = 'Please confirm the selected address on the map.';
+  }
+
+  setNewCustomerErrors(errors);
+  return Object.keys(errors).length === 0;
+}, [newCustomer, isPasswordPolicyValid]);
+
+const reloadUsers = useCallback(async () => {
   const result = await fetchUsersPage({
     page,
     pageSize,
@@ -451,6 +498,80 @@ const hasNoSearchResults =
   deletionFilter,
   businessFilter,
 ]);
+
+  const handleAddCustomer = useCallback(async () => {
+  if (isCreatingCustomer) return;
+  if (!canSubmitNewCustomer) return;
+
+  const isValid = validateNewCustomer();
+  if (!isValid) return;
+
+  try {
+    setIsCreatingCustomer(true);
+
+    const payload = {
+      firstName: normalizeName(newCustomer.first_name),
+      lastName: normalizeName(newCustomer.last_name),
+      email: normalizeEmail(newCustomer.email),
+      password: newCustomer.password,
+      contactNumber: normalizePHPhone(newCustomer.contactNumber),
+      address: newCustomer.address.trim(),
+      latitude: newCustomer.latitude.trim() ? Number(newCustomer.latitude) : null,
+      longitude: newCustomer.longitude.trim() ? Number(newCustomer.longitude) : null,
+      isActive: Boolean(newCustomer.is_active),
+    };
+
+    const { data, error } = await supabase.functions.invoke('create-admin-user', {
+      body: payload,
+    });
+
+    if (error) {
+      throw new Error(error.message || 'Failed to create customer.');
+    }
+
+    if (!data?.success) {
+      throw new Error(data?.error || 'Failed to create customer.');
+    }
+
+    clearUsersCache();
+    await reloadUsers();
+
+    setShowAddModal(false);
+    setNewCustomer(INITIAL_CUSTOMER_FORM);
+    setNewCustomerErrors({});
+
+    setRestrictionModal({
+      title: 'Customer Created',
+      message: 'The customer account has been created successfully.',
+    });
+  } catch (error) {
+    console.error('Failed to create customer:', error);
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'An unexpected error occurred while creating the customer account.';
+
+    setNewCustomerErrors((prev) => ({
+      ...prev,
+      form: message,
+    }));
+  } finally {
+    setIsCreatingCustomer(false);
+  }
+}, [
+  isCreatingCustomer,
+  canSubmitNewCustomer,
+  validateNewCustomer,
+  newCustomer,
+  normalizeName,
+  normalizeEmail,
+  normalizePHPhone,
+  clearUsersCache,
+  reloadUsers,
+]);
+
+
 
   const toggleStatus = useCallback(
   async (id: string, status: boolean) => {
@@ -1015,14 +1136,14 @@ const hasNoSearchResults =
   ) : (
     <DataTable
       headers={[
-        'Customer',
-        'User ID',
-        'Email',
-        'Contact',
-        'Last Login',
-        'Business',
-        'Account',
-        'Actions',
+        <span className="block">Customer</span>,
+        <span className="block">User ID</span>,
+        <span className="block">Email</span>,
+        <span className="block">Contact</span>,
+        <span className="block">Last Login</span>,
+        <span className="block">Business</span>,
+        <span className="block">Account</span>,
+        <span className="block">Actions</span>,
       ]}
     >
       {filteredRows.map((c) => (
@@ -1040,7 +1161,18 @@ const hasNoSearchResults =
           <DataCell value={c.publicId ?? c.id} mono />
           <DataCell value={c.email} />
           <DataCell value={c.contactNumber} />
-          <DataCell value={formatLastLogin(c.lastLogin)} />
+          <DataCell
+            value={
+              c.lastLogin ? (
+                <div className="leading-tight">
+                  <div className="font-medium text-gray-900">{formatDate(c.lastLogin)}</div>
+                  <div className="mt-1 text-xs text-gray-400">{formatTime(c.lastLogin)}</div>
+                </div>
+              ) : (
+                <div className="text-xs text-gray-500">—</div>
+              )
+            }
+          />
 
           <DataCell
             value={
@@ -1143,10 +1275,13 @@ const hasNoSearchResults =
                 </button>
               </>
             ) : c.deletionStatus === 'approved' ? (
-              <span className="inline-flex h-8 items-center rounded-md px-2 text-[11px] font-bold text-emerald-700">
-                Awaiting user deletion
-              </span>
-            ) : c.is_active ? (
+                <span
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-emerald-700"
+                  title="Awaiting user deletion"
+                >
+                  <Check size={16} />
+                </span>
+              ) : c.is_active ? (
               <button
                 onClick={() => requestDeactivate(c)}
                 className="flex h-8 w-8 items-center justify-center rounded-md text-red-500 hover:bg-red-50"
@@ -1580,20 +1715,23 @@ const hasNoSearchResults =
     <div className="flex min-h-full items-center justify-center">
       <div className="w-full sm:max-w-4xl h-[92vh] sm:h-auto sm:max-h-[92vh] rounded-t-[2rem] sm:rounded-[2rem] border border-gray-200 bg-gray-50 shadow-[0_20px_60px_rgba(15,23,42,0.18)] flex flex-col overflow-hidden">
         <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-5 sm:px-8">
-          <div className="flex items-start gap-3">
-            <div className="rounded-2xl bg-blue-600 p-3 text-white">
-              <Building2 className="size-5" />
-            </div>
-
-            <div>
-              <h2 className="text-lg font-bold tracking-tight text-gray-900 sm:text-xl">
-                Add Customer
-              </h2>
-              <p className="mt-1 text-sm text-gray-500">
-                Create a customer account from the admin panel.
-              </p>
-            </div>
-          </div>
+          <div className="flex items-center gap-3">
+                      <div className="rounded-2xl bg-blue-600 p-3 text-white">
+                        <Building2 className="size-5" />
+                      </div>
+          
+                      <div>
+                        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-500">
+                          Administrator Tools
+                        </p>
+                        <h2 className="text-lg font-bold tracking-tight text-gray-900 sm:text-xl">
+                          Add Customer
+                        </h2>
+                        <p className="mt-1 text-sm text-gray-500">
+                          Create a customer account from the admin panel.
+                        </p>
+                      </div>
+                    </div>
 
           <button
             type="button"
@@ -1604,8 +1742,8 @@ const hasNoSearchResults =
           </button>
         </div>
 
-<div className="flex-1 overflow-y-auto">
-        <AdminUserForm  
+        <div className="flex-1 overflow-y-auto">
+        <AdminUserForm
           newCustomer={newCustomer}
           newCustomerErrors={newCustomerErrors}
           canSubmitNewCustomer={canSubmitNewCustomer}
@@ -1622,6 +1760,8 @@ const hasNoSearchResults =
           AddressPicker={AddressPicker}
           PasswordStrengthIndicator={PasswordStrengthIndicator}
           submitLabel="Create Customer"
+          submittingLabel="Creating..."
+          isSubmitting={isCreatingCustomer}
         />
         </div>
       </div>

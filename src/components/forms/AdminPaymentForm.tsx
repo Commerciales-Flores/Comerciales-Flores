@@ -3,6 +3,7 @@ import { useAdminData } from '../../contexts/AdminDataContext';
 import { usePayments } from '../../contexts/PaymentsContext';
 import type { PaymentMethod } from '../../data/types';
 import { formatCurrency } from '../../utils/currency';
+import { finalizeAmountInput, normalizeAmountInput } from '../../utils/priceNormalization';
 import AppNotice from '../common/AppNotice';
 import {
   Paperclip,
@@ -98,6 +99,7 @@ export default function AdminPaymentForm({
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofPreviewUrl, setProofPreviewUrl] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const showReferenceFields =
     formState.method === 'bank_transfer' ||
@@ -141,6 +143,34 @@ export default function AdminPaymentForm({
     setProofPreviewUrl(null);
   };
 
+  const handleFieldBlur = (field: string, value: string) => {
+    const trimmedValue = typeof value === 'string' ? value.trim() : String(value);
+
+    if (!trimmedValue && (field === 'amount' || field === 'bank' || field === 'referenceNumber')) {
+      let errorMessage = '';
+      switch (field) {
+        case 'amount':
+          errorMessage = 'Payment amount is required.';
+          break;
+        case 'bank':
+          errorMessage = 'Bank/Provider is required for this payment method.';
+          break;
+        case 'referenceNumber':
+          errorMessage = 'Reference number is required for this payment method.';
+          break;
+        default:
+          return;
+      }
+
+      if (errorMessage) {
+        setFormErrors((prev) => ({
+          ...prev,
+          [field]: errorMessage,
+        }));
+      }
+    }
+  };
+
   useEffect(() => {
     return () => {
       if (proofPreviewUrl) URL.revokeObjectURL(proofPreviewUrl);
@@ -150,7 +180,18 @@ export default function AdminPaymentForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!reservation || isInvalidAmount || balance <= 0 || isSubmitting) return;
+    if (!reservation || isInvalidAmount || balance <= 0 || isSubmitting) {
+      if (!formState.amount) {
+        setFormErrors({ amount: 'Payment amount is required.' });
+      }
+      if (showReferenceFields && !formState.bank.trim()) {
+        setFormErrors((prev) => ({ ...prev, bank: 'Bank/Provider is required for this payment method.' }));
+      }
+      if (showReferenceFields && !formState.referenceNumber.trim()) {
+        setFormErrors((prev) => ({ ...prev, referenceNumber: 'Reference number is required for this payment method.' }));
+      }
+      return;
+    }
 
     if (
       reservation.unitType === 'rental_space' &&
@@ -291,20 +332,48 @@ export default function AdminPaymentForm({
                   ₱
                 </span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="decimal"
                   required
                   value={formState.amount}
-                  onChange={(e) =>
-                    setFormState({ ...formState, amount: e.target.value })
-                  }
-                  max={balance}
-                  min={effectiveMinimum}
-                  step="0.01"
+                  onChange={(e) => {
+                    setFormState({
+                      ...formState,
+                      amount: normalizeAmountInput(e.target.value, {
+                        max: balance,
+                        decimals: 2,
+                        allowEmpty: true,
+                      }),
+                    });
+                    setFormErrors((prev) => {
+                      if (!prev.amount) return prev;
+                      const next = { ...prev };
+                      delete next.amount;
+                      return next;
+                    });
+                  }}
+                  onBlur={(e) => {
+                    setFormState({
+                      ...formState,
+                      amount: finalizeAmountInput(e.target.value, {
+                        min: effectiveMinimum || 0,
+                        max: balance,
+                        decimals: 2,
+                        allowEmpty: true,
+                      }),
+                    });
+                    handleFieldBlur("amount", e.target.value);
+                  }}
                   placeholder="0.00"
                   disabled={isSubmitting}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-8 pr-4 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
                 />
               </div>
+              {formErrors.amount && (
+                <p className="ml-1 text-[11px] text-rose-500">
+                  {formErrors.amount}
+                </p>
+              )}
               <p
                 className={`ml-1 text-[11px] ${
                   isInvalidAmount && formState.amount
@@ -381,14 +450,26 @@ export default function AdminPaymentForm({
                     type="text"
                     maxLength={100}
                     value={formState.bank}
-                    onChange={(e) =>
-                      setFormState({ ...formState, bank: e.target.value })
-                    }
+                    onChange={(e) => {
+                      setFormState({ ...formState, bank: e.target.value });
+                      setFormErrors((prev) => {
+                        if (!prev.bank) return prev;
+                        const next = { ...prev };
+                        delete next.bank;
+                        return next;
+                      });
+                    }}
+                    onBlur={(e) => handleFieldBlur("bank", e.target.value)}
                     placeholder="e.g. BDO, GCash, Maya"
                     disabled={isSubmitting}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
                   />
                 </div>
+                {formErrors.bank && (
+                  <p className="ml-1 text-[11px] text-rose-500">
+                    {formErrors.bank}
+                  </p>
+                )}
               </div>
             )}
 
@@ -403,17 +484,29 @@ export default function AdminPaymentForm({
                     type="text"
                     maxLength={100}
                     value={formState.referenceNumber}
-                    onChange={(e) =>
+                    onChange={(e) => {
                       setFormState({
                         ...formState,
                         referenceNumber: e.target.value,
-                      })
-                    }
+                      });
+                      setFormErrors((prev) => {
+                        if (!prev.referenceNumber) return prev;
+                        const next = { ...prev };
+                        delete next.referenceNumber;
+                        return next;
+                      });
+                    }}
+                    onBlur={(e) => handleFieldBlur("referenceNumber", e.target.value)}
                     placeholder="Optional reference or transaction no."
                     disabled={isSubmitting}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
                   />
                 </div>
+                {formErrors.referenceNumber && (
+                  <p className="ml-1 text-[11px] text-rose-500">
+                    {formErrors.referenceNumber}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -489,9 +582,15 @@ export default function AdminPaymentForm({
               <textarea
                 maxLength={500}
                 value={formState.notes}
-                onChange={(e) =>
-                  setFormState({ ...formState, notes: e.target.value })
-                }
+                onChange={(e) => {
+                  setFormState({ ...formState, notes: e.target.value });
+                  setFormErrors((prev) => {
+                    if (!prev.notes) return prev;
+                    const next = { ...prev };
+                    delete next.notes;
+                    return next;
+                  });
+                }}
                 rows={4}
                 placeholder="e.g. Manual payment recorded by admin"
                 disabled={isSubmitting}

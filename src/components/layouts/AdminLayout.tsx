@@ -59,7 +59,8 @@ export default function AdminLayout() {
 const pendingPaymentsCount = useMemo(() => {
   return payments.filter(
     (payment: any) =>
-      payment?.status === "unpaid" || payment?.status === "partial"
+      payment?.reviewStatus === "pending" &&
+      payment?.category === "payment"
   ).length;
 }, [payments]);
 

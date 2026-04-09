@@ -8,6 +8,7 @@ import { usePayments } from '../../contexts/PaymentsContext';
 import { useRecords } from '../../contexts/RecordsContext';
 import AppNotice from '../../components/common/AppNotice';
 import { formatDate } from '../../utils/date';
+import { normalizeAmountInput, finalizeAmountInput } from '../../utils/priceNormalization';
 import {
   CreditCard,
   CheckCircle,
@@ -16,7 +17,6 @@ import {
   Search,
   Eye,
   Plus,
-  SlidersHorizontal,
   ReceiptText,
   CalendarDays,
   Settings2,
@@ -38,6 +38,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import EmptyState from '../../components/common/EmptyState';
 import supabase from '../../supabaseClient';
 import type { Payment } from '../../data/types';
+
+import AdminFilterBar, {
+  FILTER_SELECT_CLASS,
+} from '../../components/common/AdminFilterBar';
 
 type PaymentFilterStatus = 'all' | 'paid' | 'unpaid' | 'partial';
 
@@ -80,12 +84,6 @@ function getReservationPaymentStatus(progress: number): 'paid' | 'partial' | 'un
   return 'unpaid';
 }
 
-function getStatusLabel(status: PaymentFilterStatus | PaymentView['status']) {
-  if (status === 'paid') return 'Verified';
-  if (status === 'partial') return 'Partial';
-  if (status === 'unpaid') return 'Pending';
-  return 'All';
-}
 
 function getPaymentCategoryLabel(category?: Payment['category']) {
   if (category === 'advance_deposit') return 'Advance Deposit';
@@ -343,21 +341,6 @@ export default function AdminPayments() {
     });
   }, [payments, reservations, getUserById, ledgerTotalsByReservationId, refundedAmountByPaymentId]);
 
-  const paymentCounts = useMemo(() => {
-    return paymentViews.reduce(
-      (acc, payment) => {
-        acc.all += 1;
-        acc[payment.status] += 1;
-        return acc;
-      },
-      {
-        all: 0,
-        paid: 0,
-        unpaid: 0,
-        partial: 0,
-      }
-    );
-  }, [paymentViews]);
 
   const selectedPaymentData = useMemo(() => {
     return selectedPayment
@@ -596,8 +579,6 @@ const shouldShowFilters =
     URL.revokeObjectURL(objectUrl);
   }, [paymentViews, page]);
 
-  const filterOptions: PaymentFilterStatus[] = ['all', 'paid', 'partial', 'unpaid'];
-
   return (
     <div className="min-h-screen bg-white">
       <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
@@ -637,145 +618,88 @@ const shouldShowFilters =
         </div>
 
         {shouldShowFilters && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    maxLength={100}
-                    placeholder="Search by payment ID, reservation ID, user ID, customer, or category..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full rounded-xl border border-gray-300 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                  />
-                </div>
+  <AdminFilterBar
+    searchTerm={searchTerm}
+    onSearchChange={setSearchTerm}
+    placeholder="Search by payment ID, reservation ID, user ID, customer, or category..."
+    showMobileFilters={showMobileFilters}
+    onToggleMobileFilters={() => setShowMobileFilters((prev) => !prev)}
+    actions={
+      <div className="hidden lg:flex lg:items-center lg:gap-2">
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value as PaymentFilterStatus)}
+          className={FILTER_SELECT_CLASS}
+        >
+          <option value="all">All Status</option>
+          <option value="paid">Verified</option>
+          <option value="partial">Partial</option>
+          <option value="unpaid">Pending</option>
+        </select>
 
-                <div className="flex gap-2 lg:hidden">
-                  <button
-                    onClick={() => setShowMobileFilters(true)}
-                    className={`relative rounded-2xl border p-3 transition ${
-                      showMobileFilters
-                        ? 'border-blue-300 bg-blue-50 text-blue-700'
-                        : 'border-gray-200 bg-white text-gray-600 shadow-sm'
-                    }`}
-                  >
-                    <SlidersHorizontal className="size-5" />
-                    {filterStatus !== 'all' && (
-                      <span className="absolute right-2 top-2 size-2.5 rounded-full border-2 border-white bg-blue-600" />
-                    )}
-                  </button>
-
-                  <button
-                    onClick={handleExportCSV}
-                    className="rounded-xl bg-gray-800 p-2.5 text-white transition hover:bg-gray-900"
-                  >
-                    <FileDown className="size-5" />
-                  </button>
-                </div>
-              </div>
-
-              {!hasNoSearchResults && (
-                <div className="hidden items-center justify-between gap-4 border-t border-gray-100 pt-4 lg:flex">
-                  <div className="flex flex-wrap gap-2">
-                    {filterOptions.map((status) => (
-                      <button
-                        key={status}
-                        onClick={() => setFilterStatus(status)}
-                        className={`rounded-xl px-4 py-2 text-sm font-medium transition-all ${
-                          filterStatus === status
-                            ? 'bg-blue-600 text-white shadow-sm'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        {getStatusLabel(status)}
-                        {status !== 'all' && (
-                          <span className="ml-2 rounded-full bg-black/10 px-2 py-0.5 text-xs">
-                            {paymentCounts[status]}
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-
-                  <button
-                    onClick={handleExportCSV}
-                    className="flex items-center gap-2 rounded-xl bg-gray-800 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-gray-900"
-                  >
-                    <FileDown className="size-4" />
-                    Export CSV
-                  </button>
-                </div>
-              )}
-
-              <AnimatePresence>
-  {showMobileFilters && (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[60] flex items-end justify-center lg:hidden"
-    >
-      <button
-        className="absolute inset-0 bg-gray-900/40"
-        onClick={() => setShowMobileFilters(false)}
-        aria-label="Close payment filters"
-      />
-
-      <motion.div
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '100%' }}
-        transition={{ duration: 0.28, ease: 'easeOut' }}
-        className="relative w-full rounded-t-3xl bg-white p-6 shadow-xl"
-      >
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-bold text-gray-900">Filter by Status</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Filter payments by current payment status.
-            </p>
-          </div>
-
+        {hasActiveFilters && (
           <button
-            onClick={() => setShowMobileFilters(false)}
-            className="rounded-full bg-gray-100 p-2"
+            type="button"
+            onClick={() => {
+              setSearchTerm('');
+              setFilterStatus('all');
+              setShowMobileFilters(false);
+            }}
+            className="inline-flex rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
           >
-            <X className="size-5" />
+            Clear
           </button>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3">
-          {filterOptions.map((status) => (
-            <button
-              key={status}
-              onClick={() => {
-                setFilterStatus(status);
-                setShowMobileFilters(false);
-              }}
-              className={`w-full rounded-2xl border-2 px-6 py-4 text-left font-semibold transition-all ${
-                filterStatus === status
-                  ? 'border-blue-600 bg-blue-50 text-blue-700'
-                  : 'border-gray-100 bg-gray-50 text-gray-600'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <span>{getStatusLabel(status)}</span>
-                <span className="text-sm opacity-80">
-                  ({paymentCounts[status]})
-                </span>
-              </div>
-            </button>
-          ))}
-        </div>
-      </motion.div>
-    </motion.div>
-  )}
-</AnimatePresence>
-            </div>
-          </div>
         )}
+
+        <button
+          type="button"
+          onClick={handleExportCSV}
+          className="inline-flex items-center gap-2 rounded-xl bg-gray-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-gray-900"
+        >
+          <FileDown className="size-4" />
+          Export
+        </button>
+      </div>
+    }
+    filters={
+      <div className="grid grid-cols-1 gap-2 lg:hidden">
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value as PaymentFilterStatus)}
+          className={FILTER_SELECT_CLASS}
+        >
+          <option value="all">All Status</option>
+          <option value="paid">Verified</option>
+          <option value="partial">Partial</option>
+          <option value="unpaid">Pending</option>
+        </select>
+
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={() => {
+              setSearchTerm('');
+              setFilterStatus('all');
+              setShowMobileFilters(false);
+            }}
+            className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
+          >
+            Clear Filters
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={handleExportCSV}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-800 px-4 py-3 text-sm font-semibold text-white"
+        >
+          <FileDown className="size-4" />
+          Export CSV
+        </button>
+      </div>
+    }
+  />
+)}
 
         <button
           onClick={() => setIsActionModalOpen(true)}
@@ -889,7 +813,7 @@ const shouldShowFilters =
                     View
                   </button>
 
-                  {payment.status === 'unpaid' && (
+                  {payment.derivedStatus === 'unpaid' && (
                     <>
                       <button
                         onClick={() => handleVerify(payment)}
@@ -909,7 +833,7 @@ const shouldShowFilters =
                     </>
                   )}
 
-                  {payment.status === 'paid' && payment.remainingRefundableAmount > 0 && (
+                  {payment.derivedStatus === 'paid' && payment.remainingRefundableAmount > 0 && (
                     <button
                       onClick={() => openRefundModal(payment)}
                       className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-amber-50 px-3 py-2 text-sm font-medium text-amber-600 transition hover:bg-amber-100"
@@ -981,21 +905,26 @@ const shouldShowFilters =
                     className="w-[180px]"
                   />
 
-                  <td className="w-[200px] px-4 py-2.5 align-middle">
-                    <div className="min-w-0">
-                      <div className="truncate font-mono text-sm text-gray-900">
-                        {payment.publicId ?? payment.id}
-                      </div>
-
-                      {payment.category && payment.category !== 'payment' && (
-                        <div className="mt-1">
-                          <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">
-                            {getPaymentCategoryLabel(payment.category).toUpperCase()}
-                          </span>
+                  <DataCell
+                    className="w-[200px]"
+                    value={
+                      <div className="min-w-0">
+                        <div className="truncate text-gray-900">
+                          {payment.publicId ?? payment.id}
                         </div>
-                      )}
-                    </div>
-                  </td>
+
+                        {payment.category && payment.category !== 'payment' && (
+                          <div className="mt-1">
+                            <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700">
+                              {getPaymentCategoryLabel(payment.category)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    }
+                    mono
+                    nowrap
+                  />
 
                   <DataCell
                     value={payment.reservationPublicId}
@@ -1082,7 +1011,7 @@ const shouldShowFilters =
                       <Eye className="size-4" />
                     </button>
 
-                    {payment.status === 'unpaid' && (
+                    {payment.derivedStatus === 'unpaid' && (
                       <>
                         <button
                           onClick={() => handleVerify(payment)}
@@ -1102,7 +1031,7 @@ const shouldShowFilters =
                       </>
                     )}
 
-                    {payment.status === 'paid' && payment.remainingRefundableAmount > 0 && (
+                    {payment.derivedStatus === 'paid' && payment.remainingRefundableAmount > 0 && (
                       <button
                         onClick={() => openRefundModal(payment)}
                         className="rounded-lg p-2 text-amber-600 transition hover:bg-amber-50"
@@ -1195,8 +1124,8 @@ const shouldShowFilters =
                   </button>
                 </div>
 
-        <div className="flex-1 space-y-6 overflow-y-auto p-6 sm:p-8">
-          <div>
+        <div className="flex-1 overflow-y-auto p-6 sm:p-8">
+          <div className="space-y-6">
             <h3 className="mb-3 ml-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
               Payment Overview
             </h3>
@@ -1242,13 +1171,9 @@ const shouldShowFilters =
               />
                     </div>
 
-                    <div className="text-gray-500">Refunded</div>
-                    <div className="text-gray-900">
-                      {formatCurrency(selectedPaymentData.refundedAmount)}
-                    </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-5">
+          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
               <h4 className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-blue-600">
                 <FileText className="size-4" />
                 Transaction Details
@@ -1319,18 +1244,18 @@ const shouldShowFilters =
 
                   {selectedPaymentData.notes && (
                     <div>
-              <h3 className="mb-3 ml-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                Payment Notes
-              </h3>
+                      <h3 className="mb-3 ml-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        Payment Notes
+                      </h3>
 
-              <div className="rounded-2xl border border-amber-100 bg-amber-50 px-5 py-4 text-sm italic leading-relaxed text-amber-900">
-                “{selectedPaymentData.notes}”
+                      <div className="max-h-40 overflow-y-auto rounded-2xl border border-amber-100 bg-amber-50 px-5 py-4 text-sm italic leading-relaxed text-amber-900 break-words whitespace-pre-wrap">
+                        “{selectedPaymentData.notes}”
                       </div>
                     </div>
                   )}
 
                   {selectedPaymentData.proofOfPayment && (
-            <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-5">
+  <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5">
               <h4 className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-blue-600">
                 
                 Proof of Payment
@@ -1351,39 +1276,39 @@ const shouldShowFilters =
         </div>
 
         <div className="border-t border-slate-200 bg-white px-6 py-4">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-slate-500">Current Status</span>
-              <span
-                className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wide ${
-                  statusColors[selectedPaymentData.derivedStatus]
-                }`}
-              >
-                {selectedPaymentData.derivedStatus === 'paid'
-                  ? 'Verified'
-                  : selectedPaymentData.derivedStatus === 'partial'
-                    ? 'Partial'
-                    : 'Pending'}
-              </span>
-            </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+  <div className="flex items-center gap-3">
+    <span className="text-sm text-slate-500">Current Status</span>
+    <span
+      className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wide ${
+        statusColors[selectedPaymentData.derivedStatus]
+      }`}
+    >
+      {selectedPaymentData.derivedStatus === 'paid'
+        ? 'Verified'
+        : selectedPaymentData.derivedStatus === 'partial'
+        ? 'Partial'
+        : 'Pending'}
+    </span>
+  </div>
 
-                  {selectedPaymentData.status === 'unpaid' && (
-              <div className="flex flex-col gap-2 sm:flex-row">
-                      <button
-                        onClick={() => handleReject(selectedPaymentData)}
-                  className="rounded-xl border border-rose-200 px-5 py-2.5 font-semibold text-rose-600 transition-all hover:bg-rose-50"
-                      >
-                        Reject
-                      </button>
+  {selectedPaymentData.derivedStatus === 'unpaid' && (
+    <div className="flex gap-2">
+      <button
+        onClick={() => handleReject(selectedPaymentData)}
+        className="rounded-xl border border-rose-200 px-5 py-2.5 font-semibold text-rose-600 transition-all hover:bg-rose-50"
+      >
+        Reject
+      </button>
 
-                      <button
-                        onClick={() => handleVerify(selectedPaymentData)}
-                  className="rounded-xl bg-emerald-600 px-5 py-2.5 font-semibold text-white transition-all hover:bg-emerald-700"
-                      >
-                        Verify Payment
-                      </button>
-                    </div>
-                  )}
+      <button
+        onClick={() => handleVerify(selectedPaymentData)}
+        className="rounded-xl bg-emerald-600 px-5 py-2.5 font-semibold text-white transition-all hover:bg-emerald-700"
+      >
+        Verify Payment
+      </button>
+    </div>
+  )}
           </div>
                 </div>
               </motion.div>
@@ -1432,24 +1357,28 @@ const shouldShowFilters =
                       Refund Amount
                     </label>
                     <input
-                      type="number"
-                      min="0"
-                      max={refundPayment.remainingRefundableAmount}
-                      step="0.01"
+                      type="text"
+                      inputMode="decimal"
                       value={refundAmount}
-                      onChange={(e) => {
-                        let value = e.target.value;
-
-                        // allow only 10 digits + 2 decimals
-                        if (!/^\d{0,10}(\.\d{0,2})?$/.test(value)) return;
-
-                        // clamp to max refundable
-                        if (Number(value) > refundPayment.remainingRefundableAmount) {
-                          value = String(refundPayment.remainingRefundableAmount);
-                        }
-
-                        setRefundAmount(value);
-                      }}
+                      onChange={(e) =>
+                        setRefundAmount(
+                          normalizeAmountInput(e.target.value, {
+                            max: refundPayment.remainingRefundableAmount,
+                            decimals: 2,
+                            allowEmpty: true,
+                          })
+                        )
+                      }
+                      onBlur={(e) =>
+                        setRefundAmount(
+                          finalizeAmountInput(e.target.value, {
+                            min: 0,
+                            max: refundPayment.remainingRefundableAmount,
+                            decimals: 2,
+                            allowEmpty: true,
+                          })
+                        )
+                      }
                       className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-100"
                       placeholder="Enter refund amount"
                     />
@@ -1494,8 +1423,8 @@ const shouldShowFilters =
                       disabled={
                         !refundAmount ||
                         Number(refundAmount) <= 0 ||
-                        Number(refundAmount) > refundPayment.remainingRefundableAmount ||
-                        !refundNotes.trim()
+                        Number(refundAmount) > refundPayment.remainingRefundableAmount 
+                        || !refundNotes.trim()
                       }
                       className="flex-1 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
@@ -1549,10 +1478,8 @@ function DetailItem({
 }: any) {
   return (
     <div
-      className={`flex items-start gap-3 p-4 rounded-2xl border transition-all ${
-        highlight ? 'bg-blue-50 border-blue-100' : 'bg-slate-50 border-slate-200'
-      }`}
-    >
+        className={`flex items-start gap-3 p-4 rounded-2xl border transition-all bg-slate-50 border-slate-200`}
+      >
       <div
         className={`mt-0.5 p-2 rounded-xl flex items-center justify-center ${
           highlight
