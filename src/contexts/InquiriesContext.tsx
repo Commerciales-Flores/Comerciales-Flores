@@ -696,58 +696,64 @@ const senderType: SupportSenderType =
   }, []);
 
   const markTicketRead = useCallback(
-    async (ticketId: string, reader: 'customer' | 'support'): Promise<void> => {
-      if (!ticketId) return;
+  async (ticketId: string, reader: 'customer' | 'support'): Promise<void> => {
+    if (!ticketId) return;
 
-      const currentTicket = ticketsRef.current.find((ticket) => ticket.id === ticketId);
-      if (!currentTicket) return;
+    const currentTicket = ticketsRef.current.find((ticket) => ticket.id === ticketId);
+    if (!currentTicket) return;
 
-      const existingReadAt =
-        reader === 'customer'
-          ? currentTicket.lastReadAtCustomer
-          : currentTicket.lastReadAtSupport;
+    const ticketMessages = messagesByTicketIdRef.current[ticketId] ?? [];
+    const latestMessageAt =
+      ticketMessages.length > 0
+        ? ticketMessages[ticketMessages.length - 1]?.createdAt ?? currentTicket.lastMessageAt
+        : currentTicket.lastMessageAt;
 
-      if (getTimestamp(existingReadAt) >= getTimestamp(currentTicket.lastMessageAt)) {
-        return;
-      }
+    const existingReadAt =
+      reader === 'customer'
+        ? currentTicket.lastReadAtCustomer
+        : currentTicket.lastReadAtSupport;
 
-      const now = new Date().toISOString();
-      const column =
-        reader === 'customer' ? 'last_read_at_customer' : 'last_read_at_support';
+    if (getTimestamp(existingReadAt) >= getTimestamp(latestMessageAt)) {
+      return;
+    }
 
-      setTickets((prev) =>
-        prev.map((ticket) => {
-          if (ticket.id !== ticketId) return ticket;
+    const now = new Date().toISOString();
+    const column =
+      reader === 'customer' ? 'last_read_at_customer' : 'last_read_at_support';
 
-          return {
-            ...ticket,
-            lastReadAtCustomer:
-              reader === 'customer'
-                ? pickLatestTimestamp(ticket.lastReadAtCustomer, now)
-                : ticket.lastReadAtCustomer ?? null,
-            lastReadAtSupport:
-              reader === 'support'
-                ? pickLatestTimestamp(ticket.lastReadAtSupport, now)
-                : ticket.lastReadAtSupport ?? null,
-          };
-        })
-      );
+    setTickets((prev) =>
+      prev.map((ticket) => {
+        if (ticket.id !== ticketId) return ticket;
 
-      const { error } = await supabase
-        .from('support_tickets')
-        .update({
-          [column]: now,
-          updated_at: now,
-        })
-        .eq('ticket_id', ticketId);
+        return {
+          ...ticket,
+          lastReadAtCustomer:
+            reader === 'customer'
+              ? pickLatestTimestamp(ticket.lastReadAtCustomer, now)
+              : ticket.lastReadAtCustomer ?? null,
+          lastReadAtSupport:
+            reader === 'support'
+              ? pickLatestTimestamp(ticket.lastReadAtSupport, now)
+              : ticket.lastReadAtSupport ?? null,
+        };
+      })
+    );
 
-      if (error) {
-        console.error('Failed to mark ticket as read:', error);
-        await fetchTickets();
-      }
-    },
-    [fetchTickets]
-  );
+    const { error } = await supabase
+      .from('support_tickets')
+      .update({
+        [column]: now,
+        updated_at: now,
+      })
+      .eq('ticket_id', ticketId);
+
+    if (error) {
+      console.error('Failed to mark ticket as read:', error);
+      await fetchTickets();
+    }
+  },
+  [fetchTickets]
+);
 
   const messages = useMemo(() => {
   const allMessages: SupportMessage[] = [];
@@ -869,61 +875,44 @@ const senderType: SupportSenderType =
         }
       )
       .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'support_messages',
-        },
-        (payload) => {
-          const newMessage = mapMessage(payload.new);
-          const ticketId = newMessage.ticketId;
+  'postgres_changes',
+  {
+    event: 'INSERT',
+    schema: 'public',
+    table: 'support_messages',
+  },
+  (payload) => {
+    const newMessage = mapMessage(payload.new);
+    const ticketId = newMessage.ticketId;
 
-          setMessagesByTicketId((prev) => {
-            const existing = prev[ticketId] ?? [];
+    setMessagesByTicketId((prev) => {
+      const existing = prev[ticketId] ?? [];
 
-            if (existing.some((message) => message.id === newMessage.id)) {
-              return prev;
-            }
+      if (existing.some((message) => message.id === newMessage.id)) {
+        return prev;
+      }
 
-            const lastMessage = existing[existing.length - 1];
+      const lastMessage = existing[existing.length - 1];
 
-            if (!lastMessage || getTimestamp(lastMessage.createdAt) <= getTimestamp(newMessage.createdAt)) {
-              return {
-                ...prev,
-                [ticketId]: [...existing, newMessage],
-              };
-            }
+      if (
+        !lastMessage ||
+        getTimestamp(lastMessage.createdAt) <= getTimestamp(newMessage.createdAt)
+      ) {
+        return {
+          ...prev,
+          [ticketId]: [...existing, newMessage],
+        };
+      }
 
-            return {
-              ...prev,
-              [ticketId]: sortMessagesByCreatedAtAsc([...existing, newMessage]),
-            };
-          });
+      return {
+        ...prev,
+        [ticketId]: sortMessagesByCreatedAtAsc([...existing, newMessage]),
+      };
+    });
 
-          loadedTicketIdsRef.current.add(ticketId);
-
-          setTickets((prev) =>
-            sortTicketsByLatest(
-              prev.map((ticket) => {
-                if (ticket.id !== ticketId) return ticket;
-
-                const nextStatus: SupportTicketStatus =
-                  newMessage.senderType === 'support'
-                    ? 'waiting_for_customer'
-                    : 'waiting_for_support';
-
-                return {
-                  ...ticket,
-                  lastMessageAt: newMessage.createdAt,
-                  lastMessageBy: newMessage.senderType,
-                  status: nextStatus,
-                };
-              })
-            )
-          );
-        }
-      )
+    loadedTicketIdsRef.current.add(ticketId);
+  }
+)
       .subscribe((status) => {
         if (import.meta.env.DEV) {
           console.log('Support realtime status:', status);

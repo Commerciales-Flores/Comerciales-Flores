@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useUsers } from '../../contexts/UsersContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -113,7 +113,7 @@ type AdminContactListItemProps = {
   onSelect: (contactId: string) => void;
 };
 
-function AdminContactListItem({
+const AdminContactListItem = React.memo(function AdminContactListItem({
   contact,
   isSelected,
   onSelect,
@@ -154,7 +154,7 @@ function AdminContactListItem({
           {getInitials(contact.firstName, contact.lastName, contact.email)}
         </div>
   )}
-</div>
+  </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
@@ -204,7 +204,7 @@ function AdminContactListItem({
       </div>
     </button>
   );
-}
+});
 
 type TicketAvatarInfo = {
   avatarUrl?: string | null;
@@ -222,7 +222,7 @@ type AdminTicketListItemProps = {
   onSelect: (ticketId: string) => void;
 };
 
-function AdminTicketListItem({
+const AdminTicketListItem = React.memo(function AdminTicketListItem({
   ticket,
   preview,
   messageCount,
@@ -263,7 +263,7 @@ function AdminTicketListItem({
         {ticket.subject}
       </h3>
 
-      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-gray-500">
+      <p className="mt-1 line-clamp-2 break-words [overflow-wrap:anywhere] text-xs leading-relaxed text-gray-500">
         {preview || 'No messages yet'}
       </p>
 
@@ -277,7 +277,7 @@ function AdminTicketListItem({
       </div>
     </button>
   );
-}
+});
 
 type EmptyThreadStateProps = {
   selectedContact: SupportContact | null;
@@ -402,7 +402,7 @@ type MessageBubbleProps = {
 
 
 
-function MessageBubble({
+const MessageBubble = React.memo(function MessageBubble({
   message,
   avatarUrl,
   firstName,
@@ -428,7 +428,7 @@ function MessageBubble({
   return (
     <div className={`flex ${isSupportMessage ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`flex max-w-[72%] gap-2 ${
+        className={`flex min-w-0 max-w-[72%] gap-2 ${
           isSupportMessage ? 'flex-row-reverse' : 'flex-row'
         }`}
       >
@@ -456,7 +456,7 @@ function MessageBubble({
           )}
         </div>
 
-        <div className={`flex flex-col ${isSupportMessage ? 'items-end' : 'items-start'}`}>
+        <div className={`flex min-w-0 flex-col ${isSupportMessage ? 'items-end' : 'items-start'}`}>
           <span
             className={`mb-1.5 text-[10px] font-bold uppercase ${
               isSupportMessage ? 'text-blue-400' : 'text-gray-400'
@@ -466,13 +466,15 @@ function MessageBubble({
           </span>
 
           <div
-            className={`rounded-2xl px-3 py-2 shadow-sm ${
+            className={`min-w-0 max-w-full rounded-2xl px-3 py-2 shadow-sm ${
               isSupportMessage
                 ? 'rounded-tr-md bg-blue-600 text-white shadow-blue-100'
                 : 'rounded-tl-md border border-gray-200 bg-gray-50 text-gray-800'
             }`}
           >
-            <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{message.body}</p>
+            <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[13px] leading-relaxed">
+              {message.body}
+            </p>
           </div>
 
           <span className="mt-1.5 text-[10px] text-gray-400">
@@ -482,7 +484,7 @@ function MessageBubble({
       </div>
     </div>
   );
-}
+});
 
 export default function AdminInquiries() {
   const location = useLocation();
@@ -490,16 +492,17 @@ export default function AdminInquiries() {
   const { users, isLoadingUsers, refreshUsers } = useUsers();
   const { user: adminUser } = useAuth();
   const {
-    tickets,
-    fetchTickets,
-    createTicket,
-    sendTicketMessage,
-    reopenTicket,
-    fetchMessagesByTicketId,
-    markTicketRead,
-    isLoadingMessages,
-    isLoadingTickets,
-  } = useInquiries();
+  tickets,
+  fetchTickets,
+  createTicket,
+  sendTicketMessage,
+  reopenTicket,
+  fetchMessagesByTicketId,
+  markTicketRead,
+  isLoadingMessages,
+  isLoadingTickets,
+  getMessagesByTicketId,
+} = useInquiries();
   const { sendInquiryResponseNotification } = useNotifications();
 
   const [pageLoading, setPageLoading] = useState(true);
@@ -515,7 +518,28 @@ const [showStatusFilters, setShowStatusFilters] = useState(false);
 
   const [filterContactType, setFilterContactType] = useState<'all' | 'user' | 'guest'>('all');
 
-  const { getMessagesByTicketId } = useInquiries();
+  const autoResizeTextarea = useCallback(
+  (element: HTMLTextAreaElement | null) => {
+    if (!element) return;
+
+    element.style.height = '0px';
+
+    const computed = window.getComputedStyle(element);
+    const lineHeight = parseFloat(computed.lineHeight) || 20;
+    const maxRows = 4;
+    const verticalPadding =
+      parseFloat(computed.paddingTop) + parseFloat(computed.paddingBottom);
+    const border =
+      parseFloat(computed.borderTopWidth) + parseFloat(computed.borderBottomWidth);
+
+    const maxHeight = lineHeight * maxRows + verticalPadding + border;
+
+    element.style.height = `${Math.min(element.scrollHeight, maxHeight)}px`;
+    element.style.overflowY = element.scrollHeight > maxHeight ? 'auto' : 'hidden';
+  },
+  []
+);
+
 
   const [searchTerm, setSearchTerm] = useState('');
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
@@ -525,7 +549,23 @@ const [showStatusFilters, setShowStatusFilters] = useState(false);
   const [isStartingTicket, setIsStartingTicket] = useState(false);
   const [isReopening, setIsReopening] = useState(false);
   const [sendReplyError, setSendReplyError] = useState('');
+const ticketMessageMeta = useMemo(() => {
+  const meta: Record<
+    string,
+    { messages: SupportMessage[]; preview: string; count: number }
+  > = {};
 
+  for (const ticket of tickets) {
+    const messages = getMessagesByTicketId(ticket.id);
+    meta[ticket.id] = {
+      messages,
+      preview: messages[messages.length - 1]?.body ?? '',
+      count: messages.length,
+    };
+  }
+
+  return meta;
+}, [tickets, getMessagesByTicketId]);
   const debouncedSearch = useDebouncedValue(searchTerm, 250);
 
   const normalizedTickets = useMemo(
@@ -571,7 +611,10 @@ const [showStatusFilters, setShowStatusFilters] = useState(false);
     setPageLoading(true);
 
     try {
-      await Promise.all([refreshUsers(true), fetchTickets()]);
+      //await Promise.all([refreshUsers(true), fetchTickets()]);
+      await fetchTickets();
+      setPageLoading(false);
+      refreshUsers(true); // async, don't block UI
     } catch (error) {
       console.error('Failed to load inquiries page data:', error);
     } finally {
@@ -801,8 +844,8 @@ const contacts = useMemo(() => {
   );
 
   const selectedTicketMessages = useMemo(
-  () => (selectedTicket ? getMessagesByTicketId(selectedTicket.id) : []),
-  [getMessagesByTicketId, selectedTicket]
+  () => (selectedTicket ? ticketMessageMeta[selectedTicket.id]?.messages ?? [] : []),
+  [selectedTicket, ticketMessageMeta]
 );
   const currentReply = selectedTicket ? replyDrafts[selectedTicket.id] ?? '' : '';
   const isInitialInquiriesLoading = pageLoading || isLoadingTickets || isLoadingUsers;
@@ -879,11 +922,24 @@ const hasNoFilterResults =
   ]);
 
 
-  useEffect(() => {
+ useEffect(() => {
   if (!selectedTicket?.id) return;
 
-  void fetchMessagesByTicketId(selectedTicket.id);
-  void markTicketRead(selectedTicket.id, 'support');
+  let cancelled = false;
+
+  const syncSelectedTicket = async () => {
+    await fetchMessagesByTicketId(selectedTicket.id, true);
+
+    if (cancelled) return;
+
+    await markTicketRead(selectedTicket.id, 'support');
+  };
+
+  void syncSelectedTicket();
+
+  return () => {
+    cancelled = true;
+  };
 }, [fetchMessagesByTicketId, markTicketRead, selectedTicket?.id]);
 
   const openContact = useCallback((contactId: string) => {
@@ -1311,23 +1367,26 @@ const hasNoFilterResults =
 
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm lg:h-[calc(100vh-12rem)]">
           {isInitialInquiriesLoading ? (
-            <EmptyState
-              icon={
-                <div className="flex items-center justify-center">
-                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
-                </div>
-              }
-              title="Loading inquiries..."
-              description="Please wait while support tickets and conversations are being retrieved."
-            />
-         ) : hasNoContacts ? (
+            <div className="flex h-full items-center justify-center">
+              <EmptyState
+              plain
+                icon={
+                  <div className="flex items-center justify-center">
+                    <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+                  </div>
+                }
+                title="Loading inquiries..."
+                description="Please wait while support tickets and conversations are being retrieved."
+              />
+            </div>
+          ) : hasNoContacts ? (
           <EmptyState
             icon={<MessageSquare className="size-10 text-blue-500" />}
             title="No contacts found"
             description="Contacts with user accounts or guest ticket history will appear here."
           />
         ) : (
-<div className="grid min-h-0 gap-4 p-3 sm:p-4 lg:h-full lg:grid-cols-[300px_minmax(0,340px)_minmax(0,720px)] lg:justify-center">             <div
+            <div className="grid min-h-0 gap-4 p-3 sm:p-4 lg:h-full lg:grid-cols-[300px_minmax(0,340px)_minmax(0,720px)] lg:justify-center">             <div
                 className={`min-h-0 rounded-[2rem] border border-gray-200 bg-white shadow-sm ${
                   showMobileThread
                     ? 'hidden md:flex'
@@ -1502,8 +1561,8 @@ const hasNoFilterResults =
         <AdminTicketListItem
           key={ticket.id}
           ticket={ticket}
-          preview={ticketPreviewByTicketId[ticket.id] ?? ''}
-          messageCount={getMessagesByTicketId(ticket.id).length}
+          preview={ticketMessageMeta[ticket.id]?.preview ?? ''}
+          messageCount={ticketMessageMeta[ticket.id]?.count ?? 0}
           isSelected={ticket.id === selectedTicketId}
           onSelect={openTicket}
         />
@@ -1519,55 +1578,55 @@ const hasNoFilterResults =
                 } flex-col`}
               >
                 <div className="flex items-center justify-between gap-3 border-b border-gray-100 p-5">
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={closeMobileThread}
-                      className="inline-flex size-9 items-center justify-center rounded-xl border border-gray-200 text-gray-500 transition hover:bg-gray-50 md:hidden"
-                    >
-                      <ChevronLeft className="size-5" />
-                    </button>
+                  <div className="flex min-w-0 items-center gap-3">
+  <button
+    type="button"
+    onClick={closeMobileThread}
+    className="inline-flex size-9 items-center justify-center rounded-xl border border-gray-200 text-gray-500 transition hover:bg-gray-50 md:hidden"
+  >
+    <ChevronLeft className="size-5" />
+  </button>
 
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h2 className="text-sm font-bold text-gray-900">
-                          {isComposingNewTicket
-                            ? 'Start Conversation'
-                            : selectedTicket?.subject || 'Conversation'}
-                        </h2>
+  <div className="min-w-0 flex-1">
+    <div className="flex min-w-0 items-center gap-2">
+      <h2 className="min-w-0 flex-1 truncate text-sm font-bold text-gray-900">
+        {isComposingNewTicket
+          ? 'Start Conversation'
+          : selectedTicket?.subject || 'Conversation'}
+      </h2>
 
-                        {!isComposingNewTicket && selectedContact?.type === 'guest' && (
-                          <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                            Guest Inquiry
-                          </span>
-                        )}
-                      </div>
+      {!isComposingNewTicket && selectedContact?.type === 'guest' && (
+        <span className="shrink-0 inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+          Guest Inquiry
+        </span>
+      )}
+    </div>
 
-                      <p className="mt-1 text-[11px] text-gray-500">
-                        {isComposingNewTicket
-                          ? selectedContact
-                            ? `Starting a new conversation with ${
-                                [selectedContact.firstName, selectedContact.lastName]
-                                  .filter(Boolean)
-                                  .join(' ')
-                                  .trim() || selectedContact.email
-                              }`
-                            : 'Create a new support conversation'
-                          : selectedTicket
-                          ? `Ticket ${
-                              selectedTicket.publicId ??
-                              `#${selectedTicket.id.slice(-6).toUpperCase()}`
-                            } • ${
-                              selectedTicket.status === 'resolved'
-                                ? 'Resolved'
-                                : selectedTicket.status === 'waiting_for_support'
-                                ? 'Waiting for Support'
-                                : 'Waiting for Customer'
-                            }`
-                          : 'No conversation selected'}
-                      </p>
-                    </div>
-                  </div>
+    <p className="mt-1 text-[11px] text-gray-500">
+      {isComposingNewTicket
+        ? selectedContact
+          ? `Starting a new conversation with ${
+              [selectedContact.firstName, selectedContact.lastName]
+                .filter(Boolean)
+                .join(' ')
+                .trim() || selectedContact.email
+            }`
+          : 'Create a new support conversation'
+        : selectedTicket
+        ? `Ticket ${
+            selectedTicket.publicId ??
+            `#${selectedTicket.id.slice(-6).toUpperCase()}`
+          } • ${
+            selectedTicket.status === 'resolved'
+              ? 'Resolved'
+              : selectedTicket.status === 'waiting_for_support'
+              ? 'Waiting for Support'
+              : 'Waiting for Customer'
+          }`
+        : 'No conversation selected'}
+    </p>
+  </div>
+</div>
 
                   {!isComposingNewTicket && selectedTicket?.status === 'resolved' && (
                     <button
@@ -1673,13 +1732,16 @@ const hasNoFilterResults =
                         )}
 
                         <textarea
-                          rows={4}
+                          rows={1}
                           maxLength={2000}
                           value={currentReply}
-                          onChange={(e) =>
-                            selectedTicket &&
-                            setDraftForTicket(selectedTicket.id, e.target.value)
-                          }
+                          onChange={(e) => {
+                            if (selectedTicket) {
+                              setDraftForTicket(selectedTicket.id, e.target.value);
+                            }
+                            autoResizeTextarea(e.currentTarget);
+                          }}
+                          ref={autoResizeTextarea}
                           placeholder={
                             selectedContact?.type === 'guest'
                               ? 'Write your email reply to this guest...'
@@ -1688,10 +1750,9 @@ const hasNoFilterResults =
                           disabled={
                             isSending ||
                             isLoadingMessages ||
-                            (!selectedTicket?.userId &&
-                              selectedTicket?.lastMessageBy === 'support')
+                            (!selectedTicket?.userId && selectedTicket?.lastMessageBy === 'support')
                           }
-                          className="h-32 max-h-32 w-full resize-none overflow-y-auto rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm outline-none transition-all focus:border-blue-300 focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-50"
+                          className="w-full resize-none overflow-y-hidden rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm leading-6 outline-none transition-all focus:border-blue-300 focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-gray-50"
                         />
 
                         {!selectedTicket?.userId && selectedTicket?.lastMessageBy === 'support' && (
