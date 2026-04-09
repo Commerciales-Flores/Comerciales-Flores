@@ -805,11 +805,11 @@ useEffect(() => {
                         onChange={(e) => {
                         const value = sanitizePasswordInput(e.target.value);
 
-  setFormData((prev) => ({ ...prev, password: value }));
-  setPendingApproval(null);
-  setApprovalMessage('');
-  if (error) setError('');
-}}
+                          setFormData((prev) => ({ ...prev, password: value }));
+                          setPendingApproval(null);
+                          setApprovalMessage('');
+                          if (error) setError('');
+                        }}
                         className="w-full pl-11 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-blue-50 focus:border-blue-500 focus:bg-white transition-all outline-none text-sm font-medium"
                         placeholder="••••••••"
                       />

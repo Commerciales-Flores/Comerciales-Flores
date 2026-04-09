@@ -47,7 +47,7 @@ export const sanitizeEmailInput = (value: string) =>
   stripEmojis(value).replace(/\s+/g, '');
 
 export const sanitizePasswordInput = (value: string) =>
-  value.replace(/[\u200B-\u200D\uFEFF]/g, '');
+  value.replace(/[^\x20-\x7E]/g, '');
 
 export const sanitizeNameInput = (value: string) =>
   stripEmojis(value).replace(/[^A-Za-zÀ-ÿ0-9\s'.-]/g, '');
