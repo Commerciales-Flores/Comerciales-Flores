@@ -167,7 +167,7 @@ serve(async (req) => {
     const textBody = [
       `Hello${ticket.guest_first_name ? ` ${ticket.guest_first_name}` : ""},`,
       "",
-      "Thank you for reaching out to Comerciales Flores.",
+      "Thank you for reaching out to Commerciales Flores.",
       "Our support team has responded to your inquiry:",
       "",
       message,
@@ -185,80 +185,276 @@ serve(async (req) => {
     ].join("\n");
 
     const htmlBody = `
-  <div style="margin:0; padding:32px 16px; background:#f8fafc; font-family:Inter,Arial,sans-serif; color:#0f172a;">
-    <div style="max-width:640px; margin:0 auto; overflow:hidden; border:1px solid #e2e8f0; border-radius:24px; background:#ffffff; box-shadow:0 10px 30px rgba(15,23,42,0.06);">
+  <div style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0;padding:32px 16px;background:#eef2f7;">
+      <tr>
+        <td align="center">
 
-      <div style="padding:28px 28px 24px; background:linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color:#ffffff;">
-        <div style="font-size:12px; font-weight:800; letter-spacing:0.14em; text-transform:uppercase; opacity:0.9;">
-          Comerciales Flores
-        </div>
-        <h1 style="margin:10px 0 0; font-size:26px; line-height:1.2; font-weight:800;">
-          We’d love to help you move forward
-        </h1>
-        <p style="margin:10px 0 0; font-size:14px; line-height:1.7; color:rgba(255,255,255,0.92);">
-          Our support team has replied to your inquiry, and your next step is just one click away.
-        </p>
-      </div>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:680px;margin:0 auto;">
+            <tr>
+              <td style="padding:0;">
 
-      <div style="padding:28px;">
-        <p style="margin:0 0 16px; font-size:15px; color:#334155;">
-          Hello${ticket.guest_first_name ? ` <strong>${escapeHtml(ticket.guest_first_name)}</strong>` : ""},
-        </p>
+                <!-- Card -->
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:22px;overflow:hidden;box-shadow:0 12px 40px rgba(15,23,42,0.08);">
+                  
+                  <!-- Standardized white + blue header -->
+                  <tr>
+                    <td style="padding:0;background:#ffffff;border-bottom:1px solid #e2e8f0;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                        
+                        <!-- Logo Row -->
+                        <tr>
+                          <td style="padding:26px 32px 0 32px;">
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                              <tr>
+                                <td style="padding-right:10px;">
+                                  <div style="
+                                    background:#2563eb;
+                                    padding:8px;
+                                    border-radius:10px;
+                                    box-shadow:0 6px 16px rgba(37,99,235,0.15);
+                                    display:inline-block;
+                                  ">
+                                    <img 
+                                      src="https://nlermulroebcmfwvyhmo.supabase.co/storage/v1/object/public/property_media/public/logos/building-2.png"
+                                      width="18"
+                                      height="18"
+                                      alt="Comerciales Flores"
+                                      style="display:block;filter:brightness(0) invert(1);"
+                                    />
+                                  </div>
+                                </td>
 
-        <p style="margin:0 0 18px; font-size:15px; line-height:1.7; color:#475569;">
-          Thank you for reaching out to <strong style="color:#0f172a;">Comerciales Flores</strong>.
-          We’ve responded to your inquiry below.
-        </p>
+                                <td>
+                                  <div style="
+                                    font-size:16px;
+                                    font-weight:700;
+                                    color:#111827;
+                                    letter-spacing:-0.01em;
+                                  ">
+                                    Commerciales Flores
+                                  </div>
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
 
-        <div style="margin:24px 0; border:1px solid #dbeafe; border-radius:20px; background:#eff6ff; padding:20px 22px;">
-          <div style="margin-bottom:10px; font-size:11px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; color:#2563eb;">
-            Support Reply
-          </div>
-          <div style="white-space:pre-wrap; font-size:15px; line-height:1.75; color:#0f172a;">
-            ${escapeHtml(message)}
-          </div>
-        </div>
+                        <!-- Hero -->
+                        <tr>
+                          <td align="center" style="padding:24px 32px 28px 32px;">
+                            
+                            <div style="
+                              font-size:64px;
+                              font-weight:900;
+                              color:#f1f5f9;
+                              font-style:italic;
+                              line-height:1;
+                              user-select:none;
+                            ">
+                              CF
+                            </div>
 
-        <div style="margin:28px 0; border:1px solid #e2e8f0; border-radius:20px; background:#f8fafc; padding:22px;">
-          <h2 style="margin:0 0 10px; font-size:18px; line-height:1.3; color:#0f172a;">
-            Ready to continue with us?
-          </h2>
-          <p style="margin:0 0 18px; font-size:14px; line-height:1.7; color:#475569;">
-            Create an account to continue your inquiry, manage reservations, and stay updated with your requests more easily.
-          </p>
+                            <div style="
+                              margin:-18px auto 18px auto;
+                              width:64px;
+                              height:64px;
+                              background:#2563eb;
+                              border-radius:14px;
+                              transform:rotate(8deg);
+                              box-shadow:0 12px 28px rgba(37,99,235,0.20);
+                              display:flex;
+                              align-items:center;
+                              justify-content:center;
+                            ">
+                              <img 
+                                src="https://nlermulroebcmfwvyhmo.supabase.co/storage/v1/object/public/property_media/public/logos/building-2.png"
+                                width="28"
+                                height="28"
+                                alt="Comerciales Flores"
+                                style="display:block;transform:rotate(-8deg);filter:brightness(0) invert(1);"
+                              />
+                            </div>
 
-          <a
-            href="${signupUrl}"
-            style="display:inline-block; padding:12px 20px; border-radius:14px; background:#2563eb; color:#ffffff; text-decoration:none; font-size:14px; font-weight:700;"
-          >
-            Create Your Account
-          </a>
+                            <div style="
+                              font-size:22px;
+                              font-weight:700;
+                              color:#111827;
+                              margin-bottom:6px;
+                            ">
+                              We’d love to help you move forward
+                            </div>
 
-          <p style="margin:14px 0 0; font-size:12px; line-height:1.7; color:#64748b;">
-            Already have an account?
-            <a href="${loginUrl}" style="color:#2563eb; text-decoration:none; font-weight:700;">
-              Sign in here
-            </a>.
-          </p>
-        </div>
+                            <div style="
+                              font-size:14px;
+                              color:#64748b;
+                              line-height:1.7;
+                              max-width:420px;
+                              margin:0 auto;
+                            ">
+                              Our support team has replied to your inquiry, and your next step is just one click away.
+                            </div>
 
-        <div style="margin:24px 0 0; border-top:1px solid #e2e8f0; padding-top:20px;">
-          <div style="font-size:13px; line-height:1.7; color:#64748b;">
-            <div><strong style="color:#334155;">Ticket:</strong> ${escapeHtml(ticket.public_id ?? ticket.ticket_id)}</div>
-            <div><strong style="color:#334155;">Subject:</strong> ${escapeHtml(ticket.subject ?? "Support Ticket")}</div>
-          </div>
-        </div>
+                          </td>
+                        </tr>
 
-        <p style="margin:24px 0 0; font-size:15px; color:#475569;">
-          Regards,<br />
-          <strong style="color:#0f172a;">Commerciales Flores Support Team</strong>
-        </p>
-      </div>
+                      </table>
+                    </td>
+                  </tr>
 
-      <div style="padding:18px 28px; border-top:1px solid #e2e8f0; background:#f8fafc; font-size:12px; line-height:1.7; color:#64748b;">
-        This email was sent in response to your support inquiry with Comerciales Flores.
-      </div>
-    </div>
+                  <!-- Body -->
+                  <tr>
+                    <td style="padding:0;background:#ffffff;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                        
+                        <!-- Intro -->
+                        <tr>
+                          <td style="padding:34px 32px 18px 32px;">
+                            <div style="font-size:16px;line-height:1.8;color:#334155;">
+                              Hello${ticket.guest_first_name ? ` <strong>${escapeHtml(ticket.guest_first_name)}</strong>` : ""},
+                            </div>
+                          </td>
+                        </tr>
+
+                        <tr>
+                          <td style="padding:0 32px 18px 32px;">
+                            <div style="font-size:16px;line-height:1.8;color:#334155;">
+                              Thank you for reaching out to <strong style="color:#111827;">Commerciales Flores</strong>. We’ve responded to your inquiry below.
+                            </div>
+                          </td>
+                        </tr>
+
+                        <!-- Support reply -->
+                        <tr>
+                          <td style="padding:0 32px 10px 32px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #dbeafe;border-radius:16px;background:#f8fbff;">
+                              <tr>
+                                <td style="padding:18px 20px;">
+                                  <div style="font-size:13px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#1d4ed8;margin-bottom:8px;">
+                                    Support reply
+                                  </div>
+                                  <div style="white-space:pre-wrap;font-size:14px;line-height:1.8;color:#475569;">
+                                    ${escapeHtml(message)}
+                                  </div>
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+
+                        <!-- Continue with us -->
+                        <tr>
+                          <td style="padding:18px 32px 10px 32px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e2e8f0;border-radius:16px;background:#f8fafc;">
+                              <tr>
+                                <td style="padding:20px;">
+                                  <div style="font-size:18px;font-weight:700;line-height:1.4;color:#111827;margin-bottom:8px;">
+                                    Ready to continue with us?
+                                  </div>
+                                  <div style="font-size:14px;line-height:1.8;color:#475569;margin-bottom:18px;">
+                                    Create an account to continue your inquiry, manage reservations, and stay updated with your requests more easily.
+                                  </div>
+
+                                  <a
+                                    href="${signupUrl}"
+                                    style="display:inline-block;background:linear-gradient(135deg,#2563eb 0%,#1d4ed8 100%);color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;line-height:1;padding:16px 26px;border-radius:12px;box-shadow:0 10px 24px rgba(37,99,235,0.28);"
+                                  >
+                                    Create Your Account
+                                  </a>
+
+                                  <div style="margin-top:14px;font-size:13px;line-height:1.8;color:#64748b;">
+                                    Already have an account?
+                                    <a href="${loginUrl}" style="color:#2563eb;text-decoration:none;font-weight:700;">
+                                      Sign in here
+                                    </a>.
+                                  </div>
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+
+                        <!-- Ticket details -->
+                        <tr>
+                          <td style="padding:18px 32px 0 32px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e2e8f0;border-radius:16px;background:#ffffff;">
+                              <tr>
+                                <td style="padding:18px 20px;">
+                                  <div style="font-size:13px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#64748b;margin-bottom:10px;">
+                                    Ticket details
+                                  </div>
+                                  <div style="font-size:14px;line-height:1.8;color:#475569;">
+                                    <div><strong style="color:#334155;">Ticket:</strong> ${escapeHtml(ticket.public_id ?? ticket.ticket_id)}</div>
+                                    <div><strong style="color:#334155;">Subject:</strong> ${escapeHtml(ticket.subject ?? "Support Ticket")}</div>
+                                  </div>
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+
+                        <!-- Closing -->
+                        <tr>
+                          <td style="padding:24px 32px 32px 32px;">
+                            <div style="font-size:15px;line-height:1.8;color:#475569;">
+                              Regards,<br />
+                              <strong style="color:#111827;">Commerciales Flores Support Team</strong>
+                            </div>
+                          </td>
+                        </tr>
+
+                      </table>
+                    </td>
+                  </tr>
+
+                  <!-- Footer -->
+                  <tr>
+                    <td style="padding:22px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;">
+                      <div style="font-size:12px;line-height:1.8;color:#64748b;text-align:center;">
+                        This email was sent in response to your support inquiry with Commerciales Flores.
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Blue Footer -->
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td 
+                      align="center" 
+                      style="
+                        padding:22px 32px;
+                        background:#2563eb;
+                        border-radius:0 0 22px 22px;
+                      "
+                    >
+                      <div style="
+                        font-size:13px;
+                        font-weight:600;
+                        color:#ffffff;
+                        margin-bottom:6px;
+                      ">
+                        Commerciales Flores
+                      </div>
+
+                      <div style="
+                        font-size:12px;
+                        line-height:1.6;
+                        color:#dbeafe;
+                      ">
+                        © 2026 Commerciales Flores. All rights reserved.
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+
+              </td>
+            </tr>
+          </table>
+
+        </td>
+      </tr>
+    </table>
   </div>
 `;
 

@@ -156,54 +156,151 @@ function buildReminderEmailHtml(params: {
   const greetingName = firstName?.trim() || 'Valued Client';
 
   return `
-    <div style="margin:0;padding:0;background:#f8fafc;">
-      <div style="max-width:640px;margin:0 auto;padding:32px 20px;font-family:Arial,sans-serif;color:#0f172a;">
-        <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;overflow:hidden;">
-          <div style="background:#0f172a;padding:24px 28px;">
-            <p style="margin:0;font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#93c5fd;font-weight:700;">
-              Comerciales Flores
-            </p>
-            <h1 style="margin:10px 0 0;font-size:24px;line-height:1.3;color:#ffffff;">
-              ${title}
-            </h1>
-          </div>
+<div style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0;padding:32px 16px;background:#eef2f7;">
+<tr>
+<td align="center">
 
-          <div style="padding:28px;">
-            <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#334155;">
-              Hello ${greetingName},
-            </p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:680px;margin:0 auto;">
+<tr>
+<td style="padding:0;">
 
-            <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#334155;">
-              ${message}
-            </p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+style="background:#ffffff;border:1px solid #e2e8f0;border-radius:22px;overflow:hidden;box-shadow:0 12px 40px rgba(15,23,42,0.08);">
 
-            <div style="margin:24px 0;padding:18px;border:1px solid #dbeafe;background:#eff6ff;border-radius:16px;">
-              <p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#2563eb;">
-                Reservation Summary
-              </p>
-              <p style="margin:0 0 6px;font-size:14px;color:#0f172a;">
-                <strong>Reservation:</strong> ${reservationPublicId}
-              </p>
-              <p style="margin:0 0 6px;font-size:14px;color:#0f172a;">
-                <strong>End Date:</strong> ${formattedEndDate}
-              </p>
-              <p style="margin:0;font-size:14px;color:#0f172a;">
-                <strong>Outstanding Balance:</strong> ${formattedBalance}
-              </p>
-            </div>
+<!-- Header -->
+<tr>
+<td style="padding:0;background:#ffffff;border-bottom:1px solid #e2e8f0;">
+<table role="presentation" width="100%">
 
-            <p style="margin:0;font-size:14px;line-height:1.7;color:#475569;">
-              Please log in to your account to review and settle your payment before the reservation period ends.
-            </p>
+<tr>
+<td style="padding:26px 32px 0 32px;">
+<table role="presentation">
+<tr>
 
-            <p style="margin:24px 0 0;font-size:13px;line-height:1.7;color:#64748b;">
-              This is an automated payment reminder from Comerciales Flores.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
+<td style="padding-right:10px;">
+<div style="background:#2563eb;padding:8px;border-radius:10px;box-shadow:0 6px 16px rgba(37,99,235,0.15);display:inline-block;">
+<img
+src="https://nlermulroebcmfwvyhmo.supabase.co/storage/v1/object/public/property_media/public/logos/building-2.png"
+width="18"
+height="18"
+style="display:block;filter:brightness(0) invert(1);"
+/>
+</div>
+</td>
+
+<td>
+<div style="font-size:16px;font-weight:700;color:#111827;">
+Commerciales Flores
+</div>
+</td>
+
+</tr>
+</table>
+</td>
+</tr>
+
+<tr>
+<td align="center" style="padding:24px 32px 28px 32px;">
+<div style="font-size:64px;font-weight:900;color:#f1f5f9;font-style:italic;">
+CF
+</div>
+
+<div style="margin:-18px auto 18px auto;width:64px;height:64px;background:#2563eb;border-radius:14px;transform:rotate(8deg);box-shadow:0 12px 28px rgba(37,99,235,0.20);display:flex;align-items:center;justify-content:center;">
+<img
+src="https://nlermulroebcmfwvyhmo.supabase.co/storage/v1/object/public/property_media/public/logos/building-2.png"
+width="28"
+height="28"
+style="display:block;transform:rotate(-8deg);filter:brightness(0) invert(1);"
+/>
+</div>
+
+<div style="font-size:22px;font-weight:700;color:#111827;margin-bottom:6px;">
+${title}
+</div>
+</td>
+</tr>
+
+</table>
+</td>
+</tr>
+
+<!-- Body -->
+<tr>
+<td style="padding:34px 32px;">
+
+<p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#334155;">
+Hello ${greetingName},
+</p>
+
+<p style="margin:0 0 18px;font-size:15px;line-height:1.7;color:#475569;">
+${message}
+</p>
+
+<table role="presentation" width="100%" style="margin:20px 0;border:1px solid #dbeafe;border-radius:16px;background:#f8fbff;">
+<tr>
+<td style="padding:18px 20px;">
+<div style="font-size:13px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#1d4ed8;margin-bottom:8px;">
+Reservation summary
+</div>
+
+<div style="font-size:14px;line-height:1.8;color:#475569;">
+<strong>Reservation:</strong> ${reservationPublicId}<br/>
+<strong>End Date:</strong> ${formattedEndDate}<br/>
+<strong>Outstanding Balance:</strong> ${formattedBalance}
+</div>
+</td>
+</tr>
+</table>
+
+<div style="margin:0 0 18px;padding:18px 20px;border:1px solid #fecaca;border-radius:16px;background:#fff5f5;">
+<div style="font-size:13px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#dc2626;margin-bottom:8px;">
+Payment reminder
+</div>
+<div style="font-size:14px;line-height:1.8;color:#7f1d1d;">
+Please settle your outstanding balance before the reservation end date to avoid interruptions.
+</div>
+</div>
+
+<p style="margin:0;font-size:14px;line-height:1.7;color:#475569;">
+Please log in to your account to review and settle your payment.
+</p>
+
+</td>
+</tr>
+
+<tr>
+<td style="padding:22px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;">
+<div style="font-size:12px;line-height:1.8;color:#64748b;text-align:center;">
+This is an automated payment reminder from Comerciales Flores.
+</div>
+</td>
+</tr>
+
+</table>
+
+<table role="presentation" width="100%">
+<tr>
+<td align="center" style="padding:22px 32px;background:#2563eb;border-radius:0 0 22px 22px;">
+<div style="font-size:13px;font-weight:600;color:#ffffff;margin-bottom:6px;">
+Commerciales Flores
+</div>
+<div style="font-size:12px;color:#dbeafe;">
+© ${new Date().getFullYear()} Commerciales Flores. All rights reserved.
+</div>
+</td>
+</tr>
+</table>
+
+</td>
+</tr>
+</table>
+
+</td>
+</tr>
+</table>
+</div>
+`;
 }
 
 async function sendEmail(params: {
@@ -224,7 +321,7 @@ async function sendEmail(params: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: 'Comerciales Flores <noreply@comercialesflores.com>',
+      from: 'Commerciales Flores <noreply@comercialesflores.com>',
       to: [params.to],
       subject: params.subject,
       html: params.html,

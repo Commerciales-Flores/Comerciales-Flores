@@ -495,7 +495,7 @@ useEffect(() => {
 
     case 'account_inactive':
       setError(
-        'Your account has been deactivated. Please contact the administrator for assistance.'
+            'Your account has been deactivated. You can still contact support using the guest inquiry form on the landing page.'
       );
       break;
 
@@ -700,7 +700,7 @@ useEffect(() => {
                 <Building2 className="size-10" />
               </div>
               <h1 className="text-xl font-black text-slate-900 uppercase tracking-[0.2em] mb-1">
-                Comerciales Flores
+                Commerciales Flores
               </h1>
               <p className="text-slate-500 font-medium">Sign in to your account</p>
             </div>

@@ -244,7 +244,7 @@ export default function Register() {
             <div className="relative z-10">
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-500/10 border border-blue-400/20 text-blue-400 text-[11px] font-bold uppercase tracking-[0.1em] mb-8">
                 <Building2 className="size-3.5" />
-                Comerciales Flores
+                Commerciales Flores
               </div>
 
               <h2 className="text-4xl font-bold text-white leading-[1.15] mb-6 tracking-tight">

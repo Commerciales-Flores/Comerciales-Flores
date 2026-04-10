@@ -54,51 +54,179 @@ function buildEmailShell(options: {
   return `
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${escapeHtml(title)}</title>
-  </head>
-  <body style="margin:0;padding:0;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
-    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
-      ${escapeHtml(preheader)}
-    </div>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>${escapeHtml(title)}</title>
+</head>
 
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f8fafc;margin:0;padding:24px 0;">
-      <tr>
-        <td align="center">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:640px;background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;overflow:hidden;">
-            <tr>
-              <td style="padding:28px 32px;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);color:#ffffff;">
-                <div style="font-size:12px;letter-spacing:0.12em;text-transform:uppercase;font-weight:700;opacity:0.85;">
-                  Comerciales Flores
-                </div>
-                <div style="margin-top:10px;font-size:28px;line-height:1.2;font-weight:700;">
-                  ${escapeHtml(title)}
-                </div>
-                <div style="margin-top:8px;font-size:15px;line-height:1.6;color:#cbd5e1;">
-                  ${escapeHtml(subtitle)}
-                </div>
-              </td>
-            </tr>
+<body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
 
-            <tr>
-              <td style="padding:32px;">
-                ${bodyHtml}
-              </td>
-            </tr>
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+${escapeHtml(preheader)}
+</div>
 
-            <tr>
-              <td style="padding:20px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:12px;line-height:1.6;color:#64748b;">
-                This is an automated security email from <strong>Comerciales Flores</strong>.<br />
-                Please do not reply to this message.
-              </td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0;padding:32px 16px;background:#eef2f7;">
+<tr>
+<td align="center">
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:680px;margin:0 auto;">
+<tr>
+<td style="padding:0;">
+
+<!-- Card -->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+style="background:#ffffff;border:1px solid #e2e8f0;border-radius:22px;overflow:hidden;box-shadow:0 12px 40px rgba(15,23,42,0.08);">
+
+<!-- Header -->
+<tr>
+<td style="padding:0;background:#ffffff;border-bottom:1px solid #e2e8f0;">
+
+<table role="presentation" width="100%">
+
+<!-- Logo -->
+<tr>
+<td style="padding:26px 32px 0 32px;">
+<table role="presentation">
+<tr>
+
+<td style="padding-right:10px;">
+<div style="
+background:#2563eb;
+padding:8px;
+border-radius:10px;
+box-shadow:0 6px 16px rgba(37,99,235,0.15);
+display:inline-block;
+">
+<img
+src="https://nlermulroebcmfwvyhmo.supabase.co/storage/v1/object/public/property_media/public/logos/building-2.png"
+width="18"
+height="18"
+style="display:block;filter:brightness(0) invert(1);"
+/>
+</div>
+</td>
+
+<td>
+<div style="
+font-size:16px;
+font-weight:700;
+color:#111827;
+letter-spacing:-0.01em;
+">
+Commerciales Flores
+</div>
+</td>
+
+</tr>
+</table>
+</td>
+</tr>
+
+<!-- Hero -->
+<tr>
+<td align="center" style="padding:24px 32px 28px 32px;">
+
+<div style="
+font-size:64px;
+font-weight:900;
+color:#f1f5f9;
+font-style:italic;
+line-height:1;
+">
+CF
+</div>
+
+<div style="
+margin:-18px auto 18px auto;
+width:64px;
+height:64px;
+background:#2563eb;
+border-radius:14px;
+transform:rotate(8deg);
+box-shadow:0 12px 28px rgba(37,99,235,0.20);
+display:flex;
+align-items:center;
+justify-content:center;
+">
+<img
+src="https://nlermulroebcmfwvyhmo.supabase.co/storage/v1/object/public/property_media/public/logos/building-2.png"
+width="28"
+height="28"
+style="display:block;transform:rotate(-8deg);filter:brightness(0) invert(1);"
+/>
+</div>
+
+<div style="
+font-size:22px;
+font-weight:700;
+color:#111827;
+margin-bottom:6px;
+">
+${escapeHtml(title)}
+</div>
+
+<div style="
+font-size:14px;
+color:#64748b;
+line-height:1.7;
+max-width:420px;
+margin:0 auto;
+">
+${escapeHtml(subtitle)}
+</div>
+
+</td>
+</tr>
+
+</table>
+</td>
+</tr>
+
+<!-- Body -->
+<tr>
+<td style="padding:34px 32px;">
+${bodyHtml}
+</td>
+</tr>
+
+<!-- Footer -->
+<tr>
+<td style="padding:22px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;">
+<div style="font-size:12px;line-height:1.8;color:#64748b;text-align:center;">
+This is an automated security email from Comerciales Flores. Please do not reply.
+</div>
+</td>
+</tr>
+
+</table>
+
+<!-- Blue Footer -->
+<table role="presentation" width="100%">
+<tr>
+<td align="center" style="padding:22px 32px;background:#2563eb;border-radius:0 0 22px 22px;">
+
+<div style="font-size:13px;font-weight:600;color:#ffffff;margin-bottom:6px;">
+Commerciales Flores
+</div>
+
+<div style="font-size:12px;color:#dbeafe;">
+© 2026 Commerciales Flores. All rights reserved.
+</div>
+
+</td>
+</tr>
+</table>
+
+</td>
+</tr>
+</table>
+
+</td>
+</tr>
+</table>
+
+</body>
 </html>
 `;
 }
@@ -118,7 +246,7 @@ async function sendEmail(params: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: 'Comerciales Flores <security@commercialesflores.com>',
+      from: 'Commerciales Flores <security@commercialesflores.com>',
       to: [to],
       subject,
       html,
@@ -142,7 +270,7 @@ function buildVerifyNewEmailEmail(params: {
   const { verifyUrl, newEmail, expiresAt } = params;
 
   return buildEmailShell({
-    preheader: 'Verify your new email address for Comerciales Flores.',
+    preheader: 'Verify your new email address for Commerciales Flores.',
     title: 'Verify your new email',
     subtitle: 'Complete your email change securely.',
     bodyHtml: `
@@ -183,7 +311,7 @@ function buildOldEmailAlertEmail(params: {
     subtitle: 'We noticed a request to update your account email.',
     bodyHtml: `
       <p style="margin:0 0 16px 0;font-size:15px;line-height:1.7;color:#334155;">
-        A request was made to change the email on your Comerciales Flores account.
+        A request was made to change the email on your Commerciales Flores account.
       </p>
 
       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0 24px 0;border-collapse:collapse;">
@@ -380,7 +508,7 @@ Deno.serve(async (req) => {
       sendEmail({
         resendApiKey,
         to: newEmail,
-        subject: 'Verify your new Comerciales Flores email',
+        subject: 'Verify your new Commerciales Flores email',
         html: newEmailHtml,
       }),
       sendEmail({

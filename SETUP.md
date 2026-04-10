@@ -1,6 +1,6 @@
-# Comerciales Flores - Setup Guide
+# Commerciales Flores - Setup Guide
 
-This document explains how to set up the **Comerciales Flores** project locally for development.
+This document explains how to set up the **Commerciales Flores** project locally for development.
 
 ---
 

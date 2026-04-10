@@ -74,46 +74,153 @@ function buildEmailShell(options: {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${escapeHtml(title)}</title>
   </head>
-  <body style="margin:0;padding:0;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+  <body style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
       ${escapeHtml(preheader)}
     </div>
 
-    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f8fafc;margin:0;padding:24px 0;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0;padding:32px 16px;background:#eef2f7;">
       <tr>
         <td align="center">
-          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:640px;background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;overflow:hidden;">
-            <tr>
-              <td style="padding:28px 32px;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);color:#ffffff;">
-                <div style="font-size:12px;letter-spacing:0.12em;text-transform:uppercase;font-weight:700;opacity:0.85;">
-                  Comerciales Flores
-                </div>
-                <div style="margin-top:10px;font-size:28px;line-height:1.2;font-weight:700;">
-                  ${escapeHtml(title)}
-                </div>
-                <div style="margin-top:8px;font-size:15px;line-height:1.6;color:#cbd5e1;">
-                  ${escapeHtml(subtitle)}
-                </div>
-              </td>
-            </tr>
 
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:680px;margin:0 auto;">
             <tr>
-              <td style="padding:32px;">
-                ${bodyHtml}
-              </td>
-            </tr>
+              <td style="padding:0;">
 
-            <tr>
-              <td style="padding:20px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:12px;line-height:1.6;color:#64748b;">
-                This is an automated security email from <strong>Comerciales Flores</strong>.<br />
-                Please do not reply to this message.
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:22px;overflow:hidden;box-shadow:0 12px 40px rgba(15,23,42,0.08);">
+                  
+                  <tr>
+                    <td style="padding:0;background:#ffffff;border-bottom:1px solid #e2e8f0;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                        
+                        <tr>
+                          <td style="padding:26px 32px 0 32px;">
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                              <tr>
+                                <td style="padding-right:10px;">
+                                  <div style="
+                                    background:#2563eb;
+                                    padding:8px;
+                                    border-radius:10px;
+                                    box-shadow:0 6px 16px rgba(37,99,235,0.15);
+                                    display:inline-block;
+                                  ">
+                                    <img
+                                      src="https://nlermulroebcmfwvyhmo.supabase.co/storage/v1/object/public/property_media/public/logos/building-2.png"
+                                      width="18"
+                                      height="18"
+                                      alt="Comerciales Flores"
+                                      style="display:block;filter:brightness(0) invert(1);"
+                                    />
+                                  </div>
+                                </td>
+
+                                <td>
+                                  <div style="
+                                    font-size:16px;
+                                    font-weight:700;
+                                    color:#111827;
+                                    letter-spacing:-0.01em;
+                                  ">
+                                    Commerciales Flores
+                                  </div>
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+
+                        <tr>
+                          <td align="center" style="padding:24px 32px 28px 32px;">
+                            <div style="
+                              font-size:64px;
+                              font-weight:900;
+                              color:#f1f5f9;
+                              font-style:italic;
+                              line-height:1;
+                              user-select:none;
+                            ">
+                              CF
+                            </div>
+
+                            <div style="
+                              margin:-18px auto 18px auto;
+                              width:64px;
+                              height:64px;
+                              background:#2563eb;
+                              border-radius:14px;
+                              transform:rotate(8deg);
+                              box-shadow:0 12px 28px rgba(37,99,235,0.20);
+                              display:flex;
+                              align-items:center;
+                              justify-content:center;
+                            ">
+                              <img
+                                src="https://nlermulroebcmfwvyhmo.supabase.co/storage/v1/object/public/property_media/public/logos/building-2.png"
+                                width="28"
+                                height="28"
+                                alt="Comerciales Flores"
+                                style="display:block;transform:rotate(-8deg);filter:brightness(0) invert(1);"
+                              />
+                            </div>
+
+                            <div style="
+                              font-size:22px;
+                              font-weight:700;
+                              color:#111827;
+                              margin-bottom:6px;
+                            ">
+                              ${escapeHtml(title)}
+                            </div>
+
+                            <div style="
+                              font-size:14px;
+                              color:#64748b;
+                              line-height:1.7;
+                              max-width:420px;
+                              margin:0 auto;
+                            ">
+                              ${escapeHtml(subtitle)}
+                            </div>
+                          </td>
+                        </tr>
+
+                      </table>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="padding:34px 32px;background:#ffffff;">
+                      ${bodyHtml}
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="padding:22px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;">
+                      <div style="font-size:12px;line-height:1.8;color:#64748b;text-align:center;">
+                        This is an automated security email from Comerciales Flores. Please do not reply.
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td align="center" style="padding:22px 32px;background:#2563eb;border-radius:0 0 22px 22px;">
+                      <div style="font-size:13px;font-weight:600;color:#ffffff;margin-bottom:6px;">
+                        Commerciales Flores
+                      </div>
+                      <div style="font-size:12px;line-height:1.6;color:#dbeafe;">
+                        © ${new Date().getFullYear()} Commerciales Flores. All rights reserved.
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+
               </td>
             </tr>
           </table>
 
-          <div style="max-width:640px;padding:14px 18px 0 18px;font-size:12px;line-height:1.6;color:#94a3b8;text-align:center;">
-            © ${new Date().getFullYear()} Comerciales Flores. All rights reserved.
-          </div>
         </td>
       </tr>
     </table>
@@ -259,7 +366,7 @@ async function sendEmail(params: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: 'Comerciales Flores <security@commercialesflores.com>',
+      from: 'Commerciales Flores <security@commercialesflores.com>',
       to: [to],
       subject,
       html,
@@ -295,15 +402,15 @@ function buildApproveSignInEmail(options: {
   } = options;
 
   return buildEmailShell({
-    preheader: 'Approve your sign-in request for Comerciales Flores.',
-    title: 'Approve your sign-in',
-    subtitle: 'We detected a login attempt that needs your confirmation.',
+    preheader: 'Approve your sign-in request for Commerciales Flores.',
+    title: 'Confirm it’s really you',
+    subtitle: 'Reauthentication is required before we allow this sign-in.',
     bodyHtml: `
-      <p style="margin:0 0 16px 0;font-size:15px;line-height:1.7;color:#334155;">
-        A sign-in attempt was made for your account. To continue, confirm that this login was really made by you.
-      </p>
+      <div style="font-size:16px;line-height:1.8;color:#334155;margin:0 0 18px 0;">
+        We detected a sign-in attempt for your account. To continue, please confirm that this login was really made by you.
+      </div>
 
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0 24px 0;border-collapse:collapse;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px 0;border:1px solid #e2e8f0;border-radius:16px;background:#ffffff;border-collapse:separate;padding:0 20px;">
         ${buildInfoRow('Device', deviceName || 'Desktop browser')}
         ${buildInfoRow('Browser', userAgent || 'Unavailable')}
         ${buildInfoRow('IP Address', ipAddress || 'Unavailable')}
@@ -311,18 +418,11 @@ function buildApproveSignInEmail(options: {
         ${buildInfoRow('Expires', formatDateTime(expiresAt))}
       </table>
 
-      <div style="margin:24px 0 28px 0;text-align:center;">
-        <a
-          href="${verifyUrl}"
-          style="display:inline-block;padding:14px 24px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:12px;font-size:15px;font-weight:700;"
-        >
-          Approve sign-in
-        </a>
-      </div>
-
-      <div style="margin:0 0 18px 0;padding:16px 18px;border:1px solid #dbeafe;background:#eff6ff;border-radius:14px;">
-        <div style="font-size:13px;font-weight:700;color:#1d4ed8;margin-bottom:6px;">What happens next?</div>
-        <div style="font-size:14px;line-height:1.7;color:#334155;">
+      <div style="margin:0 0 18px 0;padding:18px 20px;border:1px solid #dbeafe;border-radius:16px;background:#f8fbff;">
+        <div style="font-size:13px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#1d4ed8;margin-bottom:8px;">
+          What happens next?
+        </div>
+        <div style="font-size:14px;line-height:1.8;color:#475569;">
           Once approved, the original browser can continue signing in.
           ${
             rememberDevice
@@ -332,9 +432,40 @@ function buildApproveSignInEmail(options: {
         </div>
       </div>
 
-      <p style="margin:0;font-size:14px;line-height:1.7;color:#475569;">
-        If this was not you, you can safely ignore this email. The request will expire automatically after 15 minutes.
-      </p>
+      <div style="text-align:center;padding:8px 0 16px 0;">
+        <a
+          href="${verifyUrl}"
+          style="display:inline-block;background:linear-gradient(135deg,#2563eb 0%,#1d4ed8 100%);color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;line-height:1;padding:16px 30px;border-radius:12px;box-shadow:0 10px 24px rgba(37,99,235,0.28);"
+        >
+          Approve Sign-In
+        </a>
+      </div>
+
+      <div style="font-size:13px;line-height:1.8;color:#64748b;text-align:center;">
+        If the button does not work, copy and paste this link into your browser:
+      </div>
+      <div style="padding-top:10px;font-size:12px;line-height:1.7;color:#2563eb;text-align:center;word-break:break-all;">
+        ${verifyUrl}
+      </div>
+
+      <div style="padding:28px 0 0 0;">
+        <div style="height:1px;line-height:1px;font-size:1px;background:#e2e8f0;">&nbsp;</div>
+      </div>
+
+      <div style="padding-top:24px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #fecaca;border-radius:16px;background:#fff5f5;">
+          <tr>
+            <td style="padding:18px 20px;">
+              <div style="font-size:13px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#dc2626;margin-bottom:8px;">
+                Security notice
+              </div>
+              <div style="font-size:14px;line-height:1.8;color:#7f1d1d;">
+                If this was not you, you can safely ignore this email. The request will expire automatically after 15 minutes.
+              </div>
+            </td>
+          </tr>
+        </table>
+      </div>
     `,
   });
 }
@@ -361,11 +492,11 @@ function buildCountryAlertEmail(options: {
     title: 'Security alert',
     subtitle: 'We noticed activity on your trusted device from a different country.',
     bodyHtml: `
-      <p style="margin:0 0 16px 0;font-size:15px;line-height:1.7;color:#334155;">
+      <div style="font-size:16px;line-height:1.8;color:#334155;margin:0 0 18px 0;">
         Your trusted device was used to sign in from a location that appears to be in a different country from the last recorded login.
-      </p>
+      </div>
 
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0 24px 0;border-collapse:collapse;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 18px 0;border:1px solid #e2e8f0;border-radius:16px;background:#ffffff;border-collapse:separate;padding:0 20px;">
         ${buildInfoRow('Previous location', previousCountry || 'Unknown')}
         ${buildInfoRow('Current location', currentLocationLabel || currentCountry || 'Unknown')}
         ${buildInfoRow('Device', deviceName || 'Unknown device')}
@@ -373,16 +504,18 @@ function buildCountryAlertEmail(options: {
         ${buildInfoRow('Time', formatDateTime(nowIso))}
       </table>
 
-      <div style="margin:0 0 18px 0;padding:16px 18px;border:1px solid #fee2e2;background:#fef2f2;border-radius:14px;">
-        <div style="font-size:13px;font-weight:700;color:#b91c1c;margin-bottom:6px;">Was this not you?</div>
-        <div style="font-size:14px;line-height:1.7;color:#334155;">
-          Change your password immediately and review your trusted devices from your account settings.
+      <div style="margin:0 0 18px 0;padding:18px 20px;border:1px solid #fecaca;border-radius:16px;background:#fff5f5;">
+        <div style="font-size:13px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:#dc2626;margin-bottom:8px;">
+          Security notice
+        </div>
+        <div style="font-size:14px;line-height:1.8;color:#7f1d1d;">
+          Change your password immediately and review your trusted devices from your account settings if this was not you.
         </div>
       </div>
 
-      <p style="margin:0;font-size:14px;line-height:1.7;color:#475569;">
+      <div style="font-size:14px;line-height:1.8;color:#475569;">
         If this sign-in was yours, no action is needed.
-      </p>
+      </div>
     `,
   });
 }
@@ -805,7 +938,7 @@ Deno.serve(async (req) => {
     const emailResult = await sendEmail({
       resendApiKey,
       to: user.email,
-      subject: 'Approve your Comerciales Flores sign-in',
+      subject: 'Approve your Commerciales Flores sign-in',
       html: approvalHtml,
     });
 

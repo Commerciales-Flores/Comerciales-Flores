@@ -916,8 +916,8 @@ const [formError, setFormError] = useState<string | null>(null);
             </h2>
             <p className="mt-1 text-xs font-medium text-slate-400">
               {editingUnit
-                ? 'Update the selected unit details for Comerciales Flores'
-                : 'Create a new rentable unit profile for Comerciales Flores'}
+                ? 'Update the selected unit details for Commerciales Flores'
+                : 'Create a new rentable unit profile for Commerciales Flores'}
             </p>
           </div>
 

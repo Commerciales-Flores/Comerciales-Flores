@@ -71,7 +71,7 @@ function RouteLoader() {
           <Building2 className="size-5 sm:size-6 text-white" />
         </div>
         <span className="text-lg font-bold text-gray-900 tracking-tight">
-          Comerciales Flores
+          Commerciales Flores
         </span>
       </div>
 

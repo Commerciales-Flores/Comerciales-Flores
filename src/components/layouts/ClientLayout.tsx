@@ -184,7 +184,7 @@ const unreadNotifications = useMemo(
 
       <div className="flex flex-col">
         <h1 className="font-bold tracking-tight text-sm md:text-lg leading-none text-gray-900">
-          Comerciales Flores
+          Commerciales Flores
         </h1>
         <p className="text-[10px] uppercase font-bold text-gray-400 tracking-widest mt-1">
           Client Portal

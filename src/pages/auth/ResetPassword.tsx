@@ -76,7 +76,7 @@ export default function ResetPassword() {
           <Building2 className="size-5 text-white sm:size-6" />
         </div>
         <span className="text-lg font-bold tracking-tight text-gray-900">
-          Comerciales Flores
+          Commerciales Flores
         </span>
       </div>
 

@@ -10,7 +10,7 @@ const UnauthorizedPage: React.FC = () => {
           <Building2 className="size-5 sm:size-6 text-white" />
         </div>
         <div className="flex flex-col leading-tight">
-          <span className="text-lg font-bold text-gray-900 tracking-tight">Comerciales Flores</span>
+          <span className="text-lg font-bold text-gray-900 tracking-tight">Commerciales Flores</span>
         </div>
       </div>
 
