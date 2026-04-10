@@ -260,55 +260,54 @@ const refreshPaymentsPromiseRef = useRef<Promise<void> | null>(null);
   
 
   const fetchPaymentsPage = useCallback(
-    async ({
-      page = 1,
-      pageSize = 25,
-      status = 'all',
-      searchTerm = '',
-    }: PaymentsPageFilters): Promise<{
-      data: Payment[];
-      count: number;
-    }> => {
-      let query = supabase
-        .from('payments')
-        .select(
-          'payment_id, public_id, reservation_id, user_id, amount, method, status, review_status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category',
-          { count: 'planned' }
-        )
-        .order('date', { ascending: false });
+  async ({
+    page = 1,
+    pageSize = 25,
+    status = 'all',
+    searchTerm = '',
+  }: PaymentsPageFilters): Promise<{
+    data: Payment[];
+    count: number;
+  }> => {
+    let query = supabase
+      .from('payments')
+      .select(
+        'payment_id, public_id, reservation_id, user_id, amount, method, status, review_status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category',
+        { count: 'exact' }
+      )
+      .order('date', { ascending: false });
 
-      if (status !== 'all') {
-        query = query.eq('status', status);
-      }
+    if (status !== 'all') {
+      query = query.eq('status', status);
+    }
 
-      const trimmedSearch = normalizeSearchTerm(searchTerm);
-      if (trimmedSearch) {
-        query = query.or(
-          [
-            `public_id.ilike.%${trimmedSearch}%`,
-            `reservation_id.ilike.%${trimmedSearch}%`,
-            `user_id.ilike.%${trimmedSearch}%`,
-            `notes.ilike.%${trimmedSearch}%`,
-            `method.ilike.%${trimmedSearch}%`,
-            `category.ilike.%${trimmedSearch}%`,
-          ].join(',')
-        );
-      }
+    const trimmedSearch = searchTerm.trim();
+if (trimmedSearch) {
+  const escapedSearch = trimmedSearch.replace(/[%_]/g, '\\$&');
 
-      const from = (page - 1) * pageSize;
-      const to = from + pageSize - 1;
-
-      const { data, error, count } = await query.range(from, to);
-
-      if (error) throw error;
-
-      return {
-        data: (data ?? []).map(mapPaymentRow),
-        count: count ?? 0,
-      };
-    },
-    []
+  query = query.or(
+    [
+      `public_id.ilike.%${escapedSearch}%`,
+      `notes.ilike.%${escapedSearch}%`,
+      `category.ilike.%${escapedSearch}%`,
+    ].join(',')
   );
+}
+
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    const { data, error, count } = await query.range(from, to);
+
+    if (error) throw error;
+
+    return {
+      data: sortPaymentsByCreatedAt((data ?? []).map(mapPaymentRow)),
+      count: count ?? 0,
+    };
+  },
+  []
+);
 
   
 

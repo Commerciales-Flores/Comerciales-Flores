@@ -322,7 +322,7 @@ const hasMeasuredRef = useRef(false);
 
   useEffect(() => {
     setPage(1);
-  }, [filterStatus]);
+  }, [filterStatus, debouncedSearch]);
 
   useEffect(() => {
     void loadReservationsPage();
@@ -347,17 +347,29 @@ const hasMeasuredRef = useRef(false);
   }, [reservations, getUserById, getUnitById]);
 
 
-  const filteredReservations = useMemo(() => {
-  const term = debouncedSearch.toLowerCase();
+const filteredReservations = useMemo(() => {
+  const term = debouncedSearch.trim().toLowerCase();
 
   if (!term) return enrichedReservations;
 
-  return enrichedReservations.filter(r =>
-    r.fullName?.toLowerCase().includes(term) ||
-    r.reservationPublicId?.toLowerCase().includes(term) ||
-    r.userPublicId?.toLowerCase().includes(term) ||
-    r.unitName?.toLowerCase().includes(term)
-  );
+  return enrichedReservations.filter((r) => {
+    const fields = [
+      r.fullName,
+      r.reservationPublicId,
+      r.userPublicId,
+      r.unitName,
+      r.location,
+      r.status,
+      r.modeOfVisit,
+      r.linkedUser?.email,
+      r.linkedUser?.firstName,
+      r.linkedUser?.lastName,
+    ];
+
+    return fields.some((value) =>
+      String(value ?? '').toLowerCase().includes(term)
+    );
+  });
 }, [enrichedReservations, debouncedSearch]);
 
   const selectedReservationData = useMemo(() => {
@@ -374,8 +386,11 @@ const hasMeasuredRef = useRef(false);
   const hasActiveSearch = Boolean(debouncedSearch.trim());
   const hasActiveFilters = filterStatus !== 'all' || hasActiveSearch;
 
-  const hasNoReservations = !shouldShowLoadingState && totalCount === 0 && !hasActiveFilters;
-  const hasNoSearchResults = !shouldShowLoadingState && totalCount === 0 && hasActiveFilters;
+  const hasNoReservations =
+  !shouldShowLoadingState && enrichedReservations.length === 0 && !hasActiveFilters;
+
+const hasNoSearchResults =
+  !shouldShowLoadingState && filteredReservations.length === 0 && hasActiveFilters;
 
   const shouldShowFilters =
     !shouldShowLoadingState && (!hasNoReservations || hasActiveFilters);

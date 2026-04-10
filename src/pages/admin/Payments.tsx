@@ -329,17 +329,33 @@ export default function AdminPayments() {
         progress,
         derivedStatus,
         searchableText: [
-          payment.publicId ?? payment.id,
-          reservationPublicId,
-          userPublicId,
-          userFullName,
-          payment.category ?? 'payment',
-        ]
-          .join(' ')
-          .toLowerCase(),
+  payment.publicId ?? payment.id,
+  reservationPublicId,
+  userPublicId,
+  userFullName,
+  payment.category ?? 'payment',
+  payment.method?.replaceAll('_', ' ') ?? '',
+  payment.notes ?? '',
+]
+  .join(' ')
+  .toLowerCase(),
       };
     });
   }, [payments, reservations, getUserById, ledgerTotalsByReservationId, refundedAmountByPaymentId]);
+
+  const filteredPaymentViews = useMemo(() => {
+  const term = debouncedSearch.trim().toLowerCase();
+
+  return paymentViews.filter((payment) => {
+    const matchesStatus =
+      filterStatus === 'all' || payment.derivedStatus === filterStatus;
+
+    const matchesSearch =
+      !term || payment.searchableText.includes(term);
+
+    return matchesStatus && matchesSearch;
+  });
+}, [paymentViews, debouncedSearch, filterStatus]);
 
 
   const selectedPaymentData = useMemo(() => {
@@ -353,10 +369,16 @@ export default function AdminPayments() {
 
   
 
-  const hasNoPayments =
-    !isTableLoading && totalCount === 0 && trimmedSearch.length === 0;
-  const hasNoSearchResults =
-    !isTableLoading && totalCount === 0 && trimmedSearch.length > 0;
+ const hasNoPayments =
+  !isTableLoading &&
+  filteredPaymentViews.length === 0 &&
+  filterStatus === 'all' &&
+  trimmedSearch.length === 0;
+
+const hasNoSearchResults =
+  !isTableLoading &&
+  filteredPaymentViews.length === 0 &&
+  (trimmedSearch.length > 0 || filterStatus !== 'all');
 
     const hasActiveFilters =
   trimmedSearch.length > 0 || filterStatus !== 'all';
@@ -399,11 +421,11 @@ const shouldShowFilters =
       setSelectedPayment(null);
 
       const result = await fetchPaymentsPage({
-        page,
-        pageSize,
-        status: filterStatus,
-        searchTerm: debouncedSearch,
-      });
+  page,
+  pageSize,
+  status: 'all',
+  searchTerm: debouncedSearch,
+});
 
       setPayments(result.data);
       setTotalCount(result.count);
@@ -554,7 +576,7 @@ const shouldShowFilters =
       return;
     }
 
-    const csvData = paymentViews.map((payment) => ({
+    const csvData = filteredPaymentViews.map((payment) => ({
       'Payment ID': payment.publicId ?? payment.id,
       'Reservation ID': payment.reservationPublicId,
       Category: getPaymentCategoryLabel(payment.category),
@@ -745,7 +767,7 @@ const shouldShowFilters =
               </div>
             </motion.div>
           ) : (
-            paymentViews.map((payment) => (
+            filteredPaymentViews.map((payment) => (
               <div
                 key={payment.id}
                 className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
@@ -896,7 +918,7 @@ const shouldShowFilters =
                 'Actions',
               ]}
             >
-              {paymentViews.map((payment) => (
+              {filteredPaymentViews.map((payment) => (
                 <tr key={payment.id} className="transition-colors hover:bg-blue-50/30">
                   <DataCell
                     value={payment.userPublicId}

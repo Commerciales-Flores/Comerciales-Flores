@@ -6,6 +6,7 @@ import type { UnitType } from '../../data/types';
 import supabase from '../../supabaseClient';
 import { DataCell, ActionCell, DataTable } from '../../components/common/DataTable';
 import { normalizeAmountInput, finalizeAmountInput } from '../../utils/priceNormalization';
+import AppNotice from '../../components/common/AppNotice';
 import {
   Plus,
   Edit,
@@ -2417,6 +2418,11 @@ export default function AdminUnitManagement() {
 
   const [unitToDelete, setUnitToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const [notice, setNotice] = useState<{
+  message: string;
+  variant?: 'error' | 'warning' | 'success' | 'info';
+} | null>(null);
   
 
   const [showSlotManager, setShowSlotManager] = useState(false);
@@ -2571,20 +2577,32 @@ const closeMobileFilters = useCallback(() => {
     setUnitToDelete(null);
   }, [isDeleting]);
 
-  const confirmDelete = useCallback(async () => {
-    if (!unitToDelete || isDeleting) return;
+const confirmDelete = useCallback(async () => {
+  if (!unitToDelete || isDeleting) return;
 
-    setIsDeleting(true);
+  setIsDeleting(true);
 
-    try {
-      await deleteUnit(unitToDelete);
-      setUnitToDelete(null);
-    } catch (error) {
-      console.error('Failed to delete unit:', error);
-    } finally {
-      setIsDeleting(false);
-    }
-  }, [deleteUnit, isDeleting, unitToDelete]);
+  try {
+    await deleteUnit(unitToDelete);
+
+    setNotice({
+      message: 'Unit deleted successfully.',
+      variant: 'success',
+    });
+
+    setUnitToDelete(null);
+  } catch (error) {
+    setNotice({
+      message:
+        error instanceof Error
+          ? error.message
+          : 'Failed to delete unit. Please try again.',
+      variant: 'error',
+    });
+  } finally {
+    setIsDeleting(false);
+  }
+}, [deleteUnit, isDeleting, unitToDelete]);
 
   const resetSlotForm = useCallback(() => {
     if (slotImagePreview.startsWith('blob:')) {
@@ -2800,9 +2818,19 @@ const closeMobileFilters = useCallback(() => {
 
   if (showUnitModal && loadingUnits) return null;
 
+  
+
   return (
     <div className="min-h-screen bg-white">
       <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
+        {notice && (
+          <AppNotice
+            message={notice.message}
+            variant={notice.variant}
+            onClose={() => setNotice(null)}
+            autoHideMs={4000}
+          />
+        )}
         <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
           <div>
             <h1 className="text-xl font-bold text-gray-900 md:text-2xl">Unit Management</h1>

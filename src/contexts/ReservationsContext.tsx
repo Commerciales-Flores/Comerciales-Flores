@@ -437,80 +437,117 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
   }, [mapReservationRow]);
 
   const fetchReservationsPage = useCallback(
-    async ({
-      page = 1,
-      pageSize = 25,
-      status = 'all',
-      searchTerm = '',
-    }: ReservationsPageFilters): Promise<{
-      data: Reservation[];
-      count: number;
-    }> => {
-      let query = supabase
-        .from('reservations')
-        .select(
-          `
-          reservation_id,
-          public_id,
-          user_id,
-          unit_id,
-          title,
-          unit_type,
-          start_date,
-          end_date,
-          duration,
-          total_amount,
-          status,
-          notes,
-          paid_amount,
-          created_at,
-          payment_method,
-          payment_intent,
-          mode_of_visit,
-          appointment_date,
-          appointment_time,
-          confirmed_visit_date,
-          confirmed_visit_time,
-          visit_status,
-          details,
-          minimum_payment_percent_snapshot
-          `,
-          { count: 'planned' }
+  async ({
+    page = 1,
+    pageSize = 25,
+    status = 'all',
+    searchTerm = '',
+  }: ReservationsPageFilters): Promise<{
+    data: Reservation[];
+    count: number;
+  }> => {
+    let query = supabase
+      .from('reservations')
+      .select(
+        `
+        reservation_id,
+        public_id,
+        user_id,
+        unit_id,
+        title,
+        unit_type,
+        start_date,
+        end_date,
+        duration,
+        total_amount,
+        status,
+        notes,
+        paid_amount,
+        created_at,
+        payment_method,
+        payment_intent,
+        mode_of_visit,
+        appointment_date,
+        appointment_time,
+        confirmed_visit_date,
+        confirmed_visit_time,
+        visit_status,
+        details,
+        minimum_payment_percent_snapshot,
+        users:user_id (
+          first_name,
+          last_name,
+          email,
+          public_id
         )
-        .order('created_at', { ascending: false });
+        `,
+        { count: 'exact' }
+      )
+      .order('created_at', { ascending: false });
 
-      if (status !== 'all') {
-        query = query.eq('status', status);
-      }
+    if (status !== 'all') {
+      query = query.eq('status', status);
+    }
 
-      const trimmedSearch = searchTerm.trim();
-      if (trimmedSearch) {
-        query = query.or(
+    const trimmedSearch = searchTerm.trim();
+
+    if (trimmedSearch) {
+      const escapedSearch = trimmedSearch.replace(/[%_]/g, '\\$&');
+
+      const reservationFilters = [
+        `public_id.ilike.%${escapedSearch}%`,
+        `title.ilike.%${escapedSearch}%`,
+        `notes.ilike.%${escapedSearch}%`,
+        `unit_type.ilike.%${escapedSearch}%`,
+        `mode_of_visit.ilike.%${escapedSearch}%`,
+      ];
+
+      let matchedUserIds: string[] = [];
+
+      const { data: matchedUsers, error: usersSearchError } = await supabase
+        .from('users')
+        .select('user_id')
+        .or(
           [
-            `public_id.ilike.%${trimmedSearch}%`,
-            `user_id.ilike.%${trimmedSearch}%`,
-            `title.ilike.%${trimmedSearch}%`,
-            `notes.ilike.%${trimmedSearch}%`,
-            `unit_type.ilike.%${trimmedSearch}%`,
-            `mode_of_visit.ilike.%${trimmedSearch}%`,
+            `first_name.ilike.%${escapedSearch}%`,
+            `last_name.ilike.%${escapedSearch}%`,
+            `email.ilike.%${escapedSearch}%`,
+            `public_id.ilike.%${escapedSearch}%`,
           ].join(',')
+        )
+        .limit(200);
+
+      if (usersSearchError) {
+        console.error('User search failed:', usersSearchError);
+      } else {
+        matchedUserIds = Array.from(
+          new Set((matchedUsers ?? []).map((user) => user.user_id).filter(Boolean))
         );
       }
 
-      const from = (page - 1) * pageSize;
-      const to = from + pageSize - 1;
+      const combinedFilters = [...reservationFilters];
 
-      const { data, error, count } = await query.range(from, to);
+      if (matchedUserIds.length > 0) {
+        combinedFilters.push(`user_id.in.(${matchedUserIds.join(',')})`);
+      }
 
-      if (error) throw error;
+      query = query.or(combinedFilters.join(','));
+    }
 
-      return {
-        data: sortReservationsByRequestDate((data ?? []).map(mapReservationRow)),
-        count: count ?? 0,
-      };
-    },
-    [mapReservationRow]
-  );
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    const { data, error, count } = await query.range(from, to);
+
+    if (error) throw error;
+
+    return {
+      data: sortReservationsByRequestDate((data ?? []).map(mapReservationRow)),
+      count: count ?? 0,
+    };
+  },
+  [mapReservationRow]
+);
 
   const addReservation = useCallback(
     async (
