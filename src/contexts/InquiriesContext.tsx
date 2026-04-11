@@ -162,6 +162,42 @@ function sortTicketsByLatest(items: SupportTicket[]) {
   );
 }
 
+async function notifyAdminsNewTicket(params: {
+  ticketId: string;
+  ticketPublicId?: string | null;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  subjectLine?: string | null;
+  messagePreview?: string | null;
+}) {
+  const { error } = await supabase.functions.invoke(
+    "send-admin-new-ticket",
+    { body: params }
+  );
+
+  if (error) {
+    console.error("Failed to send admin new ticket alert:", error);
+  }
+}
+
+async function notifyAdminsTicketReply(params: {
+  ticketId: string;
+  ticketPublicId?: string | null;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  subjectLine?: string | null;
+  replyMessage: string;
+}) {
+  const { error } = await supabase.functions.invoke(
+    "send-admin-ticket-reply",
+    { body: params }
+  );
+
+  if (error) {
+    console.error("Failed to send admin ticket reply alert:", error);
+  }
+}
+
 export function InquiriesProvider({ children }: { children: ReactNode }) {
   const [messagesByTicketId, setMessagesByTicketId] = useState<
     Record<string, SupportMessage[]>
@@ -348,33 +384,34 @@ export function InquiriesProvider({ children }: { children: ReactNode }) {
     throw new Error('Subject and first message are required.');
   }
 
-let resolvedUserId = input.userId ?? null;
+const {
+  data: { user: authUser },
+  error: authUserError,
+} = await supabase.auth.getUser();
+
+if (authUserError) {
+  throw authUserError;
+}
+
+let resolvedUserId = input.userId ?? authUser?.id ?? null;
 let resolvedFirstName = normalizedFirstName;
 let resolvedLastName = normalizedLastName;
 let resolvedEmail = normalizedEmail;
 
-if (!resolvedUserId && normalizedEmail) {
-  const { data: matchedUser, error: matchedUserError } = await supabase
-    .from('users')
-    .select('user_id, first_name, last_name, email')
-    .ilike('email', normalizedEmail)
-    .maybeSingle();
+if (resolvedUserId && authUser?.email) {
+  resolvedEmail = normalizeEmail(authUser.email);
 
-  if (matchedUserError) {
-    throw matchedUserError;
-  }
+  const fullName =
+    authUser.user_metadata?.full_name ??
+    [authUser.user_metadata?.first_name, authUser.user_metadata?.last_name]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
 
-  if (matchedUser?.user_id) {
-    resolvedUserId = matchedUser.user_id;
-    resolvedFirstName = matchedUser.first_name
-      ? normalizeName(matchedUser.first_name)
-      : resolvedFirstName;
-    resolvedLastName = matchedUser.last_name
-      ? normalizeName(matchedUser.last_name)
-      : resolvedLastName;
-    resolvedEmail = matchedUser.email
-      ? normalizeEmail(matchedUser.email)
-      : resolvedEmail;
+  if (!resolvedFirstName && fullName) {
+    const [first, ...rest] = fullName.split(' ');
+    resolvedFirstName = first ? normalizeName(first) : resolvedFirstName;
+    resolvedLastName = rest.length > 0 ? normalizeName(rest.join(' ')) : resolvedLastName;
   }
 }
 
@@ -478,7 +515,28 @@ const senderType: SupportSenderType =
 
   loadedTicketIdsRef.current.add(newTicket.id);
 
-  return newTicket;
+  try {
+  const customerName =
+    [resolvedFirstName, resolvedLastName].filter(Boolean).join(" ").trim() ||
+    resolvedEmail ||
+    null;
+
+  await notifyAdminsNewTicket({
+    ticketId: newTicket.id,
+    ticketPublicId: newTicket.publicId ?? newTicket.id,
+    customerName,
+    customerEmail: resolvedEmail,
+    subjectLine: newTicket.subject,
+    messagePreview: cleanedMessage.slice(0, 200),
+  });
+} catch (notificationError) {
+  console.error(
+    "Failed to trigger admin new ticket notification:",
+    notificationError
+  );
+}
+
+return newTicket;
 }, []);
 
 
@@ -574,6 +632,29 @@ const senderType: SupportSenderType =
 
     const newMessage = mapMessage(messageData);
     const updatedTicket = mapTicket(ticketData);
+
+    if (input.senderType === "customer" || input.senderType === "guest") {
+  try {
+    const customerName =
+      input.senderName ??
+      input.senderEmail ??
+      "Customer";
+
+    await notifyAdminsTicketReply({
+      ticketId,
+      ticketPublicId: updatedTicket.publicId ?? ticketId,
+      customerName,
+      customerEmail: input.senderEmail ?? null,
+      subjectLine: updatedTicket.subject,
+      replyMessage: cleanedBody,
+    });
+  } catch (notificationError) {
+    console.error(
+      "Failed to trigger admin ticket reply notification:",
+      notificationError
+    );
+  }
+}
 
     setTickets((prev) =>
       sortTicketsByLatest(

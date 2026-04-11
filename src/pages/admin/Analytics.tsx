@@ -1,173 +1,589 @@
-import { useMemo, useRef, useState, useCallback } from 'react';
+import { useMemo, useRef, useState, useCallback, type ReactNode } from "react";
 import {
+  Activity,
   BarChart3,
-  TrendingUp,
-  Users,
+  Building2,
   Calendar,
+  ChevronDown,
+  CircleDollarSign,
+  FileSpreadsheet,
+  PieChartIcon,
   Printer,
   ShieldCheck,
-  FileSpreadsheet,
-  ChevronDown,
-  PieChartIcon,
-} from 'lucide-react';
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
 import {
+  ResponsiveContainer,
+  CartesianGrid,
   BarChart,
-  Line,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  LineChart,
-  Brush,
   PieChart,
   Pie,
   Cell,
-} from 'recharts';
-import { useReactToPrint } from 'react-to-print';
-import { useAdminData } from '../../contexts/AdminDataContext';
-import type { UnitType } from '../../data/types';
-import { formatCurrency } from '../../utils/currency';
-import { getUnitTypeLabel } from '../../utils/propertyHelpers';
-import EmptyState from '../../components/common/EmptyState';
-import { formatDate } from '../../utils/date';
+} from "recharts";
+import type {
+  NameType,
+  ValueType,
+} from "recharts/types/component/DefaultTooltipContent";
+import { useReactToPrint } from "react-to-print";
 
-type Granularity = 'daily' | 'weekly' | 'monthly' | 'yearly';
+import { useAdminData } from "../../contexts/AdminDataContext";
+import type { UnitType } from "../../data/types";
+import { formatCurrency } from "../../utils/currency";
+import { getUnitTypeLabel } from "../../utils/propertyHelpers";
+import EmptyState from "../../components/common/EmptyState";
 
-type ChartPoint = {
+type Granularity = "daily" | "weekly" | "monthly" | "yearly";
+type BreakdownMode = "category" | "type";
+
+type TrendPoint = {
+  label: string;
   reservations: number;
   revenue: number;
-  day?: string;
-  week?: string;
-  month?: string;
-  year?: string;
+  payments: number;
 };
+
+type DistributionPoint = {
+  name: string;
+  value: number;
+  color: string;
+};
+
+const GRANULARITY_OPTIONS: Array<{
+  value: Granularity;
+  label: string;
+}> = [
+  { value: "daily", label: "Daily (Last 30 Days)" },
+  { value: "weekly", label: "Weekly (Last 12 Weeks)" },
+  { value: "monthly", label: "Monthly (Last 12 Months)" },
+  { value: "yearly", label: "Yearly (Last 5 Years)" },
+];
+
+const BREAKDOWN_OPTIONS: Array<{
+  value: BreakdownMode;
+  label: string;
+}> = [
+  { value: "category", label: "By Category" },
+  { value: "type", label: "By Unit Type" },
+];
+
+const UNIT_TYPE_COLORS: Record<UnitType, string> = {
+  rental_space: "#4f46e5",
+  function_hall: "#8b5cf6",
+  parking_slot: "#f97316",
+};
+
+const CATEGORY_COLOR_FALLBACKS = [
+  "#2563eb",
+  "#16a34a",
+  "#7c3aed",
+  "#ea580c",
+  "#0891b2",
+  "#db2777",
+  "#4f46e5",
+  "#65a30d",
+];
+
+function getSafeDate(value?: string | Date | null) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatMonthShort(date: Date) {
+  return date.toLocaleDateString("en-PH", {
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatShortDate(date: Date) {
+  return date.toLocaleDateString("en-PH", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function formatWeekLabel(start: Date, end: Date) {
+  return `${formatShortDate(start)} - ${formatShortDate(end)}`;
+}
+
+function capitalizeWords(value?: string | null) {
+  if (!value) return "Uncategorized";
+
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function sanitizeCsvValue(value: unknown) {
+  return String(value ?? "").replace(/"/g, '""');
+}
+
+function getStartOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function getStartOfWeek(date: Date) {
+  const next = new Date(date);
+  const day = next.getDay();
+  next.setDate(next.getDate() - day);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function getStartOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function getStartOfYear(date: Date) {
+  return new Date(date.getFullYear(), 0, 1);
+}
+
+function addDays(date: Date, amount: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return next;
+}
+
+function addWeeks(date: Date, amount: number) {
+  return addDays(date, amount * 7);
+}
+
+function addMonths(date: Date, amount: number) {
+  return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+}
+
+function addYears(date: Date, amount: number) {
+  return new Date(date.getFullYear() + amount, 0, 1);
+}
+
+function clampPercentage(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
+}
+
+function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
+  if (!rows.length) return;
+
+  const headers = Object.keys(rows[0]);
+  const csv = [
+    headers.join(","),
+    ...rows.map((row) =>
+      headers.map((header) => `"${sanitizeCsvValue(row[header])}"`).join(",")
+    ),
+  ].join("\r\n");
+
+  const blob = new Blob(["\uFEFF" + csv], {
+    type: "text/csv;charset=utf-8;",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function toNumericTooltipValue(value: ValueType | undefined) {
+  if (value === undefined || value === null) return 0;
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (Array.isArray(value) && value.length > 0) {
+    const first = value[0];
+    if (typeof first === "number") return first;
+    const parsed = Number(first);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function revenueTooltipFormatter(
+  value: ValueType | undefined,
+  name: NameType | undefined
+): [string, string] {
+  return [formatCurrency(toNumericTooltipValue(value)), String(name ?? "Revenue")];
+}
+
+function countTooltipFormatter(
+  value: ValueType | undefined,
+  name: NameType | undefined
+): [string, string] {
+  return [String(toNumericTooltipValue(value)), String(name ?? "Value")];
+}
 
 export default function AdminAnalytics() {
   const { reservations, payments, units } = useAdminData();
-  const [granularity, setGranularity] = useState<Granularity>('monthly');
+
+  const [granularity, setGranularity] = useState<Granularity>("monthly");
+  const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>("category");
+
   const printRef = useRef<HTMLDivElement>(null);
 
   const handlePrint = useReactToPrint({
     contentRef: printRef,
-    documentTitle: `Comerciales-Flores-Analytics-Report-${new Date().toISOString().split('T')[0]}`,
+    documentTitle: `Commerciales-Flores-Analytics-${
+      new Date().toISOString().split("T")[0]
+    }`,
   });
 
   const paidPayments = useMemo(
-    () => payments.filter((p) => p.status === 'paid'),
+    () => payments.filter((payment) => payment.status === "paid"),
     [payments]
   );
 
   const reservationById = useMemo(() => {
     const map = new Map<string, (typeof reservations)[number]>();
-    for (const reservation of reservations) {
+
+    reservations.forEach((reservation) => {
       map.set(reservation.id, reservation);
-    }
+    });
+
     return map;
   }, [reservations]);
+
+  const unitById = useMemo(() => {
+    const map = new Map<string, (typeof units)[number]>();
+
+    units.forEach((unit) => {
+      map.set(unit.id, unit);
+    });
+
+    return map;
+  }, [units]);
 
   const paidRevenueByUnitId = useMemo(() => {
     const revenueMap = new Map<string, number>();
 
-    for (const payment of paidPayments) {
+    paidPayments.forEach((payment) => {
       const reservation = reservationById.get(payment.reservationId);
-      if (!reservation) continue;
+      if (!reservation) return;
 
       const current = revenueMap.get(reservation.unitId) ?? 0;
-      revenueMap.set(reservation.unitId, current + payment.amount);
-    }
+      revenueMap.set(reservation.unitId, current + Number(payment.amount || 0));
+    });
 
     return revenueMap;
   }, [paidPayments, reservationById]);
 
-  const confirmedReservations = useMemo(
+  const approvedOrBetterReservations = useMemo(
     () =>
-      reservations.filter(
-        (r) => r.status === 'confirmed' || r.status === 'approved'
+      reservations.filter((reservation) =>
+        ["approved", "confirmed", "completed"].includes(reservation.status)
       ),
     [reservations]
   );
 
-  const fullyConfirmedReservations = useMemo(
-    () => reservations.filter((r) => r.status === 'confirmed'),
+  const confirmedReservations = useMemo(
+    () =>
+      reservations.filter((reservation) =>
+        ["confirmed", "completed"].includes(reservation.status)
+      ),
     [reservations]
   );
 
   const totalRevenue = useMemo(
-    () => paidPayments.reduce((sum, p) => sum + p.amount, 0),
+    () =>
+      paidPayments.reduce(
+        (sum, payment) => sum + Number(payment.amount || 0),
+        0
+      ),
     [paidPayments]
   );
 
   const totalReservations = reservations.length;
 
-  const averageReservationValue = useMemo(() => {
-    return confirmedReservations.length > 0
-      ? totalRevenue / confirmedReservations.length
-      : 0;
-  }, [confirmedReservations.length, totalRevenue]);
-
-  const averageStay = useMemo(() => {
-    if (fullyConfirmedReservations.length === 0) return 0;
-    const totalDuration = fullyConfirmedReservations.reduce(
-      (sum, r) => sum + r.duration,
-      0
-    );
-    return totalDuration / fullyConfirmedReservations.length;
-  }, [fullyConfirmedReservations]);
-
-  const reservationsByDay = useMemo(() => {
-    const dayOfWeek = [
-      'Sunday',
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-    ];
-
-    return dayOfWeek
-      .map((day, index) => ({
-        day,
-        count: reservations.filter(
-          (r) => new Date(r.requestDate).getDay() === index
-        ).length,
-      }))
-      .sort((a, b) => b.count - a.count);
-  }, [reservations]);
-
-  const typeDistributionData = useMemo(
-    () => [
-      {
-        name: 'Rental Space',
-        value: reservations.filter((r) => r.unitType === 'rental_space').length,
-        color: '#6366f1',
-      },
-      {
-        name: 'Function Hall',
-        value: reservations.filter((r) => r.unitType === 'function_hall').length,
-        color: '#a78bfa',
-      },
-      {
-        name: 'Parking Slot',
-        value: reservations.filter((r) => r.unitType === 'parking_slot').length,
-        color: '#f97316',
-      },
-    ],
-    [reservations]
+  const expectedTotal = useMemo(
+    () =>
+      approvedOrBetterReservations.reduce(
+        (sum, reservation) => sum + Number(reservation.totalAmount || 0),
+        0
+      ),
+    [approvedOrBetterReservations]
   );
 
-  const unitStats = useMemo(() => {
+  const outstandingTotal = useMemo(
+    () =>
+      approvedOrBetterReservations.reduce((sum, reservation) => {
+        const remaining =
+          Number(reservation.totalAmount || 0) -
+          Number(reservation.paidAmount || 0);
+
+        return sum + Math.max(remaining, 0);
+      }, 0),
+    [approvedOrBetterReservations]
+  );
+
+  const collectionRate = useMemo(() => {
+    if (expectedTotal <= 0) return 0;
+    return clampPercentage((totalRevenue / expectedTotal) * 100);
+  }, [expectedTotal, totalRevenue]);
+
+  const averageReservationValue = useMemo(() => {
+    if (approvedOrBetterReservations.length === 0) return 0;
+    return totalRevenue / approvedOrBetterReservations.length;
+  }, [approvedOrBetterReservations.length, totalRevenue]);
+
+  const averageDuration = useMemo(() => {
+    if (confirmedReservations.length === 0) return 0;
+
+    const totalDuration = confirmedReservations.reduce(
+      (sum, reservation) => sum + Number(reservation.duration || 0),
+      0
+    );
+
+    return totalDuration / confirmedReservations.length;
+  }, [confirmedReservations]);
+
+  const activeUnitsCount = useMemo(
+    () => units.filter((unit) => unit.available).length,
+    [units]
+  );
+
+  const globalOccupancyRate = useMemo(() => {
+    if (units.length === 0) return 0;
+
+    const activeReservationUnitIds = new Set(
+      approvedOrBetterReservations.map((reservation) => reservation.unitId)
+    );
+
+    return clampPercentage((activeReservationUnitIds.size / units.length) * 100);
+  }, [approvedOrBetterReservations, units.length]);
+
+  const reservationsByDayOfWeek = useMemo(() => {
+    const labels = [
+      "Sunday",
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ];
+
+    return labels.map((label, index) => ({
+      label,
+      count: reservations.filter((reservation) => {
+        const date = getSafeDate(reservation.requestDate);
+        return date ? date.getDay() === index : false;
+      }).length,
+    }));
+  }, [reservations]);
+
+  const trendData = useMemo<TrendPoint[]>(() => {
     const now = new Date();
 
+    if (granularity === "daily") {
+      return Array.from({ length: 30 }, (_, index) => {
+        const date = addDays(getStartOfDay(now), -(29 - index));
+        const nextDay = addDays(date, 1);
+
+        const reservationsCount = reservations.filter((reservation) => {
+          const requestDate = getSafeDate(reservation.requestDate);
+          return requestDate ? requestDate >= date && requestDate < nextDay : false;
+        }).length;
+
+        const revenue = paidPayments
+          .filter((payment) => {
+            const paymentDate = getSafeDate(payment.date);
+            return paymentDate ? paymentDate >= date && paymentDate < nextDay : false;
+          })
+          .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+
+        const paymentsCount = paidPayments.filter((payment) => {
+          const paymentDate = getSafeDate(payment.date);
+          return paymentDate ? paymentDate >= date && paymentDate < nextDay : false;
+        }).length;
+
+        return {
+          label: formatShortDate(date),
+          reservations: reservationsCount,
+          revenue,
+          payments: paymentsCount,
+        };
+      });
+    }
+
+    if (granularity === "weekly") {
+      return Array.from({ length: 12 }, (_, index) => {
+        const start = addWeeks(getStartOfWeek(now), -(11 - index));
+        const endExclusive = addWeeks(start, 1);
+        const endDisplay = addDays(endExclusive, -1);
+
+        const reservationsCount = reservations.filter((reservation) => {
+          const requestDate = getSafeDate(reservation.requestDate);
+          return requestDate ? requestDate >= start && requestDate < endExclusive : false;
+        }).length;
+
+        const revenue = paidPayments
+          .filter((payment) => {
+            const paymentDate = getSafeDate(payment.date);
+            return paymentDate ? paymentDate >= start && paymentDate < endExclusive : false;
+          })
+          .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+
+        const paymentsCount = paidPayments.filter((payment) => {
+          const paymentDate = getSafeDate(payment.date);
+          return paymentDate ? paymentDate >= start && paymentDate < endExclusive : false;
+        }).length;
+
+        return {
+          label: formatWeekLabel(start, endDisplay),
+          reservations: reservationsCount,
+          revenue,
+          payments: paymentsCount,
+        };
+      });
+    }
+
+    if (granularity === "monthly") {
+      return Array.from({ length: 12 }, (_, index) => {
+        const start = addMonths(getStartOfMonth(now), -(11 - index));
+        const endExclusive = addMonths(start, 1);
+
+        const reservationsCount = reservations.filter((reservation) => {
+          const requestDate = getSafeDate(reservation.requestDate);
+          return requestDate ? requestDate >= start && requestDate < endExclusive : false;
+        }).length;
+
+        const revenue = paidPayments
+          .filter((payment) => {
+            const paymentDate = getSafeDate(payment.date);
+            return paymentDate ? paymentDate >= start && paymentDate < endExclusive : false;
+          })
+          .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+
+        const paymentsCount = paidPayments.filter((payment) => {
+          const paymentDate = getSafeDate(payment.date);
+          return paymentDate ? paymentDate >= start && paymentDate < endExclusive : false;
+        }).length;
+
+        return {
+          label: formatMonthShort(start),
+          reservations: reservationsCount,
+          revenue,
+          payments: paymentsCount,
+        };
+      });
+    }
+
+    return Array.from({ length: 5 }, (_, index) => {
+      const start = addYears(getStartOfYear(now), -(4 - index));
+      const endExclusive = addYears(start, 1);
+
+      const reservationsCount = reservations.filter((reservation) => {
+        const requestDate = getSafeDate(reservation.requestDate);
+        return requestDate ? requestDate >= start && requestDate < endExclusive : false;
+      }).length;
+
+      const revenue = paidPayments
+        .filter((payment) => {
+          const paymentDate = getSafeDate(payment.date);
+          return paymentDate ? paymentDate >= start && paymentDate < endExclusive : false;
+        })
+        .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+
+      const paymentsCount = paidPayments.filter((payment) => {
+        const paymentDate = getSafeDate(payment.date);
+        return paymentDate ? paymentDate >= start && paymentDate < endExclusive : false;
+      }).length;
+
+      return {
+        label: String(start.getFullYear()),
+        reservations: reservationsCount,
+        revenue,
+        payments: paymentsCount,
+      };
+    });
+  }, [granularity, reservations, paidPayments]);
+
+  const typeDistributionData = useMemo<DistributionPoint[]>(() => {
+    const totals: Record<UnitType, number> = {
+      rental_space: 0,
+      function_hall: 0,
+      parking_slot: 0,
+    };
+
+    reservations.forEach((reservation) => {
+      if (reservation.unitType in totals) {
+        totals[reservation.unitType as UnitType] += 1;
+      }
+    });
+
+    return [
+      {
+        name: "Rental Space",
+        value: totals.rental_space,
+        color: UNIT_TYPE_COLORS.rental_space,
+      },
+      {
+        name: "Function Hall",
+        value: totals.function_hall,
+        color: UNIT_TYPE_COLORS.function_hall,
+      },
+      {
+        name: "Parking Slot",
+        value: totals.parking_slot,
+        color: UNIT_TYPE_COLORS.parking_slot,
+      },
+    ].filter((entry) => entry.value > 0);
+  }, [reservations]);
+
+  const categoryDistributionData = useMemo<DistributionPoint[]>(() => {
+    const totals = new Map<string, number>();
+
+    reservations.forEach((reservation) => {
+      const unit = unitById.get(reservation.unitId);
+
+      const key =
+        unit?.category?.trim() ||
+        unit?.type ||
+        reservation.unitType ||
+        "uncategorized";
+
+      totals.set(key, (totals.get(key) ?? 0) + 1);
+    });
+
+    return Array.from(totals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([key, value], index) => ({
+        name: capitalizeWords(key),
+        value,
+        color:
+          key === "commercial_space"
+            ? "#2563eb"
+            : key === "residential_space"
+            ? "#16a34a"
+            : key === "function_room"
+            ? "#7c3aed"
+            : key === "parking"
+            ? "#ea580c"
+            : CATEGORY_COLOR_FALLBACKS[index % CATEGORY_COLOR_FALLBACKS.length],
+      }));
+  }, [reservations, unitById]);
+
+  const distributionData =
+    breakdownMode === "category" ? categoryDistributionData : typeDistributionData;
+
+  const unitRanking = useMemo(() => {
+    const now = new Date();
     const startOfCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfCurrentMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
     const startOfCurrentYear = new Date(now.getFullYear(), 0, 1);
     const endOfCurrentYear = new Date(now.getFullYear(), 11, 31);
-
-    const MS_PER_DAY = 1000 * 60 * 60 * 24;
+    const msPerDay = 1000 * 60 * 60 * 24;
 
     const getOverlapDays = (
       rangeStart: Date,
@@ -175,16 +591,11 @@ export default function AdminAnalytics() {
       windowStart: Date,
       windowEnd: Date
     ) => {
-      const start = new Date(
-        Math.max(rangeStart.getTime(), windowStart.getTime())
-      );
-      const end = new Date(
-        Math.min(rangeEnd.getTime(), windowEnd.getTime())
-      );
+      const start = new Date(Math.max(rangeStart.getTime(), windowStart.getTime()));
+      const end = new Date(Math.min(rangeEnd.getTime(), windowEnd.getTime()));
 
       if (start > end) return 0;
-
-      return Math.floor((end.getTime() - start.getTime()) / MS_PER_DAY) + 1;
+      return Math.floor((end.getTime() - start.getTime()) / msPerDay) + 1;
     };
 
     const getOverlapMonths = (
@@ -193,12 +604,8 @@ export default function AdminAnalytics() {
       windowStart: Date,
       windowEnd: Date
     ) => {
-      const start = new Date(
-        Math.max(rangeStart.getTime(), windowStart.getTime())
-      );
-      const end = new Date(
-        Math.min(rangeEnd.getTime(), windowEnd.getTime())
-      );
+      const start = new Date(Math.max(rangeStart.getTime(), windowStart.getTime()));
+      const end = new Date(Math.min(rangeEnd.getTime(), windowEnd.getTime()));
 
       if (start > end) return 0;
 
@@ -215,23 +622,24 @@ export default function AdminAnalytics() {
     return units
       .map((unit) => {
         const unitReservations = reservations.filter(
-          (r) =>
-            r.unitId === unit.id &&
-            ['approved', 'confirmed', 'completed'].includes(r.status)
+          (reservation) =>
+            reservation.unitId === unit.id &&
+            ["approved", "confirmed", "completed"].includes(reservation.status)
         );
 
         const revenue = paidRevenueByUnitId.get(unit.id) ?? 0;
 
         let bookedSlots = 0;
-        let totalSlots = 0;
+        const totalSlots =
+          unit.type === "rental_space" ? monthsInCurrentYear : daysInCurrentMonth;
 
-        for (const reservation of unitReservations) {
-          const start = new Date(reservation.startDate);
-          const end = new Date(reservation.endDate);
+        unitReservations.forEach((reservation) => {
+          const start = getSafeDate(reservation.startDate);
+          const end = getSafeDate(reservation.endDate);
 
-          if (isNaN(start.getTime()) || isNaN(end.getTime())) continue;
+          if (!start || !end) return;
 
-          if (unit.type === 'rental_space') {
+          if (unit.type === "rental_space") {
             bookedSlots += getOverlapMonths(
               start,
               end,
@@ -246,13 +654,7 @@ export default function AdminAnalytics() {
               endOfCurrentMonth
             );
           }
-        }
-
-        if (unit.type === 'rental_space') {
-          totalSlots = monthsInCurrentYear;
-        } else {
-          totalSlots = daysInCurrentMonth;
-        }
+        });
 
         const occupancyRate =
           totalSlots > 0 ? Math.min((bookedSlots / totalSlots) * 100, 100) : 0;
@@ -264,708 +666,686 @@ export default function AdminAnalytics() {
           occupancyRate: Number(occupancyRate.toFixed(1)),
         };
       })
-      .sort((a, b) => b.revenue - a.revenue);
+      .sort((a, b) => {
+        if (b.revenue !== a.revenue) return b.revenue - a.revenue;
+        return b.reservationCount - a.reservationCount;
+      });
   }, [units, reservations, paidRevenueByUnitId]);
 
-  const pendingTotal = useMemo(() => {
-    return fullyConfirmedReservations.reduce(
-      (sum, r) => sum + (r.totalAmount - r.paidAmount),
-      0
-    );
-  }, [fullyConfirmedReservations]);
-
-  const expectedTotal = useMemo(() => {
-    return fullyConfirmedReservations.reduce((sum, r) => sum + r.totalAmount, 0);
-  }, [fullyConfirmedReservations]);
-
-  const monthlyData = useMemo<ChartPoint[]>(() => {
-    return Array.from({ length: 6 }, (_, i) => {
-      const date = new Date();
-      date.setMonth(date.getMonth() - (5 - i));
-
-      const monthStr = date.toISOString().slice(0, 7);
-      const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
-      const endOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-
-      const monthReservations = reservations.filter((r) =>
-        r.requestDate.startsWith(monthStr)
-      ).length;
-
-      const monthRevenue = paidPayments
-        .filter((p) => {
-          const paymentDate = new Date(p.date);
-          return paymentDate >= startOfMonth && paymentDate <= endOfMonth;
-        })
-        .reduce((sum, p) => sum + p.amount, 0);
-
-      return {
-        month: formatDate(date).split(' ')[0], // Mar
-        reservations: monthReservations,
-        revenue: Number((monthRevenue / 1000).toFixed(1)),
-      };
-    });
-  }, [reservations, paidPayments]);
-
-  const dailyData = useMemo<ChartPoint[]>(() => {
-    return Array.from({ length: 30 }, (_, i) => {
-      const date = new Date();
-      date.setDate(date.getDate() - (29 - i));
-
-      const dateStr = date.toISOString().slice(0, 10);
-
-      const dayReservations = reservations.filter((r) =>
-        r.requestDate.startsWith(dateStr)
-      ).length;
-
-      const dayRevenue = paidPayments
-        .filter((p) => p.date.startsWith(dateStr))
-        .reduce((sum, p) => sum + p.amount, 0);
-
-      return {
-        day: formatDate(date),
-        reservations: dayReservations,
-        revenue: Number((dayRevenue / 1000).toFixed(1)),
-      };
-    });
-  }, [reservations, paidPayments]);
-
-  const weeklyData = useMemo<ChartPoint[]>(() => {
-    return Array.from({ length: 12 }, (_, i) => {
-      const start = new Date();
-      start.setDate(start.getDate() - 7 * (11 - i));
-
-      const end = new Date(start);
-      end.setDate(end.getDate() + 6);
-
-      const weekReservations = reservations.filter((r) => {
-        const d = new Date(r.requestDate);
-        return d >= start && d <= end;
-      }).length;
-
-      const weekRevenue = paidPayments
-        .filter((p) => {
-          const d = new Date(p.date);
-          return d >= start && d <= end;
-        })
-        .reduce((sum, p) => sum + p.amount, 0);
-
-      return {
-        week: `${formatDate(start)} - ${formatDate(end)}`,
-        reservations: weekReservations,
-        revenue: Number((weekRevenue / 1000).toFixed(1)),
-      };
-    });
-  }, [reservations, paidPayments]);
-
-  const yearlyData = useMemo<ChartPoint[]>(() => {
-    const currentYear = new Date().getFullYear();
-
-    return Array.from({ length: 5 }, (_, i) => {
-      const year = currentYear - (4 - i);
-
-      const yearReservations = reservations.filter(
-        (r) => new Date(r.requestDate).getFullYear() === year
-      ).length;
-
-      const yearRevenue = paidPayments
-        .filter((p) => new Date(p.date).getFullYear() === year)
-        .reduce((sum, p) => sum + p.amount, 0);
-
-      return {
-        year: year.toString(),
-        reservations: yearReservations,
-        revenue: Number((yearRevenue / 1000).toFixed(1)),
-      };
-    });
-  }, [reservations, paidPayments]);
-
-  const chartData = useMemo(() => {
-    return {
-      daily: dailyData,
-      weekly: weeklyData,
-      monthly: monthlyData,
-      yearly: yearlyData,
-    }[granularity];
-  }, [granularity, dailyData, weeklyData, monthlyData, yearlyData]);
-
-  const xAxisKey = useMemo(() => {
-    if (granularity === 'daily') return 'day';
-    if (granularity === 'weekly') return 'week';
-    if (granularity === 'monthly') return 'month';
-    return 'year';
-  }, [granularity]);
-
-  const hasPaidPayments = paidPayments.length > 0;
-  const hasUnitStats = unitStats.length > 0;
-  const hasTypeDistribution = typeDistributionData.some((entry) => entry.value > 0);
-  const hasReservationsByDay = reservationsByDay.some((entry) => entry.count > 0);
-  const hasChartData = chartData.some(
-    (point) => point.reservations > 0 || point.revenue > 0
-  );
+  const topCategory = useMemo(() => {
+    if (categoryDistributionData.length === 0) return null;
+    return categoryDistributionData[0];
+  }, [categoryDistributionData]);
 
   const hasAnyAnalyticsData = reservations.length > 0 || payments.length > 0;
+  const hasPaidPayments = paidPayments.length > 0;
+  const hasReservationTrendData = trendData.some((point) => point.reservations > 0);
+  const hasRevenueTrendData = trendData.some(
+    (point) => point.revenue > 0 || point.payments > 0
+  );
+  const hasUnitRanking = unitRanking.length > 0;
+  const hasDistribution = distributionData.length > 0;
+  const hasReservationsByDay = reservationsByDayOfWeek.some((entry) => entry.count > 0);
 
-  const exportToCsv = useCallback((filename: string, rows: Record<string, unknown>[]) => {
-    if (!rows.length) return;
+  const exportTrendCsv = useCallback(() => {
+    const rows = trendData.map((item) => ({
+      Period: item.label,
+      Reservations: item.reservations,
+      Verified_Payments: item.payments,
+      Revenue: formatCurrency(item.revenue),
+    }));
 
-    const headers = Object.keys(rows[0]);
-    const csv = [
-      headers.join(','),
-      ...rows.map((row) =>
-        headers.map((field) => `"${String(row[field] ?? '')}"`).join(',')
-      ),
-    ].join('\r\n');
-
-    const blob = new Blob(['\uFEFF' + csv], {
-      type: 'text/csv;charset=utf-8;',
-    });
-
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, []);
-
-  const handleExportReservationsCsv = useCallback(() => {
-    const data = chartData.map((d) => {
-      let period = '';
-
-      if ('day' in d && d.day) period = d.day;
-      else if ('week' in d && d.week) period = d.week;
-      else if ('month' in d && d.month) period = d.month;
-      else if ('year' in d && d.year) period = d.year;
-
-      return {
-        Period: period,
-        Reservations: d.reservations,
-        Revenue: formatCurrency(d.revenue * 1000),
-      };
-    });
-
-    exportToCsv(
-      `Reservations-${granularity}-${new Date().toISOString().split('T')[0]}.csv`,
-      data
+    downloadCsv(
+      `analytics-trend-${granularity}-${new Date().toISOString().split("T")[0]}.csv`,
+      rows
     );
-  }, [chartData, granularity, exportToCsv]);
+  }, [granularity, trendData]);
 
-  const handleExportUnitPerformanceCsv = useCallback(() => {
-    const data = unitStats.map((unit, index) => ({
+  const exportUnitRankingCsv = useCallback(() => {
+    const rows = unitRanking.map((unit, index) => ({
       Rank: index + 1,
       Unit: unit.name,
-      Type: getUnitTypeLabel(unit.type as UnitType),
+      Unit_Type: getUnitTypeLabel(unit.type as UnitType),
+      Category: capitalizeWords(unit.category),
+      Subtype: capitalizeWords(unit.subtype),
       Reservations: unit.reservationCount,
       Revenue: formatCurrency(unit.revenue),
       Occupancy: `${unit.occupancyRate}%`,
+      Available: unit.available ? "Yes" : "No",
+      Location: unit.location ?? "N/A",
     }));
 
-    exportToCsv(
-      `UnitPerformance-${new Date().toISOString().split('T')[0]}.csv`,
-      data
+    downloadCsv(
+      `analytics-unit-ranking-${new Date().toISOString().split("T")[0]}.csv`,
+      rows
     );
-  }, [unitStats, exportToCsv]);
+  }, [unitRanking]);
 
-  const handleExportUnitTypeCsv = useCallback(() => {
-    const total = typeDistributionData.reduce((sum, entry) => sum + entry.value, 0);
+  const exportDistributionCsv = useCallback(() => {
+    const total = distributionData.reduce((sum, item) => sum + item.value, 0);
 
-    const data = typeDistributionData.map((entry) => ({
-      Type: entry.name,
-      Reservations: entry.value,
-      Percentage: `${total > 0 ? ((entry.value / total) * 100).toFixed(0) : 0}%`,
+    const rows = distributionData.map((item) => ({
+      Group: item.name,
+      Reservations: item.value,
+      Percentage: `${
+        total > 0 ? ((item.value / total) * 100).toFixed(1) : "0.0"
+      }%`,
     }));
 
-    exportToCsv(
-      `UnitTypeDistribution-${new Date().toISOString().split('T')[0]}.csv`,
-      data
+    downloadCsv(
+      `analytics-distribution-${breakdownMode}-${new Date()
+        .toISOString()
+        .split("T")[0]}.csv`,
+      rows
     );
-  }, [typeDistributionData, exportToCsv]);
+  }, [breakdownMode, distributionData]);
 
   return (
     <div className="min-h-screen bg-white">
-  <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
-      <div className="flex flex-row items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">
-            Analytics
-          </h1>
-          <p className="text-xs text-gray-500 sm:text-sm">
-            Business performance & insights
-          </p>
+      <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
+        <div className="flex flex-row items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">
+              Analytics
+            </h1>
+            <p className="text-xs text-gray-500 sm:text-sm">
+              Performance insights for reservations, revenue, units, and collections
+            </p>
+          </div>
+
+          <button
+            onClick={handlePrint}
+            className="hidden cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-100 transition-all hover:bg-blue-700 active:scale-95 lg:flex"
+            title="Print report"
+          >
+            <Printer className="size-5" />
+            <span className="hidden sm:inline">Print Analytics</span>
+          </button>
         </div>
 
-        <button
-          onClick={handlePrint}
-          className="hidden lg:flex items-center justify-center cursor-pointer gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md shadow-blue-100 transition-all text-sm font-bold active:scale-95"
-          title="Print Report"
-        >
-          <Printer className="size-5" />
-          <span className="hidden font-medium sm:inline">Print Analytics</span>
-        </button>
-      </div>
+        <style>
+          {`
+            @media print {
+              .no-print { display: none !important; }
+              body { background: white; }
+            }
+          `}
+        </style>
 
-      <style>
-        {`
-          @media print {
-            .no-print { display: none !important; }
-            body { background: white; }
-          }
-          .pdf-export-mode {
-            color: #111827 !important;
-            background-color: #ffffff !important;
-          }
-        `}
-      </style>
+        <div ref={printRef} className="flex flex-col gap-6">
+          {!hasAnyAnalyticsData ? (
+            <EmptyState
+              icon={<BarChart3 className="size-10 text-blue-500" />}
+              title="No analytics data yet"
+              description="Analytics will appear here once reservations or payments are added to the system."
+            />
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+                <MetricCard
+                  label="Verified Revenue"
+                  value={formatCurrency(totalRevenue)}
+                  subtext={
+                    hasPaidPayments
+                      ? "Based on paid payments"
+                      : "Waiting for paid payments"
+                  }
+                  icon={<TrendingUp className="size-4 text-emerald-600 sm:size-5" />}
+                  valueClassName="text-emerald-600"
+                />
 
-      <div ref={printRef} className="flex flex-col gap-4 sm:gap-6">
-        {!hasAnyAnalyticsData ? (
-          <EmptyState
-            icon={<BarChart3 className="size-10 text-blue-500" />}
-            title="No analytics data yet"
-            description="Analytics will appear here once reservations or payments are added to the system."
-          />
-        ) : (
-          <>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 sm:gap-4">
-              <MetricCard
-                label="Revenue"
-                value={formatCurrency(totalRevenue)}
-                subtext="Verified"
-                icon={<TrendingUp className="size-4 text-green-600 sm:size-5" />}
-                valueClassName="text-green-600"
-              />
+                <MetricCard
+                  label="Reservations"
+                  value={totalReservations}
+                  subtext={`${approvedOrBetterReservations.length} approved or better`}
+                  icon={<Calendar className="size-4 text-blue-600 sm:size-5" />}
+                />
 
-              <MetricCard
-                label="Reservations"
-                value={totalReservations}
-                subtext={`${confirmedReservations.length} confirmed`}
-                icon={<Calendar className="size-4 text-blue-600 sm:size-5" />}
-              />
+                <MetricCard
+                  label="Collection Rate"
+                  value={`${collectionRate.toFixed(1)}%`}
+                  subtext={
+                    expectedTotal > 0
+                      ? `${formatCurrency(outstandingTotal)} still outstanding`
+                      : "Waiting for confirmed revenue"
+                  }
+                  icon={<CircleDollarSign className="size-4 text-violet-600 sm:size-5" />}
+                />
 
-              <MetricCard
-                label="Avg Value"
-                value={formatCurrency(averageReservationValue)}
-                subtext="Per reservation"
-                icon={<BarChart3 className="size-4 text-purple-600 sm:size-5" />}
-              />
+                <MetricCard
+                  label="Active Units"
+                  value={activeUnitsCount}
+                  subtext={`${globalOccupancyRate.toFixed(1)}% with bookings`}
+                  icon={<Building2 className="size-4 text-orange-600 sm:size-5" />}
+                />
+              </div>
 
-              <MetricCard
-                label="Avg Stay"
-                value={averageStay.toFixed(1)}
-                subtext="Units"
-                icon={<Users className="size-4 text-orange-600 sm:size-5" />}
-              />
-            </div>
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                <InsightCard
+                  title="Average Reservation Value"
+                  value={formatCurrency(averageReservationValue)}
+                  note="Verified revenue divided by approved and confirmed reservations"
+                  icon={<Wallet className="size-5 text-blue-600" />}
+                />
 
-            <div className="space-y-4 sm:space-y-6">
-              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
-                <div className="mb-6 flex flex-row items-center justify-between">
-                  <h2 className="flex items-center gap-2 text-sm font-bold text-gray-800 sm:text-lg">
-                    Reservations
-                  </h2>
+                <InsightCard
+                  title="Average Duration"
+                  value={averageDuration > 0 ? averageDuration.toFixed(1) : "0.0"}
+                  note="Average reservation duration across confirmed and completed reservations"
+                  icon={<Activity className="size-5 text-emerald-600" />}
+                />
 
-                  <div className="flex items-center gap-2">
+                <InsightCard
+                  title="Top Category"
+                  value={topCategory?.name ?? "No data"}
+                  note={
+                    topCategory
+                      ? `${topCategory.value} reservations`
+                      : "Category ranking appears when reservations exist"
+                  }
+                  icon={<PieChartIcon className="size-5 text-violet-600" />}
+                />
+              </div>
+
+              <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="flex items-center gap-2 text-sm font-bold text-gray-800 sm:text-lg">
+                      <BarChart3 className="size-4 text-blue-600 sm:size-5" />
+                      Reservation & Revenue Trend
+                    </h2>
+                    <p className="mt-1 text-xs text-gray-500 sm:text-sm">
+                      Track reservation activity, verified payments, and revenue over time
+                    </p>
+                  </div>
+
+                  <div className="no-print flex flex-wrap items-center gap-2">
                     <div className="relative">
                       <select
-                        className="appearance-none cursor-pointer rounded-lg border border-gray-200 bg-gray-50 py-1.5 pl-2 pr-7 text-[10px] font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 sm:text-sm"
                         value={granularity}
                         onChange={(e) => setGranularity(e.target.value as Granularity)}
+                        className="appearance-none rounded-xl border border-gray-200 bg-gray-50 py-2 pl-3 pr-9 text-xs font-medium text-gray-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:text-sm"
                       >
-                        <option value="daily">Daily (Last 30 Days)</option>
-                        <option value="weekly">Weekly (Last 12 Weeks)</option>
-                        <option value="monthly">Monthly (Last 6 Months)</option>
-                        <option value="yearly">Yearly (Last 5 Years)</option>
+                        {GRANULARITY_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
                       </select>
-                      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 size-3 -translate-y-1/2 text-gray-400" />
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
                     </div>
 
-                    {hasChartData ? (
+                    {hasReservationTrendData || hasRevenueTrendData ? (
                       <button
-                        onClick={handleExportReservationsCsv}
-                        className="flex items-center gap-1.5 rounded-lg bg-green-600 p-1.5 text-white shadow-sm transition-colors hover:bg-green-700 sm:px-3 sm:py-1.5"
+                        onClick={exportTrendCsv}
+                        className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700 sm:text-sm"
                       >
                         <FileSpreadsheet className="size-4" />
-                        <span className="hidden text-sm font-medium sm:inline">
-                          Export CSV
-                        </span>
+                        <span className="hidden sm:inline">Export CSV</span>
                       </button>
                     ) : (
-                      <DisabledExportButton>
-                        <FileSpreadsheet className="size-4" />
-                        <span className="hidden text-sm font-medium sm:inline">
-                          Export CSV
-                        </span>
-                      </DisabledExportButton>
+                      <DisabledExportButton />
                     )}
                   </div>
                 </div>
 
-                {hasChartData ? (
-                  <div className="h-[220px] w-full sm:h-[350px]">
+                <div className="flex flex-col gap-6">
+                  <div className="rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
+                    <div className="mb-4">
+                      <h3 className="text-sm font-bold text-gray-900 sm:text-base">
+                        Reservation Trend
+                      </h3>
+                      <p className="mt-1 text-xs text-gray-500 sm:text-sm">
+                        Reservation volume across the selected period
+                      </p>
+                    </div>
+
+                    {hasReservationTrendData ? (
+                      <div className="h-[280px] w-full sm:h-[340px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={trendData}
+                            margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                          >
+                            <CartesianGrid
+                              strokeDasharray="3 3"
+                              vertical={false}
+                              stroke="#f1f5f9"
+                            />
+                            <XAxis
+                              dataKey="label"
+                              axisLine={false}
+                              tickLine={false}
+                              tick={{ fill: "#94a3b8", fontSize: 11 }}
+                              interval={granularity === "daily" ? 4 : 0}
+                            />
+                            <YAxis
+                              allowDecimals={false}
+                              axisLine={false}
+                              tickLine={false}
+                              tick={{ fill: "#94a3b8", fontSize: 11 }}
+                            />
+                            <Tooltip
+                              formatter={countTooltipFormatter}
+                              contentStyle={{
+                                borderRadius: "14px",
+                                border: "1px solid #e2e8f0",
+                                boxShadow: "0 12px 24px rgba(15,23,42,0.08)",
+                              }}
+                            />
+                            <Bar
+                              dataKey="reservations"
+                              fill="#2563eb"
+                              radius={[6, 6, 0, 0]}
+                              name="Reservations"
+                            />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <AnalyticsEmptyState
+                        icon={<BarChart3 className="size-7" />}
+                        title="No reservation trend data yet"
+                        description="Reservation trend will appear once bookings start coming in."
+                        hint="New reservations are grouped automatically by the selected date range."
+                      />
+                    )}
+                  </div>
+
+                  <div className="rounded-2xl border border-gray-100 bg-gray-50/60 p-4">
+                    <div className="mb-4">
+                      <h3 className="text-sm font-bold text-gray-900 sm:text-base">
+                        Revenue Trend
+                      </h3>
+                      <p className="mt-1 text-xs text-gray-500 sm:text-sm">
+                        Verified revenue across the selected period
+                      </p>
+                    </div>
+
+                    {hasRevenueTrendData ? (
+                      <div className="h-[280px] w-full sm:h-[340px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart
+                            data={trendData}
+                            margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+                          >
+                            <CartesianGrid
+                              strokeDasharray="3 3"
+                              vertical={false}
+                              stroke="#f1f5f9"
+                            />
+                            <XAxis
+                              dataKey="label"
+                              axisLine={false}
+                              tickLine={false}
+                              tick={{ fill: "#94a3b8", fontSize: 11 }}
+                              interval={granularity === "daily" ? 4 : 0}
+                            />
+                            <YAxis
+                              axisLine={false}
+                              tickLine={false}
+                              tick={{ fill: "#94a3b8", fontSize: 11 }}
+                              tickFormatter={(value) =>
+                                `₱${Math.round(Number(value) / 1000)}k`
+                              }
+                            />
+                            <Tooltip
+                              formatter={revenueTooltipFormatter}
+                              contentStyle={{
+                                borderRadius: "14px",
+                                border: "1px solid #e2e8f0",
+                                boxShadow: "0 12px 24px rgba(15,23,42,0.08)",
+                              }}
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="revenue"
+                              stroke="#16a34a"
+                              strokeWidth={3}
+                              dot={{ r: 3, fill: "#16a34a" }}
+                              activeDot={{ r: 5 }}
+                              name="Revenue"
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <AnalyticsEmptyState
+                        icon={<TrendingUp className="size-7" />}
+                        title="No revenue trend data yet"
+                        description="Revenue trend will appear once paid payments are recorded."
+                        hint="Only verified paid payments contribute to this chart."
+                      />
+                    )}
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+                <h2 className="mb-4 flex items-center gap-2 text-sm font-bold text-gray-800 sm:text-lg">
+                  <Calendar className="size-4 text-indigo-600 sm:size-5" />
+                  Reservations by Day of Week
+                </h2>
+
+                {hasReservationsByDay ? (
+                  <div className="h-[220px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart
-                        data={chartData}
-                        margin={{ top: 0, right: 10, left: -20, bottom: 0 }}
+                        data={reservationsByDayOfWeek}
+                        margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
                       >
                         <CartesianGrid
                           strokeDasharray="3 3"
                           vertical={false}
-                          stroke="#f0f0f0"
+                          stroke="#f1f5f9"
                         />
                         <XAxis
-                          dataKey={xAxisKey}
+                          dataKey="label"
+                          tickFormatter={(value) => value.slice(0, 3)}
                           axisLine={false}
                           tickLine={false}
-                          tick={{ fill: '#9ca3af', fontSize: 10 }}
+                          tick={{ fill: "#6b7280", fontSize: 11 }}
                         />
                         <YAxis
                           allowDecimals={false}
                           axisLine={false}
                           tickLine={false}
-                          tick={{ fill: '#9ca3af', fontSize: 10 }}
+                          tick={{ fill: "#6b7280", fontSize: 11 }}
                         />
                         <Tooltip
+                          formatter={countTooltipFormatter}
                           contentStyle={{
-                            borderRadius: '12px',
-                            border: 'none',
-                            boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                            borderRadius: "14px",
+                            border: "1px solid #e2e8f0",
+                            boxShadow: "0 12px 24px rgba(15,23,42,0.08)",
                           }}
-                          cursor={{ fill: '#f1f5f9' }}
                         />
                         <Bar
-                          dataKey="reservations"
-                          fill="#2563eb"
-                          activeBar={{ fill: '#1d4ed8' }}
-                          radius={[4, 4, 0, 0]}
-                          barSize={granularity === 'daily' ? 12 : 32}
+                          dataKey="count"
+                          fill="#6366f1"
+                          radius={[6, 6, 0, 0]}
+                          name="Reservations"
                         />
-                        {(granularity === 'daily' || granularity === 'weekly') && (
-                          <Brush
-                            dataKey={xAxisKey}
-                            height={20}
-                            stroke="#3b82f6"
-                            fill="#eff6ff"
-                            travellerWidth={10}
-                          />
-                        )}
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
                 ) : (
                   <AnalyticsEmptyState
                     icon={<Calendar className="size-7" />}
-                    title="No reservation trend yet"
-                    description="Reservation activity will appear here once bookings start coming in."
-                    hint="Create or confirm reservations to populate this chart."
+                    title="No weekday pattern yet"
+                    description="We need more reservation history before weekday demand patterns can be shown."
+                    hint="Once bookings accumulate, this chart will reveal busy days."
                   />
                 )}
-              </div>
+              </section>
 
-              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
-                <h2 className="flex items-center gap-2 text-sm font-bold text-gray-800 sm:text-lg">
-                  Revenue Trend (₱k)
-                </h2>
+              <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="flex items-center gap-2 text-sm font-bold text-gray-800 sm:text-lg">
+                      <PieChartIcon className="size-4 text-violet-600 sm:size-5" />
+                      Reservation Distribution
+                    </h2>
+                    <p className="mt-1 text-xs text-gray-500 sm:text-sm">
+                      View reservation mix by unit category or unit type
+                    </p>
+                  </div>
 
-                {hasPaidPayments ? (
-                  <div className="h-[220px] w-full sm:h-[350px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart
-                        data={chartData}
-                        margin={{ top: 0, right: 10, left: -20, bottom: 0 }}
+                  <div className="no-print flex flex-wrap items-center gap-2">
+                    <div className="relative">
+                      <select
+                        value={breakdownMode}
+                        onChange={(e) =>
+                          setBreakdownMode(e.target.value as BreakdownMode)
+                        }
+                        className="appearance-none rounded-xl border border-gray-200 bg-gray-50 py-2 pl-3 pr-9 text-xs font-medium text-gray-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:text-sm"
                       >
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          vertical={false}
-                          stroke="#f0f0f0"
-                        />
-                        <XAxis
-                          dataKey={xAxisKey}
-                          axisLine={false}
-                          tickLine={false}
-                          tick={{ fill: '#9ca3af', fontSize: 10 }}
-                        />
-                        <YAxis
-                          axisLine={false}
-                          tickLine={false}
-                          tickFormatter={(value) => `₱${value}k`}
-                          tick={{ fill: '#9ca3af', fontSize: 10 }}
-                        />
-                        <Tooltip />
-                        <Line
-                          type="monotone"
-                          dataKey="revenue"
-                          stroke="#16a34a"
-                          strokeWidth={3}
-                          dot={{ r: 3, fill: '#16a34a' }}
-                          activeDot={{ r: 5 }}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
+                        {BREAKDOWN_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
+                    </div>
+
+                    {hasDistribution ? (
+                      <button
+                        onClick={exportDistributionCsv}
+                        className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-blue-700 sm:text-sm"
+                      >
+                        <FileSpreadsheet className="size-4" />
+                        <span className="hidden sm:inline">Export CSV</span>
+                      </button>
+                    ) : (
+                      <DisabledExportButton />
+                    )}
+                  </div>
+                </div>
+
+                {hasDistribution ? (
+                  <div className="flex flex-col items-center gap-8 lg:flex-row">
+                    <div className="h-[260px] w-full lg:w-1/2">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={distributionData}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={88}
+                            innerRadius={58}
+                            paddingAngle={4}
+                            isAnimationActive={false}
+                          >
+                            {distributionData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            formatter={countTooltipFormatter}
+                            contentStyle={{
+                              borderRadius: "14px",
+                              border: "1px solid #e2e8f0",
+                              boxShadow: "0 12px 24px rgba(15,23,42,0.08)",
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div className="grid w-full grid-cols-1 gap-2 lg:w-1/2">
+                      {distributionData.map((entry, index) => {
+                        const total = distributionData.reduce(
+                          (sum, item) => sum + item.value,
+                          0
+                        );
+                        const percentage =
+                          total > 0
+                            ? ((entry.value / total) * 100).toFixed(1)
+                            : "0.0";
+
+                        return (
+                          <div
+                            key={`${entry.name}-${index}`}
+                            className="flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 p-3"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div
+                                className="size-3 rounded-full"
+                                style={{ backgroundColor: entry.color }}
+                              />
+                              <span className="truncate text-sm font-medium text-gray-700">
+                                {entry.name}
+                              </span>
+                            </div>
+                            <span className="text-sm font-bold text-gray-900">
+                              {entry.value} ({percentage}%)
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 ) : (
                   <AnalyticsEmptyState
-                    icon={<TrendingUp className="size-7" />}
-                    title="No verified revenue yet"
-                    description="Revenue analytics will appear once payments are verified and recorded."
-                    hint="Mark payments as paid to unlock revenue insights."
+                    icon={<PieChartIcon className="size-7" />}
+                    title="No distribution data yet"
+                    description="Distribution charts will appear once reservations are recorded."
+                    hint="Category and type breakdowns become more useful as your dataset grows."
                   />
                 )}
-              </div>
-            </div>
+              </section>
 
-            <div className="rounded-lg border border-gray-200 bg-white p-6">
-              <h2 className="flex items-center gap-2 text-sm font-bold text-gray-800 sm:text-lg">
-                Reservations by Day of Week
-              </h2>
+              <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="flex items-center gap-2 text-sm font-bold text-gray-800 sm:text-lg">
+                      <Building2 className="size-4 text-orange-600 sm:size-5" />
+                      Unit Ranking
+                    </h2>
+                    <p className="mt-1 text-xs text-gray-500 sm:text-sm">
+                      Ranked by verified revenue, then reservation volume
+                    </p>
+                  </div>
 
-              {hasReservationsByDay ? (
-                <div className="h-[180px] w-full sm:h-[200px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={reservationsByDay}
-                      margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                    >
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        vertical={false}
-                        stroke="#f0f0f0"
-                      />
-                      <XAxis
-                        dataKey="day"
-                        tickFormatter={(val) => val.slice(0, 3)}
-                        axisLine={false}
-                        tickLine={false}
-                        tick={{ fill: '#6b7280', fontSize: 12 }}
-                      />
-                      <YAxis
-                        allowDecimals={false}
-                        axisLine={false}
-                        tickLine={false}
-                        tick={{ fill: '#6b7280', fontSize: 12 }}
-                      />
-                      <Tooltip cursor={{ fill: '#f9fafb' }} />
-                      <Bar
-                        dataKey="count"
-                        name="Reservations"
-                        fill="#6366f1"
-                        radius={[4, 4, 0, 0]}
-                        barSize={40}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <div className="no-print">
+                    {hasUnitRanking ? (
+                      <button
+                        onClick={exportUnitRankingCsv}
+                        className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-violet-700 sm:text-sm"
+                      >
+                        <FileSpreadsheet className="size-4" />
+                        <span className="hidden sm:inline">Export CSV</span>
+                      </button>
+                    ) : (
+                      <DisabledExportButton />
+                    )}
+                  </div>
                 </div>
-              ) : (
-                <AnalyticsEmptyState
-                  icon={<BarChart3 className="size-7" />}
-                  title="No weekday pattern yet"
-                  description="We need reservation history before we can identify your busiest days."
-                  hint="Once bookings accumulate, this section will highlight demand patterns."
-                />
-              )}
-            </div>
 
-            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="flex items-center gap-2 text-sm font-bold text-gray-800 sm:text-lg">
-                  Unit Ranking
-                </h2>
-                {hasUnitStats ? (
-                  <button
-                    onClick={handleExportUnitPerformanceCsv}
-                    className="flex items-center gap-1.5 rounded-lg bg-purple-600 p-1.5 text-white shadow-sm transition-colors hover:bg-purple-700 sm:px-3 sm:py-1.5"
-                  >
-                    <FileSpreadsheet className="size-4" />
-                    <span className="hidden text-sm font-medium sm:inline">
-                      Export CSV
-                    </span>
-                  </button>
-                ) : (
-                  <DisabledExportButton>
-                    <FileSpreadsheet className="size-4" />
-                    <span className="hidden text-sm font-medium sm:inline">
-                      Export CSV
-                    </span>
-                  </DisabledExportButton>
-                )}
-              </div>
-
-              {hasUnitStats ? (
-                <div className="overflow-x-auto -mx-4 sm:mx-0">
-                  <table className="min-w-[500px] w-full sm:min-w-full">
-                    <thead className="bg-gray-50 sm:bg-transparent">
-                      <tr className="border-b border-gray-100">
-                        <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400 sm:px-0 sm:text-xs">
-                          Rank
-                        </th>
-                        <th className="py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400 sm:text-xs">
-                          Unit
-                        </th>
-                        <th className="hidden py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400 md:table-cell sm:text-xs">
-                          Type
-                        </th>
-                        <th className="py-3 text-right text-[10px] font-bold uppercase tracking-widest text-gray-400 sm:text-xs">
-                          Revenue
-                        </th>
-                        <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-gray-400 sm:px-0 sm:text-xs">
-                          Occupancy
-                        </th>
-                      </tr>
-                    </thead>
-
-                    <tbody className="divide-y divide-gray-50">
-                      {unitStats.map((unit, index) => (
-                        <tr key={unit.id} className="transition-colors hover:bg-gray-50/50">
-                          <td className="px-4 py-4 text-xs font-medium text-gray-400 sm:px-0 sm:text-sm">
-                            #{index + 1}
-                          </td>
-                          <td className="py-4">
-                            <p className="max-w-[120px] truncate text-xs font-semibold text-gray-900 sm:max-w-xs sm:text-sm">
-                              {unit.name}
-                            </p>
-                            <p className="text-[10px] text-gray-400 md:hidden">
-                              {getUnitTypeLabel(unit.type as UnitType)}
-                            </p>
-                          </td>
-                          <td className="hidden py-4 text-xs text-gray-500 md:table-cell">
-                            {getUnitTypeLabel(unit.type as UnitType)}
-                          </td>
-                          <td className="py-4 text-right text-xs font-bold text-green-600 sm:text-sm">
-                            {formatCurrency(unit.revenue)}
-                          </td>
-                          <td className="px-4 py-4 text-right sm:px-0">
-                            <div className="inline-flex w-full items-center justify-end gap-2">
-                              <span className="text-[10px] font-medium text-gray-600 sm:text-xs">
-                                {unit.occupancyRate}%
-                              </span>
-                              <div className="hidden h-1.5 w-12 rounded-full bg-gray-100 xs:block">
-                                <div
-                                  className="h-1.5 rounded-full bg-blue-600"
-                                  style={{ width: `${unit.occupancyRate}%` }}
-                                />
-                              </div>
-                            </div>
-                          </td>
+                {hasUnitRanking ? (
+                  <div className="-mx-4 overflow-x-auto sm:mx-0">
+                    <table className="min-w-[760px] w-full">
+                      <thead>
+                        <tr className="border-b border-gray-100">
+                          <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400 sm:px-0">
+                            Rank
+                          </th>
+                          <th className="py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                            Unit
+                          </th>
+                          <th className="py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                            Category
+                          </th>
+                          <th className="py-3 text-left text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                            Type
+                          </th>
+                          <th className="py-3 text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                            Reservations
+                          </th>
+                          <th className="py-3 text-right text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                            Revenue
+                          </th>
+                          <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-gray-400 sm:px-0">
+                            Occupancy
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <AnalyticsEmptyState
-                  icon={<Users className="size-7" />}
-                  title="No unit performance data yet"
-                  description="Unit rankings will appear once units start generating reservations and revenue."
-                  hint="Add units and complete bookings to compare performance."
-                />
-              )}
-            </div>
+                      </thead>
 
-            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
-              <div className="mb-6 flex items-center justify-between">
-                <h2 className="flex items-center gap-2 text-sm font-bold text-gray-800 sm:text-lg">
-                  Distribution
-                </h2>
-                {hasTypeDistribution ? (
-                  <button
-                    onClick={handleExportUnitTypeCsv}
-                    className="flex items-center gap-2 rounded-lg bg-blue-600 p-2 text-white shadow-sm transition-all hover:bg-blue-700 active:scale-95 sm:px-3 sm:py-1.5"
-                    title="Export CSV"
-                  >
-                    <FileSpreadsheet className="size-4" />
-                    <span className="hidden text-sm font-medium sm:inline">Export CSV</span>
-                  </button>
+                      <tbody className="divide-y divide-gray-50">
+                        {unitRanking.map((unit, index) => (
+                          <tr key={unit.id} className="transition-colors hover:bg-gray-50/50">
+                            <td className="px-4 py-4 text-sm font-medium text-gray-400 sm:px-0">
+                              #{index + 1}
+                            </td>
+
+                            <td className="py-4">
+                              <p className="max-w-[180px] truncate text-sm font-semibold text-gray-900">
+                                {unit.name}
+                              </p>
+                              <p className="mt-0.5 text-xs text-gray-400">
+                                {unit.location || "No location"}
+                              </p>
+                            </td>
+
+                            <td className="py-4 text-sm text-gray-600">
+                              {capitalizeWords(unit.category)}
+                            </td>
+
+                            <td className="py-4 text-sm text-gray-600">
+                              {getUnitTypeLabel(unit.type as UnitType)}
+                            </td>
+
+                            <td className="py-4 text-right text-sm font-semibold text-gray-700">
+                              {unit.reservationCount}
+                            </td>
+
+                            <td className="py-4 text-right text-sm font-bold text-emerald-600">
+                              {formatCurrency(unit.revenue)}
+                            </td>
+
+                            <td className="px-4 py-4 text-right sm:px-0">
+                              <div className="inline-flex items-center justify-end gap-2">
+                                <span className="text-xs font-medium text-gray-600">
+                                  {unit.occupancyRate}%
+                                </span>
+                                <div className="hidden h-1.5 w-14 rounded-full bg-gray-100 sm:block">
+                                  <div
+                                    className="h-1.5 rounded-full bg-blue-600"
+                                    style={{ width: `${unit.occupancyRate}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 ) : (
-                  <DisabledExportButton>
-                    <FileSpreadsheet className="size-4" />
-                    <span className="hidden text-sm font-medium sm:inline">Export CSV</span>
-                  </DisabledExportButton>
+                  <AnalyticsEmptyState
+                    icon={<Building2 className="size-7" />}
+                    title="No unit performance data yet"
+                    description="Unit rankings will appear once units start generating bookings and paid revenue."
+                    hint="Add units and complete bookings to compare performance."
+                  />
                 )}
-              </div>
+              </section>
 
-              {hasTypeDistribution ? (
-                <div className="flex flex-col items-center gap-8 lg:flex-row">
-                  <div className="h-[220px] w-full sm:w-1/2">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={typeDistributionData}
-                          dataKey="value"
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={80}
-                          innerRadius={60}
-                          paddingAngle={5}
-                          isAnimationActive={false}
-                        >
-                          {typeDistributionData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
+              <section className="rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 p-4 text-white shadow-lg shadow-emerald-900/10 sm:p-8">
+                <h2 className="mb-6 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-50/90 sm:text-sm">
+                  <ShieldCheck className="size-4" />
+                  Financial Overview
+                </h2>
 
-                  <div className="grid w-full grid-cols-1 gap-2 sm:w-1/2">
-                    {typeDistributionData.map((entry, index) => {
-                      const total = typeDistributionData.reduce((sum, e) => sum + e.value, 0);
-                      const percent = total > 0 ? ((entry.value / total) * 100).toFixed(0) : '0';
-
-                      return (
-                        <div
-                          key={index}
-                          className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 p-2"
-                        >
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="size-3 rounded-full"
-                              style={{ backgroundColor: entry.color }}
-                            />
-                            <span className="max-w-[100px] truncate text-xs font-medium text-gray-700">
-                              {entry.name}
-                            </span>
-                          </div>
-                          <span className="text-xs font-bold text-gray-900">
-                            {entry.value} ({percent}%)
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+                  <OverviewCard
+                    label="Total Collected"
+                    value={formatCurrency(totalRevenue)}
+                  />
+                  <OverviewCard
+                    label="Outstanding"
+                    value={formatCurrency(outstandingTotal)}
+                  />
+                  <OverviewCard
+                    label="Expected Total"
+                    value={formatCurrency(expectedTotal)}
+                  />
                 </div>
-              ) : (
-                <AnalyticsEmptyState
-                  icon={<PieChartIcon className="size-7" />}
-                  title="No distribution data yet"
-                  description="Unit type distribution will appear once reservations are recorded."
-                  hint="Rental spaces, halls, and parking slots will be compared here."
-                />
-              )}
-            </div>
+              </section>
 
-            <div className="rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 p-4 text-white shadow-lg shadow-emerald-900/10 sm:p-8">
-              <h2 className="mb-6 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-50/90 sm:text-sm">
-                Financial Overview
-              </h2>
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
-                <OverviewCard label="Total Collected" value={formatCurrency(totalRevenue)} />
-                <OverviewCard label="Pending" value={formatCurrency(pendingTotal)} />
-                <OverviewCard label="Expected Total" value={formatCurrency(expectedTotal)} />
+              <div className="mt-1 flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white/50 p-3 text-gray-400">
+                <ShieldCheck className="size-4" />
+                <p className="text-center text-[10px] font-medium sm:text-xs">
+                  Compliant with the Philippine Data Privacy Act of 2012
+                </p>
               </div>
-            </div>
-
-            <div className="mt-2 flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white/50 p-3 text-gray-400">
-              <ShieldCheck className="size-4" />
-              <p className="text-center text-[10px] font-medium sm:text-xs">
-                Compliant with Philippine Data Privacy Act of 2012
-              </p>
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </div>
       </div>
-    </div>
     </div>
   );
 }
@@ -975,16 +1355,20 @@ function MetricCard({
   value,
   subtext,
   icon,
-  valueClassName = 'text-gray-900',
+  valueClassName = "text-gray-900",
 }: {
   label: string;
   value: string | number;
   subtext: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   valueClassName?: string;
 }) {
   const isZero =
-    value === 0 || value === '0' || value === '0.0' || value === '₱0.00';
+    value === 0 ||
+    value === "0" ||
+    value === "0.0" ||
+    value === "₱0.00" ||
+    value === "0.0%";
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-6">
@@ -994,21 +1378,53 @@ function MetricCard({
         </p>
         {icon}
       </div>
+
       <p
         className={`truncate text-base font-bold sm:text-xl ${
-          isZero ? 'text-gray-400' : valueClassName
+          isZero ? "text-gray-400" : valueClassName
         }`}
       >
         {value}
       </p>
-      <p className="mt-0.5 text-[10px] text-gray-400 sm:text-xs">
-        {isZero ? 'Waiting for data' : subtext}
-      </p>
+
+      <p className="mt-0.5 text-[10px] text-gray-400 sm:text-xs">{subtext}</p>
     </div>
   );
 }
 
-function OverviewCard({ label, value }: { label: string; value: string }) {
+function InsightCard({
+  title,
+  value,
+  note,
+  icon,
+}: {
+  title: string;
+  value: string;
+  note: string;
+  icon: ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+          {title}
+        </p>
+        {icon}
+      </div>
+
+      <p className="truncate text-lg font-bold text-gray-900 sm:text-xl">{value}</p>
+      <p className="mt-1 text-xs leading-relaxed text-gray-400">{note}</p>
+    </div>
+  );
+}
+
+function OverviewCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
   return (
     <div className="rounded-xl border border-white/20 bg-white/10 p-4 backdrop-blur-md transition hover:bg-white/15">
       <p className="mb-1 text-[10px] font-medium uppercase tracking-wider opacity-70 sm:text-xs">
@@ -1025,7 +1441,7 @@ function AnalyticsEmptyState({
   description,
   hint,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   title: string;
   description: string;
   hint?: string;
@@ -1038,23 +1454,20 @@ function AnalyticsEmptyState({
         </div>
         <h3 className="text-base font-bold text-gray-900 sm:text-lg">{title}</h3>
         <p className="mt-2 text-sm leading-relaxed text-gray-500">{description}</p>
-        {hint && <p className="mt-3 text-xs text-gray-400">{hint}</p>}
+        {hint ? <p className="mt-3 text-xs text-gray-400">{hint}</p> : null}
       </div>
     </div>
   );
 }
 
-function DisabledExportButton({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function DisabledExportButton() {
   return (
     <button
       disabled
-      className="flex cursor-not-allowed items-center gap-1.5 rounded-lg bg-gray-200 p-1.5 text-gray-500 shadow-sm sm:px-3 sm:py-1.5"
+      className="inline-flex cursor-not-allowed items-center gap-2 rounded-xl bg-gray-200 px-3 py-2 text-xs font-semibold text-gray-500 sm:text-sm"
     >
-      {children}
+      <FileSpreadsheet className="size-4" />
+      <span className="hidden sm:inline">Export CSV</span>
     </button>
   );
 }

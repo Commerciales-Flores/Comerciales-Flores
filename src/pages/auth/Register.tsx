@@ -1,10 +1,11 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import AddressPicker from '../../components/common/AddressPicker';
 import PasswordStrengthIndicator from '../../components/common/PasswordStrengthIndicator';
 import FormField from '../../components/common/FormField';
 import { isPasswordPolicyValid } from '../../utils/passwordStrength';
+import supabase from '../../supabaseClient';
 import {
   Building2,
   AlertCircle,
@@ -48,6 +49,15 @@ export default function Register() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [validIdFile, setValidIdFile] = useState<File | null>(null);
+  const [validIdName, setValidIdName] = useState('');
+  const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
+
+  const validIdInputRef = useRef<HTMLInputElement | null>(null);
+
+    const triggerValidIdUpload = () => {
+      validIdInputRef.current?.click();
+    };
 
   const handleFieldChange = useCallback(
   (field: keyof typeof formData, value: string) => {
@@ -120,6 +130,42 @@ export default function Register() {
     }));
   }, []);
 
+  const handleValidIdChange = useCallback((file: File | null) => {
+  if (!file) {
+    setValidIdFile(null);
+    setValidIdName('');
+    return;
+  }
+
+  const allowed = ['image/jpeg', 'image/png', 'application/pdf'];
+
+  if (!allowed.includes(file.type)) {
+    setErrors(prev => ({
+      ...prev,
+      validId: 'Only JPG, PNG, or PDF allowed'
+    }));
+    return;
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    setErrors(prev => ({
+      ...prev,
+      validId: 'File must be under 5MB'
+    }));
+    return;
+  }
+
+  setValidIdFile(file);
+  setValidIdName(file.name);
+
+  setErrors(prev => {
+    const next = { ...prev };
+    delete next.validId;
+    return next;
+  });
+
+}, []);
+
   const validate = useCallback(() => {
     const errs: Record<string, string> = {};
 
@@ -131,6 +177,9 @@ export default function Register() {
 
     if (!cleanedFirstName) errs.firstName = 'First name is required.';
     if (!cleanedLastName) errs.lastName = 'Last name is required.';
+    if (!validIdFile) {
+      errs.validId = 'Valid ID is required.';
+    }
 
     if (!cleanedEmail) {
       errs.email = 'Email is required.';
@@ -140,6 +189,9 @@ export default function Register() {
 
     if (formData.contactNumber.trim() && !isValidPHPhone(cleanedContactNumber)) {
       errs.contactNumber = 'Enter a valid Philippine mobile number.';
+    }
+    if (!agreedToPrivacy) {
+      errs.privacy = 'You must agree to the Data Privacy Policy.';
     }
 
     if (!formData.password) {
@@ -161,7 +213,31 @@ export default function Register() {
 
     setErrors(errs);
     return Object.keys(errs).length === 0;
-  }, [formData]);
+  }, [formData, validIdFile, agreedToPrivacy]);
+
+  const uploadValidId = async (userId: string) => {
+  if (!validIdFile) return;
+
+  const extension = validIdFile.name.split('.').pop();
+  const filePath = `users/${userId}/${Date.now()}-valid-id.${extension}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('valid_ids')
+    .upload(filePath, validIdFile);
+
+  if (uploadError) throw uploadError;
+
+  const { error: updateError } = await supabase
+    .from('users')
+    .update({
+      valid_id_file_path: filePath,
+      valid_id_status: 'pending',
+      valid_id_uploaded_at: new Date().toISOString()
+    })
+    .eq('user_id', userId);
+
+  if (updateError) throw updateError;
+};
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -212,6 +288,14 @@ export default function Register() {
             break;
         }
         return;
+      }
+
+      try {
+        if (result.userId) {
+          await uploadValidId(result.userId);
+        }
+      } catch (err) {
+        console.error('Valid ID upload failed:', err);
       }
 
       navigate('/login', {
@@ -417,6 +501,97 @@ export default function Register() {
                   {errors.address}
                 </p>
               ) : null}
+
+              <div className="space-y-1.5">
+          <label
+            htmlFor="valid-id"
+            className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400"
+          >
+            Valid ID
+          </label>
+
+          <input
+            ref={validIdInputRef}
+            id="valid-id"
+            type="file"
+            accept=".jpg,.jpeg,.png,.pdf"
+            onChange={(e) => handleValidIdChange(e.target.files?.[0] ?? null)}
+            className="hidden"
+          />
+
+      {!validIdFile ? (
+        <button
+          type="button"
+          onClick={triggerValidIdUpload}
+          className="w-full border-2 border-dashed border-slate-200 rounded-2xl p-6 bg-slate-50 hover:bg-slate-100 transition flex flex-col items-center justify-center gap-2"
+        >
+          <div className="text-sm font-semibold text-slate-700">
+            Upload Valid ID
+          </div>
+
+          <p className="text-xs text-slate-400 font-medium">
+            JPG, PNG, PDF • max 5MB
+          </p>
+        </button>
+      ) : (
+        <div className="flex items-center justify-between border border-slate-200 rounded-2xl px-4 py-3 bg-white">
+          <div className="flex flex-col">
+            <span className="text-sm font-semibold text-slate-700">
+              {validIdName}
+            </span>
+
+            <span className="text-xs text-slate-400">
+              Valid ID uploaded
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => handleValidIdChange(null)}
+            className="text-xs font-semibold text-rose-600 hover:text-rose-700"
+          >
+            Remove
+          </button>
+        </div>
+      )}
+
+      {errors.validId && (
+        <p className="ml-1 text-xs font-medium text-rose-600">
+          {errors.validId}
+        </p>
+      )}
+    </div>
+
+    <div className="space-y-2">
+  <label className="flex items-start gap-3 text-xs text-slate-600 leading-relaxed cursor-pointer">
+    <input
+      type="checkbox"
+      checked={agreedToPrivacy}
+      onChange={(e) => setAgreedToPrivacy(e.target.checked)}
+      className="mt-1 size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+    />
+
+    <span>
+      I consent to the collection and processing of my personal data, including
+      uploaded valid ID, for identity verification and reservation purposes in
+      accordance with the{" "}
+      <a
+        href="/privacy-policy.pdf"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-semibold text-blue-600 hover:underline"
+      >
+        Data Privacy Policy
+      </a>.
+    </span>
+  </label>
+
+  {errors.privacy && (
+    <p className="ml-7 text-xs font-medium text-rose-600">
+      {errors.privacy}
+    </p>
+  )}
+</div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5 relative">

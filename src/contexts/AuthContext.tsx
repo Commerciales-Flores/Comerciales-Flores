@@ -100,7 +100,12 @@ login: (
 }>;
   register: (
     userData: RegisterInput
-  ) => Promise<{ success: boolean; error?: string; message?: string }>;
+  ) => Promise<{
+    success: boolean;
+    error?: string;
+    message?: string;
+    userId?: string;
+  }>;
   logout: (
     message?: string,
     options?: { clearGreeting?: boolean; redirectToLogin?: boolean }

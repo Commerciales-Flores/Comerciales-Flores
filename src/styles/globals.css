@@ -111,3 +111,24 @@ html, body {
   background: #fca5a5 !important;
   color: #7f1d1d !important;
 }
+/* RESET SATURDAY */
+.react-calendar__month-view__days__day--weekend:nth-child(7n-1) {
+  color: inherit !important;
+  background: transparent !important;
+  border: none !important;
+  font-weight: inherit !important;
+}
+
+/* SUNDAY ONLY (RED TEXT ONLY) */
+.react-calendar__month-view__days__day--weekend:nth-child(7n) {
+  color: #ef4444 !important; /* red-500 */
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  font-weight: 600 !important;
+}
+
+.react-calendar__month-view__days__day--weekend:nth-child(7n):hover {
+  color: #ef4444 !important;
+  background: transparent !important;
+}

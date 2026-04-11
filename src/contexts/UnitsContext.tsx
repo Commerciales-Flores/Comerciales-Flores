@@ -215,6 +215,8 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
       propertyId: base.public_id,
       name: normalizeText(base.title || ''),
       type: resolvedType,
+      category: base.unit_category ?? null,
+      subtype: base.unit_subtype ?? null,
       description: '',
       price: Number(base.price || 0),
       imagePaths,
@@ -328,6 +330,8 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
         unit_id,
         public_id,
         unit_type,
+        unit_category,
+        unit_subtype,
         title,
         is_available,
         price,
@@ -402,6 +406,8 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
       propertyId: base.public_id,
       name: normalizeText(base.title || specificRow?.title || ''),
       type: resolvedType,
+      category: base.unit_category ?? null,
+      subtype: base.unit_subtype ?? null,
       description: normalizeText(specificRow?.description || ''),
       price: Number(base.price || 0),
       imagePaths,
@@ -464,6 +470,8 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
             unit_id,
             public_id,
             unit_type,
+            unit_category,
+            unit_subtype,
             title,
             is_available,
             price,
@@ -544,6 +552,8 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
           propertyId: base.public_id,
           name: normalizeText(base.title || specific?.title || ''),
           type: resolvedType,
+          category: base.unit_category ?? null,
+          subtype: base.unit_subtype ?? null,
           description: normalizeText(specific?.description || ''),
           price: Number(base.price || 0),
           imagePaths,
@@ -902,6 +912,8 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
       const basePayload = {
         unit_id: newUnitId,
         unit_type: unitData.type,
+        unit_category: unitData.category ?? null,
+        unit_subtype: unitData.subtype ?? null,
         title: normalizedName,
         is_available: unitData.available,
         price: normalizedPrice,
@@ -976,6 +988,8 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
         propertyId: insertedBase.public_id,
         name: normalizedName,
         type: unitData.type,
+        category: unitData.category ?? null,
+        subtype: unitData.subtype ?? null,
         description: normalizedDescription,
         price: normalizedPrice,
         imagePaths,
@@ -1083,6 +1097,13 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
         if (unitUpdate.videoPaths !== undefined) {
           basePayload.videos = unitUpdate.videoPaths;
         }
+        if (unitUpdate.category !== undefined) {
+          basePayload.unit_category = unitUpdate.category;
+        }
+
+        if (unitUpdate.subtype !== undefined) {
+          basePayload.unit_subtype = unitUpdate.subtype;
+        }
         if (unitUpdate.contractFilePath !== undefined) {
           basePayload.contract_file_path = unitUpdate.contractFilePath;
         }
@@ -1171,6 +1192,13 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
                 .filter(Boolean),
             }
           : {}),
+          ...(unitUpdate.category !== undefined
+            ? { category: unitUpdate.category ?? null }
+            : {}),
+
+          ...(unitUpdate.subtype !== undefined
+            ? { subtype: unitUpdate.subtype ?? null }
+            : {}),
         ...(unitUpdate.location !== undefined
           ? { location: getSafeLocation(normalizeAddress(unitUpdate.location)) }
           : {}),
@@ -1359,26 +1387,37 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
 
         const payload: Record<string, unknown> = {};
 
-        if (slotUpdate.unitId !== undefined) payload.unit_id = slotUpdate.unitId;
-        if (slotUpdate.slotCode !== undefined) {
-          payload.slot_code = normalizeUppercaseText(slotUpdate.slotCode);
-        }
-        if (slotUpdate.label !== undefined) {
-          payload.label = slotUpdate.label ? normalizeText(slotUpdate.label) : null;
-        }
-        if (slotUpdate.vehicleType !== undefined) {
-          payload.vehicle_type = slotUpdate.vehicleType
-            ? normalizeText(slotUpdate.vehicleType)
-            : null;
-        }
-        if (slotUpdate.imagePath !== undefined) {
-          payload.image_url = slotUpdate.imagePath
-            ? normalizeText(slotUpdate.imagePath)
-            : null;
-        }
-        if (slotUpdate.notes !== undefined) {
-          payload.notes = slotUpdate.notes ? normalizeText(slotUpdate.notes) : null;
-        }
+if (slotUpdate.unitId !== undefined) {
+  payload.unit_id = slotUpdate.unitId;
+}
+
+if (slotUpdate.slotCode !== undefined) {
+  payload.slot_code = normalizeUppercaseText(slotUpdate.slotCode);
+}
+
+if (slotUpdate.label !== undefined) {
+  payload.label = slotUpdate.label ? normalizeText(slotUpdate.label) : null;
+}
+
+if (slotUpdate.status !== undefined) {
+  payload.status = slotUpdate.status;
+}
+
+if (slotUpdate.vehicleType !== undefined) {
+  payload.vehicle_type = slotUpdate.vehicleType
+    ? normalizeText(slotUpdate.vehicleType)
+    : null;
+}
+
+if (slotUpdate.imagePath !== undefined) {
+  payload.image_url = slotUpdate.imagePath
+    ? normalizeText(slotUpdate.imagePath)
+    : null;
+}
+
+if (slotUpdate.notes !== undefined) {
+  payload.notes = slotUpdate.notes ? normalizeText(slotUpdate.notes) : null;
+}
 
         if (Object.keys(payload).length === 0) return;
 

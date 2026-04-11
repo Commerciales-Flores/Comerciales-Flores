@@ -23,6 +23,7 @@ import { uiTypography } from '../../styles/uiTypography';
 import EmptyState from '../../components/common/EmptyState';
 import type { ReservationDetails } from '../../data/types';
 import { normalizeLowercaseText } from "../../utils/DataNormalization";
+import UnitTaxonomyBadges from '../../components/common/UnitTaxonomyBadges';
 
 type FilterStatus = 'all' | 'pending' | 'confirmed' | 'cancelled';
 type ReservationStatus =
@@ -665,26 +666,32 @@ const confirmCancelReservation = useCallback(async () => {
                       onClick={() => toggleExpand(reservation.id)}
                     >
                       <div className="mb-2 flex items-start justify-between">
- <div className="min-w-0 flex-1">
-  <div className="mb-0.5 flex items-start justify-between gap-2">
-    <div className="min-w-0">
-      <span className="text-[10px] font-semibold text-blue-600 md:text-[13px]">
-        {getUnitTypeLabel(reservation.unitType)}
-      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-0.5 flex items-start justify-between gap-2">
+                          <div className="mb-0.5 flex flex-col gap-1">
+                            <span className="text-[10px] font-semibold text-blue-600 md:text-[13px]">
+                              {getUnitTypeLabel(reservation.unitType)}
+                            </span>
 
-      <p
-        className={`${uiTypography.helperText} mt-0.5 truncate text-[10px] text-gray-400 md:text-sm`}
-      >
-        ID: {reservation.publicId || reservation.id}
-      </p>
-    </div>
+                            <UnitTaxonomyBadges
+                              category={unit?.category}
+                              subtype={unit?.subtype}
+                              size="sm"
+                            />
 
-    <div className="flex flex-wrap justify-end gap-1">
-      <span
-  className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] md:text-xs ${uiTypography.buttonTextBold} shadow-sm ${STATUS_COLORS[status]}`}
->
-  {STATUS_ICONS[status]} {status.toUpperCase()}
-</span>
+                            <p
+                              className={`${uiTypography.helperText} truncate text-[10px] text-gray-400 md:text-sm`}
+                            >
+                              ID: {reservation.publicId || reservation.id}
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap justify-end gap-1">
+                            <span
+                        className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] md:text-xs ${uiTypography.buttonTextBold} shadow-sm ${STATUS_COLORS[status]}`}
+                      >
+                        {STATUS_ICONS[status]} {status.toUpperCase()}
+                      </span>
 
       {extensionDetails && (
         <span className="shrink-0 rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[9px] md:text-sm font-bold text-indigo-700 shadow-sm">

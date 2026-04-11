@@ -407,6 +407,7 @@ const shouldShowFilters =
         amount: Number(original.amount),
         method: original.method,
         status: 'paid',
+        reviewStatus: 'approved',   // ← THIS WAS MISSING
         proofOfPayment: original.proofOfPayment ?? undefined,
         notes: original.notes ?? undefined,
         category: original.category ?? 'payment',
@@ -460,6 +461,7 @@ const shouldShowFilters =
         amount: payment.amount,
         method: payment.method,
         status: 'unpaid',
+        reviewStatus: 'rejected',   // ← THIS WAS MISSING
         proofOfPayment: payment.proofOfPayment,
         notes: payment.notes,
         category: payment.category ?? 'payment',

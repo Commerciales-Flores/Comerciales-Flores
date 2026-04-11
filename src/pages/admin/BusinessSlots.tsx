@@ -53,6 +53,8 @@ const UNIT_TYPE_MAP: Record<UnitType, { icon: JSX.Element; label: string; color:
 const INITIAL_FORM_STATE = {
   name: '',
   type: '' as UnitType | '',
+  unitCategory: '',
+  unitSubtype: '',
   description: '',
   price: '',
   images: '',
@@ -119,6 +121,8 @@ type UnitRecord = {
   id: string;
   name: string;
   type: UnitType;
+  category?: string | null;
+  subtype?: string | null;
   description: string;
   price: number;
   imagePaths?: string[];
@@ -317,11 +321,13 @@ type UnitFormModalProps = {
   defaultLocation: string;
   locationOptions: string[];
   onClose: () => void;
-  onSave: (payload: {
+    onSave: (payload: {
     unitId?: string;
     data: {
       name: string;
       type: UnitType;
+      category?: string | null;
+      subtype?: string | null;
       description: string;
       price: number;
       imagePaths: string[];
@@ -371,6 +377,14 @@ const UnitFormModal = React.memo(function UnitFormModal({
   const [videoPreviews, setVideoPreviews] = useState<ImagePreviewItem[]>([]);
   const [isUploadingVideos, setIsUploadingVideos] = useState(false);
 
+    const [categories, setCategories] = useState<any[]>([]);
+  const [subtypes, setSubtypes] = useState<any[]>([]);
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [showAddSubtype, setShowAddSubtype] = useState(false);
+  const [newCategoryLabel, setNewCategoryLabel] = useState('');
+  const [newSubtypeLabel, setNewSubtypeLabel] = useState('');
+  const [isSavingTaxonomy, setIsSavingTaxonomy] = useState(false);
+
   const allPreviewsRef = useRef<ImagePreviewItem[]>([]);
 
   useEffect(() => {
@@ -385,6 +399,8 @@ const UnitFormModal = React.memo(function UnitFormModal({
     revokePreviewUrls(allPreviewsRef.current);
   };
 }, [open]);
+
+
 
   useEffect(() => {
     if (open && !unitForm.location && defaultLocation) {
@@ -437,9 +453,11 @@ const UnitFormModal = React.memo(function UnitFormModal({
       }))
     );
 
-    setUnitForm({
+        setUnitForm({
       name: editingUnit.name,
       type: editingUnit.type,
+      unitCategory: editingUnit.category || '',
+      unitSubtype: editingUnit.subtype || '',
       description: editingUnit.description,
       price: editingUnit.price.toString(),
       images: existingPaths.join(', '),
@@ -506,6 +524,116 @@ const UnitFormModal = React.memo(function UnitFormModal({
   },
   []
 );
+
+  const reloadTaxonomy = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('unit_taxonomy_options')
+      .select('*')
+      .eq('is_active', true)
+      .order('sort_order');
+
+    if (error) {
+      setFormError('Failed to load category and subtype options.');
+      return;
+    }
+
+    setCategories((data ?? []).filter((d) => d.option_type === 'category'));
+    setSubtypes((data ?? []).filter((d) => d.option_type === 'subtype'));
+  }, []);
+
+  useEffect(() => {
+  void reloadTaxonomy();
+}, [reloadTaxonomy]);
+
+  const toSlug = useCallback((value: string) => {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_');
+  }, []);
+
+  const handleAddCategory = useCallback(async () => {
+    const label = newCategoryLabel.trim();
+    if (!label) {
+      setFormError('Category name is required.');
+      return;
+    }
+
+    try {
+      setIsSavingTaxonomy(true);
+      setFormError(null);
+
+      const value = toSlug(label);
+
+      const { error } = await supabase.from('unit_taxonomy_options').insert({
+        option_type: 'category',
+        label,
+        value,
+        parent_category: null,
+        is_active: true,
+      });
+
+      if (error) throw error;
+
+      await reloadTaxonomy();
+      updateFormField('unitCategory', value);
+      updateFormField('unitSubtype', '');
+      setNewCategoryLabel('');
+      setShowAddCategory(false);
+    } catch (error: any) {
+      setFormError(error?.message || 'Failed to add category.');
+    } finally {
+      setIsSavingTaxonomy(false);
+    }
+  }, [newCategoryLabel, reloadTaxonomy, toSlug, updateFormField]);
+
+  const handleAddSubtype = useCallback(async () => {
+    const label = newSubtypeLabel.trim();
+
+    if (!unitForm.unitCategory) {
+      setFormError('Select a category first before adding a subtype.');
+      return;
+    }
+
+    if (!label) {
+      setFormError('Subtype name is required.');
+      return;
+    }
+
+    try {
+      setIsSavingTaxonomy(true);
+      setFormError(null);
+
+      const value = toSlug(label);
+
+      const { error } = await supabase.from('unit_taxonomy_options').insert({
+        option_type: 'subtype',
+        label,
+        value,
+        parent_category: unitForm.unitCategory,
+        is_active: true,
+      });
+
+      if (error) throw error;
+
+      await reloadTaxonomy();
+      updateFormField('unitSubtype', value);
+      setNewSubtypeLabel('');
+      setShowAddSubtype(false);
+    } catch (error: any) {
+      setFormError(error?.message || 'Failed to add subtype.');
+    } finally {
+      setIsSavingTaxonomy(false);
+    }
+  }, [
+    newSubtypeLabel,
+    unitForm.unitCategory,
+    reloadTaxonomy,
+    toSlug,
+    updateFormField,
+  ]);
 
   const triggerUpload = useCallback(() => {
     if (!isUploadingImages) fileInputRef.current?.click();
@@ -860,11 +988,13 @@ const [formError, setFormError] = useState<string | null>(null);
           ? null
           : parseInt(unitForm.minimumPaymentPercent, 10);
 
-      await onSave({
+            await onSave({
         unitId: editingUnit?.id,
         data: {
           name: unitForm.name.trim(),
           type: unitForm.type,
+          category: unitForm.unitCategory || null,
+          subtype: unitForm.unitSubtype || null,
           description: unitForm.description.trim(),
           price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
           imagePaths: parseCommaSeparated(unitForm.images),
@@ -905,9 +1035,100 @@ const [formError, setFormError] = useState<string | null>(null);
   ]
 );
 
+  const categoryModal = showAddCategory ? (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/50 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+        <h3 className="text-lg font-bold text-slate-900">Add Category</h3>
+        <p className="mt-1 text-sm text-slate-500">
+          Create a new unit category for the dropdown.
+        </p>
+
+        <input
+          type="text"
+          value={newCategoryLabel}
+          onChange={(e) => setNewCategoryLabel(e.target.value)}
+          placeholder="e.g. Commercial Space"
+          className="mt-4 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+        />
+
+        <div className="mt-5 flex gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setShowAddCategory(false);
+              setNewCategoryLabel('');
+            }}
+            className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void handleAddCategory()}
+            disabled={isSavingTaxonomy}
+            className="flex-1 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {isSavingTaxonomy ? 'Saving...' : 'Add Category'}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  const subtypeModal = showAddSubtype ? (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/50 p-4">
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+        <h3 className="text-lg font-bold text-slate-900">Add Subtype</h3>
+        <p className="mt-1 text-sm text-slate-500">
+          Create a new subtype under the selected category.
+        </p>
+
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
+          Parent category: {categories.find((cat) => cat.value === unitForm.unitCategory)?.label || '—'}
+        </div>
+
+        <input
+          type="text"
+          value={newSubtypeLabel}
+          onChange={(e) => setNewSubtypeLabel(e.target.value)}
+          placeholder="e.g. Kiosk"
+          className="mt-4 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+        />
+
+        <div className="mt-5 flex gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setShowAddSubtype(false);
+              setNewSubtypeLabel('');
+            }}
+            className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void handleAddSubtype()}
+            disabled={isSavingTaxonomy || !unitForm.unitCategory}
+            className="flex-1 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {isSavingTaxonomy ? 'Saving...' : 'Add Subtype'}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   if (!open) return null;
 
+
+
   return (
+    <>
+      {categoryModal}
+      {subtypeModal}
     <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-900/60 p-0 bg-slate-900/50 sm:items-center sm:p-4">
       <div className="flex h-[92vh] w-full flex-col overflow-hidden rounded-t-[2rem] border border-slate-200/60 bg-white shadow-xl sm:h-auto sm:max-h-[92vh] sm:max-w-4xl sm:rounded-[2rem]">
         <div className="flex items-center justify-between bg-slate-900 p-6">
@@ -982,6 +1203,79 @@ const [formError, setFormError] = useState<string | null>(null);
                 <option value="parking_slot">Parking Area (container for multiple slots)</option>
               </select>
             </div>
+
+            <div className="space-y-1.5">
+  <label className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400">
+    Unit Category
+  </label>
+
+  <div className="flex gap-2">
+    <select
+      value={unitForm.unitCategory}
+      onChange={(e) => {
+        updateFormField('unitCategory', e.target.value);
+        updateFormField('unitSubtype', '');
+      }}
+      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+    >
+      <option value="">Select category</option>
+      {categories.map((cat) => (
+        <option key={cat.option_id} value={cat.value}>
+          {cat.label}
+        </option>
+      ))}
+    </select>
+
+    <button
+      type="button"
+      onClick={() => setShowAddCategory(true)}
+      className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-100"
+      title="Add category"
+    >
+      +
+    </button>
+  </div>
+</div>
+
+          <div className="space-y-1.5">
+  <label className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400">
+    Unit Subtype
+  </label>
+
+  <div className="flex gap-2">
+    <select
+      value={unitForm.unitSubtype}
+      onChange={(e) => updateFormField('unitSubtype', e.target.value)}
+      disabled={!unitForm.unitCategory}
+      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100"
+    >
+      <option value="">Select subtype</option>
+      {subtypes
+        .filter((sub) => sub.parent_category === unitForm.unitCategory)
+        .map((sub) => (
+          <option key={sub.option_id} value={sub.value}>
+            {sub.label}
+          </option>
+        ))}
+    </select>
+
+    <button
+      type="button"
+      onClick={() => setShowAddSubtype(true)}
+      disabled={!unitForm.unitCategory}
+      className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+      title="Add subtype"
+    >
+      +
+    </button>
+  </div>
+
+  {!unitForm.unitCategory ? (
+    <p className="ml-1 text-[11px] text-slate-400">
+      Select a category first before choosing or adding a subtype.
+    </p>
+  ) : null}
+</div>
 
             <div className="space-y-1.5">
               <label
@@ -1402,9 +1696,10 @@ const [formError, setFormError] = useState<string | null>(null);
               </button>
             </div>
           </div>
-        </form>
+                </form>
       </div>
     </div>
+    </>
   );
 });
 
@@ -2434,6 +2729,9 @@ export default function AdminUnitManagement() {
   const [isDeletingSlot, setIsDeletingSlot] = useState(false);
   const [slotImagePreview, setSlotImagePreview] = useState<string>('');
   const slotFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [newCategory, setNewCategory] = useState('');
 
   const [searchTerm, setSearchTerm] = useState('');
 const [typeFilter, setTypeFilter] = useState<'all' | UnitType>('all');

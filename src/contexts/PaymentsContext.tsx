@@ -109,6 +109,25 @@ async function getAccessTokenOrThrow() {
   return accessToken;
 }
 
+async function notifyAdminsPaymentSubmitted(params: {
+  paymentId: string;
+  paymentPublicId: string;
+  reservationPublicId?: string | null;
+  amount: number;
+  paymentCategory?: string | null;
+}) {
+  const { error } = await supabase.functions.invoke(
+    "send-admin-payment-submitted",
+    {
+      body: params,
+    }
+  );
+
+  if (error) {
+    console.error("Failed to send admin payment alert:", error);
+  }
+}
+
 export function PaymentsProvider({ children }: { children: ReactNode }) {
   const [payments, setPayments] = useState<Payment[]>([]);
 const [paymentsVersion, setPaymentsVersion] = useState(0);
@@ -403,12 +422,27 @@ if (trimmedSearch) {
 
     const newPayment = mapPaymentRow(payload.payment);
 
-    setPayments((prev) => {
-      if (prev.some((item) => item.id === newPayment.id)) return prev;
-      return sortPaymentsByCreatedAt([newPayment, ...prev]);
-    });
+setPayments((prev) => {
+  if (prev.some((item) => item.id === newPayment.id)) return prev;
+  return sortPaymentsByCreatedAt([newPayment, ...prev]);
+});
 
-    return newPayment.id;
+try {
+  await notifyAdminsPaymentSubmitted({
+    paymentId: newPayment.id,
+    paymentPublicId: newPayment.publicId ?? newPayment.id,
+    reservationPublicId: newPayment.reservationId ?? null,
+    amount: Number(newPayment.amount ?? 0),
+    paymentCategory: newPayment.category ?? "payment",
+  });
+} catch (notificationError) {
+  console.error(
+    "Failed to trigger admin payment submitted notification:",
+    notificationError
+  );
+}
+
+return newPayment.id;
   },
   [hasPendingPayment]
 );

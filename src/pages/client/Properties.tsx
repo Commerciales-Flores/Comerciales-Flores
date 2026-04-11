@@ -1,5 +1,4 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import Calendar from "react-calendar";
 import "react-calendar/dist/Calendar.css";
 import { useClientData } from "../../contexts/ClientDataContext";
 import type { UnitType } from "../../contexts/DataContext";
@@ -8,730 +7,85 @@ import { useAuth } from "../../contexts/AuthContext";
 import { useNotifications } from "../../contexts/NotificationContext";
 import { useUnits } from '../../contexts/UnitsContext';    
 import { useReviews } from '../../contexts/ReviewsContext';
-import { usePaymentMethods, type PaymentMethodCode } from '../../contexts/PaymentMethodsContext';
+import { usePaymentMethods } from '../../contexts/PaymentMethodsContext';
 import type { Reservation } from '../../data/types';
 import { formatDate } from '../../utils/date';
 import supabase from "../../supabaseClient";
 import AppNotice from "../../components/common/AppNotice";
+import ReservationUnitDetailsPanel from "../../components/reservations/shared/ReservationUnitDetailsPanel";
+import ReservationVisitFlowSection from "../../components/reservations/shared/ReservationVisitFlowSection";
+import ReservationPaymentSection from "../../components/reservations/shared/ReservationPaymentSection";
+import ReservationSummarySection from "../../components/reservations/shared/ReservationSummarySection";
+import ParkingSlotPanel from "../../components/reservations/parking/ParkingSlotPanel";
 import {
-  sanitizeNameInput,
   sanitizePlainText,
-  sanitizeAddressInput,
-  sanitizePhoneInput,
 } from "../../utils/DataNormalization";
+import {
+  buildFunctionHallRange,
+  isSameLocalDay,
+  startOfLocalDay,
+  endOfLocalDay,
+} from "../../components/reservations/functionHall/functionHall.utils";
+import {
+  RESERVATION_LIMITS,
+  computeEndFromForm,
+  clampNumber,
+  getDurationBounds,
+  buildInitialReservationForm,
+} from "../../components/reservations/shared/reservation.utils";
+
+import ParkingReservationForm from "../../components/reservations/parking/ParkingReservationForm";
+import RentalReservationForm from "../../components/reservations/rental/RentalSpaceReservationForm";
+import FunctionHallReservationForm from "../../components/reservations/functionHall/FunctionHallReservationForm";
+import UnitTaxonomyBadges from "../../components/common/UnitTaxonomyBadges";
 
 import {
   Search,
   Filter,
   X,
-  ChevronLeft,
-  ChevronRight,
   House,
   CheckCircle2,
-  CalendarDays,
   MapPin,
-  Check, ChevronDown,
 } from "lucide-react";
 import { formatCurrency } from "../../utils/currency";
 import {
   getUnitTypeLabel,
   getPriceLabel,
   calculateTotalAmount,
-  getMinimumDuration,
 } from "../../utils/propertyHelpers";
+
+import {
+  APPOINTMENT_TIME_STEP_SECONDS,
+  buildAppointmentTimeOptions,
+  formatTimeLabel,
+  getDateInputValue,
+  getFunctionHallAvailability,
+  getMaxReservationDate,
+  getParkingAvailability,
+  getRentalAvailability,
+  isBlockingReservation,
+  isSameDay,
+  rangesOverlap,
+} from "../../components/reservations/shared/clientReservation.helpers";
 
 import EmptyState from '../../components/common/EmptyState';
 
-type DurationType = "hours" | "days" | "months" | "years";
-type VisitMode = "online" | "onsite";
-type PaymentIntent = "pay_onsite" | "pay_later";
-type PaymentMethod = PaymentMethodCode;
-type PaymentCycle = "monthly" | "quarterly" | "full";
-type ReservationIntent = "viewing_only" | "reserve_online" | "reserve_onsite";
-
-const APPOINTMENT_START_HOUR = 9;
-const APPOINTMENT_END_HOUR = 17;
-
-function formatTimeLabel(value: string) {
-  const [hourStr, minuteStr] = value.split(":");
-  const hour = Number(hourStr);
-  const minute = Number(minuteStr);
-
-  const suffix = hour >= 12 ? "PM" : "AM";
-  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
-
-  return `${hour12}:${String(minute).padStart(2, "0")} ${suffix}`;
-}
-
-function isSameDay(date?: Date) {
-  if (!date) return false;
-  const now = new Date();
-  return (
-    date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate()
-  );
-}
-
-function buildAppointmentTimeOptions(stepSeconds: number) {
-  const stepMinutes = Math.max(1, Math.floor(stepSeconds / 60));
-  const options: string[] = [];
-
-  for (let hour = APPOINTMENT_START_HOUR; hour <= APPOINTMENT_END_HOUR; hour++) {
-    for (let minute = 0; minute < 60; minute += stepMinutes) {
-      if (hour === APPOINTMENT_END_HOUR && minute > 0) break;
-
-      options.push(
-        `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`
-      );
-    }
-  }
-
-  return options;
-}
-
-function getMaxReservationDate(unitType: UnitType) {
-  const now = new Date();
-
-  const max = new Date(now);
-
-  switch (unitType) {
-    case "rental_space":
-      max.setFullYear(max.getFullYear() + 5); // 5 years max
-      break;
-
-    case "parking_slot":
-      max.setFullYear(max.getFullYear() + 1); // 1 year max
-      break;
-
-    case "function_hall":
-      max.setMonth(max.getMonth() + 1); // 1 year max
-      break;
-
-    default:
-      max.setFullYear(max.getFullYear() + 1);
-  }
-
-  return max;
-}
-
-interface ReservationForm {
-  startDate?: Date;
-  endDate?: Date;
-  duration: number;
-  durationType: DurationType;
-  modeOfVisit: VisitMode;
-  paymentIntent: PaymentIntent;
-  paymentMethod: PaymentMethod;
-  paymentCycle: PaymentCycle;
-  notes: string;
-  slotId: string;
-  vehicleType: string;
-  plateNumber: string;
-  eventPurpose: string;
-  attendees: string;
-  businessType: string;
-  appointmentDate?: Date;
-  appointmentTime?: string;
-  agreedToPolicies: boolean;
-}
+import type {
+  DurationType,
+  PaymentMethod,
+  ReservationForm,
+  ReservationIntent,
+  UnitAvailability,
+  VisitMode,
+} from "../../components/reservations/shared/reservation.types";
 
 const FALLBACK_IMAGE =
   "https://placehold.co/1200x800/e5e7eb/6b7280?text=No+Image";
 
-  const BLOCKING_STATUSES = ["approved", "confirmed"] as const;
-// If you want pending requests to temporarily hold dates too, use:
-// const BLOCKING_STATUSES = ["pending", "approved", "confirmed"] as const;
-
-function isBlockingReservation(status?: string | null) {
-  return BLOCKING_STATUSES.includes(
-    (status ?? "") as (typeof BLOCKING_STATUSES)[number]
-  );
-}
-
-function getBlockingReservationsForUnit(
-  reservations: Reservation[],
-  unitId: string,
-  unitType: UnitType,
-  excludeUserId?: string
-) {
-  return reservations
-    .filter(
-      (r) =>
-        r.unitId === unitId &&
-        r.unitType === unitType &&
-        isBlockingReservation(r.status) &&
-        r.userId !== excludeUserId
-    )
-    .sort(
-      (a, b) =>
-        new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
-    );
-}
-
-
-function rangesOverlap(
-  startA?: string | Date | null,
-  endA?: string | Date | null,
-  startB?: string | Date | null,
-  endB?: string | Date | null
-) {
-  if (!startA || !endA || !startB || !endB) return false;
-
-  const aStart = new Date(startA).getTime();
-  const aEnd = new Date(endA).getTime();
-  const bStart = new Date(startB).getTime();
-  const bEnd = new Date(endB).getTime();
-
-  if (
-    Number.isNaN(aStart) ||
-    Number.isNaN(aEnd) ||
-    Number.isNaN(bStart) ||
-    Number.isNaN(bEnd)
-  ) {
-    return false;
-  }
-
-  return aStart <= bEnd && aEnd >= bStart;
-}
-
-function getTomorrow() {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function getDateInputValue(date?: Date) {
-  if (!date) return "";
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function startOfLocalDay(date: Date) {
-  const next = new Date(date);
-  next.setHours(0, 0, 0, 0);
-  return next;
-}
-
-function endOfLocalDay(date: Date) {
-  const next = new Date(date);
-  next.setHours(23, 59, 59, 999);
-  return next;
-}
-
-function differenceInCalendarDaysInclusive(start: Date, end: Date) {
-  const startDay = startOfLocalDay(start).getTime();
-  const endDay = startOfLocalDay(end).getTime();
-  const msPerDay = 24 * 60 * 60 * 1000;
-  return Math.floor((endDay - startDay) / msPerDay) + 1;
-}
-
-function buildFunctionHallRange(start: Date, end?: Date | null) {
-  const safeStart = startOfLocalDay(start);
-  const safeRawEnd = end ? startOfLocalDay(end) : safeStart;
-  const safeEnd = safeRawEnd.getTime() < safeStart.getTime() ? safeStart : safeRawEnd;
-
-  return {
-    startDate: safeStart,
-    endDate: endOfLocalDay(safeEnd),
-    duration: differenceInCalendarDaysInclusive(safeStart, safeEnd),
-    durationType: "days" as const,
-  };
-}
-
-function isSameLocalDay(a?: Date | null, b?: Date | null) {
-  if (!a || !b) return false;
-
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
 
 function isVideoUrl(url?: string | null) {
   if (!url) return false;
   return /\.(mp4|webm|mov|m4v|ogg)$/i.test(url);
-}
-
-function computeEndFromForm(start: Date, duration: number, type: DurationType) {
-  const end = new Date(start);
-
-  if (type === "hours") {
-    end.setHours(end.getHours() + duration);
-  } else if (type === "days") {
-    end.setDate(end.getDate() + duration - 1);
-    end.setHours(23, 59, 59, 999);
-  } else if (type === "months") {
-    end.setMonth(end.getMonth() + duration);
-    end.setDate(end.getDate() - 1);
-    end.setHours(23, 59, 59, 999);
-  } else {
-    end.setFullYear(end.getFullYear() + duration);
-    end.setDate(end.getDate() - 1);
-    end.setHours(23, 59, 59, 999);
-  }
-
-  return end;
-}
-
-function buildInitialReservationForm(
-  unitType: UnitType,
-  defaultPaymentMethod: PaymentMethod = 'gcash'
-): ReservationForm {
-  const startDate = getTomorrow();
-
-  if (unitType === "parking_slot") {
-  const endDate = computeEndFromForm(
-    startDate,
-    RESERVATION_LIMITS.parking_slot.minMonths,
-    "months"
-  );
-
-  return {
-    startDate,
-    endDate,
-    duration: RESERVATION_LIMITS.parking_slot.minMonths,
-    durationType: "months",
-    modeOfVisit: "online",
-    paymentIntent: "pay_later",
-    paymentMethod: defaultPaymentMethod,
-    paymentCycle: "monthly",
-    notes: "",
-    slotId: "",
-    vehicleType: "",
-    plateNumber: "",
-    eventPurpose: "",
-    attendees: "",
-    businessType: "",
-    appointmentDate: undefined,
-    appointmentTime: "",
-    agreedToPolicies: false,
-  };
-}
-
-  if (unitType === "function_hall") {
-  return {
-    startDate: undefined as unknown as Date,
-    endDate: undefined as unknown as Date,
-    duration: 0,
-    durationType: "days",
-    modeOfVisit: "online",
-    paymentIntent: "pay_later",
-    paymentMethod: defaultPaymentMethod,
-    paymentCycle: "full",
-    notes: "",
-    slotId: "",
-    vehicleType: "",
-    plateNumber: "",
-    eventPurpose: "",
-    attendees: "",
-    businessType: "",
-    appointmentDate: undefined,
-    appointmentTime: "",
-    agreedToPolicies: false,
-  };
-}
-
-  const endDate = computeEndFromForm(
-  startDate,
-  RESERVATION_LIMITS.rental_space.minMonths,
-  "months"
-);
-
-return {
-  startDate,
-  endDate,
-  duration: RESERVATION_LIMITS.rental_space.minMonths,
-  durationType: "months",
-  modeOfVisit: "online",
-  paymentIntent: "pay_later",
-  paymentMethod: defaultPaymentMethod,
-  paymentCycle: "monthly",
-  notes: "",
-  slotId: "",
-  vehicleType: "",
-  plateNumber: "",
-  eventPurpose: "",
-  attendees: "",
-  businessType: "",
-  appointmentDate: undefined,
-  appointmentTime: "",
-  agreedToPolicies: false,
-};
-}
-
-const RESERVATION_LIMITS = {
-  rental_space: {
-    minMonths: 12,
-    maxMonths: 30,
-  },
-  function_hall: {
-    minDays: 1,
-    maxDays: 30,
-  },
-  parking_slot: {
-    minMonths: 1,
-    maxMonths: 12,
-  },
-  attendees: {
-    min: 1,
-    max: 100,
-  },
-};
-
-const APPOINTMENT_TIME_STEP_SECONDS = 30 * 60; // 30 minutes
-// if you want every 10 minutes instead, use:
-// const APPOINTMENT_TIME_STEP_SECONDS = 10 * 60;
-
-function clampNumber(value: number, min: number, max: number) {
-  if (!Number.isFinite(value)) return min;
-  return Math.min(max, Math.max(min, value));
-}
-
-function getDurationBounds(unitType: UnitType, durationType: DurationType) {
-  if (unitType === "rental_space" && durationType === "months") {
-    return {
-      min: RESERVATION_LIMITS.rental_space.minMonths,
-      max: RESERVATION_LIMITS.rental_space.maxMonths,
-    };
-  }
-
-  if (unitType === "parking_slot" && durationType === "months") {
-    return {
-      min: RESERVATION_LIMITS.parking_slot.minMonths,
-      max: RESERVATION_LIMITS.parking_slot.maxMonths,
-    };
-  }
-
-  if (unitType === "function_hall" && durationType === "days") {
-    return {
-      min: RESERVATION_LIMITS.function_hall.minDays,
-      max: RESERVATION_LIMITS.function_hall.maxDays,
-    };
-  }
-
-  return { min: 1, max: 30 };
-}
-
-type UnitAvailability = {
-  status: "available" | "occupied" | "partial";
-  badgeText: string;
-  badgeTone: "green" | "red" | "amber" | "gray" | "blue";
-  reserveDisabled: boolean;
-  reserveLabel: string;
-  nextAvailableText?: string;
-};
-
-function getParkingAvailability(params: {
-  unitId: string;
-  parkingSlots: Array<{
-    id: string;
-    unitId: string;
-    status: string;
-    isOccupied?: boolean;
-  }>;
-  reservations: Reservation[];
-  userId?: string;
-}): UnitAvailability {
-  const { unitId, parkingSlots, reservations, userId } = params;
-
-  const slots = parkingSlots.filter((slot) => slot.unitId === unitId);
-  const activeSlots = slots.filter((slot) => slot.status === "active");
-
-  const slotsWithOwnership = activeSlots.map((slot) => {
-    const occupyingReservation = reservations.find(
-      (r) =>
-        r.unitType === "parking_slot" &&
-        r.unitId === unitId &&
-        r.slotId === slot.id &&
-        isBlockingReservation(r.status)
-    );
-
-    const occupiedByOwnUser =
-      !!occupyingReservation && occupyingReservation.userId === userId;
-
-    const occupiedByOtherUser =
-      !!occupyingReservation && occupyingReservation.userId !== userId;
-
-    const isUnavailable =
-      slot.status !== "active" ||
-      slot.isOccupied ||
-      occupiedByOtherUser;
-
-    return {
-      slot,
-      occupyingReservation,
-      occupiedByOwnUser,
-      occupiedByOtherUser,
-      isUnavailable,
-    };
-  });
-
-  const availableActiveSlots = slotsWithOwnership.filter((s) => !s.isUnavailable);
-  const ownReservedSlots = slotsWithOwnership.filter((s) => s.occupiedByOwnUser);
-
-  if (activeSlots.length === 0) {
-    return {
-      status: "occupied",
-      badgeText: "No slots configured",
-      badgeTone: "gray",
-      reserveDisabled: true,
-      reserveLabel: "Unavailable",
-    };
-  }
-
-  if (availableActiveSlots.length === 0) {
-    return {
-      status: "occupied",
-      badgeText:
-        ownReservedSlots.length > 0
-          ? "All other slots occupied"
-          : "Fully occupied",
-      badgeTone: ownReservedSlots.length > 0 ? "blue" : "red",
-      reserveDisabled: true,
-      reserveLabel: "No Slots Left",
-    };
-  }
-
-  if (ownReservedSlots.length > 0) {
-    return {
-      status: "partial",
-      badgeText: `${availableActiveSlots.length} slot${
-        availableActiveSlots.length === 1 ? "" : "s"
-      } available · You already have ${ownReservedSlots.length}`,
-      badgeTone: "blue",
-      reserveDisabled: false,
-      reserveLabel: "View Slots",
-    };
-  }
-
-  if (availableActiveSlots.length < activeSlots.length) {
-    return {
-      status: "partial",
-      badgeText: `${availableActiveSlots.length} of ${activeSlots.length} slots available`,
-      badgeTone: "amber",
-      reserveDisabled: false,
-      reserveLabel: "Reserve Now",
-    };
-  }
-
-  return {
-    status: "available",
-    badgeText: `${availableActiveSlots.length} slots available`,
-    badgeTone: "green",
-    reserveDisabled: false,
-    reserveLabel: "Reserve Now",
-  };
-}
-
-function getRentalAvailability(params: {
-  unitId: string;
-  unitType: UnitType;
-  reservations: Reservation[];
-  userId?: string;
-}): UnitAvailability {
-  const { unitId, unitType, reservations, userId } = params;
-
-  const blockingReservations = reservations
-    .filter(
-      (r) =>
-        r.unitId === unitId &&
-        r.unitType === unitType &&
-        isBlockingReservation(r.status)
-    )
-    .sort(
-      (a, b) =>
-        new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
-    );
-
-  const ownReservations = blockingReservations.filter((r) => r.userId === userId);
-  const otherReservations = blockingReservations.filter((r) => r.userId !== userId);
-  const now = Date.now();
-
-  const activeOwnRental = ownReservations.find((r) => {
-    const start = new Date(r.startDate).getTime();
-    const end = new Date(r.endDate).getTime();
-    return !Number.isNaN(start) && !Number.isNaN(end) && start <= now && end >= now;
-  });
-
-  const upcomingOwnRental = ownReservations.find((r) => {
-    const start = new Date(r.startDate).getTime();
-    return !Number.isNaN(start) && start > now;
-  });
-
-  if (activeOwnRental || upcomingOwnRental) {
-    const ownReservation = activeOwnRental ?? upcomingOwnRental;
-
-    return {
-      status: "occupied",
-      badgeText: "Reserved by you",
-      badgeTone: "blue",
-      reserveDisabled: true,
-      reserveLabel: "Reserved",
-      nextAvailableText:
-        ownReservation?.startDate && ownReservation?.endDate
-          ? `${formatDate(ownReservation.startDate)} - ${formatDate(ownReservation.endDate)}`
-          : ownReservation?.endDate
-            ? `Until ${formatDate(ownReservation.endDate)}`
-            : undefined,
-    };
-  }
-
-  const activeOtherRental = otherReservations.find((r) => {
-    const start = new Date(r.startDate).getTime();
-    const end = new Date(r.endDate).getTime();
-    return !Number.isNaN(start) && !Number.isNaN(end) && start <= now && end >= now;
-  });
-
-  if (activeOtherRental) {
-    return {
-      status: "occupied",
-      badgeText: "Occupied",
-      badgeTone: "red",
-      reserveDisabled: true,
-      reserveLabel: "Occupied",
-      nextAvailableText: activeOtherRental.endDate
-        ? `Until ${formatDate(activeOtherRental.endDate)}`
-        : undefined,
-    };
-  }
-
-  const upcomingOtherRental = otherReservations.find((r) => {
-    const start = new Date(r.startDate).getTime();
-    return !Number.isNaN(start) && start > now;
-  });
-
-  if (upcomingOtherRental) {
-    return {
-      status: "partial",
-      badgeText: "Available soon",
-      badgeTone: "amber",
-      reserveDisabled: false,
-      reserveLabel: "Reserve Now",
-      nextAvailableText: `Reserved ${formatDate(
-        upcomingOtherRental.startDate
-      )} - ${formatDate(upcomingOtherRental.endDate)}`,
-    };
-  }
-
-  return {
-    status: "available",
-    badgeText: "Available",
-    badgeTone: "green",
-    reserveDisabled: false,
-    reserveLabel: "Reserve Now",
-  };
-}
-
-function getFunctionHallAvailability(params: {
-  unitId: string;
-  unitType: UnitType;
-  reservations: Reservation[];
-  userId?: string;
-}): UnitAvailability {
-  const { unitId, unitType, reservations, userId } = params;
-
-  const blockingReservations = reservations
-    .filter(
-      (r) =>
-        r.unitId === unitId &&
-        r.unitType === unitType &&
-        isBlockingReservation(r.status)
-    )
-    .sort(
-      (a, b) =>
-        new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
-    );
-
-  const ownReservations = blockingReservations.filter((r) => r.userId === userId);
-  const otherReservations = blockingReservations.filter((r) => r.userId !== userId);
-  const now = Date.now();
-
-  const activeOwnReservation = ownReservations.find((r) => {
-    const start = new Date(r.startDate).getTime();
-    const end = new Date(r.endDate).getTime();
-    return !Number.isNaN(start) && !Number.isNaN(end) && start <= now && end >= now;
-  });
-
-  if (activeOwnReservation) {
-    return {
-      status: "occupied",
-      badgeText: "Reserved by you",
-      badgeTone: "blue",
-      reserveDisabled: true,
-      reserveLabel: "Reserved",
-      nextAvailableText: `${formatDate(activeOwnReservation.startDate)} - ${formatDate(
-        activeOwnReservation.endDate
-      )}`,
-    };
-  }
-
-  const activeOtherReservation = otherReservations.find((r) => {
-  const start = new Date(r.startDate).getTime();
-  const end = new Date(r.endDate).getTime();
-  return !Number.isNaN(start) && !Number.isNaN(end) && start <= now && end >= now;
-});
-
-if (activeOtherReservation) {
-  return {
-    status: "partial",
-    badgeText: "Has reserved dates",
-    badgeTone: "amber",
-    reserveDisabled: false,
-    reserveLabel: "Check Dates",
-    nextAvailableText: `${formatDate(activeOtherReservation.startDate)} - ${formatDate(
-      activeOtherReservation.endDate
-    )}`,
-  };
-}
-
-  const upcomingOwnReservation = ownReservations.find((r) => {
-    const start = new Date(r.startDate).getTime();
-    return !Number.isNaN(start) && start > now;
-  });
-
-  if (upcomingOwnReservation) {
-    return {
-      status: "partial",
-      badgeText: "Reserved by you",
-      badgeTone: "blue",
-      reserveDisabled: true,
-      reserveLabel: "Reserved",
-      nextAvailableText: `${formatDate(upcomingOwnReservation.startDate)} - ${formatDate(
-        upcomingOwnReservation.endDate
-      )}`,
-    };
-  }
-
-  const upcomingOtherReservation = otherReservations.find((r) => {
-    const start = new Date(r.startDate).getTime();
-    return !Number.isNaN(start) && start > now;
-  });
-
-  if (upcomingOtherReservation) {
-    return {
-      status: "partial",
-      badgeText: "Has upcoming reservation",
-      badgeTone: "amber",
-      reserveDisabled: false,
-      reserveLabel: "Check Dates",
-      nextAvailableText: `${formatDate(upcomingOtherReservation.startDate)} - ${formatDate(
-        upcomingOtherReservation.endDate
-      )}`,
-    };
-  }
-
-  return {
-    status: "available",
-    badgeText: "Available",
-    badgeTone: "green",
-    reserveDisabled: false,
-    reserveLabel: "Reserve Now",
-  };
 }
 
 type PriceFilterModalProps = {
@@ -1126,31 +480,6 @@ useEffect(() => {
   const getReviewTimestamp = (review: any) =>
   new Date(review.created_at ?? review.updated_at ?? 0).getTime();
 
-const getReviewerName = (review: any) => {
-  const fullName = [review.first_name, review.last_name].filter(Boolean).join(" ").trim();
-  return (
-    fullName ||
-    review.user_name ||
-    review.customer_name ||
-    review.name ||
-    "Anonymous User"
-  );
-};
-
-const getReviewerAvatar = (review: any) =>
-  review.profile_picture ||
-  review.avatar_url ||
-  review.profileImage ||
-  review.user_avatar ||
-  "";
-
-const getReviewerInitials = (name: string) =>
-  name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
 
 const latestReviewByUnitId = useMemo(() => {
   const map = new Map<string, any>();
@@ -1745,7 +1074,7 @@ const getParkingSlotState = useCallback(
   (slot: (typeof unitParkingSlots)[number]) => {
     const isOwned = ownReservedSlotIds.has(slot.id);
     const isTakenByOthers = reservedSlotIds.has(slot.id);
-    const isInactive = slot.status !== "active" || slot.isOccupied;
+    const isInactive = slot.status !== "active" || Boolean(slot.isOccupied);
     const isDisabled = isOwned || isTakenByOthers || isInactive;
 
     let statusText = "Available";
@@ -2435,12 +1764,12 @@ const calendarLegend = (
           </div>
         )}
 
-       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-  {filteredUnits.length > 0 ? (
-    filteredUnitCards.map(({ unit, latestReviewComment }) => {
-      const unitReviews = reviews.filter(
-        (r) => r.unit_id === unit.id
-      );
+  <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {filteredUnits.length > 0 ? (
+            filteredUnitCards.map(({ unit, latestReviewComment }) => {
+              const unitReviews = reviews.filter(
+                (r) => r.unit_id === unit.id
+              );
 
       const averageRating =
         unitReviews.length > 0
@@ -2498,9 +1827,16 @@ const calendarLegend = (
         </div>
 
         <div className="flex flex-1 flex-col p-4">
-          <span className="mb-1 text-xs font-medium text-blue-600">
-            {getUnitTypeLabel(unit.type)}
-          </span>
+          <div className="mb-1 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-blue-600">
+              {getUnitTypeLabel(unit.type)}
+            </span>
+
+            <UnitTaxonomyBadges
+              category={unit.category}
+              subtype={unit.subtype}
+            />
+          </div>
 
           <div className="min-h-[42px]">
             <h3 className="line-clamp-2 text-base font-semibold leading-snug text-gray-900">
@@ -2509,7 +1845,7 @@ const calendarLegend = (
           </div>
 
           <div className="mt-2 min-h-[56px]">
-          <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
+          <p className="mb-1 text-[10px] font-bold uppercase text-slate-400">
             {latestReviewComment ? "Latest Review" : "Description"}
           </p>
 
@@ -2708,13 +2044,13 @@ const calendarLegend = (
         )}
 
         {showReservationModal && selectedUnitData && (
-  <div className="fixed inset-0 z-50 bg-black/40 p-0 sm:p-6">
-    <div className="flex h-full items-end justify-center sm:items-center">
-      <div
-        className={`flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-auto sm:max-h-[95vh] sm:rounded-3xl ${
-          reservationSuccess ? 'sm:max-w-md' : 'sm:max-w-5xl'
-        }`}
-      >
+            <div className="fixed inset-0 z-50 bg-black/40 p-0 sm:p-6">
+              <div className="flex h-full items-end justify-center sm:items-center">
+                <div
+                  className={`flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-auto sm:max-h-[95vh] sm:rounded-3xl ${
+                    reservationSuccess ? 'sm:max-w-md' : 'sm:max-w-5xl'
+                  }`}
+                >
                         <div
                           className={`flex items-start justify-between gap-3 border-b border-gray-100 ${
                             reservationSuccess ? 'px-4 py-4 sm:px-5' : 'px-4 py-4 sm:px-6 sm:py-5'
@@ -2744,1306 +2080,179 @@ const calendarLegend = (
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] px-1 scroll-smooth">
-  {reservationSuccess ? (
-    <div className="flex justify-center p-4 sm:p-5">
-    <div className="w-full max-w-md rounded-3xl border border-green-200 bg-gradient-to-br from-green-50 to-white p-5 text-center shadow-sm">
-      <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-green-100">
-        <CheckCircle2 className="size-6 text-green-600" />
-      </div>
+                {reservationSuccess ? (
+                  <div className="flex justify-center p-4 sm:p-5">
+                  <div className="w-full max-w-md rounded-3xl border border-green-200 bg-gradient-to-br from-green-50 to-white p-5 text-center shadow-sm">
+                    <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-green-100">
+                      <CheckCircle2 className="size-6 text-green-600" />
+                    </div>
 
-      <h3 className="text-base font-bold text-gray-900">
-        Reservation Request Submitted
-      </h3>
+                    <h3 className="text-base font-bold text-gray-900">
+                      Reservation Request Submitted
+                    </h3>
 
-      <p className="mt-1 text-sm text-gray-600">
-        Your reservation for <strong>{selectedUnitData.name}</strong> is now pending admin approval.
-      </p>
+                    <p className="mt-1 text-sm text-gray-600">
+                      Your reservation for <strong>{selectedUnitData.name}</strong> is now pending admin approval.
+                    </p>
 
-      <div className="mt-4 space-y-2 text-left">
-        <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-            Schedule
-          </p>
-          <p className="mt-1 text-sm font-semibold text-gray-900">
-            {formatDate(reservationForm.startDate)} – {formatDate(reservationForm.endDate)}
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-            Visit Mode
-          </p>
-          <p className="mt-1 text-sm font-semibold text-gray-900">
-            {reservationForm.modeOfVisit === 'onsite'
-              ? 'On-site Visit'
-              : 'Online / Digital Process'}
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-              Location
-            </p>
-            <p className="mt-1 text-sm font-semibold text-gray-900">
-              {selectedUnitData.location}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-              Estimated Total
-            </p>
-            <p className="mt-1 text-sm font-semibold text-gray-900">
-              {isViewingOnly
-                ? 'No payment required'
-                : selectedUnitData.type === "rental_space"
-                  ? formatCurrency(estimatedTotal) + ' total lease'
-                  : formatCurrency(estimatedTotal)}
-            </p>
-          </div>
-        </div>
-      </div>
-
-        <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm text-blue-700">
-          We’ll notify you once your request has been reviewed.
-        </div>
-      </div>
-    </div>
-  ) : (
-                <div className="p-4 sm:p-6">
-  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:gap-6">
-                    <div>
-                      <div className="relative mb-4 overflow-hidden rounded-2xl border border-gray-200 bg-gray-100">
-                        {isVideoUrl(selectedUnitMedia[safeCurrentMediaIndex]) ? (
-                          <video
-                            key={selectedUnitMedia[safeCurrentMediaIndex]}
-                            src={selectedUnitMedia[safeCurrentMediaIndex]}
-                            controls
-                            autoPlay
-                            muted
-                            playsInline
-                            preload="metadata"
-                            className="h-48 w-full object-cover sm:h-56"
-                          />
-                        ) : (
-                          <img
-                            key={selectedUnitMedia[safeCurrentMediaIndex]}
-                            src={selectedUnitMedia[safeCurrentMediaIndex]}
-                            alt={selectedUnitData.name}
-                            className="h-48 w-full object-cover sm:h-56"
-                          />
-                        )}
-
-                        {isVideoUrl(selectedUnitMedia[safeCurrentMediaIndex]) && (
-                          <span className="absolute right-3 top-3 z-10 rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-semibold text-white">
-                            Video
-                          </span>
-                        )}
-
-                        {selectedUnitMedia.length > 1 && (
-                          <>
-                            <button
-                              onClick={prevImage}
-                              type="button"
-                              className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 shadow-sm backdrop-blur transition hover:bg-white"
-                            >
-                              <ChevronLeft className="size-5" />
-                            </button>
-
-                            <button
-                              onClick={nextImage}
-                              type="button"
-                              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-2 shadow-sm backdrop-blur transition hover:bg-white"
-                            >
-                              <ChevronRight className="size-5" />
-                            </button>
-                          </>
-                        )}
+                    <div className="mt-4 space-y-2 text-left">
+                      <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                          Schedule
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-gray-900">
+                          {formatDate(reservationForm.startDate)} – {formatDate(reservationForm.endDate)}
+                        </p>
                       </div>
 
-                      {selectedUnitMedia.length > 1 && (
-                        <div className="mb-4 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                          {selectedUnitMedia.map((media, index) => (
-                            <button
-                              key={`${media}-${index}`}
-                              type="button"
-                              onClick={() => setCurrentImageIndex(index)}
-                              className={`overflow-hidden rounded-xl border ${
-                                index === safeCurrentMediaIndex
-                                  ? "border-blue-500 ring-2 ring-blue-200"
-                                  : "border-gray-200"
-                              }`}
-                            >
-                              {isVideoUrl(media) ? (
-                                <div className="relative h-16 w-20 bg-gray-100">
-                                  <video
-                                    src={media}
-                                    muted
-                                    playsInline
-                                    preload="metadata"
-                                    className="h-full w-full object-cover"
-                                  />
-                                  <div className="absolute inset-x-0 bottom-0 bg-black/60 px-1 py-0.5 text-[10px] font-medium text-white">
-                                    Video
-                                  </div>
-                                </div>
-                              ) : (
-                                <img
-                                  src={media}
-                                  alt={`Media ${index + 1}`}
-                                  className="h-16 w-20 object-cover"
-                                />
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      <div className="mb-4 space-y-4">
-  <p className="text-sm leading-relaxed text-gray-600">
-    {selectedUnitData.description}
-  </p>
-
-  <div className="rounded-2xl border border-slate-200 bg-white p-4">
-  <div className="mb-3 flex items-center justify-between">
-    <div>
-      <h3 className="text-sm font-bold tracking-[0.14em] text-slate-900">
-        Recent Reviews
-      </h3>
-      <p className="mt-1 text-xs text-slate-500">
-        Feedback from recent users of this unit.
-      </p>
-    </div>
-
-    {selectedUnitReviews.length > 1 && (
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() =>
-            setCurrentReviewIndex((prev) =>
-              prev === 0 ? selectedUnitReviews.length - 1 : prev - 1
-            )
-          }
-          className="rounded-full border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-50"
-          aria-label="Previous review"
-        >
-          <ChevronLeft className="size-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={() =>
-            setCurrentReviewIndex((prev) =>
-              prev === selectedUnitReviews.length - 1 ? 0 : prev + 1
-            )
-          }
-          className="rounded-full border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-50"
-          aria-label="Next review"
-        >
-          <ChevronRight className="size-4" />
-        </button>
-      </div>
-    )}
-  </div>
-
-  {selectedUnitReviews.length > 0 ? (
-    <>
-      <div className="overflow-hidden rounded-2xl">
-        <motion.div
-          className="flex"
-          animate={{ x: `-${currentReviewIndex * 100}%` }}
-          transition={{ type: "spring", stiffness: 60, damping: 18 }}
-        >
-          {selectedUnitReviews.map((review) => {
-            const reviewerName = getReviewerName(review);
-            const reviewerAvatar = getReviewerAvatar(review);
-            const reviewerInitials = getReviewerInitials(reviewerName);
-            const hasComment =
-              typeof review.comment === "string" && review.comment.trim();
-
-            return (
-              <div
-                key={review.review_id ?? `${review.unit_id}-${getReviewTimestamp(review)}`}
-                className="w-full flex-shrink-0"
-              >
-                <div className="min-h-[180px] rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                  <div className="flex items-start gap-3">
-                    {reviewerAvatar ? (
-                      <img
-                        src={reviewerAvatar}
-                        alt={reviewerName}
-                        className="size-10 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex size-10 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">
-                        {reviewerInitials}
+                      <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                          Visit Mode
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-gray-900">
+                          {reservationForm.modeOfVisit === 'onsite'
+                            ? 'On-site Visit'
+                            : 'Online / Digital Process'}
+                        </p>
                       </div>
-                    )}
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-slate-900">
-                            {reviewerName}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                            Location
                           </p>
-                          <p className="text-xs text-slate-500">
-                            {Number(review.rating ?? 0).toFixed(1)} / 5
+                          <p className="mt-1 text-sm font-semibold text-gray-900">
+                            {selectedUnitData.location}
                           </p>
                         </div>
 
-                        <div className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
-                          ★ {Number(review.rating ?? 0).toFixed(1)}
+                        <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                            Estimated Total
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-gray-900">
+                            {isViewingOnly
+                              ? 'No payment required'
+                              : selectedUnitData.type === "rental_space"
+                                ? formatCurrency(estimatedTotal) + ' total lease'
+                                : formatCurrency(estimatedTotal)}
+                          </p>
                         </div>
                       </div>
+                    </div>
 
-                      {hasComment ? (
-                        <p className="mt-3 line-clamp-4 text-sm italic leading-relaxed text-slate-600">
-                          “{review.comment?.trim()}”
-                        </p>
-                      ) : (
-                        <p className="mt-3 text-sm text-slate-400">
-                          No written comment provided.
-                        </p>
-                      )}
+                      <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm text-blue-700">
+                        We’ll notify you once your request has been reviewed.
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-            );
-          })}
-        </motion.div>
-      </div>
+                ) : (
+                <div className="p-4 sm:p-6">
+                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:gap-6">
+                    <ReservationUnitDetailsPanel
+                      selectedUnitData={selectedUnitData}
+                      selectedUnitMedia={selectedUnitMedia}
+                      safeCurrentMediaIndex={safeCurrentMediaIndex}
+                      selectedUnitReviews={selectedUnitReviews}
+                      currentReviewIndex={currentReviewIndex}
+                      setCurrentReviewIndex={setCurrentReviewIndex}
+                      reservationDurationType={reservationForm.durationType}
+                      isVideoUrl={isVideoUrl}
+                      nextImage={nextImage}
+                      prevImage={prevImage}
+                      setCurrentImageIndex={setCurrentImageIndex}
+                    />
 
-      {selectedUnitReviews.length > 1 && (
-        <div className="mt-3 flex justify-center gap-2">
-          {selectedUnitReviews.map((_, idx) => (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => setCurrentReviewIndex(idx)}
-              className={`h-2 rounded-full transition-all ${
-                currentReviewIndex === idx ? "w-6 bg-blue-600" : "w-2 bg-slate-300"
-              }`}
-              aria-label={`Go to review ${idx + 1}`}
-            />
-          ))}
-        </div>
-      )}
-    </>
-  ) : (
-    <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center">
-      <p className="text-sm font-medium text-slate-500">
-        No reviews yet for this unit.
-      </p>
-    </div>
-  )}
-</div>
-</div>
+                    <form className="space-y-4" onSubmit={handleReservationSubmit}>
 
-                      <div className="mb-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
-  <p className="mb-1 text-xs sm:text-sm text-gray-600">Price</p>
-
-  <div className="text-base sm:text-lg font-bold text-blue-600">
-    {formatCurrency(selectedUnitData.price)}{" "}
-    <span className="text-xs sm:text-sm font-medium text-gray-500">
-      {getPriceLabel(selectedUnitData.type)}
-    </span>
-  </div>
-
-  {selectedUnitData.minimumPaymentPercent && (
-    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs sm:text-sm text-amber-800">
-      Minimum initial payment:{" "}
-      <strong>{selectedUnitData.minimumPaymentPercent}%</strong> of total amount.
-    </div>
-  )}
-
-  <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs sm:text-sm text-gray-600">
-    {selectedUnitData.type === "rental_space" &&
-      "Payments follow your selected billing cycle."}
-    {selectedUnitData.type === "function_hall" &&
-      "Partial payments are allowed until the event is fully paid."}
-    {selectedUnitData.type === "parking_slot" &&
-      "Partial payments may be allowed, but monthly dues must be completed on time."}
-  </div>
-</div>
-
-                      <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
-                        <p>
-                          Minimum Duration:{" "}
-                          <span className="font-semibold text-gray-900">
-                            {getMinimumDuration(selectedUnitData.type).value}{" "}
-                            {getMinimumDuration(selectedUnitData.type).unit}
-                          </span>
-                        </p>
-                      </div>
-                    </div>
-
-                    <form onSubmit={handleReservationSubmit} className="space-y-3 pb-24 sm:space-y-4 sm:pb-1">
-                      <div className="space-y-3 rounded-2xl border border-gray-200 p-3.5 sm:space-y-4 sm:p-4">
-  <div>
-    <label className="mb-1 block text-sm font-medium text-gray-700">
-      How do you want to proceed?
-    </label>
-    <select
-      value={reservationForm.modeOfVisit}
-      onChange={(e) => handleModeChange(e.target.value as VisitMode)}
-      className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-    >
-      <option value="online">Reserve Online</option>
-      <option value="onsite">Visit On-site First</option>
-    </select>
-  </div>
-
-  {reservationForm.modeOfVisit === "onsite" && (
-    <div className="border-t border-gray-200 pt-4">
-      <div>
-        <label className="mb-1 block text-sm font-medium text-gray-700">
-          Appointment Date
-        </label>
-        <input
-          type="date"
-          value={getDateInputValue(reservationForm.appointmentDate)}
-          min={getDateInputValue(new Date())}
-          onChange={(e) =>
-            setReservationForm((prev) => ({
-              ...prev,
-              appointmentDate: e.target.value
-                ? new Date(`${e.target.value}T00:00:00`)
-                : undefined,
-            }))
-          }
-          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-        />
-        {formErrors.appointmentDate && (
-          <p className="mt-1 text-xs text-red-600">
-            {formErrors.appointmentDate}
-          </p>
-        )}
-      </div>
-
-      <div className="mt-4">
-  <label className="mb-1 block text-sm font-medium text-gray-700">
-    Appointment Time
-  </label>
-
-  <div className="relative" ref={timeSelectRef}>
-    <button
-      type="button"
-      onClick={() => setIsTimeSelectOpen((prev) => !prev)}
-      className="flex w-full items-center justify-between rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-left outline-none transition hover:border-blue-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-    >
-      <span
-        className={
-          reservationForm.appointmentTime ? "text-gray-900" : "text-gray-400"
-        }
-      >
-        {reservationForm.appointmentTime
-          ? formatTimeLabel(reservationForm.appointmentTime)
-          : "Select appointment time"}
-      </span>
-
-      <ChevronDown
-        className={`size-4 text-blue-500 transition-transform ${
-          isTimeSelectOpen ? "rotate-180" : ""
-        }`}
-      />
-    </button>
-
-    {isTimeSelectOpen && (
-      <div className="absolute z-30 mt-2 max-h-64 w-full overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
-        <div className="max-h-64 overflow-y-auto py-1">
-          {appointmentTimeOptions.map((time) => {
-            const isSelected = reservationForm.appointmentTime === time;
-
-            return (
-              <button
-                key={time}
-                type="button"
-                onClick={() => {
-                  setReservationForm((prev) => ({
-                    ...prev,
-                    appointmentTime: time,
-                  }));
-                  setIsTimeSelectOpen(false);
-                }}
-                className={`flex w-full items-center justify-between px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-left text-sm transition ${
-                  isSelected
-                    ? "bg-blue-50 font-medium text-blue-700"
-                    : "text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                <span>{formatTimeLabel(time)}</span>
-                {isSelected ? <Check className="size-4" /> : null}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    )}
-  </div>
-
-  <p className="mt-2 text-xs text-gray-500">
-    Available visiting hours: 9:00 AM to 5:00 PM
-  </p>
-</div>
-
-      <label className="mt-6 mb-2 block text-sm font-medium text-gray-700">
-        What is the goal of your visit?
-      </label>
-
-      <div className="space-y-2">
-        <label
-          className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3 transition ${
-            reservationForm.paymentIntent === "pay_later"
-              ? "border-blue-500 bg-blue-50"
-              : "border-gray-200 bg-white"
-          }`}
-        >
-          <input
-            type="radio"
-            name="paymentIntent"
-            value="pay_later"
-            checked={reservationForm.paymentIntent === "pay_later"}
-            onChange={(e) =>
-              setReservationForm((prev) => ({
-                ...prev,
-                paymentIntent: e.target.value as PaymentIntent,
-              }))
-            }
-            className="mt-1 size-4 text-blue-600 focus:ring-blue-500"
-          />
-          {formErrors.paymentIntent && (
-            <p className="mt-1 text-xs text-red-600">
-              {formErrors.paymentIntent}
-            </p>
-          )}
-          <div>
-            <p className="text-sm font-medium text-gray-900">
-              Book Viewing Only
-            </p>
-            <p className="text-xs text-gray-500">
-              I want to tour the unit first. No payment is required for the visit.
-            </p>
-          </div>
-        </label>
-
-        <label
-          className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3 transition ${
-            reservationForm.paymentIntent === "pay_onsite"
-              ? "border-blue-500 bg-blue-50"
-              : "border-gray-200 bg-white"
-          }`}
-        >
-          <input
-            type="radio"
-            name="paymentIntent"
-            value="pay_onsite"
-            checked={reservationForm.paymentIntent === "pay_onsite"}
-            onChange={(e) =>
-              setReservationForm((prev) => ({
-                ...prev,
-                paymentIntent: e.target.value as PaymentIntent,
-              }))
-            }
-            className="mt-1 size-4 text-blue-600 focus:ring-blue-500"
-          />
-          {formErrors.paymentIntent && (
-            <p className="mt-1 text-xs text-red-600">
-              {formErrors.paymentIntent}
-            </p>
-          )}
-          <div>
-            <p className="text-sm font-medium text-gray-900">
-              Reserve with On-site Visit
-            </p>
-            <p className="text-xs text-gray-500">
-              Submit a reservation request and complete the visit onsite. Approval is still required before payment is finalized.
-            </p>
-          </div>
-        </label>
-      </div>
-
-      {isViewingOnly && (
-        <div className="mt-4 rounded-2xl border border-green-100 bg-green-50 p-3 text-sm text-green-800">
-          Viewing only selected. No payment method is required for this appointment.
-        </div>
-      )}
-    </div>
-  )}
-</div>
+                      <ReservationVisitFlowSection
+                        reservationForm={reservationForm}
+                        setReservationForm={setReservationForm}
+                        handleModeChange={handleModeChange}
+                        appointmentTimeOptions={appointmentTimeOptions}
+                        formatTimeLabel={formatTimeLabel}
+                        getDateInputValue={getDateInputValue}
+                        formErrors={formErrors}
+                        isTimeSelectOpen={isTimeSelectOpen}
+                        setIsTimeSelectOpen={setIsTimeSelectOpen}
+                        timeSelectRef={timeSelectRef}
+                        isViewingOnly={isViewingOnly}
+                      />
 
                       {selectedUnitData.type === "parking_slot" && (
-                        <>
-                          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
-                            Parking spaces require a{" "}
-                            <strong>minimum occupancy of 1 month</strong>.
-                          </div>
-
-                          <div>
-                            <label className="mb-2 block text-sm text-gray-700">
-                              Reservation Period (Minimum 1 Month)
-                            </label>
-
-                            <button
-                              type="button"
-                              onClick={() => setShowCalendar((s) => !s)}
-                              className="flex w-full items-center justify-between rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-left text-sm transition hover:border-blue-400"
-                            >
-                              <span>
-                                {`${formatDate(reservationForm.startDate)} - ${formatDate(reservationForm.endDate)}`}
-                              </span>
-                            </button>
-
-                            {showCalendar && (
-                              <div className="mt-2 overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 shadow-lg">
-                                <Calendar
-                                  value={reservationForm.startDate}
-                                  selectRange={false}
-                                  minDate={getTomorrow()}
-                                  maxDate={getMaxReservationDate(selectedUnitData.type)}
-                                  onChange={(value) => {
-                                    if (value instanceof Date) {
-                                      const newStart = new Date(value);
-                                      newStart.setHours(0, 0, 0, 0);
-
-                                      setReservationForm((prev) => ({
-                                        ...prev,
-                                        startDate: newStart,
-                                        endDate: computeEndFromForm(newStart, 1, "months"),
-                                        duration: 1,
-                                        durationType: "months",
-                                      }));
-                                      setShowCalendar(false);
-                                    }
-                                  }}
-                                  className="w-full border-0"
-                                />
-                                {calendarLegend}
-                              </div>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="mb-2 block text-sm text-gray-700">
-                              Calculated Duration
-                            </label>
-                            <input
-                              type="text"
-                              readOnly
-                              value={`${reservationForm.duration} month(s)`}
-                              className="w-full rounded-xl border border-gray-300 bg-gray-100 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="mb-2 block text-sm font-medium text-gray-700">
-                              Parking Slot
-                            </label>
-
-                            {selectedSlotObject ? (
-                              <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-gradient-to-r from-gray-50 to-white p-3 shadow-sm sm:flex-row sm:items-center sm:gap-4">
-                                <img
-                                  src={selectedSlotObject.imageUrl || FALLBACK_IMAGE}
-                                  alt={
-                                    selectedSlotObject.slotCode ||
-                                    selectedSlotObject.label ||
-                                    "Parking Slot"
-                                  }
-                                  className="h-32 w-full rounded-xl object-cover sm:h-20 sm:w-28"
-                                />
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-xs uppercase tracking-wide text-gray-500">
-                                    Selected Slot
-                                  </p>
-                                  <p className="mt-1 text-xs text-gray-500">
-                                    You may reserve another slot as a separate request, subject to admin approval.
-                                  </p>
-                                   <p className="truncate text-lg font-bold text-blue-700">
-                                    {selectedSlotObject.slotCode ||
-                                      selectedSlotObject.label ||
-                                      "Parking Slot"}
-                                  </p>
-                                </div>
-                                <div className="flex w-full gap-2 sm:w-auto">
-                                  <button
-                                    type="button"
-                                    onClick={() => setIsSlotPanelOpen(true)}
-                                    className="flex-1 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-medium text-blue-700 transition hover:bg-blue-100 sm:flex-none"
-                                  >
-                                    Change
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={clearSlotSelection}
-                                    className="rounded-xl p-2 text-gray-500 transition hover:bg-red-50 hover:text-red-600"
-                                    aria-label="Clear selection"
-                                  >
-                                    <X className="size-5" />
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => setIsSlotPanelOpen(true)}
-                                className="w-full rounded-2xl border-2 border-dashed border-gray-300 bg-white px-4 py-4 text-sm font-medium text-gray-500 transition hover:border-blue-500 hover:bg-blue-50 hover:text-blue-600"
-                              >
-                                Click to View & Select a Slot
-                              </button>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="mb-2 block text-sm text-gray-700">
-                              Vehicle Type
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              maxLength={50}
-                              value={reservationForm.vehicleType}
-                              onChange={(e) => updateReservationField("vehicleType", e.target.value)}
-                              onBlur={(e) => handleFieldBlur("vehicleType", e.target.value)}
-                              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                              placeholder="e.g., Sedan, SUV, Motorcycle"
-                            />
-                            {formErrors.vehicleType && (
-                              <p className="mt-1 text-xs text-red-600">
-                                {formErrors.vehicleType}
-                              </p>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="mb-2 block text-sm text-gray-700">
-                              Plate Number
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              maxLength={20}
-                              value={reservationForm.plateNumber}
-                              onChange={(e) => updateReservationField("plateNumber", e.target.value)}
-                              onBlur={(e) => handleFieldBlur("plateNumber", e.target.value)}
-                              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base uppercase outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                              placeholder="ABC 1234"
-                            />
-                            {formErrors.plateNumber && (
-                              <p className="mt-1 text-xs text-red-600">
-                                {formErrors.plateNumber}
-                              </p>
-                            )}
-                          </div>
-                        </>
+                        <ParkingReservationForm
+                          form={reservationForm}
+                          setForm={setReservationForm}
+                          selectedSlotObject={selectedSlotObject}
+                          setIsSlotPanelOpen={setIsSlotPanelOpen}
+                          clearSlotSelection={clearSlotSelection}
+                          updateReservationField={updateReservationField}
+                          handleFieldBlur={handleFieldBlur}
+                          formErrors={formErrors}
+                          fallbackImage={FALLBACK_IMAGE}
+                        />
                       )}
 
                       {selectedUnitData.type === "function_hall" && (
-                        <>
-                          <div>
-                            <label className="mb-2 block text-sm text-gray-700">
-                              Reservation Dates
-                            </label>
-
-                            <button
-                              type="button"
-                              onClick={() => setShowCalendar((s) => !s)}
-                              className="flex w-full items-center justify-between rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-left text-sm transition hover:border-blue-400"
-                            >
-                              <span className={reservationForm.startDate && reservationForm.endDate && reservationForm.duration > 0
-                                ? "text-gray-900"
-                                : "text-gray-400"}
-                              >
-                                {reservationForm.startDate &&
-                                reservationForm.endDate &&
-                                reservationForm.duration > 0
-                                  ? `${formatDate(reservationForm.startDate)} - ${formatDate(reservationForm.endDate)}`
-                                  : "Please select reservation dates"}
-                              </span>
-
-                              <CalendarDays className="ml-3 size-4 shrink-0 text-blue-500" />
-                            </button>
-
-                            {showCalendar && (
-                              <div className="mt-2 overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 shadow-lg">
-                                <Calendar
-                                  tileDisabled={isCalendarTileDisabled}
-                                  tileClassName={getCalendarTileClassName}
-                                  onChange={(value) => {
-                                    if (!(value instanceof Date)) return;
-
-                                    const clickedDate = startOfLocalDay(new Date(value));
-
-                                    const currentStart = reservationForm.startDate
-                                      ? startOfLocalDay(reservationForm.startDate)
-                                      : null;
-
-                                    const currentEnd = reservationForm.endDate
-                                      ? startOfLocalDay(reservationForm.endDate)
-                                      : null;
-
-                                    const applyRange = (rangeStart: Date, rangeEnd: Date) => {
-                                      const safeStart = startOfLocalDay(rangeStart);
-                                      const safeEndDay = startOfLocalDay(rangeEnd);
-                                      const adjustedEnd = endOfLocalDay(safeEndDay);
-
-                                      const rawDayCount =
-                                        Math.floor(
-                                          (safeEndDay.getTime() - safeStart.getTime()) /
-                                            (1000 * 60 * 60 * 24)
-                                        ) + 1;
-
-                                      if (rawDayCount < RESERVATION_LIMITS.function_hall.minDays) {
-                                        setFunctionHallConflictMessage(
-                                          `Minimum reservation is ${RESERVATION_LIMITS.function_hall.minDays} day(s).`
-                                        );
-                                        return false;
-                                      }
-
-                                      if (rawDayCount > RESERVATION_LIMITS.function_hall.maxDays) {
-                                        setFunctionHallConflictMessage(
-                                          `Maximum reservation is ${RESERVATION_LIMITS.function_hall.maxDays} day(s).`
-                                        );
-                                        return false;
-                                      }
-
-                                      const hasConflict = selectedUnitBlockingReservations.some((r) =>
-                                        rangesOverlap(safeStart, adjustedEnd, r.startDate, r.endDate)
-                                      );
-
-                                      if (hasConflict) {
-                                        setFunctionHallConflictMessage(
-                                          "Please select one continuous available date range. Separate date groups require separate reservations."
-                                        );
-                                        return false;
-                                      }
-
-                                      setReservationForm((prev) => ({
-                                        ...prev,
-                                        startDate: safeStart,
-                                        endDate: adjustedEnd,
-                                        duration: rawDayCount,
-                                        durationType: "days",
-                                      }));
-                                      setFunctionHallConflictMessage("");
-                                      return true;
-                                    };
-
-                                    // no selection yet -> start with one day
-                                    if (!currentStart || !currentEnd) {
-                                      setReservationForm((prev) => ({
-                                        ...prev,
-                                        startDate: clickedDate,
-                                        endDate: endOfLocalDay(clickedDate),
-                                        duration: 1,
-                                        durationType: "days",
-                                      }));
-                                      setFunctionHallConflictMessage("");
-                                      setIsSelectingRangeEnd(true);
-                                      return;
-                                    }
-
-                                    // currently choosing the second click
-                                    if (isSelectingRangeEnd) {
-                                      const tentativeStart =
-                                        clickedDate.getTime() < currentStart.getTime()
-                                          ? clickedDate
-                                          : currentStart;
-
-                                      const tentativeEnd =
-                                        clickedDate.getTime() < currentStart.getTime()
-                                          ? currentStart
-                                          : clickedDate;
-
-                                      const applied = applyRange(tentativeStart, tentativeEnd);
-
-                                      if (applied) {
-                                        setIsSelectingRangeEnd(false);
-                                      }
-                                      return;
-                                    }
-
-                                    // range already exists -> adjust whichever edge is closer
-                                    const distanceToStart = Math.abs(
-                                      clickedDate.getTime() - currentStart.getTime()
-                                    );
-                                    const distanceToEnd = Math.abs(
-                                      clickedDate.getTime() - currentEnd.getTime()
-                                    );
-
-                                    const nextStart =
-                                      distanceToStart <= distanceToEnd ? clickedDate : currentStart;
-
-                                    const nextEnd =
-                                      distanceToStart <= distanceToEnd ? currentEnd : clickedDate;
-
-                                    const normalizedStart =
-                                      nextStart.getTime() <= nextEnd.getTime() ? nextStart : nextEnd;
-                                    const normalizedEnd =
-                                      nextStart.getTime() <= nextEnd.getTime() ? nextEnd : nextStart;
-
-                                    applyRange(normalizedStart, normalizedEnd);
-                                  }}
-                                  value={
-                                    reservationForm.startDate && reservationForm.endDate
-                                      ? [reservationForm.startDate, reservationForm.endDate]
-                                      : reservationForm.startDate ?? null
-                                  }
-                                  selectRange={false}
-                                  minDate={getTomorrow()}
-                                  defaultActiveStartDate={getTomorrow()}
-                                  className="w-full border-0"
-                                />
-
-                                {calendarLegend}
-
-                                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                  <p className="text-xs leading-5 text-amber-700">
-                                    Function hall reservations must be one continuous available date range.
-                                    If you need dates separated by unavailable days, please submit separate reservations.
-                                  </p>
-
-                                  {(reservationForm.startDate || reservationForm.endDate) && (
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setReservationForm((prev) => ({
-                                          ...prev,
-                                          startDate: undefined,
-                                          endDate: undefined,
-                                          duration: 0,
-                                          durationType: "days",
-                                        }));
-                                        setFunctionHallConflictMessage("");
-                                        setIsSelectingRangeEnd(false);
-                                      }}
-                                      className="shrink-0 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-100"
-                                    >
-                                      Clear dates
-                                    </button>
-                                  )}
-                                </div>
-
-                                {functionHallConflictMessage ? (
-                                  <p className="mt-2 text-xs font-medium text-red-600">
-                                    {functionHallConflictMessage}
-                                  </p>
-                                ) : null}
-                              </div>
-                            )}
-
-                            <div className="mt-4">
-                              <label className="mb-2 block text-sm text-gray-700">
-                                Calculated Duration
-                              </label>
-                              <input
-                                type="text"
-                                readOnly
-                                value={
-                                  reservationForm.duration > 0
-                                    ? `${reservationForm.duration} day(s)`
-                                    : ""
-                                }
-                                placeholder="Duration will appear here"
-                                className="w-full rounded-xl border border-gray-300 bg-gray-100 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base"
-                              />
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="mb-2 block text-sm text-gray-700">
-                              Event Purpose
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              maxLength={150}
-                              value={reservationForm.eventPurpose}
-                              onChange={(e) => updateReservationField("eventPurpose", e.target.value)}
-                              onBlur={(e) => handleFieldBlur("eventPurpose", e.target.value)}
-                              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                              placeholder="e.g., Wedding, Conference, Birthday"
-                            />
-                            {formErrors.eventPurpose && (
-                              <p className="mt-1 text-xs text-red-600">
-                                {formErrors.eventPurpose}
-                              </p>
-                            )}
-
-                          </div>
-
-                          <div>
-                            <label className="mb-2 block text-sm text-gray-700">
-                              Number of Attendees
-                            </label>
-                            <input
-                              type="number"
-                              required
-                              min={RESERVATION_LIMITS.attendees.min}
-                              max={Math.min(
-                                selectedUnitData.capacity ?? RESERVATION_LIMITS.attendees.max,
-                                RESERVATION_LIMITS.attendees.max
-                              )}
-                              step={1}
-                              value={reservationForm.attendees}
-                              onChange={(e) => updateReservationField("attendees", e.target.value)}
-                              onBlur={(e) => handleFieldBlur("attendees", e.target.value)}
-                              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                            />
-                            {formErrors.attendees && (
-                              <p className="mt-1 text-xs text-red-600">
-                                {formErrors.attendees}
-                              </p>
-                            )}
-
-                          </div>
-                        </>
-                      )}
-
-                      {selectedUnitData.type === "rental_space" && (
-                        <>
-                          <div>
-                            <label className="mb-2 block text-sm text-gray-700">
-                              Lease Start Date
-                            </label>
-
-                            <button
-                              type="button"
-                              onClick={() => setShowCalendar((s) => !s)}
-                              className="flex w-full items-center justify-between rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-left text-sm transition hover:border-blue-400"
-                            >
-                              <span className={reservationForm.startDate ? "text-gray-900" : "text-gray-400"}>
-                                {reservationForm.startDate
-                                  ? formatDate(reservationForm.startDate)
-                                  : "Please select lease start date"}
-                              </span>
-
-                              <CalendarDays className="ml-3 size-4 shrink-0 text-blue-500" />
-                            </button>
-
-                            {showCalendar && (
-                              <div className="mt-2 overflow-hidden rounded-2xl border border-gray-200 bg-white p-2 shadow-lg">
-                                <Calendar
-                                  value={reservationForm.startDate ?? undefined}
-                                  tileDisabled={isCalendarTileDisabled}
-                                  tileClassName={getCalendarTileClassName}
-                                  selectRange={false}
-                                  minDate={getTomorrow()}
-                                  maxDate={getMaxReservationDate(selectedUnitData.type)}
-                                  defaultActiveStartDate={getTomorrow()}
-                                  onChange={(value) => {
-                                    if (value instanceof Date) {
-                                      const newStart = new Date(value);
-                                      newStart.setHours(0, 0, 0, 0);
-
-                                      setReservationForm((prev) => ({
-                                        ...prev,
-                                        startDate: newStart,
-                                        endDate: computeEndFromForm(
-                                          newStart,
-                                          prev.duration,
-                                          "months"
-                                        ),
-                                      }));
-                                      setShowCalendar(false);
-                                    }
-                                  }}
-                                  className="w-full border-0"
-                                />
-                                {calendarLegend}
-                              </div>
-                            )}
-                          </div>
-
-                          <div>
-                          <label className="mb-2 mt-4 block text-sm text-gray-700">
-                            Lease Duration (months)
-                          </label>
-                          <input
-                            type="number"
-                            required
-                            min={RESERVATION_LIMITS.rental_space.minMonths}
-                            max={RESERVATION_LIMITS.rental_space.maxMonths}
-                            step={1}
-                            value={reservationForm.duration}
-                            onChange={(e) => {
-                              const parsed = parseInt(e.target.value, 10);
-
-                              const safeDuration = clampNumber(
-                                Number.isNaN(parsed)
-                                  ? RESERVATION_LIMITS.rental_space.minMonths
-                                  : parsed,
-                                RESERVATION_LIMITS.rental_space.minMonths,
-                                RESERVATION_LIMITS.rental_space.maxMonths
-                              );
-
-                              setReservationForm((prev) => {
-                                const safeStartDate = prev.startDate ?? getTomorrow();
-
-                                return {
-                                  ...prev,
-                                  startDate: safeStartDate,
-                                  duration: safeDuration,
-                                  durationType: "months",
-                                  paymentCycle:
-                                  prev.paymentCycle === "quarterly" &&
-                                  safeDuration < RESERVATION_LIMITS.rental_space.minMonths
-                                    ? "monthly"
-                                    : prev.paymentCycle,
-                                  endDate: computeEndFromForm(
-                                    safeStartDate,
-                                    safeDuration,
-                                    "months"
-                                  ),
-                                };
-                              });
-                            }}
-                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                          />
-                          {formErrors.duration && (
-                            <p className="mt-1 text-xs text-red-600">
-                              {formErrors.duration}
-                            </p>
-                          )}
-                          <p className="mt-2 text-xs text-gray-500">
-                            Minimum 12 months (1 year), maximum {RESERVATION_LIMITS.rental_space.maxMonths} months.
-                          </p>
-                        </div>
-
-                          <div className="mt-4">
-                            <label className="mb-2 block text-sm text-gray-700">
-                              Lease End Date (Auto-calculated)
-                            </label>
-                            <input
-                              type="text"
-                              readOnly
-                              value={formatDate(reservationForm.endDate)}
-                              className="w-full rounded-xl border border-gray-300 bg-gray-100 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="mb-2 block text-sm text-gray-700">
-                              Payment Cycle
-                            </label>
-                            <select
-                              value={reservationForm.paymentCycle}
-                              onChange={(e) => {
-                                const nextCycle = e.target.value as PaymentCycle;
-
-                                if (nextCycle === "quarterly" && reservationForm.duration < 3) {
-                                  return;
-                                }
-
-                                setReservationForm((prev) => ({
-                                  ...prev,
-                                  paymentCycle: nextCycle,
-                                }));
-                              }}
-                              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                            >
-                              <option value="monthly">Monthly Installments</option>
-                              <option
-                                value="quarterly"
-                                disabled={reservationForm.duration < 3}
-                              >
-                                Quarterly Payments
-                              </option>
-                              <option value="full">Full Payment</option>
-                            </select>
-
-                            {reservationForm.duration < 3 && (
-                              <p className="mt-2 text-xs text-amber-600">
-                                Quarterly payment is available only for lease durations of at least 3 months.
-                              </p>
-                            )}
-                          </div>
-
-                          <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
-                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">
-                              Billing Summary
-                            </p>
-
-                            <div className="mt-2 space-y-1 text-sm text-gray-700">
-                              <div className="flex items-center justify-between gap-4">
-                                <span>Monthly rate</span>
-                                <span className="font-semibold text-gray-900">
-                                  {formatCurrency(rentalMonthlyAmount)}
-                                </span>
-                              </div>
-
-                              <div className="flex items-center justify-between gap-4">
-                                <span>
-                                  {reservationForm.paymentCycle === "quarterly"
-                                    ? "Quarterly minimum"
-                                    : reservationForm.paymentCycle === "full"
-                                      ? "Full payment"
-                                      : "Monthly minimum"}
-                                </span>
-                                <span className="font-semibold text-gray-900">
-                                  {formatCurrency(rentalRequiredPayment)}
-                                </span>
-                              </div>
-
-                              <div className="flex items-center justify-between gap-4 border-t border-blue-100 pt-2">
-                                <span>Total lease amount</span>
-                                <span className="font-bold text-blue-700">
-                                  {formatCurrency(estimatedTotal)}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="mb-2 block text-sm text-gray-700">
-                              Business Type
-                            </label>
-                            <input
-                              type="text"
-                              required
-                              maxLength={100}
-                              value={reservationForm.businessType}
-                              onChange={(e) => updateReservationField("businessType", e.target.value)}
-                              onBlur={(e) => handleFieldBlur("businessType", e.target.value)}
-                              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                              placeholder="e.g., Retail, Office, Restaurant"
-                            />
-                            {formErrors.businessType && (
-                              <p className="mt-1 text-xs text-red-600">
-                                {formErrors.businessType}
-                              </p>
-                            )}
-                          </div>
-                        </>
-                      )}
-
-                      {shouldShowPaymentSection && (
-                        <div>
-                          <label className="mb-2 block text-sm text-gray-700">
-                            Payment Method
-                          </label>
-
-                          {hasActivePaymentMethods ? (
-                            <select
-                              value={reservationForm.paymentMethod}
-                              onChange={(e) =>
-                                setReservationForm((prev) => ({
-                                  ...prev,
-                                  paymentMethod: e.target.value as PaymentMethod,
-                                }))
-                              }
-                              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                            >
-                              {activePaymentMethods.map((method) => (
-                                <option key={method.id} value={method.methodCode}>
-                                  {method.displayName}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-4 text-sm text-gray-500">
-                              No payment methods are available right now.
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      <div>
-                        <label className="mb-2 block text-sm text-gray-700">
-                          Additional Notes (Optional)
-                        </label>
-                        <textarea
-                          maxLength={500}
-                          value={reservationForm.notes}
-                          onChange={(e) => updateReservationField("notes", e.target.value)}
-                          rows={3}
-                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                          placeholder="Any special requests or requirements"
+                        <FunctionHallReservationForm
+                          form={reservationForm}
+                          setForm={setReservationForm}
+                          updateReservationField={updateReservationField}
+                          handleFieldBlur={handleFieldBlur}
+                          formErrors={formErrors}
+                          conflictMessage={functionHallConflictMessage}
+                          setConflictMessage={setFunctionHallConflictMessage}
+                          selectedUnitData={selectedUnitData}
+                          showCalendar={showCalendar}
+                          setShowCalendar={setShowCalendar}
+                          calendarLegend={calendarLegend}
+                          isSelectingRangeEnd={isSelectingRangeEnd}
+                          setIsSelectingRangeEnd={setIsSelectingRangeEnd}
+                          isCalendarTileDisabled={isCalendarTileDisabled}
+                          getCalendarTileClassName={getCalendarTileClassName}
+                          selectedUnitBlockingReservations={selectedUnitBlockingReservations}
+                          rangesOverlap={rangesOverlap}
                         />
-                      </div>
+                      )}
 
-                      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                        <p className="mb-2 text-sm font-semibold text-amber-900">Policies / Agreement</p>
+                      <RentalReservationForm
+                        form={reservationForm}
+                        setForm={setReservationForm}
+                        updateReservationField={updateReservationField}
+                        handleFieldBlur={handleFieldBlur}
+                        formErrors={formErrors}
+                        selectedUnitData={selectedUnitData}
+                        showCalendar={showCalendar}
+                        setShowCalendar={setShowCalendar}
+                        calendarLegend={calendarLegend}
+                        isCalendarTileDisabled={isCalendarTileDisabled}
+                        getCalendarTileClassName={getCalendarTileClassName}
+                        getMaxReservationDate={getMaxReservationDate}
+                        rentalMonthlyAmount={rentalMonthlyAmount}
+                        rentalRequiredPayment={rentalRequiredPayment}
+                        estimatedTotal={estimatedTotal}
+                      />
+                      
+                      <ReservationPaymentSection
+                        shouldShowPaymentSection={shouldShowPaymentSection}
+                        hasActivePaymentMethods={hasActivePaymentMethods}
+                        activePaymentMethods={activePaymentMethods}
+                        reservationForm={reservationForm}
+                        setReservationForm={setReservationForm}
+                        updateReservationField={updateReservationField}
+                        selectedUnitData={selectedUnitData}
+                        formErrors={formErrors}
+                      />
 
-                        <div className="max-h-32 overflow-y-auto rounded-xl border border-amber-100 bg-white p-3 text-sm leading-relaxed text-gray-700">
-                          {selectedUnitData.policies?.trim() || "No policies provided for this unit."}
-                        </div>
-
-                      {selectedUnitData.contractFilePath ? (
-                        <div className="mt-3">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const { data } = supabase.storage
-                                .from("unit_contracts")
-                                .getPublicUrl(selectedUnitData.contractFilePath!);
-
-                              if (data?.publicUrl) {
-                                window.open(data.publicUrl, "_blank", "noopener,noreferrer");
-                              }
-                            }}
-                            className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm sm:text-base text-sm font-medium text-blue-700 transition hover:bg-blue-100"
-                          >
-                            View Contract PDF
-                          </button>
-                        </div>
-                      ) : null}
-
-                      <label className="mt-3 flex items-start gap-3">
-                        <input
-                          type="checkbox"
-                          checked={reservationForm.agreedToPolicies}
-                          onChange={(e) =>
-                            setReservationForm((prev) => ({
-                              ...prev,
-                              agreedToPolicies: e.target.checked,
-                            }))
-                          }
-                          className="mt-1 size-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                        <span className="text-sm text-gray-700">
-                          I have read and agree to the policies and terms for this unit.
-                        </span>
-                      </label>
-                      </div>
-                          {formErrors.agreedToPolicies && (
-                            <p className="mt-1 text-xs text-red-600">
-                              {formErrors.agreedToPolicies}
-                            </p>
-                          )}
-
-                      <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
-                        <p className="mb-1 text-sm text-gray-600">
-                          {isViewingOnly ? "Appointment Summary" : "Reservation Summary"}
-                        </p>
-
-                        <div className="text-lg font-bold text-gray-900">
-                          {isViewingOnly ? "No payment required" : formatCurrency(estimatedTotal)}
-                        </div>
-
-                        <p className="mt-2 text-xs text-gray-500">
-                          {isViewingOnly
-                            ? "* This request is for viewing only and does not require payment."
-                            : "* Reservation requests are subject to admin approval before payment is finalized."}
-                        </p>
-                      </div>
-
-                      <div className="sticky bottom-0 -mx-4 mt-4 border-t border-gray-200 bg-white/95 px-4 py-3 backdrop-blur supports-[padding:max(0px)]:pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
-                        <button
-                          type="submit"
-                          disabled={!canSubmit}
-                          className="w-full rounded-xl bg-blue-600 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-blue-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 sm:py-3 sm:text-base"
-                        >
-                          {isSubmitting
-                            ? "Submitting..."
-                            : isViewingOnly
-                              ? "Book Viewing Appointment"
-                              : reservationIntent === "reserve_onsite"
-                                ? "Submit Reservation & Visit Request"
-                                : "Submit Reservation Request"}
-                        </button>
-                      </div>
-                                          </form>
+                      <ReservationSummarySection
+                        isViewingOnly={isViewingOnly}
+                        estimatedTotal={estimatedTotal}
+                        reservationIntent={reservationIntent}
+                        isSubmitting={isSubmitting}
+                        canSubmit={canSubmit}
+                        formatCurrency={formatCurrency}
+                      />
+                    </form>
                   </div>
                 </div>
               )}
@@ -4053,109 +2262,15 @@ const calendarLegend = (
           </div>
         )}
 
-        {isSlotPanelOpen && (
-          <div
-            className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-100/80 p-4 "
-            onClick={() => setIsSlotPanelOpen(false)}
-          >
-            <div
-              className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-900">
-                    Select Your Parking Slot
-                  </h3>
-                  <p className="text-sm text-slate-500">
-                    Choose from the available slots below.
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => setIsSlotPanelOpen(false)}
-                  type="button"
-                  className="rounded-full p-2 text-slate-500 transition hover:bg-white hover:text-slate-800"
-                >
-                  <X className="size-6" />
-                </button>
-              </div>
-
-              <div className="overflow-y-auto p-6">
-                {unitParkingSlots.length === 0 ? (
-                <EmptyState
-                  icon={<House className="size-10 text-blue-500" />}
-                  title="No parking slots found"
-                  description="There are no parking slots available for this parking area."
-                />
-              ) : (
-                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                    {unitParkingSlots.map((slot) => {
-  const slotState = getParkingSlotState(slot);
-  const isSelected = reservationForm.slotId === slot.id;
-  const isSelectable = !slotState.isDisabled;
-
-  return (
-    <button
-      type="button"
-      key={slot.id}
-      disabled={!isSelectable}
-      onClick={() => handleSlotSelectFromPanel(slot.id)}
-      className={`group relative overflow-hidden rounded-2xl border bg-white text-left shadow-sm transition-all ${
-        isSelected
-          ? "scale-[1.02] border-blue-600 ring-4 ring-blue-100"
-          : "border-slate-200 hover:-translate-y-0.5 hover:border-blue-400 hover:shadow-md"
-      } ${slotState.isDisabled ? "cursor-not-allowed opacity-60" : ""}`}
-    >
-      {isSelected && (
-        <div className="absolute right-2 top-2 z-10 rounded-full bg-blue-600 p-1.5 text-white shadow">
-          <svg
-            className="h-3 w-3"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={3}
-              d="M5 13l4 4L19 7"
-            />
-          </svg>
-        </div>
-      )}
-
-      <img
-        src={slot.imageUrl || FALLBACK_IMAGE}
-        alt={slot.slotCode || slot.label || "Parking Slot"}
-        className="h-36 w-full object-cover"
-      />
-
-      <div className="space-y-3 p-4">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">
-            Parking Slot
-          </p>
-          <h4 className="truncate text-lg font-bold text-slate-900">
-            {slot.slotCode || slot.label || "Parking Slot"}
-          </h4>
-        </div>
-
-        <span
-          className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${slotState.statusClassName}`}
-        >
-          {slotState.statusText}
-        </span>
-      </div>
-    </button>
-  );
-})}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        <ParkingSlotPanel
+          open={isSlotPanelOpen}
+          onClose={() => setIsSlotPanelOpen(false)}
+          unitParkingSlots={unitParkingSlots}
+          reservationForm={reservationForm}
+          handleSlotSelectFromPanel={handleSlotSelectFromPanel}
+          getParkingSlotState={getParkingSlotState}
+          fallbackImage={FALLBACK_IMAGE}
+        />
 
       </div>
     </div>

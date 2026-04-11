@@ -1,4 +1,6 @@
 export type UnitType = 'rental_space' | 'function_hall' | 'parking_slot';
+export type UnitCategory = string;
+export type UnitSubtype = string;
 export type ReservationStatus =
   | 'pending'
   | 'approved'
@@ -72,6 +74,8 @@ export interface Unit {
   propertyId: string;
   name: string;
   type: UnitType;
+  category?: UnitCategory | null;
+  subtype?: UnitSubtype | null;
   description: string;
   price: number;
   images: string[];      // public URLs for rendering

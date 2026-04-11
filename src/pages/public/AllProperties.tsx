@@ -16,6 +16,7 @@ import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { formatCurrency } from "../../utils/currency";
 import { getUnitTypeLabel } from "../../utils/propertyHelpers";
 import UnitModal from "../../components/PropertyModal";
+import UnitTaxonomyBadges from "../../components/common/UnitTaxonomyBadges";
 
 type PriceRange = "all" | "0-1000" | "1001-5000" | "5001-10000" | "10001+";
 
@@ -421,8 +422,17 @@ export default function AllUnits() {
                         />
                       )}
 
-                      <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-blue-600">
-                        {getUnitTypeLabel(unit.type)}
+                      <div className="absolute left-4 top-4 flex flex-col gap-1">
+                        <span className="w-fit rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-blue-600 shadow-sm">
+                          {getUnitTypeLabel(unit.type)}
+                        </span>
+
+                        <UnitTaxonomyBadges
+                          category={unit.category}
+                          subtype={unit.subtype}
+                          size="sm"
+                          className="flex-col items-start gap-1"
+                        />
                       </div>
 
                       {unit.videos?.length ? (

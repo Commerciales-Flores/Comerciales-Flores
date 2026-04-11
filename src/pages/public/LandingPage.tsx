@@ -7,6 +7,7 @@ import "react-calendar/dist/Calendar.css";
 import UnitModal from "../../components/PropertyModal";
 import { useReviews } from "../../contexts/ReviewsContext";
 import { useInquiries } from "../../contexts/InquiriesContext";
+import GuestParking from "../../components/landing/GuestParking";
 import {
   Building2,
   Menu,
@@ -26,6 +27,7 @@ import {
   sanitizeEmailInput,
   sanitizePlainText,
 } from "../../utils/DataNormalization";
+import UnitTaxonomyBadges from "../../components/common/UnitTaxonomyBadges";
 
 export default function LandingPage() {
   const { units } = useUnits();
@@ -812,9 +814,18 @@ const featuredSlides = useMemo(() => {
                                 />
                               )}
 
-                              <div className="absolute left-4 top-4 rounded-full bg-white/90 px-3 py-1 text-[10px] font-bold text-blue-600 shadow-sm md:text-xs">
+                              <div className="absolute left-4 top-4 flex flex-col gap-1">
+                              <span className="w-fit rounded-full bg-white/90 px-3 py-1 text-[10px] font-bold text-blue-600 shadow-sm md:text-xs">
                                 {getUnitTypeLabel(unit.type)}
-                              </div>
+                              </span>
+
+                              <UnitTaxonomyBadges
+                                category={unit.category}
+                                subtype={unit.subtype}
+                                size="sm"
+                                className="flex-col items-start gap-1"
+                              />
+                            </div>
 
                               {unit.videos?.length ? (
                                 <div className="absolute right-4 top-4 rounded-full bg-black/70 px-3 py-1 text-[10px] font-bold text-white shadow-sm md:text-xs">
@@ -927,6 +938,8 @@ const featuredSlides = useMemo(() => {
           </>
         )}
       </section>
+
+      <GuestParking />
 
       <section id="contact" className="bg-gray-50 py-20">
         <div className="mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-2 lg:px-8">

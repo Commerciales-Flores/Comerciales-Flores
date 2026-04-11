@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { formatCurrency } from "../utils/currency";
 import { getPriceLabel, getUnitTypeLabel } from "../utils/propertyHelpers";
+import UnitTaxonomyBadges from "./common/UnitTaxonomyBadges";
 
 interface Props {
   Unit: Unit;
@@ -160,10 +161,22 @@ export default function UnitModal({ Unit, onClose }: Props) {
       >
         <div className="flex flex-shrink-0 items-start justify-between border-b border-gray-200 px-6 py-5">
           <div>
-            <div className="mb-1 text-sm font-medium text-blue-600">
-              {getUnitTypeLabel(Unit.type)}
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold text-blue-600">
+                {getUnitTypeLabel(Unit.type)}
+              </span>
+
+              <UnitTaxonomyBadges
+                category={Unit.category}
+                subtype={Unit.subtype}
+                size="md"
+              />
             </div>
-            <h2 id="unit-modal-title" className="text-xl font-semibold text-slate-900">
+
+            <h2
+              id="unit-modal-title"
+              className="text-xl font-semibold text-slate-900"
+            >
               {Unit.name}
             </h2>
           </div>

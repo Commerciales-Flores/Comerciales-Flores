@@ -12,6 +12,7 @@ import AppNotice from '../../components/common/AppNotice';
 import { AnimatePresence, motion } from 'framer-motion';
 import { normalizeLowercaseText } from "../../utils/DataNormalization";
 import { finalizeAmountInput, normalizeAmountInput } from '../../utils/priceNormalization';
+import { useUnits } from '../../contexts/UnitsContext';
 import {
   CreditCard,
   CheckCircle2,
@@ -35,9 +36,11 @@ import {
 } from 'lucide-react';
 import { getUnitTypeLabel } from '../../utils/propertyHelpers';
 import Papa from 'papaparse';
+import { jsPDF } from 'jspdf';
 import { formatCurrency } from '../../utils/currency';
 import { uiTypography } from '../../styles/uiTypography';
 import EmptyState from '../../components/common/EmptyState';
+import UnitTaxonomyBadges from '../../components/common/UnitTaxonomyBadges';
 
 const PAYMENT_STATUS_COLORS = {
   paid: 'border border-emerald-200 bg-emerald-50 text-emerald-700',
@@ -152,6 +155,18 @@ function formatFileDate(value?: string | Date | null) {
   const mm = String(date.getMonth() + 1).padStart(2, '0');
   const dd = String(date.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
+}
+
+async function loadImageAsDataUrl(url: string) {
+  const response = await fetch(url);
+  const blob = await response.blob();
+
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(String(reader.result));
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
 
 
@@ -347,10 +362,12 @@ function PaymentFilterBottomSheet({
 
 export default function ClientPayments() {
   const { user } = useAuth();
+  const { units } = useUnits();
   const { getReservationsByUserId } = useReservations();
   const { getPaymentsByUserId, addPayment, uploadPaymentProof, hasPendingPayment } = usePayments();
   const { ledgers } = useRecords();
   const { sendSystemNotification } = useNotifications();
+  
 
   const [notice, setNotice] = useState<{
     message: string;
@@ -417,6 +434,10 @@ const [showFilterMenu, setShowFilterMenu] = useState(false);
   const reservationMap = useMemo(() => {
     return new Map(userReservations.map((reservation) => [reservation.id, reservation]));
   }, [userReservations]);
+
+  const unitMap = useMemo(() => {
+  return new Map(units.map((unit) => [unit.id, unit]));
+}, [units]);
 
   const ledgerByPaymentId = useMemo(() => {
     const map = new Map<string, LedgerEntry>();
@@ -894,91 +915,175 @@ const rentalRequiredPayment = useMemo(() => {
     rentalRequiredPayment,
   ]
 );
+const handleDownloadInvoice = useCallback(
+  async (payment: any) => {
+    const reservation = reservationMap.get(payment.reservationId);
+    const ledgerEntry = ledgerByPaymentId.get(payment.id);
 
-  const handleDownloadInvoice = useCallback(
-    (payment: any) => {
-      const reservation = reservationMap.get(payment.reservationId);
-      const ledgerEntry = ledgerByPaymentId.get(payment.id);
+    if (!ledgerEntry) {
+      setNotice({
+        message:
+          'Invoice is not available yet. It can be downloaded once this payment has been verified.',
+        variant: 'info',
+      });
+      return;
+    }
 
-      if (!ledgerEntry) {
-        setNotice({ 
-          message:
-            'Invoice is not available yet. It can be downloaded once this payment has been verified.',
-          variant: 'info',
-        });
-        return;
-      }
-
-      const invoiceNumber = ledgerEntry.id || payment.id;
+    try {
+      const invoiceNumber = ledgerEntry.publicId || ledgerEntry.id || payment.id;
       const invoiceDate = ledgerEntry.recordedAt || payment.date;
       const amount = Number(ledgerEntry.amount ?? payment.amount) || 0;
       const paidToDate = getReservationPaidFromLedger(payment.reservationId);
-        const remaining = Math.max(
-          0,
-          Number(reservation?.totalAmount || 0) - paidToDate
-        );
+      const remaining = Math.max(
+        0,
+        Number(reservation?.totalAmount || 0) - paidToDate
+      );
 
-      const invoiceContent = `
-========================================
-INVOICE
-========================================
-
-INVOICE NO:      ${invoiceNumber}
-INVOICE DATE:    ${formatDate(invoiceDate)}
-
-----------------------------------------
-CUSTOMER
-----------------------------------------
-Name:            ${fullName || 'N/A'}
-Email:           ${user?.email ?? 'N/A'}
-
-----------------------------------------
-PAYMENT
-----------------------------------------
-Payment ID:      ${payment.id}
-Method:          ${formatPaymentMethod(ledgerEntry.method || payment.method)}
-Status:          ${String(ledgerEntry.status || payment.status || 'N/A').toUpperCase()}
-Submitted On:    ${formatDate(payment.date)}
-Reference No:    ${ledgerEntry.referenceNo || 'N/A'}
-
-----------------------------------------
-LEDGER ENTRY
-----------------------------------------
-Ledger ID:       ${ledgerEntry.id}
-Entry Type:      ${formatPaymentMethod(ledgerEntry.entryType)}
-Recorded Date:   ${formatDate(ledgerEntry.recordedAt)}
-Amount:          ${formatCurrency(amount)}
-
-----------------------------------------
-RESERVATION
-----------------------------------------
-Reservation ID:  ${reservation?.publicId ?? reservation?.id ?? 'N/A'}
-Unit:            ${reservation?.unitName ?? 'N/A'}
-Unit Type:       ${reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A'}
-Total Bill:      ${formatCurrency(reservation?.totalAmount || 0)}
-Paid To Date:    ${formatCurrency(paidToDate)}
-Remaining:       ${formatCurrency(remaining)}
-
-----------------------------------------
-DESCRIPTION
-----------------------------------------
-${ledgerEntry.description?.trim() || 'No description provided.'}
-
-----------------------------------------
-NOTES
-----------------------------------------
-${ledgerEntry.notes?.trim() || payment.notes?.trim() || 'No notes provided.'}
-
-Thank you for your payment.
-      `.trim();
-
-      const blob = new Blob([invoiceContent], {
-        type: 'text/plain;charset=utf-8',
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
       });
 
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const marginX = 18;
+      let y = 18;
+
+      // Optional logo
+      try {
+        const logoUrl =
+  'https://nlermulroebcmfwvyhmo.supabase.co/storage/v1/object/public/property_media/public/logos/building-2.png';
+    const logoDataUrl = await loadImageAsDataUrl(logoUrl);
+    doc.addImage(logoDataUrl, 'PNG', marginX, y - 4, 18, 18);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(40, 40, 40);
+    doc.text('Comerciales Flores', marginX + 22, y + 3);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(120, 120, 120);
+    doc.text('Official Payment Invoice', marginX + 22, y + 8);
+      } catch {
+        // logo is optional
+      }
+
+      // Header
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.text('INVOICE', pageWidth - marginX, y + 2, { align: 'right' });
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(90, 90, 90);
+      doc.text('Commerciales Flores', pageWidth - marginX, y + 8, { align: 'right' });
+      doc.text(`Invoice No: ${invoiceNumber}`, pageWidth - marginX, y + 13, { align: 'right' });
+      doc.text(`Invoice Date: ${formatDate(invoiceDate)}`, pageWidth - marginX, y + 18, {
+        align: 'right',
+      });
+
+      y += 28;
+
+      doc.setDrawColor(220, 220, 220);
+      doc.line(marginX, y, pageWidth - marginX, y);
+      y += 8;
+
+      const writeSectionTitle = (title: string) => {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.setTextColor(30, 30, 30);
+        doc.text(title, marginX, y);
+        y += 6;
+      };
+
+      const writeRow = (label: string, value: string) => {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(80, 80, 80);
+        doc.text(label, marginX, y);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(35, 35, 35);
+        doc.text(value || 'N/A', 62, y);
+        y += 6;
+      };
+
+      writeSectionTitle('Customer');
+      writeRow('Name', fullName || 'N/A');
+      writeRow('Email', user?.email ?? 'N/A');
+      y += 3;
+
+      writeSectionTitle('Payment');
+      writeRow('Payment ID', payment.publicId || payment.id);
+      writeRow('Method', formatPaymentMethod(ledgerEntry.method || payment.method));
+      writeRow(
+        'Status',
+        String(ledgerEntry.status || payment.status || 'N/A').toUpperCase()
+      );
+      writeRow('Submitted On', formatDate(payment.date));
+      writeRow('Reference No', ledgerEntry.referenceNo || 'N/A');
+      y += 3;
+
+      writeSectionTitle('Ledger Entry');
+      writeRow('Ledger ID', ledgerEntry.publicId || ledgerEntry.id);
+      writeRow('Entry Type', formatPaymentMethod(ledgerEntry.entryType));
+      writeRow('Recorded Date', formatDate(ledgerEntry.recordedAt));
+      writeRow('Amount', formatCurrency(amount));
+      y += 3;
+
+      writeSectionTitle('Reservation');
+      writeRow('Reservation ID', reservation?.publicId ?? reservation?.id ?? 'N/A');
+      writeRow('Unit', reservation?.unitName ?? 'N/A');
+      writeRow(
+        'Unit Type',
+        reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A'
+      );
+      writeRow('Total Bill', formatCurrency(reservation?.totalAmount || 0));
+      writeRow('Paid To Date', formatCurrency(paidToDate));
+      writeRow('Remaining Balance', formatCurrency(remaining));
+      y += 4;
+
+      const writeParagraphBlock = (title: string, value: string) => {
+        writeSectionTitle(title);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.setTextColor(45, 45, 45);
+
+        const lines = doc.splitTextToSize(value || 'N/A', pageWidth - marginX * 2);
+        doc.text(lines, marginX, y);
+        y += lines.length * 5 + 4;
+      };
+
+      writeParagraphBlock(
+        'Description',
+        ledgerEntry.description?.trim() || 'No description provided.'
+      );
+
+      writeParagraphBlock(
+        'Notes',
+        ledgerEntry.notes?.trim() || payment.notes?.trim() || 'No notes provided.'
+      );
+
+      // Footer
+      doc.setDrawColor(220, 220, 220);
+      doc.line(marginX, pageHeight - 24, pageWidth - marginX, pageHeight - 24);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(110, 110, 110);
+      doc.text(
+        'Thank you for your payment. This invoice was generated by Commerciales Flores.',
+        marginX,
+        pageHeight - 16
+      );
+      doc.text(
+        `Generated on ${formatDate(new Date())}`,
+        marginX,
+        pageHeight - 10
+      );
+
       const reservationLabel = sanitizeFilenamePart(
         reservation?.publicId || reservation?.unitName || 'reservation'
       );
@@ -991,14 +1096,24 @@ Thank you for your payment.
 
       const invoiceDateLabel = formatFileDate(invoiceDate);
 
-      link.download = `Invoice-${reservationLabel}-${invoiceLabel}-${invoiceDateLabel}.txt`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    },
-    [ledgerByPaymentId, reservationMap, fullName, user?.email]
-  );
+      doc.save(`Invoice-${reservationLabel}-${invoiceLabel}-${invoiceDateLabel}.pdf`);
+    } catch (error) {
+      console.error('Failed to generate invoice PDF:', error);
+      setNotice({
+        message: 'Failed to generate invoice PDF. Please try again.',
+        variant: 'error',
+      });
+    }
+  },
+  [
+    ledgerByPaymentId,
+    reservationMap,
+    fullName,
+    user?.email,
+    getReservationPaidFromLedger,
+    setNotice,
+  ]
+);
 
   const handleExportCSV = useCallback(() => {
     const csvData = userPayments.map((payment) => {
@@ -1363,6 +1478,7 @@ const handleFilterSelectFromSheet = useCallback((status: PaymentFilterStatus) =>
               <div className="grid gap-4 p-5 sm:p-6">
                 {paginatedPayments.map((payment) => {
                   const reservation = reservationMap.get(payment.reservationId);
+                  const unit = reservation ? unitMap.get(reservation.unitId) : undefined;
                   const ledgerEntry = ledgerByPaymentId.get(payment.id);
                   const StatusIcon =
                     PAYMENT_STATUS_ICONS[
@@ -1470,18 +1586,25 @@ const handleFilterSelectFromSheet = useCallback((status: PaymentFilterStatus) =>
                                 <div className="space-y-4">
                             <div className="flex flex-wrap items-start justify-between gap-2">
                               <div className="min-w-0">
-                                <h4 className="truncate text-sm sm:text-lg font-semibold text-slate-900">
-                                  {reservation?.unitName ?? 'Unknown Unit'}
-                                </h4>
+                            <h4 className="truncate text-sm sm:text-lg font-semibold text-slate-900">
+                              {reservation?.unitName ?? 'Unknown Unit'}
+                            </h4>
 
-                                <p className="text-xs text-slate-500">
-                                  Reservation ID: {reservation?.publicId ?? reservation?.id ?? 'N/A'}
-                                </p>
+                            <p className="text-xs text-slate-500">
+                              Reservation ID: {reservation?.publicId ?? reservation?.id ?? 'N/A'}
+                            </p>
 
-                                <p className="text-[11px] text-slate-400">
-                                  {reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A'}
-                                </p>
-                              </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <span className="text-[10px] font-semibold text-blue-600">
+                              {reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A'}
+                            </span>
+
+                            <UnitTaxonomyBadges
+                              category={unit?.category}
+                              subtype={unit?.subtype}
+                              size="sm"
+                            />
+                          </div>
 
                               <div className="flex items-center gap-2">
                                 {proofSrc ? (

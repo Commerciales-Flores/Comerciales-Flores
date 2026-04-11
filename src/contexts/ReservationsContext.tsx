@@ -21,6 +21,25 @@ import {
   normalizeAddress,
 } from '../utils/DataNormalization';
 
+async function notifyAdminsNewReservation(params: {
+  reservationId: string;
+  reservationPublicId: string;
+  customerName?: string | null;
+  unitTitle?: string | null;
+  unitType?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  amount?: number | null;
+}) {
+  const { error } = await supabase.functions.invoke("send-admin-new-reservation", {
+    body: params,
+  });
+
+  if (error) {
+    console.error("Failed to send admin new reservation alert:", error);
+  }
+}
+
 type ReservationsPageFilters = {
   page?: number;
   pageSize?: number;
@@ -666,6 +685,7 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
       const minimumPaymentPercentSnapshot =
         unitRow?.minimum_payment_percent ?? null;
 
+
       const { data, error } = await supabase
         .from('reservations')
         .insert([
@@ -734,7 +754,7 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         minimumPaymentPercentSnapshot,
       };
 
-      try {
+            try {
         await addAuditLog({
           userId: user.id,
           action: 'CREATE',
@@ -748,6 +768,26 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         });
       } catch (auditError) {
         console.error('Failed to audit reservation creation:', auditError);
+      }
+
+      try {
+        const customerName = user?.email ?? null;
+
+        await notifyAdminsNewReservation({
+          reservationId: newReservation.id,
+          reservationPublicId: newReservation.publicId ?? newReservation.id,
+          customerName,
+          unitTitle: newReservation.unitName,
+          unitType: newReservation.unitType,
+          startDate: newReservation.startDate,
+          endDate: newReservation.endDate,
+          amount: Number(newReservation.totalAmount ?? 0),
+        });
+      } catch (notificationError) {
+        console.error(
+          'Failed to trigger admin new reservation notification:',
+          notificationError
+        );
       }
 
       return newReservation.id;
