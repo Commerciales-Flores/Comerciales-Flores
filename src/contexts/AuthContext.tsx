@@ -43,6 +43,7 @@ interface User {
   addressConfirmedAt?: string | null;
   createdAt?: string;
   activeSessionId?: string | null;
+  hasPassword?: boolean;
 }
 
 interface RegisterInput {
@@ -225,6 +226,7 @@ const mapProfileToUser = (data: any): User => ({
   addressConfirmedAt: data.address_confirmed_at ?? null,
   createdAt: data.created_at ?? undefined,
   activeSessionId: data.active_session_id ?? null,
+  hasPassword: Boolean(data.has_password),
 });
 
 const USER_SELECT = `
@@ -247,7 +249,8 @@ const USER_SELECT = `
     address_confirmed,
     address_confirmed_at,
     created_at,
-    active_session_id
+    active_session_id,
+    has_password
   `;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -2026,29 +2029,52 @@ if (!storage.getItem(LAST_ACTIVITY_AT_KEY)) {
 );
 
   const changePassword = useCallback(
-    async (newPassword: string): Promise<boolean> => {
-      if (authActionPending) return false;
+  async (newPassword: string): Promise<boolean> => {
+    if (authActionPending) return false;
 
-      setAuthActionPending(true);
+    setAuthActionPending(true);
 
-      try {
-        const { error } = await supabase.auth.updateUser({ password: newPassword });
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
 
-        if (error) {
-          console.error('Password change failed:', error.message);
-          return false;
-        }
-
-        return true;
-      } catch (err) {
-        console.error('Unexpected password change error:', err);
+      if (error) {
+        console.error('Password change failed:', error.message);
         return false;
-      } finally {
-        setAuthActionPending(false);
       }
-    },
-    [authActionPending]
-  );
+
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+
+      if (authUser?.id) {
+        const { error: profileError } = await supabase
+          .from('users')
+          .update({ has_password: true })
+          .eq('user_id', authUser.id);
+
+        if (profileError) {
+          console.error('Failed to persist has_password flag:', profileError.message);
+        }
+      }
+
+      const currentUser = userRef.current;
+      if (currentUser) {
+        persistUserSession({
+          ...currentUser,
+          hasPassword: true,
+        });
+      }
+
+      return true;
+    } catch (err) {
+      console.error('Unexpected password change error:', err);
+      return false;
+    } finally {
+      setAuthActionPending(false);
+    }
+  },
+  [authActionPending, persistUserSession]
+);
 
   const changeEmail = useCallback(
   async ({

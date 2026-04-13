@@ -2215,6 +2215,8 @@ const calendarLegend = (
                         />
                       )}
 
+                      {selectedUnitData.type === "rental_space" && (
+
                       <RentalReservationForm
                         form={reservationForm}
                         setForm={setReservationForm}
@@ -2232,6 +2234,7 @@ const calendarLegend = (
                         rentalRequiredPayment={rentalRequiredPayment}
                         estimatedTotal={estimatedTotal}
                       />
+                      )}
                       
                       <ReservationPaymentSection
                         shouldShowPaymentSection={shouldShowPaymentSection}

@@ -116,10 +116,15 @@ async function notifyAdminsPaymentSubmitted(params: {
   amount: number;
   paymentCategory?: string | null;
 }) {
+  const secret = import.meta.env.VITE_ADMIN_PAYMENT_SUBMITTED_SECRET;
+
   const { error } = await supabase.functions.invoke(
     "send-admin-payment-submitted",
     {
       body: params,
+      headers: {
+        Authorization: `Bearer ${secret}`,
+      },
     }
   );
 
@@ -448,32 +453,32 @@ return newPayment.id;
 );
 
   const updatePayment = useCallback(
-    async (id: string, paymentUpdate: Partial<Payment>): Promise<void> => {
-      const accessToken = await getAccessTokenOrThrow();
+  async (id: string, paymentUpdate: Partial<Payment>): Promise<void> => {
+    const accessToken = await getAccessTokenOrThrow();
 
-      const normalizedAmount =
+    const normalizedAmount =
       paymentUpdate.amount !== undefined
         ? Number(normalizeMoneyString(String(paymentUpdate.amount)))
         : undefined;
 
-      const normalizedNotes =
-        paymentUpdate.notes !== undefined
-          ? paymentUpdate.notes
-            ? normalizeText(paymentUpdate.notes)
-            : null
-      : undefined;
+    const normalizedNotes =
+      paymentUpdate.notes !== undefined
+        ? paymentUpdate.notes
+          ? normalizeText(paymentUpdate.notes)
+          : null
+        : undefined;
 
-      if (
-        paymentUpdate.reviewStatus === 'pending' &&
-        paymentUpdate.reservationId &&
-        hasPendingPayment(paymentUpdate.reservationId, paymentUpdate.category ?? 'payment')
-      ) {
-        throw new Error(
-          'Cannot update to pending because another payment is already pending for this reservation.'
-        );
-      }
+    if (
+      paymentUpdate.reviewStatus === 'pending' &&
+      paymentUpdate.reservationId &&
+      hasPendingPayment(paymentUpdate.reservationId, paymentUpdate.category ?? 'payment')
+    ) {
+      throw new Error(
+        'Cannot update to pending because another payment is already pending for this reservation.'
+      );
+    }
 
-      console.log('updatePayment payload', {
+    console.log('updatePayment payload', {
       paymentId: id,
       effectiveReservationId: paymentUpdate.reservationId,
       amount: normalizedAmount,
@@ -486,49 +491,101 @@ return newPayment.id;
       category: paymentUpdate.category ?? 'payment',
     });
 
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment-and-ledger`,
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-payment-and-ledger`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          paymentId: id,
+          effectiveReservationId: paymentUpdate.reservationId,
+          amount: normalizedAmount,
+          method: paymentUpdate.method,
+          status: paymentUpdate.status,
+          reviewStatus: paymentUpdate.reviewStatus,
+          proofOfPayment: paymentUpdate.proofOfPayment ?? null,
+          notes: normalizedNotes,
+          paymentMethodId: paymentUpdate.paymentMethodId ?? null,
+          paymentMethodSnapshot: paymentUpdate.paymentMethodSnapshot ?? null,
+          category: paymentUpdate.category ?? 'payment',
+        }),
+      }
+    );
+
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok || !payload?.success) {
+      throw new Error(payload?.error || 'Failed to update payment.');
+    }
+
+    const existingPayment = payments.find((p) => p.id === id);
+    const updatedPayment = mapPaymentRow(payload.payment);
+
+    if (existingPayment) {
+  const previousReviewStatus = existingPayment.reviewStatus;
+  const nextReviewStatus = updatedPayment.reviewStatus;
+
+  let action: 'verified' | 'rejected' | null = null;
+
+  if (
+    previousReviewStatus !== nextReviewStatus &&
+    nextReviewStatus === 'approved'
+  ) {
+    action = 'verified';
+  } else if (
+    previousReviewStatus !== nextReviewStatus &&
+    nextReviewStatus === 'rejected'
+  ) {
+    action = 'rejected';
+  }
+
+  if (action) {
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        'send-payment-update',
         {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${accessToken}`,
-            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          body: {
+            paymentId: updatedPayment.id,
+            action,
+            notes:
+              typeof paymentUpdate.notes === 'string'
+                ? paymentUpdate.notes
+                : updatedPayment.notes ?? null,
           },
-          body: JSON.stringify({
-            paymentId: id,
-            effectiveReservationId: paymentUpdate.reservationId,
-            amount: normalizedAmount,
-            method: paymentUpdate.method,
-            status: paymentUpdate.status,
-            reviewStatus: paymentUpdate.reviewStatus,
-            proofOfPayment: paymentUpdate.proofOfPayment ?? null,
-            notes: normalizedNotes,
-            paymentMethodId: paymentUpdate.paymentMethodId ?? null,
-            paymentMethodSnapshot: paymentUpdate.paymentMethodSnapshot ?? null,
-            category: paymentUpdate.category ?? 'payment',
-          }),
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
         }
       );
 
-      const payload = await response.json().catch(() => null);
+      console.log('send-payment-update response:', { data, error });
 
-      if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || 'Failed to update payment.');
+      if (error) {
+        console.error('Failed to send payment update email:', error);
       }
-
-      const updatedPayment = mapPaymentRow(payload.payment);
-
-      setPayments((prev) =>
-        sortPaymentsByCreatedAt(
-          prev.map((item) =>
-            item.id === updatedPayment.id ? updatedPayment : item
-          )
-        )
+    } catch (notificationError) {
+      console.error(
+        'Failed to trigger payment update notification:',
+        notificationError
       );
-    },
-    []
-  );
+    }
+  }
+}
+
+    setPayments((prev) =>
+      sortPaymentsByCreatedAt(
+        prev.map((item) =>
+          item.id === updatedPayment.id ? updatedPayment : item
+        )
+      )
+    );
+  },
+  [hasPendingPayment, payments]
+);
 
   const issueRefund = useCallback(
   async ({

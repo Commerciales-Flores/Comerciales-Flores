@@ -1996,6 +1996,11 @@ type SlotManagerModalProps = {
   slotForm: typeof INITIAL_SLOT_FORM;
   slotImagePreview: string;
   isSavingSlot: boolean;
+  parkingSlotLimit: number;
+  usedParkingSlots: number;
+  remainingParkingSlots: number;
+  isUpdatingParkingLimit: boolean;
+  onUpdateParkingSlotLimit: (nextLimit: number) => Promise<void>;
   onClose: () => void;
   onEditSlot: (slotId: string) => void;
   onDeleteSlot: (slotId: string) => void;
@@ -2020,6 +2025,11 @@ const SlotManagerModal = React.memo(function SlotManagerModal({
   slotForm,
   slotImagePreview,
   isSavingSlot,
+  parkingSlotLimit,
+  usedParkingSlots,
+  remainingParkingSlots,
+  isUpdatingParkingLimit,
+  onUpdateParkingSlotLimit,
   onClose,
   onEditSlot,
   onDeleteSlot,
@@ -2063,14 +2073,62 @@ const SlotManagerModal = React.memo(function SlotManagerModal({
         <div className="grid flex-1 grid-cols-1 gap-6 overflow-y-auto p-6 sm:p-8 xl:grid-cols-[1.1fr_0.9fr]">
           <div className="space-y-4">
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-                <div>
-                  <h3 className="text-base font-semibold text-slate-900">Existing Slots</h3>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {selectedParkingUnitSlots.length} total slot(s)
-                  </p>
-                </div>
-              </div>
+              <div className="border-b border-slate-100 px-5 py-4">
+  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div>
+      <h3 className="text-base font-semibold text-slate-900">Existing Slots</h3>
+      <p className="mt-1 text-xs text-slate-500">
+        {selectedParkingUnitSlots.length} slot(s) in this parking area
+      </p>
+      <p className="mt-1 text-xs text-orange-600">
+        Global usage: <strong>{usedParkingSlots}</strong> /{' '}
+        <strong>{parkingSlotLimit}</strong> · Remaining:{' '}
+        <strong>{remainingParkingSlots}</strong>
+      </p>
+    </div>
+
+    <div className="w-full max-w-xs rounded-2xl border border-orange-200 bg-orange-50 p-3">
+      <label className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-orange-700">
+        Global Parking Slot Limit
+      </label>
+
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          min={usedParkingSlots || 1}
+          step={1}
+          defaultValue={parkingSlotLimit}
+          onBlur={(e) => {
+            const nextLimit = Number(e.target.value);
+
+            if (!Number.isFinite(nextLimit)) {
+              e.target.value = String(parkingSlotLimit);
+              return;
+            }
+
+            if (nextLimit < Math.max(usedParkingSlots, 1)) {
+              e.target.value = String(parkingSlotLimit);
+              return;
+            }
+
+            if (nextLimit !== parkingSlotLimit) {
+              void onUpdateParkingSlotLimit(nextLimit);
+            }
+          }}
+          className="w-full rounded-xl border border-orange-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+        />
+
+        {isUpdatingParkingLimit ? (
+          <span className="text-xs font-medium text-orange-700">Saving...</span>
+        ) : null}
+      </div>
+
+      <p className="mt-2 text-[11px] text-orange-700">
+        Cannot be lower than the current total used slots ({usedParkingSlots}).
+      </p>
+    </div>
+  </div>
+</div>
 
               {selectedParkingUnitSlots.length === 0 ? (
                 <div className="px-6 py-16">
@@ -2702,6 +2760,10 @@ export default function AdminUnitManagement() {
     addParkingSlot,
     updateParkingSlot,
     deleteParkingSlot,
+    parkingSlotLimit,
+    usedParkingSlots,
+    remainingParkingSlots,
+    updateParkingSlotLimit,
   } = useUnits();
 
   const [slotError, setSlotError] = useState<string | null>(null);
@@ -2732,6 +2794,10 @@ export default function AdminUnitManagement() {
 
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCategory, setNewCategory] = useState('');
+
+  const [isUpdatingParkingLimit, setIsUpdatingParkingLimit] = useState(false);
+
+  
 
   const [searchTerm, setSearchTerm] = useState('');
 const [typeFilter, setTypeFilter] = useState<'all' | UnitType>('all');
@@ -2869,6 +2935,30 @@ const closeMobileFilters = useCallback(() => {
   const handleDelete = useCallback((unitId: string) => {
     setUnitToDelete(unitId);
   }, []);
+
+  const handleUpdateParkingSlotLimit = useCallback(
+  async (nextLimit: number) => {
+    try {
+      setIsUpdatingParkingLimit(true);
+
+      await updateParkingSlotLimit(nextLimit);
+
+      setNotice({
+        variant: 'success',
+        message: `Global parking slot limit updated to ${nextLimit}.`,
+      });
+    } catch (error: any) {
+      setNotice({
+        variant: 'error',
+        message:
+          error?.message || 'Failed to update parking slot limit.',
+      });
+    } finally {
+      setIsUpdatingParkingLimit(false);
+    }
+  },
+  [updateParkingSlotLimit]
+);
 
   const closeDeletePanel = useCallback(() => {
     if (isDeleting) return;
@@ -3327,6 +3417,11 @@ const confirmDelete = useCallback(async () => {
           setSlotForm={setSlotForm}
           slotFileInputRef={slotFileInputRef}
           slotError={slotError}
+          parkingSlotLimit={parkingSlotLimit}
+          usedParkingSlots={usedParkingSlots}
+          remainingParkingSlots={remainingParkingSlots}
+          isUpdatingParkingLimit={isUpdatingParkingLimit}
+          onUpdateParkingSlotLimit={handleUpdateParkingSlotLimit}
         />
 
         <DeleteUnitDialog

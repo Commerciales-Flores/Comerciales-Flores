@@ -16,6 +16,7 @@ import {
   User,
   Calendar,
   Search,
+  CheckCircle2,
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { getUnitTypeLabel } from '../../utils/propertyHelpers';
@@ -304,6 +305,7 @@ export default function ClientReservations() {
   const ITEMS_PER_PAGE = 5;
 
   const [currentPage, setCurrentPage] = useState(1);
+  const [expandedSummaryId, setExpandedSummaryId] = useState<string | null>(null);
 
   const [reservationToCancel, setReservationToCancel] = useState<{
   id: string;
@@ -433,6 +435,10 @@ useEffect(() => {
   const toggleDetails = useCallback((id: string) => {
     setExpandedDetailsId((prev) => (prev === id ? null : id));
   }, []);
+
+  const toggleSummary = useCallback((id: string) => {
+  setExpandedSummaryId((prev) => (prev === id ? null : id));
+}, []);
 
   const handleCancelReservation = useCallback(
   (
@@ -623,6 +629,7 @@ const confirmCancelReservation = useCallback(async () => {
 
                 const isDetailsExpanded = expandedDetailsId === reservation.id;
                 const isCardExpanded = !isMobile || expandedId === reservation.id;
+                const isSummaryExpanded = expandedSummaryId === reservation.id;
                 const status =
                   (reservation.status as ReservationStatus) in STATUS_COLORS
                     ? (reservation.status as ReservationStatus)
@@ -667,34 +674,34 @@ const confirmCancelReservation = useCallback(async () => {
                     >
                       <div className="mb-2 flex items-start justify-between">
                       <div className="min-w-0 flex-1">
-                        <div className="mb-0.5 flex items-start justify-between gap-2">
-                          <div className="mb-0.5 flex flex-col gap-1">
-                            <span className="text-[10px] font-semibold text-blue-600 md:text-[13px]">
-                              {getUnitTypeLabel(reservation.unitType)}
-                            </span>
+  <div className="mb-2 flex items-start justify-between gap-3">
+    <div className="flex flex-col gap-1.5">
+      <span className="text-[10px] font-semibold text-blue-600 md:text-[13px]">
+        {getUnitTypeLabel(reservation.unitType)}
+      </span>
 
-                            <UnitTaxonomyBadges
-                              category={unit?.category}
-                              subtype={unit?.subtype}
-                              size="sm"
-                            />
+      <UnitTaxonomyBadges
+        category={unit?.category}
+        subtype={unit?.subtype}
+        size="sm"
+      />
 
-                            <p
-                              className={`${uiTypography.helperText} truncate text-[10px] text-gray-400 md:text-sm`}
-                            >
-                              ID: {reservation.publicId || reservation.id}
-                            </p>
-                          </div>
+      <p
+        className={`${uiTypography.helperText} truncate text-[11px] text-gray-400 md:text-sm`}
+      >
+        ID: {reservation.publicId || reservation.id}
+      </p>
+    </div>
 
-                          <div className="flex flex-wrap justify-end gap-1">
-                            <span
-                        className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] md:text-xs ${uiTypography.buttonTextBold} shadow-sm ${STATUS_COLORS[status]}`}
-                      >
-                        {STATUS_ICONS[status]} {status.toUpperCase()}
-                      </span>
+    <div className="flex flex-wrap justify-end gap-1.5">
+      <span
+        className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] md:text-xs ${uiTypography.buttonTextBold} shadow-sm ${STATUS_COLORS[status]}`}
+      >
+        {STATUS_ICONS[status]} {status.toUpperCase()}
+      </span>
 
       {extensionDetails && (
-        <span className="shrink-0 rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[9px] md:text-sm font-bold text-indigo-700 shadow-sm">
+        <span className="shrink-0 rounded-full border border-indigo-200 bg-indigo-50 px-1.5 py-0.5 text-[9px] md:text-xs font-bold text-indigo-700 shadow-sm">
           EXTENSION REQUESTED
         </span>
       )}
@@ -702,15 +709,15 @@ const confirmCancelReservation = useCallback(async () => {
   </div>
 
   <h3
-    className={`${uiTypography.cardTitle} truncate text-[13px] leading-tight text-gray-900 md:text-lg`}
+    className={`${uiTypography.cardTitle} truncate text-[15px] leading-tight text-gray-900 md:text-lg`}
   >
     {reservation.unitName}
   </h3>
 
-  <div className="mt-0.5 flex items-center gap-1 text-gray-500">
-    <MapPin className="size-3 md:size-4 text-red-600" />
+  <div className="mt-1.5 flex items-center gap-1.5 text-gray-500">
+    <MapPin className="size-3.5 md:size-4 text-red-600" />
     <span
-      className={`${uiTypography.bodyText} truncate text-[11px] md:text-sm`}
+      className={`${uiTypography.bodyText} truncate text-[12px] md:text-sm`}
     >
       {unit?.location || 'N/A'}
     </span>
@@ -1009,72 +1016,6 @@ const confirmCancelReservation = useCallback(async () => {
                               </AnimatePresence>
                             </div>
 
-                            <div className="border-t border-gray-100 pt-3">
-                              <div className="mb-3 grid grid-cols-3 gap-2">
-                                <div className="text-center sm:text-left">
-                                  <p
-                                    className={`${uiTypography.miniStatLabel} mb-0.5 text-gray-500 text-xs`}
-                                  >
-                                    Total
-                                  </p>
-                                  <p
-                                    className={`${uiTypography.miniStatValue} text-gray-900 text-[13px] sm:text-sm`}
-                                  >
-                                    {formatCurrency(reservation.totalAmount)}
-                                  </p>
-                                </div>
-
-                                <div className="text-center sm:text-left">
-                                  <p
-                                    className={`${uiTypography.miniStatLabel} mb-0.5 text-gray-500 text-xs`}
-                                  >
-                                    Paid
-                                  </p>
-                                  <p
-                                    className={`${uiTypography.miniStatValue} text-green-600 text-[13px] sm:text-sm`}
-                                  >
-                                    {formatCurrency(reservation.paidAmount)}
-                                  </p>
-                                </div>
-
-                                <div className="text-center sm:text-left">
-                                  <p
-                                    className={`${uiTypography.miniStatLabel} mb-0.5 text-gray-500 text-xs`}
-                                  >
-                                    Balance
-                                  </p>
-                                  <p
-                                    className={`${uiTypography.miniStatValue} text-[13px] sm:text-sm ${
-                                      balance > 0 ? 'text-red-600' : 'text-green-600'
-                                    }`}
-                                  >
-                                    {formatCurrency(balance)}
-                                  </p>
-                                </div>
-                              </div>
-
-                              {['approved', 'confirmed', 'completed'].includes(reservation.status) && (
-                                <div className="mb-3 pt-1 md:pt-3">
-                                  <div
-                                    className={`${uiTypography.helperText} flex justify-between text-gray-500 mb-2 text-xs sm:text-sm`}
-                                  >
-                                    <span>Payment Progress</span>
-                                    <span>{paymentProgress.toFixed(0)}%</span>
-                                  </div>
-
-                                  <div className="w-full bg-gray-100 rounded-full h-1.5 md:h-2 overflow-hidden">
-                                    <motion.div
-                                      initial={{ width: 0 }}
-                                      animate={{ width: `${paymentProgress}%` }}
-                                      className={`h-full transition-all ${
-                                        paymentProgress === 100 ? 'bg-green-600' : 'bg-blue-600'
-                                      }`}
-                                    />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-
                             {reservation.status === 'pending' && (
                               <div
                                 className={`rounded-2xl border border-yellow-200 bg-yellow-50 p-4 ${uiTypography.bodyText} text-[13px] sm:text-sm text-yellow-800`}
@@ -1083,83 +1024,185 @@ const confirmCancelReservation = useCallback(async () => {
                               </div>
                             )}
 
-                            {['approved', 'confirmed', 'completed'].includes(reservation.status) && balance > 0 && (
-                              <div
-                                className={`rounded-2xl border border-blue-200 bg-blue-50 p-4 ${uiTypography.bodyText} text-[13px] sm:text-sm text-blue-700`}
-                              >
-                                Approved! Please go to Payments to complete your transaction. Minimum payment rules will be shown there before submission.
-                              </div>
-                            )}
+                            <div className="border-t border-gray-100 pt-2">
+  <button
+    type="button"
+    onClick={(e) => {
+      e.stopPropagation();
+      toggleSummary(reservation.id);
+    }}
+    className="flex w-full items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-left transition hover:bg-gray-100"
+  >
+    <div>
+      <p className={`${uiTypography.miniStatLabel} text-gray-500`}>
+        Payment & Status Summary
+      </p>
+      <p className={`${uiTypography.helperText} mt-0.5 text-xs sm:text-sm text-gray-400`}>
+        View totals, balance, progress, notices, and extension options
+      </p>
+    </div>
 
-                            {isEligibleReviewStatus && !hasEnded && (
-                              <div
-                                className={`rounded-2xl border border-gray-200 bg-gray-50 p-4 ${uiTypography.bodyText} text-[13px] sm:text-sm text-gray-600`}
-                              >
-                                Review will be available after your reservation ends.
-                              </div>
-                            )}
+    <motion.div
+      animate={{ rotate: isSummaryExpanded ? 180 : 0 }}
+      transition={{ duration: 0.2 }}
+      className="rounded-lg bg-white p-1 shadow-sm"
+    >
+      <ChevronDown className="size-4 text-gray-500" />
+    </motion.div>
+  </button>
 
-                            {isEligibleReviewStatus && hasEnded && !isFullyPaid && (
-                              <div
-                                className={`rounded-2xl border border-red-200 bg-red-50 p-4 ${uiTypography.bodyText} text-[13px] sm:text-sm text-red-700`}
-                              >
-                                Please settle your remaining balance before leaving a review.
-                              </div>
-                            )}
+  <AnimatePresence initial={false}>
+    {isSummaryExpanded && (
+      <motion.div
+        initial={{ height: 0, opacity: 0 }}
+        animate={{ height: 'auto', opacity: 1 }}
+        exit={{ height: 0, opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        className="overflow-hidden"
+      >
+        <div className="space-y-3 pt-3">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="text-center sm:text-left">
+              <p className={`${uiTypography.miniStatLabel} mb-0.5 text-gray-500 text-xs`}>
+                Total
+              </p>
+              <p className={`${uiTypography.miniStatValue} text-gray-900 text-[13px] sm:text-sm`}>
+                {formatCurrency(reservation.totalAmount)}
+              </p>
+            </div>
 
-                            {canReview && (
-                              <div
-                                className={`rounded-2xl border border-blue-200 bg-blue-50 p-4 ${uiTypography.bodyText} text-[13px] sm:text-sm text-blue-700`}
-                              >
-                                This reservation is now eligible for review. You can leave your feedback on the My Reviews page.
-                              </div>
-                            )}
+            <div className="text-center sm:text-left">
+              <p className={`${uiTypography.miniStatLabel} mb-0.5 text-gray-500 text-xs`}>
+                Paid
+              </p>
+              <p className={`${uiTypography.miniStatValue} text-green-600 text-[13px] sm:text-sm`}>
+                {formatCurrency(reservation.paidAmount)}
+              </p>
+            </div>
 
-                            {eligibleForExtension && !extensionDetails && (
-                              <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
-                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                  <div>
-                                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
-                                      Reservation Extension
-                                    </p>
-                                    <p className={`${uiTypography.bodyText} mt-1 text-[13px] sm:text-sm text-indigo-700`}>
-                                      Need more time for this reservation? You can request an extension for admin review.
-                                    </p>
-                                  </div>
+            <div className="text-center sm:text-left">
+              <p className={`${uiTypography.miniStatLabel} mb-0.5 text-gray-500 text-xs`}>
+                Balance
+              </p>
+              <p
+                className={`${uiTypography.miniStatValue} text-[13px] sm:text-sm ${
+                  balance > 0 ? 'text-red-600' : 'text-green-600'
+                }`}
+              >
+                {formatCurrency(balance)}
+              </p>
+            </div>
+          </div>
 
-                                  <button
-                                    type="button"
-                                    onClick={() => openExtensionModal(reservation.id)}
-                                    className="rounded-xl bg-indigo-600 px-4 py-2.5 min-h-[44px] text-sm font-semibold text-white transition hover:bg-indigo-700"
-                                  >
-                                    Request Extension
-                                  </button>
-                                </div>
-                              </div>
-                            )}
+          {['approved', 'confirmed', 'completed'].includes(reservation.status) && (
+            <div className="pt-1">
+              <div className={`${uiTypography.helperText} mb-2 flex justify-between text-xs text-gray-500 sm:text-sm`}>
+                <span>Payment Progress</span>
+                <span>{paymentProgress.toFixed(0)}%</span>
+              </div>
+
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100 md:h-2">
+                <motion.div
+                  initial={{ width: 0 }}
+                  animate={{ width: `${paymentProgress}%` }}
+                  className={`h-full transition-all ${
+                    paymentProgress === 100 ? 'bg-green-600' : 'bg-blue-600'
+                  }`}
+                />
+              </div>
+            </div>
+          )}
+
+          {reservation.status === 'pending' && (
+            <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-[13px] text-yellow-800 sm:text-sm">
+              Pending admin approval. You will be notified once reviewed.
+            </div>
+          )}
+
+          {['approved', 'confirmed', 'completed'].includes(reservation.status) && balance > 0 && (
+            <div className="flex items-start gap-2 rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-emerald-800">
+              <CheckCircle2 className="mt-0.5 size-4 text-emerald-600" />
+              <p className="text-[13px] font-medium sm:text-sm">
+                Approved! Please go to Payments to complete your transaction. Minimum payment rules will be shown there before submission.
+              </p>
+            </div>
+          )}
+
+          {isEligibleReviewStatus && !hasEnded && (
+            <div className="flex items-start gap-2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-800">
+              <Clock className="mt-0.5 size-4 text-amber-600" />
+              <p className="text-[13px] font-medium sm:text-sm">
+                Review will be available after your reservation ends.
+              </p>
+            </div>
+          )}
+
+          {isEligibleReviewStatus && hasEnded && !isFullyPaid && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-[13px] text-red-700 sm:text-sm">
+              Please settle your remaining balance before leaving a review.
+            </div>
+          )}
+
+          {canReview && (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-[13px] text-blue-700 sm:text-sm">
+              This reservation is now eligible for review. You can leave your feedback on the My Reviews page.
+            </div>
+          )}
+
+          {eligibleForExtension && !extensionDetails && (
+            <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+                    Reservation Extension
+                  </p>
+                  <p className={`${uiTypography.bodyText} mt-1 text-[13px] text-indigo-700 sm:text-sm`}>
+                    Need more time for this reservation? You can request an extension for admin review.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => openExtensionModal(reservation.id)}
+                  className="min-h-[44px] rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700"
+                >
+                  Request Extension
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </motion.div>
+    )}
+  </AnimatePresence>
+</div>
 
                             <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
-  <span className={`${uiTypography.helperText} text-gray-400 text-xs sm:text-sm sm:ml-auto`}>
+  <span className={`${uiTypography.helperText} text-gray-400 text-xs sm:text-sm`}>
     Requested {formatDate(reservation.requestDate)}
   </span>
 
-  {canCancel && (
-    <button
-      type="button"
-      onClick={() =>
-        handleCancelReservation(
-          reservation.id,
-          reservation.unitName,
-          status,
-          Number(reservation.paidAmount || 0),
-          reservation.startDate
-        )
-      }
-      className={`w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 min-h-[44px] bg-red-600 text-white text-[13px] sm:text-sm ${uiTypography.buttonText} rounded-xl hover:bg-red-700 transition-colors shadow-sm`}
-    >
-      Cancel Reservation
-    </button>
-  )}
+  <div className="w-full sm:w-auto">
+    {canCancel ? (
+      <button
+        type="button"
+        onClick={() =>
+          handleCancelReservation(
+            reservation.id,
+            reservation.unitName,
+            status,
+            Number(reservation.paidAmount || 0),
+            reservation.startDate
+          )
+        }
+        className={`w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 min-h-[44px] bg-red-600 text-white text-[13px] sm:text-sm ${uiTypography.buttonText} rounded-xl hover:bg-red-700 transition-colors shadow-sm`}
+      >
+        Cancel Reservation
+      </button>
+    ) : (
+      <div className="hidden sm:block w-[180px] h-[44px]" />
+    )}
+  </div>
 </div>
                           </div>
                         </motion.div>

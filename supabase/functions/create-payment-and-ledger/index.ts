@@ -364,26 +364,31 @@ let effectiveReservationId = bodyReservationId;
     }
 
     if (!depositPayment) {
-      const enforceMinimumFirstPayment = validateMinimumFirstPayment({
-        totalAmount: Number(reservation.total_amount),
-        paidAmount: ledgerPaid,
-        minimumPaymentPercentSnapshot:
-          reservation.minimum_payment_percent_snapshot,
-      });
+  const isRentalSpace = reservation.unit_type === 'rental_space';
 
-      const enforceScheduledSubsequentPayment = validateScheduledSubsequentPayment(
-        {
-          unitType: reservation.unit_type,
-          totalAmount: Number(reservation.total_amount),
-          paidAmount: ledgerPaid,
-          duration: reservation.duration,
-          paymentCycle: reservation.details?.paymentCycle ?? null,
-        },
-      );
+  const enforceMinimumFirstPayment = validateMinimumFirstPayment({
+    totalAmount: Number(reservation.total_amount),
+    paidAmount: ledgerPaid,
+    minimumPaymentPercentSnapshot:
+      reservation.minimum_payment_percent_snapshot,
+  });
 
-      enforceMinimumFirstPayment(submittedAmount);
-      enforceScheduledSubsequentPayment(submittedAmount);
-    }
+  const enforceScheduledSubsequentPayment = validateScheduledSubsequentPayment({
+    unitType: reservation.unit_type,
+    totalAmount: Number(reservation.total_amount),
+    paidAmount: ledgerPaid,
+    duration: reservation.duration,
+    paymentCycle: reservation.details?.paymentCycle ?? null,
+  });
+
+  // Rental spaces should follow their billing cycle rules,
+  // not the generic minimum first payment snapshot rule.
+  if (!isRentalSpace) {
+    enforceMinimumFirstPayment(submittedAmount);
+  }
+
+  enforceScheduledSubsequentPayment(submittedAmount);
+}
 
     const paymentDate = new Date().toISOString();
 

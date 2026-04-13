@@ -107,36 +107,47 @@ function renderEmailLayout({
                           <td align="center" style="padding:24px 32px 28px 32px;">
 
                             <div style="
-                              font-size:64px;
+                              font-size:84px;
                               font-weight:900;
-                              color:#f1f5f9;
+                              color:rgba(37,99,235,0.08);
                               font-style:italic;
                               line-height:1;
+                              letter-spacing:-0.06em;
+                              text-transform:uppercase;
                               user-select:none;
+                              mso-line-height-rule:exactly;
                             ">
                               CF
                             </div>
 
-                            <div style="
-                              margin:-18px auto 18px auto;
-                              width:64px;
-                              height:64px;
-                              background:#2563eb;
-                              border-radius:14px;
-                              transform:rotate(8deg);
-                              box-shadow:0 12px 28px rgba(37,99,235,0.20);
-                              display:flex;
-                              align-items:center;
-                              justify-content:center;
-                            ">
-                              <img
-                                src="https://nlermulroebcmfwvyhmo.supabase.co/storage/v1/object/public/property_media/public/logos/building-2.png"
-                                width="28"
-                                height="28"
-                                alt="Comerciales Flores"
-                                style="display:block;transform:rotate(-8deg);filter:brightness(0) invert(1);"
-                              />
-                            </div>
+<table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:-22px auto 24px auto;">                             <tr>
+                                <td
+                                  width="64"
+                                  height="64"
+                                  align="center"
+                                  valign="middle"
+                                  style="
+                                    background:#2563eb;
+                                    border-radius:14px;
+                                    transform:rotate(8deg);
+                                    box-shadow:0 12px 28px rgba(37,99,235,0.20);
+                                  "
+                                >
+                                  <img
+                                    src="https://nlermulroebcmfwvyhmo.supabase.co/storage/v1/object/public/property_media/public/logos/building-2.png"
+                                    width="28"
+                                    height="28"
+                                    alt="Comerciales Flores"
+                                    style="
+                                      display:block;
+                                      margin:0 auto;
+                                      transform:rotate(-8deg);
+                                      filter:brightness(0) invert(1);
+                                    "
+                                  />
+                                </td>
+                              </tr>
+                            </table>
 
                             <div style="
                               font-size:13px;
@@ -144,7 +155,8 @@ function renderEmailLayout({
                               letter-spacing:0.08em;
                               text-transform:uppercase;
                               color:#2563eb;
-                              margin-bottom:8px;
+                              margin-top:10 px;
+                              margin-bottom:10px;
                             ">
                               ${escapeHtml(heroEyebrow)}
                             </div>

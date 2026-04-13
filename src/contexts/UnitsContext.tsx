@@ -70,6 +70,10 @@ interface UnitsContextType {
   loadingUnits: boolean;
   locationOptions: string[];
   defaultLocation: string;
+  parkingSlotLimit: number;
+  usedParkingSlots: number;
+  remainingParkingSlots: number;
+  canAddMoreParkingSlots: boolean;
   addUnit: (
     unit: Omit<Unit, 'id' | 'property' | 'images'> & { images?: string[] }
   ) => Promise<void>;
@@ -85,6 +89,7 @@ interface UnitsContextType {
   addParkingSlot: (slot: AddParkingSlotPayload) => Promise<void>;
   updateParkingSlot: (slotId: string, slot: UpdateParkingSlotPayload) => Promise<void>;
   deleteParkingSlot: (slotId: string) => Promise<void>;
+  updateParkingSlotLimit: (nextLimit: number) => Promise<void>;
 }
 
 const UnitsContext = createContext<UnitsContextType | undefined>(undefined);
@@ -179,6 +184,10 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
   const [parkingSlots, setParkingSlots] = useState<ParkingSlot[]>([]);
   const [loadingUnits, setLoadingUnits] = useState(false);
   const [unitsVersion, setUnitsVersion] = useState(0);
+  const [parkingSlotLimit, setParkingSlotLimit] = useState<number>(20);
+  const usedParkingSlots = parkingSlots.length;
+  const remainingParkingSlots = Math.max(0, parkingSlotLimit - usedParkingSlots);
+  const canAddMoreParkingSlots = remainingParkingSlots > 0;
 
   const parkingSlotsRef = useRef<ParkingSlot[]>([]);
 const refreshTimersRef = useRef<Map<string, number>>(new Map());
@@ -457,57 +466,70 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
 
     try {
       const [
-        baseRes,
-        rentalRes,
-        functionRes,
-        parkingRes,
-        parkingSlotsRes,
-        activeParkingRes,
-      ] = await Promise.all([
-        supabase
-          .from('units')
-          .select(`
-            unit_id,
-            public_id,
-            unit_type,
-            unit_category,
-            unit_subtype,
-            title,
-            is_available,
-            price,
-            location,
-            images,
-            videos,
-            minimum_payment_percent,
-            contract_file_path,
-            contract_file_name,
-            is_deleted
-          `)
-          .eq('is_deleted', false),
-        supabase.from('rental_units').select('unit_id, title, description, policies, features'),
-        supabase.from('function_units').select(
-          'unit_id, title, description, policies, features, capacity'
-        ),
-        supabase.from('parking_units').select('unit_id, title, description, policies, features'),
-        supabase
-          .from('parking_slots')
-          .select('slot_id, unit_id, slot_code, label, status, vehicle_type, image_url, notes')
-          .order('slot_code', { ascending: true }),
-        supabase
-          .from('reservations')
-          .select(`
-            user_id,
-            start_date,
-            details,
-            users (
-              first_name,
-              last_name,
-              public_id
-            )
-          `)
-          .eq('unit_type', 'parking_slot')
-          .in('status', ['approved', 'confirmed']),
-      ]);
+  baseRes,
+  rentalRes,
+  functionRes,
+  parkingRes,
+  parkingSlotsRes,
+  activeParkingRes,
+  settingsRes,
+] = await Promise.all([
+  supabase
+    .from('units')
+    .select(`
+      unit_id,
+      public_id,
+      unit_type,
+      unit_category,
+      unit_subtype,
+      title,
+      is_available,
+      price,
+      location,
+      images,
+      videos,
+      minimum_payment_percent,
+      contract_file_path,
+      contract_file_name,
+      is_deleted
+    `)
+    .eq('is_deleted', false),
+
+  supabase.from('rental_units')
+    .select('unit_id, title, description, policies, features'),
+
+  supabase.from('function_units')
+    .select('unit_id, title, description, policies, features, capacity'),
+
+  supabase.from('parking_units')
+    .select('unit_id, title, description, policies, features'),
+
+  supabase
+    .from('parking_slots')
+    .select('slot_id, unit_id, slot_code, label, status, vehicle_type, image_url, notes')
+    .order('slot_code', { ascending: true }),
+
+  supabase
+    .from('reservations')
+    .select(`
+      user_id,
+      start_date,
+      details,
+      users (
+        first_name,
+        last_name,
+        public_id
+      )
+    `)
+    .eq('unit_type', 'parking_slot')
+    .in('status', ['approved', 'confirmed']),
+
+  supabase
+    .from('app_settings')
+    .select('value_json')
+    .eq('key', 'parking_slot_limits')
+    .maybeSingle(),
+]);
 
       if (baseRes.error) throw baseRes.error;
       if (rentalRes.error) console.error('rental_units error:', rentalRes.error);
@@ -517,6 +539,11 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
       if (activeParkingRes.error) {
         console.error('reservations occupancy error:', activeParkingRes.error);
       }
+
+      const globalLimit =
+        settingsRes?.data?.value_json?.global_max_slots ?? 20;
+
+      setParkingSlotLimit(globalLimit);
 
       const rentalMap = toUnitMap(rentalRes.data);
       const functionMap = toUnitMap(functionRes.data);
@@ -1326,47 +1353,53 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
   );
 
   const addParkingSlot = useCallback(
-    async (slot: AddParkingSlotPayload): Promise<void> => {
-      try {
-        const slotId = crypto.randomUUID();
-
-        const payload = {
-          slot_id: slotId,
-          unit_id: slot.unitId,
-          slot_code: normalizeUppercaseText(slot.slotCode),
-          label: slot.label ? normalizeText(slot.label) : null, 
-          status: slot.status,
-          vehicle_type: slot.vehicleType ? normalizeText(slot.vehicleType) : null,
-          image_url: slot.imagePath ? normalizeText(slot.imagePath) : null,
-          notes: slot.notes ? normalizeText(slot.notes) : null,
-        };
-
-        const { error } = await supabase.from('parking_slots').insert([payload]);
-        if (error) throw error;
-
-        if (user?.id) {
-          try {
-            await addAuditLog({
-              userId: user.id,
-              action: 'CREATE',
-              targetTable: 'parking_slots',
-              targetId: slotId,
-              beforeValue: undefined,
-              afterValue: payload,
-              changedFields: Object.keys(payload),
-              notes: `Created parking slot ${payload.slot_code}`,
-            });
-          } catch (auditError) {
-            console.error('Failed to audit parking slot creation:', auditError);
-          }
-        }
-      } catch (error) {
-        console.error('Error adding parking slot:', error);
-        throw error;
+  async (slot: AddParkingSlotPayload): Promise<void> => {
+    try {
+      if (!canAddMoreParkingSlots) {
+        throw new Error(
+          `Global parking slot limit reached (${parkingSlotLimit}). Increase the limit first before adding more slots.`
+        );
       }
-    },
-    [addAuditLog, user?.id]
-  );
+
+      const slotId = crypto.randomUUID();
+
+      const payload = {
+        slot_id: slotId,
+        unit_id: slot.unitId,
+        slot_code: normalizeUppercaseText(slot.slotCode),
+        label: slot.label ? normalizeText(slot.label) : null,
+        status: slot.status,
+        vehicle_type: slot.vehicleType ? normalizeText(slot.vehicleType) : null,
+        image_url: slot.imagePath ? normalizeText(slot.imagePath) : null,
+        notes: slot.notes ? normalizeText(slot.notes) : null,
+      };
+
+      const { error } = await supabase.from('parking_slots').insert([payload]);
+      if (error) throw error;
+
+      if (user?.id) {
+        try {
+          await addAuditLog({
+            userId: user.id,
+            action: 'CREATE',
+            targetTable: 'parking_slots',
+            targetId: slotId,
+            beforeValue: undefined,
+            afterValue: payload,
+            changedFields: Object.keys(payload),
+            notes: `Created parking slot ${payload.slot_code}`,
+          });
+        } catch (auditError) {
+          console.error('Failed to audit parking slot creation:', auditError);
+        }
+      }
+    } catch (error) {
+      console.error('Error adding parking slot:', error);
+      throw error;
+    }
+  },
+  [addAuditLog, canAddMoreParkingSlots, parkingSlotLimit, user?.id]
+);
 
   const updateParkingSlot = useCallback(
     async (slotId: string, slotUpdate: UpdateParkingSlotPayload): Promise<void> => {
@@ -1503,48 +1536,117 @@ if (slotUpdate.notes !== undefined) {
     [addAuditLog, parkingSlots, user?.id]
   );
 
+
+  const updateParkingSlotLimit = useCallback(
+  async (nextLimit: number): Promise<void> => {
+    try {
+      const normalizedLimit = Math.floor(nextLimit);
+
+      if (!Number.isFinite(normalizedLimit) || normalizedLimit <= 0) {
+        throw new Error('Parking slot limit must be greater than zero.');
+      }
+
+      if (normalizedLimit < usedParkingSlots) {
+        throw new Error(
+          `Parking slot limit cannot be lower than the current used slots (${usedParkingSlots}).`
+        );
+      }
+
+      const payload = {
+        key: 'parking_slot_limits',
+        value_json: {
+          global_max_slots: normalizedLimit,
+        },
+      };
+
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert([payload], { onConflict: 'key' });
+
+      if (error) throw error;
+
+      setParkingSlotLimit(normalizedLimit);
+
+      if (user?.id) {
+        try {
+          await addAuditLog({
+            userId: user.id,
+            action: 'UPDATE',
+            targetTable: 'app_settings',
+            targetId: 'parking_slot_limits',
+            beforeValue: {
+              global_max_slots: parkingSlotLimit,
+            },
+            afterValue: {
+              global_max_slots: normalizedLimit,
+            },
+            changedFields: ['global_max_slots'],
+            notes: `Updated global parking slot limit to ${normalizedLimit}`,
+          });
+        } catch (auditError) {
+          console.error('Failed to audit parking slot limit update:', auditError);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating parking slot limit:', error);
+      throw error;
+    }
+  },
+  [addAuditLog, parkingSlotLimit, usedParkingSlots, user?.id]
+);
+
   const value = useMemo(
-    () => ({
-      units,
-      unitsVersion,
-      parkingSlots,
-      loadingUnits,
-      locationOptions: LOCATION_OPTIONS,
-      defaultLocation: DEFAULT_LOCATION,
-      addUnit,
-      updateUnit,
-      deleteUnit,
-      uploadUnitImage,
-      uploadUnitVideo,
-      uploadUnitContract,
-      getUnitById,
-      refreshUnits,
-      getParkingSlotsByUnit,
-      getParkingSlotById,
-      addParkingSlot,
-      updateParkingSlot,
-      deleteParkingSlot,
-    }),
-    [
-      units,
-      unitsVersion,
-      parkingSlots,
-      loadingUnits,
-      addUnit,
-      updateUnit,
-      deleteUnit,
-      uploadUnitImage,
-      uploadUnitVideo,
-      uploadUnitContract,
-      getUnitById,
-      refreshUnits,
-      getParkingSlotsByUnit,
-      getParkingSlotById,
-      addParkingSlot,
-      updateParkingSlot,
-      deleteParkingSlot,
-    ]
-  );
+  () => ({
+    units,
+    unitsVersion,
+    parkingSlots,
+    loadingUnits,
+    locationOptions: LOCATION_OPTIONS,
+    defaultLocation: DEFAULT_LOCATION,
+    parkingSlotLimit,
+    usedParkingSlots,
+    remainingParkingSlots,
+    canAddMoreParkingSlots,
+    addUnit,
+    updateUnit,
+    deleteUnit,
+    uploadUnitImage,
+    uploadUnitVideo,
+    uploadUnitContract,
+    getUnitById,
+    refreshUnits,
+    getParkingSlotsByUnit,
+    getParkingSlotById,
+    addParkingSlot,
+    updateParkingSlot,
+    deleteParkingSlot,
+    updateParkingSlotLimit,
+  }),
+  [
+    units,
+    unitsVersion,
+    parkingSlots,
+    loadingUnits,
+    parkingSlotLimit,
+    usedParkingSlots,
+    remainingParkingSlots,
+    canAddMoreParkingSlots,
+    addUnit,
+    updateUnit,
+    deleteUnit,
+    uploadUnitImage,
+    uploadUnitVideo,
+    uploadUnitContract,
+    getUnitById,
+    refreshUnits,
+    getParkingSlotsByUnit,
+    getParkingSlotById,
+    addParkingSlot,
+    updateParkingSlot,
+    deleteParkingSlot,
+    updateParkingSlotLimit,
+  ]
+);
 
   return <UnitsContext.Provider value={value}>{children}</UnitsContext.Provider>;
 }

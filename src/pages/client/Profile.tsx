@@ -6,6 +6,7 @@ import AddressPicker from '../../components/common/AddressPicker';
 import PasswordStrengthIndicator from '../../components/common/PasswordStrengthIndicator';
 import { isPasswordPolicyValid } from '../../utils/passwordStrength';
 import FormField from '../../components/common/FormField';
+import AppNotice from '../../components/common/AppNotice';
 import {
   normalizeName,
   normalizeEmail,
@@ -67,7 +68,7 @@ export default function ClientProfile() {
   const isAdmin = user?.role === 'admin';
 
   const [isGoogleUser, setIsGoogleUser] = useState(false);
-  const [hasPasswordIdentity, setHasPasswordIdentity] = useState(false);
+const hasPasswordIdentity = user?.hasPassword === true;
 
   const [removingAvatar, setRemovingAvatar] = useState(false);  
 
@@ -83,7 +84,6 @@ export default function ClientProfile() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const messageTimeoutRef = useRef<number | null>(null);
 
   const fullName = useMemo(() => {
     return `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || 'User';
@@ -152,30 +152,60 @@ useEffect(() => {
 useEffect(() => {
   let cancelled = false;
 
-  const loadAuthProviders = async () => {
+  const syncAuthProviders = async () => {
     const {
       data: { user: authUser },
+      error: userError,
     } = await supabase.auth.getUser();
 
     if (cancelled) return;
 
-    const identities = authUser?.identities ?? [];
+    if (userError || !authUser) {
+      setIsGoogleUser(false);
+      return;
+    }
 
-    setIsGoogleUser(
-      identities.some((identity: any) => identity.provider === 'google')
-    );
+    const { data: identitiesData, error: identitiesError } =
+      await supabase.auth.getUserIdentities();
 
-    setHasPasswordIdentity(
-      identities.some((identity: any) => identity.provider === 'email')
-    );
+    if (cancelled) return;
+
+    const identities = identitiesError
+      ? authUser.identities ?? []
+      : identitiesData?.identities ?? [];
+
+    const providers = [...new Set(
+      identities
+        .map((identity: any) => identity?.provider)
+        .filter(Boolean)
+    )];
+
+    const hasGoogle = providers.includes('google');
+
+    setIsGoogleUser(hasGoogle);
+
+    console.log('linked auth providers', {
+      authUserId: authUser.id,
+      providers,
+      identities,
+      hasGoogle,
+      hasPasswordFromProfile: user?.hasPassword === true,
+    });
   };
 
-  void loadAuthProviders();
+  void syncAuthProviders();
+
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange(() => {
+    void syncAuthProviders();
+  });
 
   return () => {
     cancelled = true;
+    subscription.unsubscribe();
   };
-}, []);
+}, [user?.id, user?.hasPassword]);
 
 useEffect(() => {
   let cancelled = false;
@@ -214,28 +244,12 @@ useEffect(() => {
     cancelled = true;
   };
 }, [user?.id]);
-  useEffect(() => {
-    return () => {
-      if (messageTimeoutRef.current) {
-        window.clearTimeout(messageTimeoutRef.current);
-      }
-    };
-  }, []);
 
   
 
   const showMessage = useCallback((type: 'success' | 'error', text: string) => {
-    if (messageTimeoutRef.current) {
-      window.clearTimeout(messageTimeoutRef.current);
-    }
-
-    setMessage({ type, text });
-
-    messageTimeoutRef.current = window.setTimeout(() => {
-      setMessage(null);
-      messageTimeoutRef.current = null;
-    }, 4000);
-  }, []);
+  setMessage({ type, text });
+}, []);
 
   const resetPasswordForm = useCallback(() => {
     setPasswordForm(INITIAL_PASSWORD_FORM);
@@ -412,14 +426,13 @@ const handleProfileSubmit = useCallback(
 
         const success = await changePassword(passwordForm.newPassword);
 
-        if (success) {
-          setHasPasswordIdentity(true);
-          setChangingPassword(false);
-          resetPasswordForm();
-          showMessage('success', 'Password updated securely.');
-        } else {
-          showMessage('error', 'Failed to update password.');
-        }
+       if (success) {
+        setChangingPassword(false);
+        resetPasswordForm();
+        showMessage('success', 'Password updated securely.');
+      } else {
+        showMessage('error', 'Failed to update password.');
+      }
       } catch {
         showMessage('error', 'Failed to update password.');
       } finally {
@@ -602,28 +615,14 @@ const handleProceedDeletion = useCallback(async () => {
             </p>
           </div>
 
-          <AnimatePresence mode="wait">
-            {message && (
-              <motion.div
-                key={message.text}
-                initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -6 }}
-                className={`flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-medium shadow-sm ${
-                  message.type === 'success'
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                    : 'border-rose-200 bg-rose-50 text-rose-700'
-                }`}
-              >
-                {message.type === 'success' ? (
-                  <CheckCircle className="size-4 shrink-0" />
-                ) : (
-                  <AlertCircle className="size-4 shrink-0" />
-                )}
-                <span>{message.text}</span>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {message && (
+            <AppNotice
+              message={message.text}
+              variant={message.type}
+              onClose={() => setMessage(null)}
+              autoHideMs={4000}
+            />
+          )}
         </header>
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
@@ -1247,10 +1246,10 @@ className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 tex
     <ShieldCheck className="size-5 shrink-0" />
     <p className="text-sm font-medium">
       {isGoogleUser
-                          ? hasPasswordIdentity
-                            ? 'Google is linked to this account. You can unlink it because a password sign-in method is also available.'
-                            : 'Google is linked to this account. Add a password first before unlinking to avoid losing access.'
-        : 'Your account is secured with a unique password.'}
+  ? hasPasswordIdentity
+    ? 'Google is linked to this account. You can safely unlink it because email/password sign-in is already available.'
+    : 'Google is linked to this account. Add a password first before unlinking to avoid losing access.'
+  : 'Your account is secured with a unique password.'}
     </p>
   </div>
 
@@ -1276,7 +1275,7 @@ className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 tex
                         ) : (
                           <button
                             type="button"
-                            disabled={!hasPasswordIdentity}
+                            disabled={isGoogleUser && !hasPasswordIdentity}
                             onClick={async () => {
                               if (!hasPasswordIdentity) {
                                 showMessage(
@@ -1471,7 +1470,7 @@ function PasswordInput({
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="ml-1 block text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-500">
+      <label className="ml-0.5 block text-[12px] font-semibold text-slate-500">
         {label}
       </label>
 

@@ -1,8 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { sendEmailWithResend } from "../_shared/sendEmailWithResend.ts";
-import { adminNewTicketTemplate } from "../_shared/templates.ts";
+import { sendEmailWithResend } from "../_shared/email/resend.ts";
+import { adminNewTicketTemplate } from "../_shared/email/templates.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -173,4 +173,4 @@ serve(async (req) => {
       500
     );
   }
-});
+}); 

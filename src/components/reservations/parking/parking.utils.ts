@@ -1,14 +1,12 @@
 import type { Reservation } from "../../../data/types";
-import type { UnitAvailability, DurationType } from "../shared/reservation.types";
+import type {
+  UnitAvailability,
+  DurationType,
+} from "../shared/reservation.types";
 import { computeEndFromForm } from "../shared/reservation.utils";
 
 const BLOCKING_STATUSES = ["approved", "confirmed"] as const;
-
-export function isBlockingReservation(status?: string | null) {
-  return BLOCKING_STATUSES.includes(
-    (status ?? "") as (typeof BLOCKING_STATUSES)[number]
-  );
-}
+const SAME_DAY_HOURLY_LEAD_HOURS = 2;
 
 export const PARKING_DURATION_LIMITS = {
   hours: { min: 1, max: 24 },
@@ -16,30 +14,93 @@ export const PARKING_DURATION_LIMITS = {
   months: { min: 1, max: 12 },
 } as const;
 
-export function getParkingDurationBounds(
-  durationType: "hours" | "days" | "months"
-) {
+type ParkingDurationType = keyof typeof PARKING_DURATION_LIMITS;
+
+export function isBlockingReservation(status?: string | null) {
+  return BLOCKING_STATUSES.includes(
+    (status ?? "") as (typeof BLOCKING_STATUSES)[number]
+  );
+}
+
+export function getParkingDurationBounds(durationType: ParkingDurationType) {
   return PARKING_DURATION_LIMITS[durationType];
+}
+
+/**
+ * Parking reservations are fixed blocks only.
+ * Users cannot extend an active parking reservation.
+ * They must create a new reservation instead.
+ */
+export function parkingSupportsExtension() {
+  return false;
+}
+
+/**
+ * Parking charges are based on the reserved duration,
+ * not the actual time used.
+ */
+export function parkingChargesReservedPeriodOnly() {
+  return true;
+}
+
+export function shouldSwitchToDaily(
+  duration: number,
+  durationType: DurationType
+) {
+  return (
+    durationType === "hours" && duration > PARKING_DURATION_LIMITS.hours.max
+  );
+}
+
+export function shouldSwitchToMonthly(
+  duration: number,
+  durationType: DurationType
+) {
+  return durationType === "days" && duration > PARKING_DURATION_LIMITS.days.max;
 }
 
 export function validateParkingDuration(params: {
   duration: number;
-  durationType: "hours" | "days" | "months";
+  durationType: ParkingDurationType;
 }) {
   const { duration, durationType } = params;
   const bounds = getParkingDurationBounds(durationType);
 
-  if (!Number.isFinite(duration) || duration < bounds.min) {
-    return `Minimum is ${bounds.min} ${durationType}.`;
+  if (!Number.isFinite(duration)) {
+    return "Please enter a valid parking duration.";
+  }
+
+  if (!Number.isInteger(duration)) {
+    if (durationType === "hours") {
+      return "Hourly parking must be in whole hours.";
+    }
+
+    if (durationType === "days") {
+      return "Daily parking must be in whole days.";
+    }
+
+    return "Monthly parking must be in whole months.";
+  }
+
+  if (duration < bounds.min) {
+    if (durationType === "hours") {
+      return "Minimum hourly parking is 1 hour.";
+    }
+
+    if (durationType === "days") {
+      return "Daily parking minimum is 1 full day.";
+    }
+
+    return "Monthly parking minimum is 1 month.";
   }
 
   if (duration > bounds.max) {
     if (durationType === "hours") {
-      return "Hourly parking allows up to 24 hours only. Switch to Daily for longer stays.";
+      return "Hourly parking allows up to 24 hours only. For longer stays, switch to Daily.";
     }
 
     if (durationType === "days") {
-      return "Daily parking allows up to 30 days only. Switch to Monthly for longer stays.";
+      return "Daily parking allows up to 30 days only. For longer stays, switch to Monthly.";
     }
 
     return "Monthly parking allows up to 12 months only.";
@@ -48,9 +109,20 @@ export function validateParkingDuration(params: {
   return "";
 }
 
+export function getParkingDurationPolicyText(durationType: DurationType) {
+  if (durationType === "hours") {
+    return "Hourly parking is available in whole-hour blocks only, up to 24 hours.";
+  }
+
+  if (durationType === "days") {
+    return "Daily parking is billed in full-day blocks only. Partial-day daily reservations are not supported.";
+  }
+
+  return "Monthly parking is billed in full-month blocks only. Early departure does not reduce charges.";
+}
+
 /**
- * Parking can start today.
- * Unlike rental space, this should not force tomorrow-only selection.
+ * Parking reservations may start today.
  */
 export function getParkingMinStartDate() {
   const today = new Date();
@@ -70,42 +142,54 @@ export function isSameParkingDay(date?: Date | null) {
   );
 }
 
-/**
- * For same-day hourly parking, require a lead time.
- * Default: 30 minutes.
- */
-export function getParkingEarliestStartTime(bufferMinutes = 30) {
-  const next = new Date();
-  next.setMinutes(next.getMinutes() + bufferMinutes);
-  next.setSeconds(0, 0);
+function roundUpToNextWholeHour(date: Date) {
+  const next = new Date(date);
+
+  if (
+    next.getMinutes() > 0 ||
+    next.getSeconds() > 0 ||
+    next.getMilliseconds() > 0
+  ) {
+    next.setHours(next.getHours() + 1);
+  }
+
+  next.setMinutes(0, 0, 0);
   return next;
 }
 
-export function roundUpToNextTimeStep(date: Date, stepMinutes = 30) {
-  const rounded = new Date(date);
-  const minutes = rounded.getMinutes();
-  const remainder = minutes % stepMinutes;
+/**
+ * For same-day hourly parking:
+ * current time + lead hours, then rounded up to the next whole hour.
+ *
+ * Example:
+ * - now = 12:52 AM, lead = 2 hours => 3:00 AM
+ * - now = 1:13 PM, lead = 2 hours => 4:00 PM
+ */
+export function getParkingEarliestSelectableDateTime(
+  leadHours = SAME_DAY_HOURLY_LEAD_HOURS
+) {
+  const next = new Date();
+  next.setHours(next.getHours() + leadHours);
+  return roundUpToNextWholeHour(next);
+}
 
-  if (remainder !== 0) {
-    rounded.setMinutes(minutes + (stepMinutes - remainder));
-  }
+export function getParkingEarliestSelectableTimeValue(
+  leadHours = SAME_DAY_HOURLY_LEAD_HOURS
+) {
+  const next = getParkingEarliestSelectableDateTime(leadHours);
 
-  rounded.setSeconds(0, 0);
-
-  return rounded;
+  return `${String(next.getHours()).padStart(2, "0")}:${String(
+    next.getMinutes()
+  ).padStart(2, "0")}`;
 }
 
 export function getParkingEarliestStartTimeLabel(
-  bufferMinutes = 30,
-  stepMinutes = 30
+  leadHours = SAME_DAY_HOURLY_LEAD_HOURS
 ) {
-  const rounded = roundUpToNextTimeStep(
-    getParkingEarliestStartTime(bufferMinutes),
-    stepMinutes
-  );
+  const next = getParkingEarliestSelectableDateTime(leadHours);
 
-  const hours = rounded.getHours();
-  const minutes = rounded.getMinutes();
+  const hours = next.getHours();
+  const minutes = next.getMinutes();
   const suffix = hours >= 12 ? "PM" : "AM";
   const hour12 = hours % 12 === 0 ? 12 : hours % 12;
 
@@ -113,22 +197,18 @@ export function getParkingEarliestStartTimeLabel(
 }
 
 /**
- * Use this for submit validation when hourly parking supports same-day starts.
- * If selected date is today, start time must not be in the past and must respect the lead time.
+ * Validates same-day hourly parking against the exact same rule used
+ * by the UI time dropdown: lead time first, then round up to next hour.
  */
 export function validateSameDayHourlyParking(params: {
   startDate?: Date;
   startTime?: string;
-  bufferMinutes?: number;
+  leadHours?: number;
 }) {
-  const {
-    startDate,
-    startTime,
-    bufferMinutes = 30,
-  } = params;
+  const { startDate, startTime, leadHours = SAME_DAY_HOURLY_LEAD_HOURS } =
+    params;
 
   if (!startDate || !startTime) return "";
-
   if (!isSameParkingDay(startDate)) return "";
 
   const [hourStr, minuteStr] = startTime.split(":");
@@ -142,11 +222,11 @@ export function validateSameDayHourlyParking(params: {
   const selected = new Date(startDate);
   selected.setHours(hour, minute, 0, 0);
 
-  const earliest = getParkingEarliestStartTime(bufferMinutes);
+  const earliest = getParkingEarliestSelectableDateTime(leadHours);
 
   if (selected.getTime() < earliest.getTime()) {
     return `For same-day hourly parking, the earliest allowed start time is ${getParkingEarliestStartTimeLabel(
-      bufferMinutes
+      leadHours
     )}.`;
   }
 

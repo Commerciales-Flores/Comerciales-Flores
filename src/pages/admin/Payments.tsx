@@ -290,12 +290,35 @@ export default function AdminPayments() {
         : 'Unknown User';
 
       const reservationTotalAmount = Number(reservation?.totalAmount || 0);
-      const paidFromLedger = Number(ledgerTotalsByReservationId.get(payment.reservationId) || 0);
 
-      const progress =
-        reservationTotalAmount > 0
-          ? Math.min((paidFromLedger / reservationTotalAmount) * 100, 100)
-          : 0;
+// running total ONLY up to this payment
+const approvedPayments = payments
+  .filter(
+    (p) =>
+      p.reservationId === payment.reservationId &&
+      p.reviewStatus === 'approved'
+  )
+  .sort(
+    (a, b) =>
+      new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+
+let runningTotal = 0;
+
+for (const p of approvedPayments) {
+  runningTotal += Number(p.amount || 0);
+
+  if (p.id === payment.id) {
+    break;
+  }
+}
+
+const paidFromLedger = runningTotal;
+
+const progress =
+  reservationTotalAmount > 0
+    ? Math.min((paidFromLedger / reservationTotalAmount) * 100, 100)
+    : 0;
 
       const derivedStatus = getReservationPaymentStatus(progress);
       const refundedAmount = Number(refundedAmountByPaymentId.get(payment.id) || 0);

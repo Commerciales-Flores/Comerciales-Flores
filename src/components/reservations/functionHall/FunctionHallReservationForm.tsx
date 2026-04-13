@@ -237,10 +237,15 @@ export default function FunctionHallReservationForm({
             {calendarLegend}
 
             <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs leading-5 text-amber-700">
-                Function hall reservations must be one continuous available date range.
-                If you need dates separated by unavailable days, please submit separate reservations.
-              </p>
+              <div className="space-y-1 text-xs leading-5 text-amber-700">
+                <p>
+                  Same-day reservations are not allowed. The earliest available booking date is tomorrow.
+                </p>
+                <p>
+                  Function hall reservations must be one continuous available date range.
+                  If you need dates separated by unavailable days, please submit separate reservations.
+                </p>
+              </div>
 
               {(form.startDate || form.endDate) && (
                 <button

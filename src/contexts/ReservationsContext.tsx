@@ -31,8 +31,24 @@ async function notifyAdminsNewReservation(params: {
   endDate?: string | null;
   amount?: number | null;
 }) {
-  const { error } = await supabase.functions.invoke("send-admin-new-reservation", {
-    body: params,
+  const secret = import.meta.env.VITE_ADMIN_NEW_RESERVATION_SECRET;
+
+  const { data, error } = await supabase.functions.invoke(
+    "send-admin-new-reservation",
+    {
+      body: params,
+      headers: {
+        Authorization: `Bearer ${secret}`,
+      },
+    }
+  );
+
+  // 👇 FULL RESPONSE LOG
+  console.log("send-admin-new-reservation response:", {
+    secret,
+    secretExists: Boolean(secret),
+    data,
+    error,
   });
 
   if (error) {
@@ -857,6 +873,65 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         .eq('reservation_id', id);
 
       if (error) throw error;
+
+      // 🔔 Send client email when reservation status changes
+const previousStatus = existingReservation.status;
+const nextStatus = reservationUpdate.status;
+
+if (nextStatus && nextStatus !== previousStatus) {
+  let action: 'approved' | 'rejected' | 'completed' | null = null;
+
+  if (nextStatus === 'confirmed') {
+    action = 'approved';
+  } else if (nextStatus === 'rejected') {
+    action = 'rejected';
+  } else if (nextStatus === 'completed') {
+    action = 'completed';
+  }
+
+  if (action) {
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      const accessToken = session?.access_token;
+
+      if (sessionError || !accessToken) {
+        throw new Error('Missing valid session for reservation update email.');
+      }
+
+      const { data, error } = await supabase.functions.invoke(
+        'send-reservation-update',
+        {
+          body: {
+            reservationId: id,
+            action,
+            notes:
+              typeof reservationUpdate.notes === 'string'
+                ? reservationUpdate.notes
+                : existingReservation.notes ?? null,
+          },
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }
+      );
+
+      console.log('send-reservation-update response:', { data, error });
+
+      if (error) {
+        console.error('Failed to send reservation update email:', error);
+      }
+    } catch (notificationError) {
+      console.error(
+        'Failed to trigger reservation update notification:',
+        notificationError
+      );
+    }
+  }
+}
 
       const updatedReservation = buildAuditSnapshot(existingReservation, reservationUpdate);
       const changedFields = getChangedFields(existingReservation, reservationUpdate);

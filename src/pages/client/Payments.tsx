@@ -1553,23 +1553,35 @@ const handleFilterSelectFromSheet = useCallback((status: PaymentFilterStatus) =>
                             </div>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => handleDownloadInvoice(payment)}
-                            className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border shadow-sm transition ${
-                              ledgerEntry
-                                ? 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                                : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
-                            }`}
-                            title={
-                              ledgerEntry
-                                ? 'Download invoice'
-                                : 'Invoice available after ledger posting'
-                            }
-                            aria-label="Download invoice"
-                          >
-                            <FileDown className="size-4" />
-                          </button>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {proofSrc && (
+                              <button
+                                type="button"
+                                onClick={() => setViewingImage(proofSrc)}
+                                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 hover:text-slate-900"
+                                title="View proof"
+                              >
+                                <Eye className="size-4" />
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadInvoice(payment)}
+                              className={`inline-flex h-11 w-11 items-center justify-center rounded-2xl border shadow-sm transition ${
+                                ledgerEntry
+                                  ? 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                  : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                              }`}
+                              title={
+                                ledgerEntry
+                                  ? 'Download invoice'
+                                  : 'Invoice available after ledger posting'
+                              }
+                            >
+                              <FileDown className="size-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
 
@@ -1584,150 +1596,149 @@ const handleFilterSelectFromSheet = useCallback((status: PaymentFilterStatus) =>
                             >
                               <div className="p-5 sm:p-6">
                                 <div className="space-y-4">
-                            <div className="flex flex-wrap items-start justify-between gap-2">
-                              <div className="min-w-0">
-                            <h4 className="truncate text-sm sm:text-lg font-semibold text-slate-900">
-                              {reservation?.unitName ?? 'Unknown Unit'}
-                            </h4>
+                            <div className="space-y-3">
+  <div className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
+    <div className="flex flex-col gap-2">
+      <div>
+        <h4 className="truncate text-sm font-semibold leading-tight text-slate-900 sm:text-base">
+          {reservation?.unitName ?? 'Unknown Unit'}
+        </h4>
+        <p className="mt-0.5 text-[11px] text-slate-500">
+          Reservation ID: {reservation?.publicId ?? reservation?.id ?? 'N/A'}
+        </p>
+      </div>
 
-                            <p className="text-xs text-slate-500">
-                              Reservation ID: {reservation?.publicId ?? reservation?.id ?? 'N/A'}
-                            </p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[10px] font-semibold text-blue-600">
+          {reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A'}
+        </span>
 
-                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                            <span className="text-[10px] font-semibold text-blue-600">
-                              {reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A'}
-                            </span>
+        <UnitTaxonomyBadges
+          category={unit?.category}
+          subtype={unit?.subtype}
+          size="sm"
+        />
+      </div>
 
-                            <UnitTaxonomyBadges
-                              category={unit?.category}
-                              subtype={unit?.subtype}
-                              size="sm"
-                            />
-                          </div>
+      {payment.notes && (
+        <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+            Notes
+          </p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {payment.notes}
+          </p>
+        </div>
+      )}
+    </div>
+  </div>
 
-                              <div className="flex items-center gap-2">
-                                {proofSrc ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => setViewingImage(proofSrc)}
-                                    className="inline-flex h-8 w-8 sm:h-auto sm:w-auto items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 sm:px-2.5 sm:py-1.5 sm:gap-1.5"
-                                  >
-                                    <Eye className="size-3.5" />
-                                    <span className="hidden sm:inline text-xs font-medium">Proof</span>
-                                  </button>
-                                ) : (
-                                  <span className="text-[10px] text-slate-400">No proof</span>
-                                )}
+  <div className="min-w-0">
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        togglePaymentDetails(payment.id);
+      }}
+      className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left transition hover:bg-slate-100"
+    >
+      <div className="min-w-0">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+          Payment Details
+        </p>
+        <p className="mt-0.5 text-xs leading-4 text-slate-400">
+          Reservation, method, status, ledger, reference, and recorded date
+        </p>
+      </div>
+
+      <motion.div
+        animate={{ rotate: isDetailsExpanded ? 180 : 0 }}
+        transition={{ duration: 0.2 }}
+        className="ml-3 shrink-0 rounded-lg bg-white p-1 shadow-sm"
+      >
+        <ChevronDown className="size-4 text-slate-500" />
+      </motion.div>
+    </button>
+
+    <AnimatePresence initial={false}>
+      {isDetailsExpanded && (
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.18 }}
+          className="overflow-hidden"
+        >
+          <div className="mt-2 rounded-2xl border border-slate-200 bg-white p-2.5 sm:p-3">
+  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 sm:gap-x-5 sm:gap-y-1.5">
+    <div className="flex items-center justify-between gap-3 px-0.5 py-0.5">
+      <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
+        <ReceiptText className="size-3.5 shrink-0 text-blue-600" />
+        <span className="text-[11px] sm:text-[13px]">Reservation ID</span>
+      </div>
+      <span className="truncate text-right text-[12px] font-semibold text-slate-900 sm:text-[13px]">
+        {reservation?.publicId ?? reservation?.id ?? 'N/A'}
+      </span>
+    </div>
+
+    <div className="flex items-center justify-between gap-3 px-0.5 py-0.5">
+      <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
+        <Landmark className="size-3.5 shrink-0 text-emerald-600" />
+        <span className="text-[11px] sm:text-[13px]">Payment Method</span>
+      </div>
+      <span className="truncate text-right text-[12px] font-semibold text-slate-900 sm:text-[13px]">
+        {formatPaymentMethod(payment.method)}
+      </span>
+    </div>
+
+    <div className="flex items-center justify-between gap-3 px-0.5 py-0.5">
+      <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
+        <Clock3 className="size-3.5 shrink-0 text-amber-600" />
+        <span className="text-[11px] sm:text-[13px]">Status</span>
+      </div>
+      <span className="truncate text-right text-[12px] font-semibold capitalize text-slate-900 sm:text-[13px]">
+        {payment.status}
+      </span>
+    </div>
+
+    <div className="flex items-center justify-between gap-3 px-0.5 py-0.5">
+      <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
+        <ReceiptText className="size-3.5 shrink-0 text-violet-600" />
+        <span className="text-[11px] sm:text-[13px]">Ledger Entry</span>
+      </div>
+      <span className="truncate text-right text-[12px] font-semibold text-slate-900 sm:text-[13px]">
+        {ledgerEntry?.publicId ?? ledgerEntry?.id ?? 'N/A'}
+      </span>
+    </div>
+
+    <div className="flex items-center justify-between gap-3 px-0.5 py-0.5">
+      <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
+        <CreditCard className="size-3.5 shrink-0 text-sky-600" />
+        <span className="text-[11px] sm:text-[13px]">Reference No</span>
+      </div>
+      <span className="truncate text-right text-[12px] font-semibold text-slate-900 sm:text-[13px]">
+        {ledgerEntry?.referenceNo || 'N/A'}
+      </span>
+    </div>
+
+    <div className="flex items-center justify-between gap-3 px-0.5 py-0.5">
+      <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
+        <Clock3 className="size-3.5 shrink-0 text-rose-600" />
+        <span className="text-[11px] sm:text-[13px]">Recorded</span>
+      </div>
+      <span className="truncate text-right text-[12px] font-semibold text-slate-900 sm:text-[13px]">
+        {ledgerEntry?.recordedAt ? formatDate(ledgerEntry.recordedAt) : 'Pending'}
+      </span>
+    </div>
+  </div>
+</div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </div>
+</div>
                               </div>
-                            </div>
-                        <div className="border-t border-slate-100 pt-2">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              togglePaymentDetails(payment.id);
-                            }}
-                            className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-left transition hover:bg-slate-100"
-                          >
-                            <div>
-                        <p className={`${uiTypography.miniStatLabel} text-gray-500`}>        Payment Details
-                              </p>
-                              <p className={`${uiTypography.helperText} mt-0.5 text-xs sm:text-sm text-gray-400`}>
-                                View reservation ID, method, status, ledger, reference, and recorded date
-                              </p>
-                            </div>
-
-
-                            {!isMobile && (
-                              <motion.div
-                                animate={{ rotate: isDetailsExpanded ? 180 : 0 }}
-                                transition={{ duration: 0.2 }}
-                                className="rounded-lg bg-white p-1 shadow-sm"
-                              >
-                                <ChevronDown className="size-4 text-slate-500" />
-                              </motion.div>
-                            )}
-                          </button>
-
-                          <AnimatePresence initial={false}>
-                            {isDetailsExpanded && (
-                              <motion.div
-                                initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: 'auto', opacity: 1 }}
-                                exit={{ height: 0, opacity: 0 }}
-                                transition={{ duration: 0.2 }}
-                                className="overflow-hidden"
-                              >
-                                <div className="mt-3 rounded-[18px] sm:rounded-[20px] border border-slate-200 bg-white p-3 sm:p-4">
-                                  <div className="space-y-1.5 sm:space-y-3 text-[12px] sm:text-sm">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="flex items-center gap-1.5 text-slate-500">
-                                        <ReceiptText className="size-3.5 sm:size-4 text-blue-600" />
-                                        <span className="text-[11px] sm:text-sm">Reservation ID</span>
-                                      </div>
-                                      <span className="font-medium text-slate-900 text-right">
-                                        {reservation?.publicId ?? reservation?.id ?? 'N/A'}
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="flex items-center gap-1.5 text-slate-500">
-                                        <Landmark className="size-3.5 sm:size-4 text-emerald-600" />
-                                        <span className="text-[11px] sm:text-sm">Payment Method</span>
-                                      </div>
-                                      <span className="font-medium text-slate-900 text-right">
-                                        {formatPaymentMethod(payment.method)}
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="flex items-center gap-1.5 text-slate-500">
-                                        <CreditCard className="size-3.5 sm:size-4 text-amber-600" />
-                                        <span className="text-[11px] sm:text-sm">Status</span>
-                                      </div>
-                                      <span className="font-medium text-slate-900 text-right capitalize">
-                                        {String(payment.status)}
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="flex items-center gap-1.5 text-slate-500">
-                                        <ReceiptText className="size-3.5 sm:size-4 text-violet-600" />
-                                        <span className="text-[11px] sm:text-sm">Ledger Entry</span>
-                                      </div>
-                                      <span className="font-medium text-slate-900 text-right">
-                                        {ledgerEntry?.publicId || ledgerEntry?.id || 'N/A'}
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="flex items-center gap-1.5 text-slate-500">
-                                        <ReceiptText className="size-3.5 sm:size-4 text-slate-600" />
-                                        <span className="text-[11px] sm:text-sm">Reference No</span>
-                                      </div>
-                                      <span className="font-medium text-slate-900 text-right">
-                                        {ledgerEntry?.referenceNo || 'N/A'}
-                                      </span>
-                                    </div>
-
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="flex items-center gap-1.5 text-slate-500">
-                                        <Clock3 className="size-3.5 sm:size-4 text-rose-600" />
-                                        <span className="text-[11px] sm:text-sm">Recorded</span>
-                                      </div>
-                                      <span className="font-medium text-slate-900 text-right">
-                                        {ledgerEntry ? formatDate(ledgerEntry.recordedAt) : 'Not yet posted'}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                            </div>
-                        </div>
+                              </div>
                             </motion.div>
                           )}
                         </AnimatePresence>
