@@ -814,26 +814,30 @@ const featuredSlides = useMemo(() => {
                                 />
                               )}
 
-                              <div className="absolute left-4 top-4 flex flex-col gap-1">
-                              <span className="w-fit rounded-full bg-white/90 px-3 py-1 text-[10px] font-bold text-blue-600 shadow-sm md:text-xs">
-                                {getUnitTypeLabel(unit.type)}
-                              </span>
+                              {/* MAIN TYPE BADGE (TOP LEFT) */}
+<div className="absolute left-4 top-4">
+  <span className="w-fit rounded-full bg-white/90 px-3 py-1 text-[10px] font-bold text-blue-600 shadow-sm md:text-xs">
+    {getUnitTypeLabel(unit.type)}
+  </span>
+</div>
 
-                              <UnitTaxonomyBadges
-                                category={unit.category}
-                                subtype={unit.subtype}
-                                size="sm"
-                                className="flex-col items-start gap-1"
-                              />
-                            </div>
+{/* CATEGORY + SUBTYPE (BOTTOM LEFT) */}
+<div className="absolute left-4 bottom-4 flex flex-col gap-1">
+  <UnitTaxonomyBadges
+    category={unit.category}
+    subtype={unit.subtype}
+    size="sm"
+    className="flex-col items-start gap-1"
+  />
+</div>
 
-                              {unit.videos?.length ? (
-                                <div className="absolute right-4 top-4 rounded-full bg-black/70 px-3 py-1 text-[10px] font-bold text-white shadow-sm md:text-xs">
-                                  {unit.videos.length} video
-                                  {unit.videos.length > 1 ? "s" : ""}
-                                </div>
-                              ) : null}
-                            </div>
+                                {unit.videos?.length ? (
+                                  <div className="absolute right-4 top-4 rounded-full bg-black/70 px-3 py-1 text-[10px] font-bold text-white shadow-sm md:text-xs">
+                                    {unit.videos.length} video
+                                    {unit.videos.length > 1 ? "s" : ""}
+                                  </div>
+                                ) : null}
+                              </div>
 
                             <div className="flex flex-col justify-center p-6 md:p-10 lg:p-12">
                               <h3 className="mb-2 text-lg font-bold text-slate-900 md:mb-4 md:text-3xl">

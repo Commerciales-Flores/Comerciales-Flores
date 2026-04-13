@@ -292,7 +292,21 @@ const clearLogoutGreeting = useCallback(() => {
   sessionStorage.removeItem(LAST_LOGIN_USER_KEY);
   sessionStorage.removeItem(LOGOUT_GREETING_ACTIVE_KEY);
 }, []);
+const resetLoginFailures = useCallback(async (email?: string | null) => {
+  const normalizedEmail = normalizeEmail(email ?? '');
 
+  if (!normalizedEmail) return;
+
+  try {
+    await supabase.rpc('reset_login_failures', {
+      p_email: normalizedEmail,
+    });
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn('Failed to reset login failures:', error);
+    }
+  }
+}, []);
     
   const getActivityStorage = useCallback((role?: User['role']) => {
   return role === 'admin' ? localStorage : sessionStorage;
@@ -916,6 +930,7 @@ if (isOAuthProvider) {
 
       persistUserSession(nextProfile);
       writeActivity(nextProfile.role, Date.now());
+      await resetLoginFailures(session.user?.email);
     } catch (error) {
       console.error('Session init failed:', error);
       if (isMountedRef.current) {
@@ -948,6 +963,7 @@ if (isOAuthProvider) {
   writeActivity,
   hasOAuthCollisionNotice,
   showIndicator,
+  resetLoginFailures,
 ]);
 
   useEffect(() => {
@@ -1137,6 +1153,7 @@ useEffect(() => {
 
         persistUserSession(nextProfile);
         writeActivity(nextProfile.role, Date.now());
+        await resetLoginFailures(session.user?.email);  
       } catch (error) {
         console.error('onAuthStateChange error:', error);
       }
@@ -1160,6 +1177,7 @@ useEffect(() => {
   verifyCurrentSessionDevice,
   writeActivity,
   hasOAuthCollisionNotice,
+  resetLoginFailures,
 ]);
 
 
@@ -1409,21 +1427,23 @@ const nextProfile: User = {
 };
 
       pendingDeviceVerificationRef.current = false;
-      persistUserSession(nextProfile);
-      writeActivity(nextProfile.role, Date.now());
+persistUserSession(nextProfile);
+writeActivity(nextProfile.role, Date.now());
 
-      void addAuthAuditLog({
-        userId: data.user.id,
-        action: 'LOGIN',
-        changedFields: ['last_login', 'active_session_id'],
-        notes: 'User login via email/password',
-      });
+await resetLoginFailures(normalizedEmail);
 
-      void supabase.functions.invoke('record-login-context', {
-        body: { email: normalizedEmail },
-      });
+void addAuthAuditLog({
+  userId: data.user.id,
+  action: 'LOGIN',
+  changedFields: ['last_login', 'active_session_id'],
+  notes: 'User login via email/password',
+});
 
-      return { success: true };
+void supabase.functions.invoke('record-login-context', {
+  body: { email: normalizedEmail },
+});
+
+return { success: true };
     } catch (err) {
       pendingDeviceVerificationRef.current = false;
       return { success: false, error: 'invalid_login' };
@@ -1445,6 +1465,7 @@ const nextProfile: User = {
     clearLocalActiveSessionId,
     shouldEnforceSingleSession,
     hasOAuthCollisionNotice,
+    resetLoginFailures,
   ]
 );
   const loginWithGoogle = useCallback(async () => {

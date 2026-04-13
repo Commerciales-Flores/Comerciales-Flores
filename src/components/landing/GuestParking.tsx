@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   CarFront,
@@ -14,8 +14,18 @@ import {
   sanitizePlainText,
   sanitizePhoneInput,
 } from "../../utils/DataNormalization";
+import {
+  getParkingDurationBounds,
+  validateParkingDuration,
+  getParkingMinStartDate,
+  isSameParkingDay,
+  getParkingEarliestStartTimeLabel,
+  getParkingDurationPolicyText,
+  getParkingEarliestSelectableTimeValue,
+  validateSameDayHourlyParking,
+} from "../reservations/parking/parking.utils";
 
-type GuestParkingDuration = "hourly" | "daily" | "monthly";
+type ParkingDurationType = "hours" | "days" | "months";
 
 type GuestParkingForm = {
   firstName: string;
@@ -24,7 +34,7 @@ type GuestParkingForm = {
   phone: string;
   vehicleType: string;
   plateNumber: string;
-  durationType: GuestParkingDuration;
+  durationType: ParkingDurationType;
   durationValue: string;
   startDate: string;
   startTime: string;
@@ -32,32 +42,41 @@ type GuestParkingForm = {
 };
 
 const DURATION_OPTIONS: Array<{
-  value: GuestParkingDuration;
+  value: ParkingDurationType;
   label: string;
-  helper: string;
+  helperLabel: string;
   icon: typeof Clock3;
 }> = [
   {
-    value: "hourly",
+    value: "hours",
     label: "Hourly",
-    helper: "Short stays during business hours",
+    helperLabel: "Short stays",
     icon: Clock3,
   },
   {
-    value: "daily",
+    value: "days",
     label: "Daily",
-    helper: "Whole-day parking requests",
+    helperLabel: "Full-day parking",
     icon: CalendarDays,
   },
   {
-    value: "monthly",
+    value: "months",
     label: "Monthly",
-    helper: "Longer-term parking arrangement",
+    helperLabel: "Longer-term arrangement",
     icon: CalendarRange,
   },
 ];
 
-const BUSINESS_HOUR_OPTIONS = [
+const HOURLY_TIME_OPTIONS = [
+  { value: "00:00", label: "12:00 AM" },
+  { value: "01:00", label: "1:00 AM" },
+  { value: "02:00", label: "2:00 AM" },
+  { value: "03:00", label: "3:00 AM" },
+  { value: "04:00", label: "4:00 AM" },
+  { value: "05:00", label: "5:00 AM" },
+  { value: "06:00", label: "6:00 AM" },
+  { value: "07:00", label: "7:00 AM" },
+  { value: "08:00", label: "8:00 AM" },
   { value: "09:00", label: "9:00 AM" },
   { value: "10:00", label: "10:00 AM" },
   { value: "11:00", label: "11:00 AM" },
@@ -67,17 +86,24 @@ const BUSINESS_HOUR_OPTIONS = [
   { value: "15:00", label: "3:00 PM" },
   { value: "16:00", label: "4:00 PM" },
   { value: "17:00", label: "5:00 PM" },
+  { value: "18:00", label: "6:00 PM" },
+  { value: "19:00", label: "7:00 PM" },
+  { value: "20:00", label: "8:00 PM" },
+  { value: "21:00", label: "9:00 PM" },
+  { value: "22:00", label: "10:00 PM" },
+  { value: "23:00", label: "11:00 PM" },
 ];
 
-function getTodayInputValue() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-
-  const year = d.getFullYear();
-  const month = `${d.getMonth() + 1}`.padStart(2, "0");
-  const day = `${d.getDate()}`.padStart(2, "0");
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function getTodayInputValue() {
+  return toDateInputValue(getParkingMinStartDate());
 }
 
 function buildInitialForm(): GuestParkingForm {
@@ -88,10 +114,10 @@ function buildInitialForm(): GuestParkingForm {
     phone: "",
     vehicleType: "",
     plateNumber: "",
-    durationType: "hourly",
+    durationType: "hours",
     durationValue: "1",
     startDate: getTodayInputValue(),
-    startTime: "09:00",
+    startTime: "",
     notes: "",
   };
 }
@@ -100,6 +126,8 @@ function formatTime12h(time?: string) {
   if (!time) return "";
 
   const [h, m] = time.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return "";
+
   const suffix = h >= 12 ? "PM" : "AM";
   const displayHour = ((h + 11) % 12) + 1;
 
@@ -107,9 +135,11 @@ function formatTime12h(time?: string) {
 }
 
 function computeEndTime(start?: string, duration?: number) {
-  if (!start || !duration) return "";
+  if (!start || !duration || !Number.isFinite(duration)) return "";
 
   const [h, m] = start.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return "";
+
   const date = new Date();
   date.setHours(h, m, 0, 0);
   date.setHours(date.getHours() + duration);
@@ -122,17 +152,9 @@ function computeEndTime(start?: string, duration?: number) {
   return `${displayHour}:${minutes.toString().padStart(2, "0")} ${suffix}`;
 }
 
-function mapDurationTypeToDb(value: GuestParkingDuration) {
-  switch (value) {
-    case "hourly":
-      return "hours";
-    case "daily":
-      return "days";
-    case "monthly":
-      return "months";
-    default:
-      return "hours";
-  }
+function timeValueToMinutes(value: string) {
+  const [hour, minute] = value.split(":").map(Number);
+  return hour * 60 + minute;
 }
 
 export default function GuestParking() {
@@ -141,21 +163,95 @@ export default function GuestParking() {
   const [submitError, setSubmitError] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
-  const durationBounds = useMemo(() => {
-    switch (form.durationType) {
-      case "hourly":
-        return { min: 1, max: 8, label: "Hours" };
-      case "daily":
-        return { min: 1, max: 30, label: "Days" };
-      case "monthly":
-        return { min: 1, max: 12, label: "Months" };
-      default:
-        return { min: 1, max: 8, label: "Duration" };
+  const durationBounds = useMemo(
+    () => getParkingDurationBounds(form.durationType),
+    [form.durationType]
+  );
+
+  const startDateObject = useMemo(() => {
+    return form.startDate ? new Date(`${form.startDate}T00:00:00`) : undefined;
+  }, [form.startDate]);
+
+  const isSameDayStart = useMemo(
+    () => isSameParkingDay(startDateObject),
+    [startDateObject]
+  );
+
+  const earliestSameDayTimeValue = useMemo(
+    () => getParkingEarliestSelectableTimeValue(),
+    []
+  );
+
+  const availableHourlyOptions = useMemo(() => {
+    if (form.durationType !== "hours") return HOURLY_TIME_OPTIONS;
+    if (!isSameDayStart) return HOURLY_TIME_OPTIONS;
+
+    const earliestMinutes = timeValueToMinutes(earliestSameDayTimeValue);
+
+    return HOURLY_TIME_OPTIONS.filter(
+      (option) => timeValueToMinutes(option.value) >= earliestMinutes
+    );
+  }, [form.durationType, isSameDayStart, earliestSameDayTimeValue]);
+
+  useEffect(() => {
+    if (form.durationType !== "hours") {
+      if (form.startTime !== "") {
+        setForm((prev) => ({ ...prev, startTime: "" }));
+      }
+      return;
     }
-  }, [form.durationType]);
+
+    const fallbackTime = availableHourlyOptions[0]?.value || "";
+
+    if (!form.startTime) {
+      setForm((prev) => ({
+        ...prev,
+        startTime: fallbackTime,
+      }));
+      return;
+    }
+
+    if (!isSameDayStart) return;
+
+    const selectedMinutes = timeValueToMinutes(form.startTime);
+    const earliestMinutes = timeValueToMinutes(earliestSameDayTimeValue);
+
+    if (selectedMinutes < earliestMinutes) {
+      setForm((prev) => ({
+        ...prev,
+        startTime: fallbackTime,
+      }));
+    }
+  }, [
+    form.durationType,
+    form.startTime,
+    isSameDayStart,
+    earliestSameDayTimeValue,
+    availableHourlyOptions,
+  ]);
+
+  const durationError = useMemo(() => {
+    const durationValue = Number(form.durationValue || "0");
+
+    if (!form.durationValue) return "";
+
+    return validateParkingDuration({
+      duration: durationValue,
+      durationType: form.durationType,
+    });
+  }, [form.durationType, form.durationValue]);
+
+  const sameDayHourlyError = useMemo(() => {
+    if (form.durationType !== "hours") return "";
+
+    return validateSameDayHourlyParking({
+      startDate: startDateObject,
+      startTime: form.startTime,
+    });
+  }, [form.durationType, startDateObject, form.startTime]);
 
   const endTime = useMemo(() => {
-    if (form.durationType !== "hourly") return "";
+    if (form.durationType !== "hours") return "";
     return computeEndTime(form.startTime, Number(form.durationValue || "0"));
   }, [form.durationType, form.startTime, form.durationValue]);
 
@@ -205,32 +301,19 @@ export default function GuestParking() {
     []
   );
 
-  const handleDurationTypeChange = useCallback((value: GuestParkingDuration) => {
+  const handleDurationTypeChange = useCallback((value: ParkingDurationType) => {
     setSubmitError("");
     setSubmitted(false);
+
+    const nextBounds = getParkingDurationBounds(value);
 
     setForm((prev) => ({
       ...prev,
       durationType: value,
-      durationValue: "1",
-      startTime: value === "monthly" ? "" : "09:00",
+      durationValue: String(nextBounds.min),
+      startTime: value === "hours" ? prev.startTime : "",
     }));
   }, []);
-
-  const businessHoursError = useMemo(() => {
-    if (form.durationType !== "hourly" || !form.startTime) return "";
-
-    const startHour = Number(form.startTime.split(":")[0]);
-    const duration = Number(form.durationValue || "0");
-
-    if (!duration) return "";
-
-    if (startHour + duration > 17) {
-      return "Hourly parking cannot go beyond business hours (5:00 PM).";
-    }
-
-    return "";
-  }, [form.durationType, form.startTime, form.durationValue]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -264,23 +347,18 @@ export default function GuestParking() {
         return;
       }
 
-      if (
-        durationValue < durationBounds.min ||
-        durationValue > durationBounds.max
-      ) {
-        setSubmitError(
-          `Please enter a valid ${durationBounds.label.toLowerCase()} value between ${durationBounds.min} and ${durationBounds.max}.`
-        );
+      if (durationError) {
+        setSubmitError(durationError);
         return;
       }
 
-      if ((durationType === "hourly" || durationType === "daily") && !startTime) {
+      if (durationType === "hours" && !startTime) {
         setSubmitError("Please select a preferred start time.");
         return;
       }
 
-      if (businessHoursError) {
-        setSubmitError(businessHoursError);
+      if (sameDayHourlyError) {
+        setSubmitError(sameDayHourlyError);
         return;
       }
 
@@ -289,7 +367,6 @@ export default function GuestParking() {
       setSubmitted(false);
 
       const fullName = `${firstName} ${lastName}`.trim();
-      const dbDurationType = mapDurationTypeToDb(durationType);
 
       const payload = {
         full_name: fullName,
@@ -298,23 +375,12 @@ export default function GuestParking() {
         vehicle_type: vehicleType,
         plate_number: plateNumber,
         duration: durationValue,
-        duration_type: dbDurationType,
-        start_date:
-          durationType === "monthly"
-            ? `${startDate}T00:00:00`
-            : `${startDate}T00:00:00`,
-        appointment_time:
-          durationType === "monthly" ? null : `${startTime}:00`,
+        duration_type: durationType,
+        start_date: `${startDate}T00:00:00`,
+        appointment_time: durationType === "hours" ? `${startTime}:00` : null,
         notes: notes || null,
         status: "pending",
         unit_type: "parking_slot",
-        /*
-          IMPORTANT:
-          Your current SQL requires unit_id NOT NULL.
-          This component has no slot picker yet, so this insert will only work if:
-          1) you made unit_id nullable temporarily, OR
-          2) you add unit selection and pass a real unit_id here.
-        */
       };
 
       const { error } = await supabase
@@ -335,7 +401,7 @@ export default function GuestParking() {
       setForm(buildInitialForm());
       setIsSubmitting(false);
     },
-    [businessHoursError, durationBounds, form, isSubmitting]
+    [durationError, form, isSubmitting, sameDayHourlyError]
   );
 
   return (
@@ -379,212 +445,358 @@ export default function GuestParking() {
                         active ? "text-blue-100" : "text-slate-500"
                       }`}
                     >
-                      {option.helper}
+                      {option.helperLabel}
                     </p>
                   </button>
                 );
               })}
             </div>
 
-            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <input
-                  type="text"
-                  maxLength={100}
-                  placeholder="First Name"
-                  value={form.firstName}
-                  disabled={isSubmitting}
-                  onChange={(e) => updateField("firstName", e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
+            <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+  <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+    Parking requests may start <strong>today</strong>. Same-day hourly
+    requests are time-sensitive and only show valid future time blocks.
+    <strong> Extensions are not supported</strong> for parking at this time.
+  </div>
 
-                <input
-                  type="text"
-                  maxLength={100}
-                  placeholder="Last Name"
-                  value={form.lastName}
-                  disabled={isSubmitting}
-                  onChange={(e) => updateField("lastName", e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
+  <div>
+    <label className="mb-2 block text-sm text-gray-700">
+      Reservation Period
+    </label>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <input
-                  type="email"
-                  maxLength={150}
-                  placeholder="Email"
-                  value={form.email}
-                  disabled={isSubmitting}
-                  onChange={(e) => updateField("email", e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
+    <div className="grid grid-cols-3 gap-2">
+      {(["hours", "days", "months"] as const).map((type) => {
+        const active = form.durationType === type;
 
-                <input
-                  type="text"
-                  maxLength={20}
-                  placeholder="Phone Number"
-                  value={form.phone}
-                  disabled={isSubmitting}
-                  onChange={(e) => updateField("phone", e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
+        const label =
+          type === "hours"
+            ? "Hourly"
+            : type === "days"
+              ? "Daily"
+              : "Monthly";
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <input
-                  type="text"
-                  maxLength={50}
-                  placeholder="Vehicle Type"
-                  value={form.vehicleType}
-                  disabled={isSubmitting}
-                  onChange={(e) => updateField("vehicleType", e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
+        return (
+          <button
+            key={type}
+            type="button"
+            onClick={() => handleDurationTypeChange(type)}
+            disabled={isSubmitting}
+            className={`rounded-xl border px-3 py-2 text-sm font-medium tracking-wide transition ${
+              active
+                ? "border-blue-600 bg-blue-600 text-white"
+                : "border-gray-300 bg-white text-gray-700 hover:border-blue-400 hover:text-blue-700"
+            } disabled:cursor-not-allowed disabled:opacity-60`}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
 
-                <input
-                  type="text"
-                  maxLength={20}
-                  placeholder="Plate Number"
-                  value={form.plateNumber}
-                  disabled={isSubmitting}
-                  onChange={(e) => updateField("plateNumber", e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3 uppercase placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
+    <p className="mt-1 text-xs text-blue-600">
+      {getParkingDurationPolicyText(form.durationType)}
+    </p>
+  </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-                    {durationBounds.label}
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={2}
-                    value={form.durationValue}
-                    disabled={isSubmitting}
-                    onChange={(e) => updateField("durationValue", e.target.value)}
-                    className="w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
+  <div className="grid gap-4 md:grid-cols-2">
+    <div>
+      <label className="mb-2 block text-sm text-gray-700">
+        Start Date
+      </label>
+      <input
+        type="date"
+        min={getTodayInputValue()}
+        value={form.startDate}
+        disabled={isSubmitting}
+        onChange={(e) => updateField("startDate", e.target.value)}
+        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+        required
+      />
+      <p className="mt-1 text-xs text-gray-500">
+        Earliest allowed start date: today
+      </p>
+    </div>
 
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-                    Start Date
-                  </label>
-                  <input
-                    type="date"
-                    min={getTodayInputValue()}
-                    value={form.startDate}
-                    disabled={isSubmitting}
-                    onChange={(e) => updateField("startDate", e.target.value)}
-                    className="w-full rounded-xl border border-gray-300 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
+    <div>
+      <label className="mb-2 block text-sm text-gray-700">
+        Duration
+      </label>
+      <input
+        type="text"
+        inputMode="numeric"
+        maxLength={2}
+        value={form.durationValue}
+        disabled={isSubmitting}
+        onChange={(e) => updateField("durationValue", e.target.value)}
+        className={`w-full rounded-xl border px-3 py-2 text-sm outline-none transition focus:ring-4 ${
+          durationError
+            ? "border-red-300 focus:border-red-500 focus:ring-red-100"
+            : "border-gray-300 focus:border-blue-500 focus:ring-blue-100"
+        }`}
+        placeholder={`Enter number of ${form.durationType}`}
+        required
+      />
+      {durationError ? (
+        <p className="mt-1 text-xs text-red-600">{durationError}</p>
+      ) : (
+        <p className="mt-1 text-xs text-gray-500">
+          Allowed: {durationBounds.min} to {durationBounds.max} {form.durationType}
+        </p>
+      )}
+    </div>
+  </div>
 
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-                    Start Time
-                  </label>
-                  <select
-                    value={form.startTime}
-                    disabled={isSubmitting || form.durationType === "monthly"}
-                    onChange={(e) => updateField("startTime", e.target.value)}
-                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-slate-100"
-                  >
-                    {form.durationType === "monthly" ? (
-                      <option value="">Not required</option>
-                    ) : (
-                      BUSINESS_HOUR_OPTIONS.map((time) => (
-                        <option key={time.value} value={time.value}>
-                          {time.label}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                </div>
-              </div>
+  {form.durationType === "hours" && (
+    <div className="space-y-3">
+      <div>
+        <label className="mb-2 block text-sm text-gray-700">
+          Start Time
+        </label>
 
-              {form.durationType === "hourly" && (
-                <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3">
-                  <p className="text-sm font-semibold text-blue-800">
-                    Hourly parking summary
-                  </p>
-                  <p className="mt-1 text-sm text-blue-700">
-                    Start time: <strong>{formatTime12h(form.startTime)}</strong>
-                    {endTime && (
-                      <>
-                        {" "}
-                        · End time: <strong>{endTime}</strong>
-                      </>
-                    )}
-                  </p>
-                  {businessHoursError && (
-                    <p className="mt-2 text-sm font-medium text-red-600">
-                      {businessHoursError}
-                    </p>
-                  )}
-                </div>
-              )}
+        <select
+          value={form.startTime}
+          disabled={isSubmitting || availableHourlyOptions.length === 0}
+          onChange={(e) => updateField("startTime", e.target.value)}
+          className={`w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none transition ${
+            availableHourlyOptions.length === 0
+              ? "cursor-not-allowed border-red-200 bg-red-50 text-red-600"
+              : "border-gray-300 text-gray-700 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+          }`}
+        >
+          {availableHourlyOptions.length === 0 ? (
+            <option value="">No available time slots</option>
+          ) : (
+            availableHourlyOptions.map((time) => (
+              <option key={time.value} value={time.value}>
+                {time.label}
+              </option>
+            ))
+          )}
+        </select>
 
-              <textarea
-                placeholder="Additional notes"
-                maxLength={1000}
-                rows={5}
-                value={form.notes}
-                disabled={isSubmitting}
-                onChange={(e) => updateField("notes", e.target.value)}
-                className="w-full rounded-xl border border-gray-300 px-4 py-3 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+        <p className="mt-2 text-xs text-gray-500">
+          Select a whole-hour start time for hourly parking.
+        </p>
 
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full rounded-xl bg-blue-600 py-3 font-bold text-white transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isSubmitting ? "Sending Parking Request..." : "Send Parking Request"}
-              </button>
+        {isSameDayStart && availableHourlyOptions.length > 0 && (
+          <p className="mt-1 text-xs text-blue-600">
+            For same-day hourly parking, the earliest allowed start time is{" "}
+            <strong>{getParkingEarliestStartTimeLabel()}</strong>.
+          </p>
+        )}
 
-              {submitError && (
-                <motion.div
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-left"
-                >
-                  <p className="text-sm font-semibold text-red-800">
-                    Parking request not sent
-                  </p>
-                  <p className="mt-1 text-sm leading-relaxed text-red-700">
-                    {submitError}
-                  </p>
-                </motion.div>
-              )}
+        {isSameDayStart && availableHourlyOptions.length === 0 && (
+          <p className="mt-1 text-xs text-red-600">
+            No same-day hourly time slots are available anymore. Please
+            choose another date.
+          </p>
+        )}
 
-              {submitted && (
-                <motion.div
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-left"
-                >
-                  <p className="text-sm font-semibold text-green-800">
-                    Parking request sent
-                  </p>
-                  <p className="mt-1 text-sm leading-relaxed text-green-700">
-                    We’ll review your request and contact you using the email
-                    address you provided.
-                  </p>
-                </motion.div>
-              )}
-            </form>
+        {sameDayHourlyError && (
+          <p className="mt-1 text-xs text-red-600">{sameDayHourlyError}</p>
+        )}
+      </div>
+
+      {form.startTime && (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+          Selected start time: <strong>{formatTime12h(form.startTime)}</strong>
+          {endTime && (
+            <span className="ml-1">
+              · Estimated end time: <strong>{endTime}</strong>
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  )}
+
+  <div>
+    <label className="mb-2 block text-sm text-gray-700">
+      Calculated Duration
+    </label>
+    <input
+      type="text"
+      readOnly
+      value={
+        form.durationType === "hours"
+          ? `${Number(form.durationValue || "0")} hour(s)`
+          : form.durationType === "days"
+            ? `${Number(form.durationValue || "0")} day(s)`
+            : `${Number(form.durationValue || "0")} month(s)`
+      }
+      className="w-full rounded-xl border border-gray-300 bg-gray-100 px-3 py-2 text-sm"
+    />
+  </div>
+
+  {form.startDate && (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+      Start date: <strong>{form.startDate}</strong>
+
+      {form.durationType === "hours" && form.startTime && (
+        <>
+          <span className="ml-1">
+            · Start time: <strong>{formatTime12h(form.startTime)}</strong>
+          </span>
+
+          {endTime && (
+            <span className="ml-1">
+              · End time: <strong>{endTime}</strong>
+            </span>
+          )}
+        </>
+      )}
+    </div>
+  )}
+
+  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+    Charges are based on the <strong>requested period</strong>. Leaving early
+    does not reduce the total approved parking charge.
+  </div>
+
+  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <div>
+      <label className="mb-2 block text-sm text-gray-700">First Name</label>
+      <input
+        type="text"
+        maxLength={100}
+        placeholder="Enter first name"
+        value={form.firstName}
+        disabled={isSubmitting}
+        onChange={(e) => updateField("firstName", e.target.value)}
+        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+        required
+      />
+    </div>
+
+    <div>
+      <label className="mb-2 block text-sm text-gray-700">Last Name</label>
+      <input
+        type="text"
+        maxLength={100}
+        placeholder="Enter last name"
+        value={form.lastName}
+        disabled={isSubmitting}
+        onChange={(e) => updateField("lastName", e.target.value)}
+        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+        required
+      />
+    </div>
+  </div>
+
+  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <div>
+      <label className="mb-2 block text-sm text-gray-700">Email</label>
+      <input
+        type="email"
+        maxLength={150}
+        placeholder="Enter email address"
+        value={form.email}
+        disabled={isSubmitting}
+        onChange={(e) => updateField("email", e.target.value)}
+        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+        required
+      />
+    </div>
+
+    <div>
+      <label className="mb-2 block text-sm text-gray-700">Phone Number</label>
+      <input
+        type="text"
+        maxLength={20}
+        placeholder="Enter phone number"
+        value={form.phone}
+        disabled={isSubmitting}
+        onChange={(e) => updateField("phone", e.target.value)}
+        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+        required
+      />
+    </div>
+  </div>
+
+  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <div>
+      <label className="mb-2 block text-sm text-gray-700">Vehicle Type</label>
+      <input
+        type="text"
+        maxLength={50}
+        placeholder="e.g., Sedan, SUV, Motorcycle"
+        value={form.vehicleType}
+        disabled={isSubmitting}
+        onChange={(e) => updateField("vehicleType", e.target.value)}
+        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+        required
+      />
+    </div>
+
+    <div>
+      <label className="mb-2 block text-sm text-gray-700">Plate Number</label>
+      <input
+        type="text"
+        maxLength={20}
+        placeholder="ABC 1234"
+        value={form.plateNumber}
+        disabled={isSubmitting}
+        onChange={(e) => updateField("plateNumber", e.target.value)}
+        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm uppercase outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+        required
+      />
+    </div>
+  </div>
+
+  <div>
+    <label className="mb-2 block text-sm text-gray-700">
+      Additional Notes
+    </label>
+    <textarea
+      placeholder="Any special requests or parking details"
+      maxLength={1000}
+      rows={4}
+      value={form.notes}
+      disabled={isSubmitting}
+      onChange={(e) => updateField("notes", e.target.value)}
+      className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+    />
+  </div>
+
+  <button
+    type="submit"
+    disabled={isSubmitting}
+    className="w-full rounded-xl bg-blue-600 py-3 font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+  >
+    {isSubmitting ? "Sending Parking Request..." : "Send Parking Request"}
+  </button>
+
+  {submitError && (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-left"
+    >
+      <p className="text-sm font-semibold text-red-800">
+        Parking request not sent
+      </p>
+      <p className="mt-1 text-sm leading-relaxed text-red-700">
+        {submitError}
+      </p>
+    </motion.div>
+  )}
+
+  {submitted && (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-left"
+    >
+      <p className="text-sm font-semibold text-green-800">
+        Parking request sent
+      </p>
+      <p className="mt-1 text-sm leading-relaxed text-green-700">
+        We’ll review your request and contact you using the email
+        address you provided.
+      </p>
+    </motion.div>
+  )}
+</form>
           </div>
 
           <div className="rounded-[2rem] bg-slate-900 p-6 text-white shadow-xl md:p-8">
