@@ -3,7 +3,9 @@ import type { PaymentMethodCode } from "../../../contexts/PaymentMethodsContext"
 export type DurationType = "hours" | "days" | "months" | "years";
 export type VisitMode = "online" | "onsite";
 export type PaymentIntent = "pay_onsite" | "pay_later";
-export type PaymentMethod = PaymentMethodCode;
+export type PaymentMethod =
+  | PaymentMethodCode
+  | "not_applicable";
 export type PaymentCycle = "monthly" | "quarterly" | "full";
 
 export type ReservationIntent =

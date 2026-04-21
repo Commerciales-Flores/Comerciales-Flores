@@ -12,13 +12,19 @@ export type ReservationStatus =
 
 export type PaymentReviewStatus = 'pending' | 'approved' | 'rejected';
 export type PaymentStatus = 'unpaid' | 'partial' | 'paid';
-export type PaymentMethod =
-  | 'cash'
-  | 'cheque'
+// export type PaymentMethod =
+//   | 'cash'
+//   | 'cheque'
+//   | 'gcash'
+//   | 'paymaya'
+//   | 'bank_transfer'
+//   | 'credit_card'
+//   | 'not_applicable';
+
+  export type PaymentMethod =
   | 'gcash'
-  | 'paymaya'
   | 'bank_transfer'
-  | 'credit_card'
+  | 'card'
   | 'not_applicable';
 
 export type PaymentCycle = 'monthly' | 'quarterly' | 'full';
@@ -36,9 +42,14 @@ export interface ReservationDetails {
   eventPurpose?: string;
   attendees?: number;
   slotId?: string;
-  slotName?: string;
-  vehicleType?: string;
-  plateNumber?: string;
+slotName?: string;
+
+assignedSlotId?: string;
+assignedSlotCode?: string;
+assignedSlotLabel?: string;
+
+vehicleType?: string;
+plateNumber?: string;
   durationType?: 'hours' | 'days' | 'months' | 'years';
 
   // 🔥 Extension system
@@ -126,6 +137,11 @@ export interface Reservation {
   durationType?: 'hours' | 'days' | 'months' | 'years';
   slotId?: string;
   slotName?: string;
+
+  /* user requested parking slot / legacy */
+  assignedParkingSlotId?: string | null;
+  assignedParkingSlotLabel?: string | null;
+
   location?: string;
 
    details?: ReservationDetails;
@@ -159,7 +175,16 @@ export interface Payment {
   paymentMethodId?: string | null;
 paymentMethodSnapshot?: Record<string, any> | null;
 
-category?: 'payment' | 'advance_deposit' | 'security_deposit';
+category?:
+  | 'payment'
+  | 'advance_deposit'
+  | 'security_deposit'
+  | 'reservation_fee'
+  | 'monthly_rent'
+  | 'parking_fee'
+  | 'function_room_fee'
+  | 'vat'
+  | 'penalty';
 }
 
 export interface LedgerEntry {

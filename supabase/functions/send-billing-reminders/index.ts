@@ -134,6 +134,16 @@ function getBillingStage(dueDate: Date, now = new Date()): BillingStage | null {
   return null;
 }
 
+function getDaysLate(dueDate: Date, now = new Date()) {
+  const manilaNow = getManilaParts(now);
+  const manilaDue = getManilaParts(dueDate);
+
+  const todayUtc = Date.UTC(manilaNow.year, manilaNow.month - 1, manilaNow.day);
+  const dueUtc = Date.UTC(manilaDue.year, manilaDue.month - 1, manilaDue.day);
+
+  return Math.floor((todayUtc - dueUtc) / (1000 * 60 * 60 * 24));
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -238,12 +248,13 @@ serve(async (req) => {
       }
 
       const dueDate = getNextDueDate(rawReservation.start_date, billingType, now);
-      const stage = getBillingStage(dueDate, now);
+const stage = getBillingStage(dueDate, now);
+const daysLate = getDaysLate(dueDate, now);
 
-      if (!stage) {
-        skipped.push({ reservationId, reason: "not_in_window" });
-        continue;
-      }
+if (!stage) {
+  skipped.push({ reservationId, reason: "not_in_window" });
+  continue;
+}
 
       const dueDateIso = dueDate.toISOString();
       const dueDateKey = getManilaDateKey(dueDate);
@@ -335,23 +346,90 @@ serve(async (req) => {
         );
       }
 
-      const { error: updateError } = await admin
-        .from("reservations")
-        .update({
-          last_billing_reminder_at: nowIso,
-          last_billing_reminder_stage: stage,
-          last_billing_due_date: dueDateIso,
-          last_billing_cycle_type: billingType,
-          updated_at: nowIso,
-        })
-        .eq("reservation_id", reservationId);
+      if (stage === "overdue" && daysLate >= 5) {
+  const penaltyAmount = Number((remainingBalance * 0.05).toFixed(2));
+  const penaltyDescription = `Late fee ${dueDateKey}`;
 
-      if (updateError) {
-        skipped.push({
-          reservationId,
-          reason: `billing_tracking_update_failed:${updateError.message}`,
-        });
-      }
+  const { data: existingPenalty, error: penaltyLookupError } = await admin
+    .from("ledger")
+    .select("ledger_id")
+    .eq("reservation_id", reservationId)
+    .eq("entry_type", "penalty")
+    .eq("description", penaltyDescription)
+    .limit(1)
+    .maybeSingle();
+
+  if (penaltyLookupError) {
+    skipped.push({
+      reservationId,
+      reason: `penalty_lookup_failed:${penaltyLookupError.message}`,
+    });
+  } else if (!existingPenalty) {
+    const { error: penaltyInsertError } = await admin.from("ledger").insert({
+      user_id: rawReservation.user_id,
+      reservation_id: reservationId,
+      payment_id: null,
+      entry_type: "penalty",
+      deposit_type: null,
+      amount: penaltyAmount,
+      method: null,
+      status: "verified",
+      reference_no: null,
+      description: penaltyDescription,
+      notes: `5% late fee applied after 5 days overdue for billing cycle due ${dueDateKey}.`,
+      recorded_at: nowIso,
+      created_at: nowIso,
+      created_by: null,
+    });
+
+    if (penaltyInsertError) {
+      skipped.push({
+        reservationId,
+        reason: `penalty_insert_failed:${penaltyInsertError.message}`,
+      });
+    }
+  }
+}
+
+let nextTotalAmount = Number(rawReservation.total_amount || 0);
+
+if (stage === "overdue" && daysLate >= 5) {
+  const penaltyAmount = Number((remainingBalance * 0.05).toFixed(2));
+
+  const { data: existingPenalty } = await admin
+    .from("ledger")
+    .select("ledger_id")
+    .eq("reservation_id", reservationId)
+    .eq("entry_type", "penalty")
+    .eq("description", `Late fee ${dueDateKey}`)
+    .limit(1)
+    .maybeSingle();
+
+  if (!existingPenalty) {
+    nextTotalAmount = Number(
+      (nextTotalAmount + penaltyAmount).toFixed(2)
+    );
+  }
+}
+
+const { error: updateError } = await admin
+  .from("reservations")
+  .update({
+    total_amount: nextTotalAmount,
+    last_billing_reminder_at: nowIso,
+    last_billing_reminder_stage: stage,
+    last_billing_due_date: dueDateIso,
+    last_billing_cycle_type: billingType,
+    updated_at: nowIso,
+  })
+  .eq("reservation_id", reservationId);
+
+if (updateError) {
+  skipped.push({
+    reservationId,
+    reason: `billing_tracking_update_failed:${updateError.message}`,
+  });
+}
     }
 
     return jsonResponse({

@@ -19,11 +19,17 @@ import {
   validateParkingDuration,
   getParkingMinStartDate,
   isSameParkingDay,
-  getParkingEarliestStartTimeLabel,
   getParkingDurationPolicyText,
   getParkingEarliestSelectableTimeValue,
   validateSameDayHourlyParking,
+  buildParkingHourlyOptions,
 } from "../reservations/parking/parking.utils";
+
+import {
+  fetchParkingRules,
+  DEFAULT_PARKING_RULES,
+  type ParkingRules,
+} from "../../data/appSettings";
 
 type ParkingDurationType = "hours" | "days" | "months";
 
@@ -67,32 +73,6 @@ const DURATION_OPTIONS: Array<{
   },
 ];
 
-const HOURLY_TIME_OPTIONS = [
-  { value: "00:00", label: "12:00 AM" },
-  { value: "01:00", label: "1:00 AM" },
-  { value: "02:00", label: "2:00 AM" },
-  { value: "03:00", label: "3:00 AM" },
-  { value: "04:00", label: "4:00 AM" },
-  { value: "05:00", label: "5:00 AM" },
-  { value: "06:00", label: "6:00 AM" },
-  { value: "07:00", label: "7:00 AM" },
-  { value: "08:00", label: "8:00 AM" },
-  { value: "09:00", label: "9:00 AM" },
-  { value: "10:00", label: "10:00 AM" },
-  { value: "11:00", label: "11:00 AM" },
-  { value: "12:00", label: "12:00 PM" },
-  { value: "13:00", label: "1:00 PM" },
-  { value: "14:00", label: "2:00 PM" },
-  { value: "15:00", label: "3:00 PM" },
-  { value: "16:00", label: "4:00 PM" },
-  { value: "17:00", label: "5:00 PM" },
-  { value: "18:00", label: "6:00 PM" },
-  { value: "19:00", label: "7:00 PM" },
-  { value: "20:00", label: "8:00 PM" },
-  { value: "21:00", label: "9:00 PM" },
-  { value: "22:00", label: "10:00 PM" },
-  { value: "23:00", label: "11:00 PM" },
-];
 
 function toDateInputValue(date: Date) {
   const year = date.getFullYear();
@@ -163,6 +143,9 @@ export default function GuestParking() {
   const [submitError, setSubmitError] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
+  const [parkingRules, setParkingRules] =
+  useState<ParkingRules>(DEFAULT_PARKING_RULES);
+
   const durationBounds = useMemo(
     () => getParkingDurationBounds(form.durationType),
     [form.durationType]
@@ -178,20 +161,36 @@ export default function GuestParking() {
   );
 
   const earliestSameDayTimeValue = useMemo(
-    () => getParkingEarliestSelectableTimeValue(),
-    []
+  () =>
+    getParkingEarliestSelectableTimeValue(
+      parkingRules.same_day_lead_hours
+    ),
+  [parkingRules.same_day_lead_hours]
+);
+
+const availableHourlyOptions = useMemo(() => {
+  const baseOptions = buildParkingHourlyOptions(
+    parkingRules.hourly_start,
+    parkingRules.hourly_end
   );
 
-  const availableHourlyOptions = useMemo(() => {
-    if (form.durationType !== "hours") return HOURLY_TIME_OPTIONS;
-    if (!isSameDayStart) return HOURLY_TIME_OPTIONS;
+  if (form.durationType !== "hours") return baseOptions;
+  if (!isSameDayStart) return baseOptions;
 
-    const earliestMinutes = timeValueToMinutes(earliestSameDayTimeValue);
+  const earliestMinutes = timeValueToMinutes(
+    earliestSameDayTimeValue
+  );
 
-    return HOURLY_TIME_OPTIONS.filter(
-      (option) => timeValueToMinutes(option.value) >= earliestMinutes
-    );
-  }, [form.durationType, isSameDayStart, earliestSameDayTimeValue]);
+  return baseOptions.filter(
+    (option) => timeValueToMinutes(option.value) >= earliestMinutes
+  );
+}, [
+  form.durationType,
+  isSameDayStart,
+  earliestSameDayTimeValue,
+  parkingRules.hourly_start,
+  parkingRules.hourly_end,
+]);
 
   useEffect(() => {
     if (form.durationType !== "hours") {
@@ -230,6 +229,24 @@ export default function GuestParking() {
     availableHourlyOptions,
   ]);
 
+  useEffect(() => {
+  let cancelled = false;
+
+  const loadParkingRules = async () => {
+    const rules = await fetchParkingRules();
+
+    if (!cancelled) {
+      setParkingRules(rules);
+    }
+  };
+
+  void loadParkingRules();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
+
   const durationError = useMemo(() => {
     const durationValue = Number(form.durationValue || "0");
 
@@ -245,9 +262,10 @@ export default function GuestParking() {
     if (form.durationType !== "hours") return "";
 
     return validateSameDayHourlyParking({
-      startDate: startDateObject,
-      startTime: form.startTime,
-    });
+  startDate: startDateObject,
+  startTime: form.startTime,
+  leadHours: parkingRules.same_day_lead_hours,
+});
   }, [form.durationType, startDateObject, form.startTime]);
 
   const endTime = useMemo(() => {
@@ -363,12 +381,39 @@ export default function GuestParking() {
       }
 
       setIsSubmitting(true);
-      setSubmitError("");
-      setSubmitted(false);
+setSubmitError("");
+setSubmitted(false);
 
-      const fullName = `${firstName} ${lastName}`.trim();
+/**
+ * Only one active guest parking request per guest at a time.
+ * Active = pending / approved / confirmed
+ */
+const { data: existingRequests, error: existingError } = await supabase
+  .from("guest_parking_requests")
+  .select("request_id")
+  .or(`email.eq.${email},phone.eq.${phone}`)
+  .in("status", ["pending", "approved", "confirmed"])
+  .limit(1);
 
-      const payload = {
+if (existingError) {
+  setSubmitError(
+    "Unable to validate your existing parking requests right now. Please try again."
+  );
+  setIsSubmitting(false);
+  return;
+}
+
+if (existingRequests && existingRequests.length > 0) {
+  setSubmitError(
+    "You already have an active guest parking request. Please wait until it is resolved before submitting another."
+  );
+  setIsSubmitting(false);
+  return;
+}
+
+const fullName = `${firstName} ${lastName}`.trim();
+
+const payload = {
         full_name: fullName,
         email,
         phone,
@@ -453,49 +498,29 @@ export default function GuestParking() {
             </div>
 
             <form onSubmit={handleSubmit} className="mt-6 space-y-5">
-  <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
-    Parking requests may start <strong>today</strong>. Same-day hourly
-    requests are time-sensitive and only show valid future time blocks.
-    <strong> Extensions are not supported</strong> for parking at this time.
-  </div>
-
-  <div>
-    <label className="mb-2 block text-sm text-gray-700">
-      Reservation Period
-    </label>
-
-    <div className="grid grid-cols-3 gap-2">
-      {(["hours", "days", "months"] as const).map((type) => {
-        const active = form.durationType === type;
-
-        const label =
-          type === "hours"
-            ? "Hourly"
-            : type === "days"
-              ? "Daily"
-              : "Monthly";
-
-        return (
-          <button
-            key={type}
-            type="button"
-            onClick={() => handleDurationTypeChange(type)}
-            disabled={isSubmitting}
-            className={`rounded-xl border px-3 py-2 text-sm font-medium tracking-wide transition ${
-              active
-                ? "border-blue-600 bg-blue-600 text-white"
-                : "border-gray-300 bg-white text-gray-700 hover:border-blue-400 hover:text-blue-700"
-            } disabled:cursor-not-allowed disabled:opacity-60`}
-          >
-            {label}
-          </button>
-        );
-      })}
+    <div className="space-y-3">
+    <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+      Guest parking requests are reviewed by admin first. A specific slot will
+      be assigned only after availability has been confirmed.
     </div>
 
-    <p className="mt-1 text-xs text-blue-600">
-      {getParkingDurationPolicyText(form.durationType)}
-    </p>
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+      Payment is collected <strong>only after admin approval</strong>. Please do
+      not send payment until your request has been approved.
+    </div>
+
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+      Hourly parking currently operates from{" "}
+      <strong>
+        {formatTime12h(parkingRules.hourly_start)} to{" "}
+        {formatTime12h(parkingRules.hourly_end)}
+      </strong>.
+      These hours may be adjusted later by admin settings.
+    </div>
+
+    <p className="text-xs text-blue-600">
+  {getParkingDurationPolicyText(form.durationType)}
+</p>
   </div>
 
   <div className="grid gap-4 md:grid-cols-2">
@@ -578,13 +603,6 @@ export default function GuestParking() {
           Select a whole-hour start time for hourly parking.
         </p>
 
-        {isSameDayStart && availableHourlyOptions.length > 0 && (
-          <p className="mt-1 text-xs text-blue-600">
-            For same-day hourly parking, the earliest allowed start time is{" "}
-            <strong>{getParkingEarliestStartTimeLabel()}</strong>.
-          </p>
-        )}
-
         {isSameDayStart && availableHourlyOptions.length === 0 && (
           <p className="mt-1 text-xs text-red-600">
             No same-day hourly time slots are available anymore. Please
@@ -648,9 +666,9 @@ export default function GuestParking() {
     </div>
   )}
 
-  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-    Charges are based on the <strong>requested period</strong>. Leaving early
-    does not reduce the total approved parking charge.
+    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+    If approved, charges will be based on the <strong>approved parking period</strong>.
+    Leaving early does not reduce the final approved parking charge.
   </div>
 
   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -818,8 +836,8 @@ export default function GuestParking() {
                 creating an account first.
               </p>
               <p>
-                Final availability, slot assignment, and approval will still be
-                confirmed by your team.
+                Admin will review availability, assign a parking slot if approved, and
+                only then instruct the guest about payment.
               </p>
             </div>
 
@@ -829,7 +847,8 @@ export default function GuestParking() {
                 <div>
                   <p className="text-sm font-semibold text-white">Important</p>
                   <p className="mt-1 text-sm leading-relaxed text-slate-300">
-                    This creates a guest parking request, not a direct reservation.
+                    This creates a guest parking request only. Slot assignment and payment happen
+                    after admin approval.
                   </p>
                 </div>
               </div>

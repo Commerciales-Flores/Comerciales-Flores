@@ -83,6 +83,8 @@ interface ReservationsContextType {
 }
 
 const ReservationsContext = createContext<ReservationsContextType | undefined>(undefined);
+const VAT_RATE = 0.12;
+const DEFAULT_SECURITY_DEPOSIT_MONTHS = 1;
 
 function buildReservationDetails(reservation: Partial<Reservation>) {
   const details = {
@@ -98,6 +100,9 @@ function buildReservationDetails(reservation: Partial<Reservation>) {
     slotName: reservation.slotName
       ? normalizeText(reservation.slotName)
       : undefined,
+    assignedSlotId: reservation.assignedParkingSlotId ?? undefined,
+assignedSlotLabel:
+  reservation.assignedParkingSlotLabel ?? undefined,
     vehicleType: reservation.vehicleType
       ? normalizeText(reservation.vehicleType)
       : undefined,
@@ -196,7 +201,6 @@ function buildLedgerTotalsMap(ledgers: LedgerEntry[]) {
       current.paid -
       current.refunds -
       current.discounts +
-      current.penalties +
       current.adjustments;
 
     map.set(entry.reservationId, current);
@@ -283,6 +287,13 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         attendees: row.details?.attendees,
         slotId: row.details?.slotId,
         slotName: row.details?.slotName,
+
+        assignedParkingSlotId: row.assigned_parking_slot_id ?? null,
+        assignedParkingSlotLabel:
+          row.details?.assignedSlotLabel ??
+          row.details?.assignedSlotCode ??
+          null,
+
         vehicleType: row.details?.vehicleType,
         plateNumber: row.details?.plateNumber,
         durationType: row.details?.durationType,
@@ -340,6 +351,7 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         confirmed_visit_time,
         visit_status,
         details,
+        assigned_parking_slot_id,
         minimum_payment_percent_snapshot
       `)
       .order('created_at', { ascending: false });
@@ -508,6 +520,7 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         confirmed_visit_time,
         visit_status,
         details,
+        assigned_parking_slot_id,
         minimum_payment_percent_snapshot,
         users:user_id (
           first_name,
@@ -635,7 +648,58 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         }
       }
 
-            const cleanDetails = buildReservationDetails(reservationData);
+      const baseDetails = buildReservationDetails(reservationData);
+
+const baseSubtotal = Number(reservationData.totalAmount || 0);
+
+if (!Number.isFinite(baseSubtotal) || baseSubtotal <= 0) {
+  throw new Error('Reservation amount must be greater than zero.');
+}
+
+const vatAmount = Number((baseSubtotal * VAT_RATE).toFixed(2));
+const grandTotal = Number((baseSubtotal + vatAmount).toFixed(2));
+
+let initialDue = grandTotal;
+let securityDepositAmount = 0;
+let firstMonthAmount = 0;
+
+if (reservationData.unitType === 'rental_space') {
+  const durationMonths = Math.max(
+    1,
+    Number(reservationData.duration || 1)
+  );
+
+  const monthlyBase = Number(
+    (baseSubtotal / durationMonths).toFixed(2)
+  );
+
+  securityDepositAmount = Number(
+    (monthlyBase * DEFAULT_SECURITY_DEPOSIT_MONTHS).toFixed(2)
+  );
+
+  firstMonthAmount = monthlyBase;
+
+  const rentalInitialBase =
+    securityDepositAmount + firstMonthAmount;
+
+  const rentalInitialVat = Number(
+    (rentalInitialBase * VAT_RATE).toFixed(2)
+  );
+
+  initialDue = Number(
+    (rentalInitialBase + rentalInitialVat).toFixed(2)
+  );
+}
+
+const cleanDetails = {
+  ...baseDetails,
+  subtotalAmount: baseSubtotal,
+  vatRate: VAT_RATE,
+  vatAmount,
+  initialDue,
+  securityDepositAmount,
+  firstMonthAmount,
+};
 
       if (reservationData.unitType === 'function_hall') {
         const { data: existing, error: checkError } = await supabase.rpc(
@@ -713,7 +777,7 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
             start_date: reservationData.startDate,
             end_date: reservationData.endDate,
             duration: reservationData.duration,
-            total_amount: Number(reservationData.totalAmount),
+            total_amount: grandTotal,
             status: 'pending',
             payment_method: reservationData.paymentMethod ?? null,
             payment_intent: reservationData.paymentIntent ?? null,
@@ -748,7 +812,7 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         startDate: data.start_date,
         endDate: data.end_date,
         duration: data.duration,
-        totalAmount: Number(data.total_amount),
+        totalAmount: grandTotal,
         status: data.status,
         notes: data.notes,
         paidAmount: 0,
@@ -850,6 +914,10 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
       }
       if (reservationUpdate.totalAmount !== undefined) {
         dbPayload.total_amount = reservationUpdate.totalAmount;
+      }
+      if (reservationUpdate.assignedParkingSlotId !== undefined) {
+        dbPayload.assigned_parking_slot_id =
+          reservationUpdate.assignedParkingSlotId;
       }
 
       const detailsPatch = buildReservationDetails(reservationUpdate);

@@ -41,20 +41,29 @@ function getPublicImageUrl(path?: string | null) {
   return data.publicUrl;
 }
 
+function normalizePaymentMethodCode(
+  value?: string | null
+): PaymentMethodCode {
+  switch (value) {
+    case "gcash":
+      return "gcash";
+    case "bank_transfer":
+      return "bank_transfer";
+    case "card":
+      return "card";
+    default:
+      return "bank_transfer";
+  }
+}
+
 function getMethodLabel(methodCode: PaymentMethodCode) {
   switch (methodCode) {
     case 'gcash':
       return 'GCash';
-    case 'paymaya':
-      return 'Maya';
     case 'bank_transfer':
       return 'Bank Transfer';
-    case 'cash':
-      return 'Cash';
-    case 'cheque':
-      return 'Cheque';
-    case 'credit_card':
-      return 'Credit Card';
+    case 'card':
+      return 'Credit / Debit Card';
     default:
       return methodCode;
   }
@@ -112,9 +121,10 @@ export default function PaymentMethodModal({
     []
   );
 
-  const requiresWalletFields = form.methodCode === 'gcash' || form.methodCode === 'paymaya';
-  const requiresBankFields = form.methodCode === 'bank_transfer';
-  const requiresQr = requiresWalletFields || requiresBankFields;
+  const requiresWalletFields = form.methodCode === 'gcash';
+const requiresBankFields = form.methodCode === 'bank_transfer';
+const requiresCardFields = form.methodCode === 'card';
+const requiresQr = requiresWalletFields || requiresBankFields;
 
   const handleUploadQr = useCallback(async (fileList: FileList | null) => {
     const file = fileList?.[0];
@@ -252,15 +262,14 @@ export default function PaymentMethodModal({
                 </label>
                 <select
                   value={form.methodCode}
-                  onChange={(e) => updateField('methodCode', e.target.value as PaymentMethodCode)}
+                  onChange={(e) =>
+                    updateField('methodCode', normalizePaymentMethodCode(e.target.value))
+                  }
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
                 >
                   <option value="gcash">GCash</option>
-                  <option value="paymaya">Maya</option>
                   <option value="bank_transfer">Bank Transfer</option>
-                  <option value="cash">Cash</option>
-                  <option value="cheque">Cheque</option>
-                  <option value="credit_card">Credit Card</option>
+                  <option value="card">Credit / Debit Card</option>
                 </select>
               </div>
 

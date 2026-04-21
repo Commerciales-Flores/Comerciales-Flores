@@ -6,7 +6,7 @@ import type {
 import { computeEndFromForm } from "../shared/reservation.utils";
 
 const BLOCKING_STATUSES = ["approved", "confirmed"] as const;
-const SAME_DAY_HOURLY_LEAD_HOURS = 2;
+const DEFAULT_SAME_DAY_HOURLY_LEAD_HOURS = 2;
 
 export const PARKING_DURATION_LIMITS = {
   hours: { min: 1, max: 24 },
@@ -15,6 +15,70 @@ export const PARKING_DURATION_LIMITS = {
 } as const;
 
 type ParkingDurationType = keyof typeof PARKING_DURATION_LIMITS;
+
+function isValidTimeHHMM(value?: string) {
+  return !!value && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
+function parseHHMM(value: string) {
+  const [hour, minute] = value.split(":").map(Number);
+
+  return {
+    hour,
+    minute,
+    totalMinutes: hour * 60 + minute,
+  };
+}
+
+function formatHourLabel(hour24: number, minute: number) {
+  const suffix = hour24 >= 12 ? "PM" : "AM";
+  const hour12 = ((hour24 + 11) % 12) + 1;
+
+  return `${hour12}:${String(minute).padStart(2, "0")} ${suffix}`;
+}
+
+/**
+ * Builds selectable hourly parking start times.
+ * hourly_end is treated as the closing boundary.
+ *
+ * Example:
+ * 09:00 to 17:00
+ * returns starts:
+ * 09:00 ... 16:00
+ */
+export function buildParkingHourlyOptions(
+  hourlyStart = "09:00",
+  hourlyEnd = "17:00"
+) {
+  if (!isValidTimeHHMM(hourlyStart) || !isValidTimeHHMM(hourlyEnd)) {
+    return [];
+  }
+
+  const start = parseHHMM(hourlyStart);
+  const end = parseHHMM(hourlyEnd);
+
+  if (start.totalMinutes >= end.totalMinutes) {
+    return [];
+  }
+
+  const options: Array<{ value: string; label: string }> = [];
+
+  for (
+    let mins = start.totalMinutes;
+    mins < end.totalMinutes;
+    mins += 60
+  ) {
+    const hour = Math.floor(mins / 60);
+    const minute = mins % 60;
+
+    options.push({
+      value: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`,
+      label: formatHourLabel(hour, minute),
+    });
+  }
+
+  return options;
+}
 
 export function isBlockingReservation(status?: string | null) {
   return BLOCKING_STATUSES.includes(
@@ -166,7 +230,7 @@ function roundUpToNextWholeHour(date: Date) {
  * - now = 1:13 PM, lead = 2 hours => 4:00 PM
  */
 export function getParkingEarliestSelectableDateTime(
-  leadHours = SAME_DAY_HOURLY_LEAD_HOURS
+  leadHours = DEFAULT_SAME_DAY_HOURLY_LEAD_HOURS
 ) {
   const next = new Date();
   next.setHours(next.getHours() + leadHours);
@@ -174,7 +238,7 @@ export function getParkingEarliestSelectableDateTime(
 }
 
 export function getParkingEarliestSelectableTimeValue(
-  leadHours = SAME_DAY_HOURLY_LEAD_HOURS
+  leadHours = DEFAULT_SAME_DAY_HOURLY_LEAD_HOURS
 ) {
   const next = getParkingEarliestSelectableDateTime(leadHours);
 
@@ -184,7 +248,7 @@ export function getParkingEarliestSelectableTimeValue(
 }
 
 export function getParkingEarliestStartTimeLabel(
-  leadHours = SAME_DAY_HOURLY_LEAD_HOURS
+  leadHours = DEFAULT_SAME_DAY_HOURLY_LEAD_HOURS
 ) {
   const next = getParkingEarliestSelectableDateTime(leadHours);
 
@@ -205,7 +269,7 @@ export function validateSameDayHourlyParking(params: {
   startTime?: string;
   leadHours?: number;
 }) {
-  const { startDate, startTime, leadHours = SAME_DAY_HOURLY_LEAD_HOURS } =
+  const { startDate, startTime, leadHours = DEFAULT_SAME_DAY_HOURLY_LEAD_HOURS } =
     params;
 
   if (!startDate || !startTime) return "";

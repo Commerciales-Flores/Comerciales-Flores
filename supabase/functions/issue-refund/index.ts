@@ -2,15 +2,21 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 type PaymentMethod =
-  | 'cash'
   | 'gcash'
   | 'bank_transfer'
   | 'credit_card'
   | 'debit_card'
-  | 'other'
   | null;
 
-type PaymentCategory = 'payment' | 'advance_deposit' | 'security_deposit';
+type PaymentCategory =
+  | 'payment'
+  | 'advance_deposit'
+  | 'security_deposit'
+  | 'monthly_rent'
+  | 'parking_fee'
+  | 'function_room_fee'
+  | 'reservation_fee'
+  | 'penalty';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -32,6 +38,10 @@ function json(status: number, body: unknown) {
 function clampMoney(value: number) {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Number(value));
+}
+
+function isRefundableCategory(category?: PaymentCategory | null) {
+  return category === 'security_deposit';
 }
 
 async function getReservationLedgerNetPaid(
@@ -151,7 +161,9 @@ serve(async (req) => {
     if (paymentId) {
       const { data: payment, error: paymentError } = await admin
         .from('payments')
-        .select('payment_id, public_id, reservation_id, amount, method, status, category')
+        .select(
+          'payment_id, public_id, reservation_id, amount, method, status, category',
+        )
         .eq('payment_id', paymentId)
         .maybeSingle();
 
@@ -174,6 +186,19 @@ serve(async (req) => {
       }
 
       linkedPayment = payment;
+
+      const linkedCategory = (payment.category ?? 'payment') as PaymentCategory;
+
+      if (!isRefundableCategory(linkedCategory)) {
+        return json(400, {
+          success: false,
+          error:
+            linkedCategory === 'function_room_fee' ||
+            linkedCategory === 'reservation_fee'
+              ? 'This reservation fee is non-refundable.'
+              : 'This payment category is not refundable.',
+        });
+      }
 
       const { data: refundRows, error: refundRowsError } = await admin
         .from('ledger')
@@ -232,6 +257,16 @@ serve(async (req) => {
         ? `Refund for security deposit ${linkedPayment.public_id ?? linkedPayment.payment_id}`
         : linkedCategory === 'advance_deposit'
         ? `Refund for advance deposit ${linkedPayment.public_id ?? linkedPayment.payment_id}`
+        : linkedCategory === 'monthly_rent'
+        ? `Refund for monthly rent ${linkedPayment.public_id ?? linkedPayment.payment_id}`
+        : linkedCategory === 'parking_fee'
+        ? `Refund for parking payment ${linkedPayment.public_id ?? linkedPayment.payment_id}`
+        : linkedCategory === 'function_room_fee'
+        ? `Refund for function room payment ${linkedPayment.public_id ?? linkedPayment.payment_id}`
+        : linkedCategory === 'reservation_fee'
+        ? `Refund for reservation fee ${linkedPayment.public_id ?? linkedPayment.payment_id}`
+        : linkedCategory === 'penalty'
+        ? `Refund for penalty payment ${linkedPayment.public_id ?? linkedPayment.payment_id}`
         : `Refund for payment ${linkedPayment.public_id ?? linkedPayment.payment_id}`
       : `Refund for reservation ${reservation.public_id ?? reservation.reservation_id}`;
 
@@ -259,6 +294,8 @@ serve(async (req) => {
       },
     ]);
 
+    if (ledgerError) throw ledgerError;
+
     const { data: insertedLedger } = await admin
       .from('ledger')
       .select('ledger_id, public_id')
@@ -276,8 +313,6 @@ serve(async (req) => {
       changed_fields: ['amount', 'entry_type'],
       notes: `Refund ledger entry created for ₱${refundAmount.toFixed(2)}`,
     });
-
-    if (ledgerError) throw ledgerError;
 
     const netPaid = await getReservationLedgerNetPaid(admin, reservationId);
 

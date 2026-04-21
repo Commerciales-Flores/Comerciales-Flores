@@ -2,18 +2,24 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 type PaymentMethod =
-  | 'cash'
   | 'gcash'
   | 'bank_transfer'
   | 'credit_card'
   | 'debit_card'
-  | 'other'
   | null;
 
 type PaymentStatus = 'paid' | 'partial' | 'unpaid';
 type PaymentReviewStatus = 'pending' | 'approved' | 'rejected';
 type PaymentCycle = 'monthly' | 'quarterly' | 'full' | null;
-type PaymentCategory = 'payment' | 'advance_deposit' | 'security_deposit';
+type PaymentCategory =
+  | 'payment'
+  | 'advance_deposit'
+  | 'security_deposit'
+  | 'monthly_rent'
+  | 'parking_fee'
+  | 'function_room_fee'
+  | 'reservation_fee'
+  | 'penalty';
 
 type ReservationRow = {
   reservation_id: string;
@@ -52,7 +58,7 @@ function clampMoney(value: number) {
 }
 
 function allowsPartialPayments(unitType?: string | null) {
-  return unitType === 'function_hall' || unitType === 'parking_slot';
+  return false;
 }
 
 function getMinimumPaymentPercent(reservation: {
@@ -128,23 +134,18 @@ function validateScheduledSubsequentPayment(params: {
     const paidAmount = clampMoney(params.paidAmount);
     const totalAmount = clampMoney(params.totalAmount);
     const remaining = clampMoney(totalAmount - paidAmount);
-    const isFirstPayment = paidAmount <= 0;
 
     if (remaining <= 0) return;
 
-    const isPartialAllowed = allowsPartialPayments(params.unitType);
+    const isRentalSpace = params.unitType === 'rental_space';
 
-    if (isPartialAllowed) {
-      if (isFirstPayment) return;
-
-      const minimumRequired = Math.min(remaining, totalAmount * 0.05);
-
-      if (submittedAmount < minimumRequired) {
+    // Parking and function hall must always be paid in full.
+    if (!isRentalSpace) {
+      if (submittedAmount < remaining) {
         throw new Error(
-          `Subsequent payments must be at least ₱${minimumRequired.toFixed(2)}.`,
+          `Full payment is required for this reservation (₱${remaining.toFixed(2)}).`,
         );
       }
-
       return;
     }
 
@@ -363,7 +364,7 @@ let effectiveReservationId = bodyReservationId;
       });
     }
 
-    if (!depositPayment) {
+if (!depositPayment) {
   const isRentalSpace = reservation.unit_type === 'rental_space';
 
   const enforceMinimumFirstPayment = validateMinimumFirstPayment({
@@ -381,15 +382,14 @@ let effectiveReservationId = bodyReservationId;
     paymentCycle: reservation.details?.paymentCycle ?? null,
   });
 
-  // Rental spaces should follow their billing cycle rules,
-  // not the generic minimum first payment snapshot rule.
-  if (!isRentalSpace) {
+  // Keep existing minimum-first-payment logic for rentals until
+  // deposit + first-month breakdown is implemented upstream.
+  if (isRentalSpace) {
     enforceMinimumFirstPayment(submittedAmount);
   }
 
   enforceScheduledSubsequentPayment(submittedAmount);
 }
-
     const paymentDate = new Date().toISOString();
 
     let finalPaymentRow: any;
@@ -518,11 +518,21 @@ let effectiveReservationId = bodyReservationId;
         status: 'verified',
         reference_no: null,
         description:
-          category === 'security_deposit'
-            ? `Security deposit for ${finalPaymentRow.public_id ?? finalPaymentRow.payment_id}`
-            : category === 'advance_deposit'
-            ? `Advance deposit for ${finalPaymentRow.public_id ?? finalPaymentRow.payment_id}`
-            : `Payment for reservation ${finalPaymentRow.public_id ?? finalPaymentRow.payment_id}`,
+  category === 'security_deposit'
+    ? `Security deposit for ${finalPaymentRow.public_id ?? finalPaymentRow.payment_id}`
+    : category === 'advance_deposit'
+    ? `Advance deposit for ${finalPaymentRow.public_id ?? finalPaymentRow.payment_id}`
+    : category === 'monthly_rent'
+    ? `Monthly rent payment for ${finalPaymentRow.public_id ?? finalPaymentRow.payment_id}`
+    : category === 'parking_fee'
+    ? `Parking payment for ${finalPaymentRow.public_id ?? finalPaymentRow.payment_id}`
+    : category === 'function_room_fee'
+    ? `Function room payment for ${finalPaymentRow.public_id ?? finalPaymentRow.payment_id}`
+    : category === 'reservation_fee'
+    ? `Reservation fee for ${finalPaymentRow.public_id ?? finalPaymentRow.payment_id}`
+    : category === 'penalty'
+    ? `Penalty payment for ${finalPaymentRow.public_id ?? finalPaymentRow.payment_id}`
+    : `Payment for reservation ${finalPaymentRow.public_id ?? finalPaymentRow.payment_id}`,
         notes: finalPaymentRow.notes ?? null,
         recorded_at: new Date().toISOString(),
         created_at: new Date().toISOString(),

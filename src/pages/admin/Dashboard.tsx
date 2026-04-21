@@ -17,6 +17,7 @@ import {
   ShieldAlert,
   Star,
   Calendar,
+  House,
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { Link } from 'react-router-dom';
@@ -284,6 +285,14 @@ export default function AdminDashboard() {
     const confirmedReservationsCount = reservations.filter((r) => r.status === 'confirmed').length;
     const cancelledReservationsCount = reservations.filter((r) => r.status === 'cancelled').length;
 
+        const pendingParkingRequests = reservations
+      .filter(
+        (r) =>
+          r.unitType === 'parking_slot' &&
+          r.status === 'pending'
+      )
+      .slice(0, 3);
+
     const paidPayments = payments.filter((p) => p.status === 'paid');
     const paidPaymentsCount = paidPayments.length;
     const pendingPayments = payments.filter(
@@ -358,9 +367,13 @@ export default function AdminDashboard() {
     .filter(Boolean)
 );
 
+const occupiedCount = occupiedUnitIds.size;
+const vacantCount = Math.max(units.length - occupiedCount, 0);
+
 const occupancyRate =
-  units.length > 0 ? (occupiedUnitIds.size / units.length) * 100 : 0;
-    const totalRevenue = paidPayments.reduce((sum, p) => sum + p.amount, 0);
+  units.length > 0 ? (occupiedCount / units.length) * 100 : 0;
+
+const totalRevenue = paidPayments.reduce((sum, p) => sum + p.amount, 0);
 
     const lastMonthReservations = reservations.filter((r) => {
       const resDate = new Date(r.requestDate);
@@ -412,6 +425,7 @@ const occupancyRate =
     return {
       overdueReservations,
       pendingReservations: pendingReservationsAll.slice(0, 3),
+      pendingParkingRequests,
       pendingVisitRequests,
       pendingPayments: pendingPayments.slice(0, 3),
       recentInquiries,
@@ -419,6 +433,8 @@ const occupancyRate =
       confirmedReservationsCount,
       cancelledReservationsCount,
       paidPaymentsCount,
+      occupiedCount,
+      vacantCount,
       occupancyRate,
       totalRevenue,
       reservationsChange,
@@ -485,7 +501,7 @@ const occupancyRate =
           </p>
         </header>
 
-        <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <section className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-6">
           <StatCard
             title="Total Reservations"
             value={reservations.length}
@@ -509,6 +525,17 @@ const occupancyRate =
             title="Paid Payments"
             value={dashboardData.paidPaymentsCount}
             icon={<CreditCard className="size-5 text-blue-500" />}
+          />
+          <StatCard
+            title="Occupied Units"
+            value={dashboardData.occupiedCount}
+            icon={<House className="size-5 text-emerald-500" />}
+          />
+
+          <StatCard
+            title="Vacant Units"
+            value={dashboardData.vacantCount}
+            icon={<House className="size-5 text-slate-500" />}
           />
         </section>
 
@@ -595,6 +622,26 @@ const occupancyRate =
         </span>
         <span className="block text-xs text-gray-500 capitalize">
           {pay.status}
+        </span>
+      </div>
+    )}
+  />
+
+  <MiniListCard
+    title="Parking Requests"
+    icon={<Calendar className="size-4 text-emerald-500" />}
+    viewAllTo="/admin/parking"
+    items={dashboardData.pendingParkingRequests}
+    emptyText="No pending parking requests"
+    badgeText="Parking"
+    badgeClassName="bg-emerald-100 text-emerald-700"
+    valueRenderer={(res) => (
+      <div className="min-w-0">
+        <span className="block truncate text-sm font-medium text-gray-800">
+          {res.unitName}
+        </span>
+        <span className="block text-xs text-gray-500">
+          {formatDate(res.requestDate)}
         </span>
       </div>
     )}

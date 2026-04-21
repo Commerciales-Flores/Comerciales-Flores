@@ -16,11 +16,8 @@ import {
 
 export type PaymentMethodCode =
   | 'gcash'
-  | 'paymaya'
   | 'bank_transfer'
-  | 'cash'
-  | 'cheque'
-  | 'credit_card';
+  | 'card';
 
 export type PaymentMethodConfig = {
   id: string;
@@ -96,6 +93,21 @@ function getPublicImageUrl(path?: string | null) {
   return data?.publicUrl || null;
 }
 
+function normalizePaymentMethodCode(
+  value?: string | null
+): PaymentMethodCode {
+  switch (value) {
+    case "gcash":
+      return "gcash";
+    case "bank_transfer":
+      return "bank_transfer";
+    case "card":
+      return "card";
+    default:
+      return "bank_transfer";
+  }
+}
+
 /**
  * Normalize DB row → UI config
  */
@@ -105,7 +117,7 @@ function mapPaymentMethodRow(row: any): PaymentMethodConfig {
   return {
     id: row.payment_method_id,
     publicId: row.public_id ?? null,
-    methodCode: row.method_code as PaymentMethodCode,
+    methodCode: normalizePaymentMethodCode(row.method_code),
     displayName: normalizeText(row.display_name ?? ''),
     accountName: row.account_name ? normalizeName(row.account_name) : null,
     accountNumber: row.account_number ?? null,

@@ -258,6 +258,7 @@ function PriceFilterModal({
   );
 }
 
+
 export default function ClientUnits() {
   const { user } = useAuth();
   const { addReservation, reservations } = useClientData();
@@ -926,6 +927,29 @@ const ownReservedSlotIds = useMemo(() => {
     reservationForm.duration,
     reservationForm.paymentCycle,
   ]);
+
+  const subtotalAmount = useMemo(() => {
+  return Number((estimatedTotal / 1.12).toFixed(2));
+}, [estimatedTotal]);
+
+const vatAmount = useMemo(() => {
+  return Number((estimatedTotal - subtotalAmount).toFixed(2));
+}, [estimatedTotal, subtotalAmount]);
+
+const initialDue = useMemo(() => {
+  if (!selectedUnitData) return estimatedTotal;
+
+  if (selectedUnitData.type === "rental_space") {
+    const monthlyBase = Number(selectedUnitData.price || 0);
+    const deposit = monthlyBase;
+    const firstMonth = monthlyBase;
+    const raw = deposit + firstMonth;
+    const withVat = Number((raw * 1.12).toFixed(2));
+    return Math.min(withVat, estimatedTotal);
+  }
+
+  return estimatedTotal;
+}, [selectedUnitData, estimatedTotal]);
 
   const rentalMonthlyAmount = useMemo(() => {
   if (!selectedUnitData || selectedUnitData.type !== "rental_space") return 0;
@@ -2128,15 +2152,40 @@ const calendarLegend = (
 
                         <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
                           <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                            Estimated Total
+                            Billing Summary
                           </p>
-                          <p className="mt-1 text-sm font-semibold text-gray-900">
-                            {isViewingOnly
-                              ? 'No payment required'
-                              : selectedUnitData.type === "rental_space"
-                                ? formatCurrency(estimatedTotal) + ' total lease'
-                                : formatCurrency(estimatedTotal)}
-                          </p>
+
+                          <div className="mt-1 space-y-1 text-sm">
+                            {isViewingOnly ? (
+                              <p className="font-semibold text-gray-900">
+                                No payment required
+                              </p>
+                            ) : (
+                              <>
+                                <div className="flex items-center justify-between gap-3 text-gray-600">
+                                  <span>Subtotal</span>
+                                  <span>{formatCurrency(subtotalAmount)}</span>
+                                </div>
+
+                                <div className="flex items-center justify-between gap-3 text-gray-600">
+                                  <span>VAT (12%)</span>
+                                  <span>{formatCurrency(vatAmount)}</span>
+                                </div>
+
+                                <div className="flex items-center justify-between gap-3 border-t border-gray-200 pt-1 font-semibold text-gray-900">
+                                  <span>Total</span>
+                                  <span>{formatCurrency(estimatedTotal)}</span>
+                                </div>
+
+                                {selectedUnitData.type === "rental_space" && (
+                                  <div className="flex items-center justify-between gap-3 text-blue-700 font-semibold">
+                                    <span>Initial Due</span>
+                                    <span>{formatCurrency(initialDue)}</span>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -2183,13 +2232,13 @@ const calendarLegend = (
                         <ParkingReservationForm
                           form={reservationForm}
                           setForm={setReservationForm}
-                          selectedSlotObject={selectedSlotObject}
-                          setIsSlotPanelOpen={setIsSlotPanelOpen}
-                          clearSlotSelection={clearSlotSelection}
                           updateReservationField={updateReservationField}
                           handleFieldBlur={handleFieldBlur}
                           formErrors={formErrors}
-                          fallbackImage={FALLBACK_IMAGE}
+                          estimatedTotal={estimatedTotal}
+                          subtotalAmount={subtotalAmount}
+                          vatAmount={vatAmount}
+                          formatCurrency={formatCurrency}
                         />
                       )}
 
@@ -2212,28 +2261,34 @@ const calendarLegend = (
                           getCalendarTileClassName={getCalendarTileClassName}
                           selectedUnitBlockingReservations={selectedUnitBlockingReservations}
                           rangesOverlap={rangesOverlap}
+                          estimatedTotal={estimatedTotal}
+                          subtotalAmount={subtotalAmount}
+                          vatAmount={vatAmount}
+                          formatCurrency={formatCurrency}
                         />
                       )}
 
                       {selectedUnitData.type === "rental_space" && (
-
-                      <RentalReservationForm
-                        form={reservationForm}
-                        setForm={setReservationForm}
-                        updateReservationField={updateReservationField}
-                        handleFieldBlur={handleFieldBlur}
-                        formErrors={formErrors}
-                        selectedUnitData={selectedUnitData}
-                        showCalendar={showCalendar}
-                        setShowCalendar={setShowCalendar}
-                        calendarLegend={calendarLegend}
-                        isCalendarTileDisabled={isCalendarTileDisabled}
-                        getCalendarTileClassName={getCalendarTileClassName}
-                        getMaxReservationDate={getMaxReservationDate}
-                        rentalMonthlyAmount={rentalMonthlyAmount}
-                        rentalRequiredPayment={rentalRequiredPayment}
-                        estimatedTotal={estimatedTotal}
-                      />
+                        <RentalReservationForm
+                          form={reservationForm}
+                          setForm={setReservationForm}
+                          updateReservationField={updateReservationField}
+                          handleFieldBlur={handleFieldBlur}
+                          formErrors={formErrors}
+                          selectedUnitData={selectedUnitData}
+                          showCalendar={showCalendar}
+                          setShowCalendar={setShowCalendar}
+                          calendarLegend={calendarLegend}
+                          isCalendarTileDisabled={isCalendarTileDisabled}
+                          getCalendarTileClassName={getCalendarTileClassName}
+                          getMaxReservationDate={getMaxReservationDate}
+                          rentalMonthlyAmount={rentalMonthlyAmount}
+                          rentalRequiredPayment={rentalRequiredPayment}
+                          estimatedTotal={estimatedTotal}
+                          subtotalAmount={subtotalAmount}
+                          vatAmount={vatAmount}
+                          initialDue={initialDue}
+                        />
                       )}
                       
                       <ReservationPaymentSection
@@ -2245,6 +2300,10 @@ const calendarLegend = (
                         updateReservationField={updateReservationField}
                         selectedUnitData={selectedUnitData}
                         formErrors={formErrors}
+                        unitType={selectedUnitData.type}
+                        estimatedTotal={estimatedTotal}
+                        initialDue={initialDue}
+                        formatCurrency={formatCurrency}
                       />
 
                       <ReservationSummarySection
@@ -2254,6 +2313,10 @@ const calendarLegend = (
                         isSubmitting={isSubmitting}
                         canSubmit={canSubmit}
                         formatCurrency={formatCurrency}
+                        subtotalAmount={subtotalAmount}
+                        vatAmount={vatAmount}
+                        initialDue={initialDue}
+                        unitType={selectedUnitData.type}
                       />
                     </form>
                   </div>

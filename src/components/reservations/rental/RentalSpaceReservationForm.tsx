@@ -32,6 +32,9 @@ interface Props {
   rentalMonthlyAmount: number;
   rentalRequiredPayment: number;
   estimatedTotal: number;
+  subtotalAmount: number;
+  vatAmount: number;
+  initialDue: number;
 }
 
 export default function RentalReservationForm({
@@ -50,6 +53,9 @@ export default function RentalReservationForm({
   rentalMonthlyAmount,
   rentalRequiredPayment,
   estimatedTotal,
+  subtotalAmount,
+  vatAmount,
+  initialDue,
 }: Props) {
   return (
     <div className="space-y-4">
@@ -203,39 +209,70 @@ export default function RentalReservationForm({
       </div>
 
       <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
-        <p className="text-xs font-bold uppercase text-blue-700">
-          Billing Summary
-        </p>
+  <p className="text-xs font-bold uppercase text-blue-700">
+    Billing Summary
+  </p>
 
-        <div className="mt-2 space-y-1 text-sm text-gray-700">
-          <div className="flex items-center justify-between gap-4">
-            <span>Monthly rate</span>
-            <span className="font-semibold text-gray-900">
-              {formatCurrency(rentalMonthlyAmount)}
-            </span>
-          </div>
+  <div className="mt-2 space-y-1 text-sm text-gray-700">
+    <div className="flex items-center justify-between gap-4">
+      <span>Monthly base rate</span>
+      <span className="font-semibold text-gray-900">
+        {formatCurrency(rentalMonthlyAmount)}
+      </span>
+    </div>
 
-          <div className="flex items-center justify-between gap-4">
-            <span>
-              {form.paymentCycle === "quarterly"
-                ? "Quarterly minimum"
-                : form.paymentCycle === "full"
-                  ? "Full payment"
-                  : "Monthly minimum"}
-            </span>
-            <span className="font-semibold text-gray-900">
-              {formatCurrency(rentalRequiredPayment)}
-            </span>
-          </div>
+    <div className="flex items-center justify-between gap-4">
+      <span>Subtotal</span>
+      <span className="font-semibold text-gray-900">
+        {formatCurrency(subtotalAmount)}
+      </span>
+    </div>
 
-          <div className="flex items-center justify-between gap-4 border-t border-blue-100 pt-2">
-            <span>Total lease amount</span>
-            <span className="font-bold text-blue-700">
-              {formatCurrency(estimatedTotal)}
-            </span>
-          </div>
-        </div>
-      </div>
+    <div className="flex items-center justify-between gap-4">
+      <span>VAT (12%)</span>
+      <span className="font-semibold text-gray-900">
+        {formatCurrency(vatAmount)}
+      </span>
+    </div>
+
+    <div className="flex items-center justify-between gap-4">
+      <span>
+        {form.paymentCycle === "quarterly"
+          ? "Quarterly payment schedule"
+          : form.paymentCycle === "full"
+            ? "Full payment schedule"
+            : "Monthly payment schedule"}
+      </span>
+
+      <span className="font-semibold text-gray-900">
+        {formatCurrency(rentalRequiredPayment)}
+      </span>
+    </div>
+
+    <div className="flex items-center justify-between gap-4 rounded-xl bg-white px-3 py-2">
+      <span className="text-xs font-bold uppercase tracking-wide text-blue-700">
+        Due upon approval
+      </span>
+
+      <span className="font-bold text-blue-700">
+        {formatCurrency(initialDue)}
+      </span>
+    </div>
+
+    <div className="flex items-center justify-between gap-4 border-t border-blue-100 pt-2">
+      <span>Total lease amount</span>
+
+      <span className="font-bold text-blue-700">
+        {formatCurrency(estimatedTotal)}
+      </span>
+    </div>
+  </div>
+
+  <p className="mt-3 text-xs text-gray-500">
+    Initial payment includes the required security deposit and first month.
+    Recurring charges follow the selected payment cycle.
+  </p>
+</div>
 
       <div>
         <label className="mb-2 block text-sm text-gray-700">

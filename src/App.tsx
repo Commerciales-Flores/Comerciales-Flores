@@ -41,6 +41,7 @@ const AdminCustomers = lazy(() => import('./pages/admin/Customers'));
 const AdminAudit = lazy(() => import('./pages/admin/Audit'));
 const AdminBusinessSlots = lazy(() => import('./pages/admin/BusinessSlots'));
 const AdminReservations = lazy(() => import('./pages/admin/Reservations'));
+const AdminParking = lazy(() => import('./pages/admin/Parking'));
 const AdminPayments = lazy(() => import('./pages/admin/Payments'));
 const AdminPaymentMethods = lazy(() => import('./components/admin/payment/AdminPaymentMethods'));
 const AdminReview = lazy(() => import('./pages/admin/Reviews'));
@@ -140,6 +141,7 @@ function preloadAdminRoutes() {
   void import('./pages/admin/Dashboard');
   void import('./pages/admin/Customers');
   void import('./pages/admin/Reservations');
+  void import('./pages/admin/Parking');
   void import('./pages/admin/Payments');
   void import('./pages/admin/Inquiries');
   void import('./pages/admin/Profile');
@@ -417,6 +419,14 @@ function AppRoutes() {
           element={
             <RouteSuspense inLayout>
               <AdminReservations />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="parking"
+          element={
+            <RouteSuspense inLayout>
+              <AdminParking />
             </RouteSuspense>
           }
         />

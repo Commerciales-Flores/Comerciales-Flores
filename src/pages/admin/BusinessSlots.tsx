@@ -50,6 +50,12 @@ const UNIT_TYPE_MAP: Record<UnitType, { icon: JSX.Element; label: string; color:
   },
 };
 
+const TYPE_CATEGORY_RULES: Record<UnitType, string[]> = {
+  rental_space: ['commercial_space', 'residential_space'],
+  function_hall: ['function_room'],
+  parking_slot: ['parking'],
+};
+
 const INITIAL_FORM_STATE = {
   name: '',
   type: '' as UnitType | '',
@@ -138,6 +144,17 @@ type UnitRecord = {
   minimumPaymentPercent?: number | null;
   contractFilePath?: string | null;
   contractFileName?: string | null;
+};
+
+type TaxonomyOption = {
+  option_id: string;
+  option_type: 'category' | 'subtype';
+  value: string;
+  label: string;
+  parent_category: string | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at?: string;
 };
 
 const SLOT_STATUS_STYLES: Record<
@@ -377,8 +394,8 @@ const UnitFormModal = React.memo(function UnitFormModal({
   const [videoPreviews, setVideoPreviews] = useState<ImagePreviewItem[]>([]);
   const [isUploadingVideos, setIsUploadingVideos] = useState(false);
 
-    const [categories, setCategories] = useState<any[]>([]);
-  const [subtypes, setSubtypes] = useState<any[]>([]);
+    const [categories, setCategories] = useState<TaxonomyOption[]>([]);
+const [subtypes, setSubtypes] = useState<TaxonomyOption[]>([]);
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [showAddSubtype, setShowAddSubtype] = useState(false);
   const [newCategoryLabel, setNewCategoryLabel] = useState('');
@@ -416,6 +433,35 @@ const UnitFormModal = React.memo(function UnitFormModal({
       }));
     }
   }, [unitForm.type, unitForm.capacity]);
+
+  useEffect(() => {
+  if (!unitForm.type) return;
+
+  const allowedCategories = TYPE_CATEGORY_RULES[unitForm.type] ?? [];
+
+  if (unitForm.unitCategory && !allowedCategories.includes(unitForm.unitCategory)) {
+    setUnitForm((prev) => ({
+      ...prev,
+      unitCategory: '',
+      unitSubtype: '',
+    }));
+    return;
+  }
+
+  if (
+    unitForm.unitSubtype &&
+    !subtypes.some(
+      (subtype) =>
+        subtype.value === unitForm.unitSubtype &&
+        subtype.parent_category === unitForm.unitCategory
+    )
+  ) {
+    setUnitForm((prev) => ({
+      ...prev,
+      unitSubtype: '',
+    }));
+  }
+}, [unitForm.type, unitForm.unitCategory, unitForm.unitSubtype, subtypes]);
 
   useEffect(() => {
   if (!open) return;
@@ -937,6 +983,23 @@ const handleVideoFilesSelected = useCallback(
 
 const [formError, setFormError] = useState<string | null>(null);
 
+const allowedCategoriesForSelectedType = useMemo(() => {
+  if (!unitForm.type) return [];
+  return TYPE_CATEGORY_RULES[unitForm.type] ?? [];
+}, [unitForm.type]);
+
+const filteredCategories = useMemo(() => {
+  if (!unitForm.type) return categories;
+  return categories.filter((category) =>
+    allowedCategoriesForSelectedType.includes(category.value)
+  );
+}, [categories, allowedCategoriesForSelectedType, unitForm.type]);
+
+const filteredSubtypes = useMemo(() => {
+  if (!unitForm.unitCategory) return [];
+  return subtypes.filter((subtype) => subtype.parent_category === unitForm.unitCategory);
+}, [subtypes, unitForm.unitCategory]);
+
   const handleClose = useCallback(() => {
   if (isSubmitting || isUploadingImages || isUploadingVideos || isUploadingContract) return;
   onClose();
@@ -972,8 +1035,6 @@ const [formError, setFormError] = useState<string | null>(null);
       unitForm.type === 'function_hall' && unitForm.capacity
         ? parseInt(unitForm.capacity, 10)
         : undefined;
-
-    // ✅ ADD IT HERE
     if (unitForm.type === 'function_hall') {
       if (parsedCapacity === undefined || parsedCapacity <= 0) {
         setFormError('Function hall capacity is required and must be at least 1.');
@@ -981,6 +1042,29 @@ const [formError, setFormError] = useState<string | null>(null);
         return;
       }
     }
+
+    if (unitForm.unitCategory) {
+  const allowedCategories = TYPE_CATEGORY_RULES[unitForm.type] ?? [];
+
+  if (!allowedCategories.includes(unitForm.unitCategory)) {
+    setFormError('Selected category does not match the chosen unit type.');
+    setIsSubmitting(false);
+    return;
+  }
+}
+
+if (
+  unitForm.unitSubtype &&
+  !subtypes.some(
+    (subtype) =>
+      subtype.value === unitForm.unitSubtype &&
+      subtype.parent_category === unitForm.unitCategory
+  )
+) {
+  setFormError('Selected subtype does not belong to the chosen category.');
+  setIsSubmitting(false);
+  return;
+}
           
 
       const parsedMinimumPaymentPercent =
@@ -1023,16 +1107,17 @@ const [formError, setFormError] = useState<string | null>(null);
     }
   },
   [
-    isSubmitting,
-    unitForm,
-    isUploadingImages,
-    isUploadingVideos,
-    isUploadingContract,
-    onSave,
-    editingUnit?.id,
-    defaultLocation,
-    onClose,
-  ]
+  isSubmitting,
+  unitForm,
+  isUploadingImages,
+  isUploadingVideos,
+  isUploadingContract,
+  onSave,
+  editingUnit?.id,
+  defaultLocation,
+  onClose,
+  subtypes,
+]
 );
 
   const categoryModal = showAddCategory ? (
@@ -1216,10 +1301,14 @@ const [formError, setFormError] = useState<string | null>(null);
         updateFormField('unitCategory', e.target.value);
         updateFormField('unitSubtype', '');
       }}
-      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+      disabled={!unitForm.type}
+      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100"
     >
-      <option value="">Select category</option>
-      {categories.map((cat) => (
+      <option value="">
+        {!unitForm.type ? 'Select unit type first' : 'Select category'}
+      </option>
+
+      {filteredCategories.map((cat) => (
         <option key={cat.option_id} value={cat.value}>
           {cat.label}
         </option>
@@ -1229,12 +1318,19 @@ const [formError, setFormError] = useState<string | null>(null);
     <button
       type="button"
       onClick={() => setShowAddCategory(true)}
-      className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-100"
+      disabled={!unitForm.type}
+      className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-widest text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
       title="Add category"
     >
-      +
+      Add
     </button>
   </div>
+
+  {!unitForm.type ? (
+    <p className="ml-1 text-[11px] text-slate-400">
+      Select a unit type first before choosing a category.
+    </p>
+  ) : null}
 </div>
 
           <div className="space-y-1.5">
@@ -1250,23 +1346,22 @@ const [formError, setFormError] = useState<string | null>(null);
       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100"
     >
       <option value="">Select subtype</option>
-      {subtypes
-        .filter((sub) => sub.parent_category === unitForm.unitCategory)
-        .map((sub) => (
-          <option key={sub.option_id} value={sub.value}>
-            {sub.label}
-          </option>
-        ))}
+
+      {filteredSubtypes.map((sub) => (
+        <option key={sub.option_id} value={sub.value}>
+          {sub.label}
+        </option>
+      ))}
     </select>
 
     <button
       type="button"
       onClick={() => setShowAddSubtype(true)}
       disabled={!unitForm.unitCategory}
-      className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+      className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-widest text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
       title="Add subtype"
     >
-      +
+      Add
     </button>
   </div>
 
@@ -1276,7 +1371,6 @@ const [formError, setFormError] = useState<string | null>(null);
     </p>
   ) : null}
 </div>
-
             <div className="space-y-1.5">
               <label
                 htmlFor="location"
@@ -1987,6 +2081,377 @@ const UnitsList = React.memo(function UnitsList({
     </div>
   );
 });
+
+
+type TaxonomyManagerModalProps = {
+  open: boolean;
+  taxonomyOptions: TaxonomyOption[];
+  taxonomyLoading: boolean;
+  taxonomyError: string | null;
+  editingTaxonomy: TaxonomyOption | null;
+  taxonomyLabel: string;
+  taxonomyParent: string;
+  taxonomySortOrder: string;
+  isSavingTaxonomy: boolean;
+  onClose: () => void;
+  onEdit: (item: TaxonomyOption) => void;
+  onLabelChange: (value: string) => void;
+  onParentChange: (value: string) => void;
+  onSortOrderChange: (value: string) => void;
+  onSave: () => void;
+  onCancelEdit: () => void;
+  onToggleStatus: (item: TaxonomyOption) => void;
+};
+
+const TaxonomyManagerModal = React.memo(function TaxonomyManagerModal({
+  open,
+  taxonomyOptions,
+  taxonomyLoading,
+  taxonomyError,
+  editingTaxonomy,
+  taxonomyLabel,
+  taxonomyParent,
+  taxonomySortOrder,
+  isSavingTaxonomy,
+  onClose,
+  onEdit,
+  onLabelChange,
+  onParentChange,
+  onSortOrderChange,
+  onSave,
+  onCancelEdit,
+  onToggleStatus,
+}: TaxonomyManagerModalProps) {
+  if (!open) return null;
+
+  const categories = taxonomyOptions.filter(
+    (item) => item.option_type === 'category'
+  );
+
+  const subtypes = taxonomyOptions.filter(
+    (item) => item.option_type === 'subtype'
+  );
+
+  const renderStatusChip = (isActive: boolean) => (
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
+        isActive
+          ? 'bg-emerald-100 text-emerald-700'
+          : 'bg-slate-200 text-slate-700'
+      }`}
+    >
+      {isActive ? 'Active' : 'Inactive'}
+    </span>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4">
+      <div className="flex h-[92vh] w-full flex-col overflow-hidden rounded-t-[2rem] border border-slate-200/60 bg-slate-50 shadow-xl sm:h-auto sm:max-h-[92vh] sm:max-w-6xl sm:rounded-[2rem]">
+        <div className="flex items-center justify-between bg-slate-900 px-6 py-5 sm:px-8">
+          <div className="min-w-0">
+            <h2 className="text-xl font-bold tracking-tight text-white">
+              Manage Categories &amp; Subtypes
+            </h2>
+            <p className="mt-1 text-xs font-medium text-slate-400">
+              Edit labels, parent category, sort order, and active status.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl bg-white/5 p-2 text-slate-400 transition-all hover:bg-white/10 hover:text-white"
+            aria-label="Close taxonomy manager"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          <div className="grid grid-cols-1 gap-6 p-6 sm:p-8 xl:grid-cols-[1.2fr_1.2fr_0.95fr]">
+            <section className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-800">
+                  Categories
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Main classifications available in the unit form.
+                </p>
+              </div>
+
+              {taxonomyLoading ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+                  <EmptyState
+                    icon={
+                      <div className="flex items-center justify-center">
+                        <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+                      </div>
+                    }
+                    title="Loading categories..."
+                    description="Fetching taxonomy records."
+                  />
+                </div>
+              ) : categories.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+                  <EmptyState
+                    icon={<Building2 className="size-10 text-blue-500" />}
+                    title="No categories found"
+                    description="Categories will appear here once created."
+                  />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {categories.map((item) => (
+                    <div
+                      key={item.option_id}
+                      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                    >
+                      <div className="flex flex-col gap-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold text-slate-900">
+                              {item.label}
+                            </p>
+                            <p className="mt-1 break-all text-xs text-slate-500">
+                              value: {item.value}
+                            </p>
+                          </div>
+
+                          {renderStatusChip(item.is_active)}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold">
+                            Order: {item.sort_order}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onEdit(item)}
+                            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold uppercase tracking-widest text-slate-700 transition hover:bg-slate-50"
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => onToggleStatus(item)}
+                            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold uppercase tracking-widest text-slate-700 transition hover:bg-slate-50"
+                          >
+                            {item.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-800">
+                  Subtypes
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Child options grouped under a parent category.
+                </p>
+              </div>
+
+              {taxonomyLoading ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+                  <EmptyState
+                    icon={
+                      <div className="flex items-center justify-center">
+                        <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+                      </div>
+                    }
+                    title="Loading subtypes..."
+                    description="Fetching taxonomy records."
+                  />
+                </div>
+              ) : subtypes.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+                  <EmptyState
+                    icon={<Hash className="size-10 text-blue-500" />}
+                    title="No subtypes found"
+                    description="Subtypes will appear here once created."
+                  />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {subtypes.map((item) => (
+                    <div
+                      key={item.option_id}
+                      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                    >
+                      <div className="flex flex-col gap-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-bold text-slate-900">
+                              {item.label}
+                            </p>
+                            <p className="mt-1 break-all text-xs text-slate-500">
+                              value: {item.value}
+                            </p>
+                          </div>
+
+                          {renderStatusChip(item.is_active)}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold">
+                            Parent: {item.parent_category || '—'}
+                          </span>
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold">
+                            Order: {item.sort_order}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onEdit(item)}
+                            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold uppercase tracking-widest text-slate-700 transition hover:bg-slate-50"
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => onToggleStatus(item)}
+                            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold uppercase tracking-widest text-slate-700 transition hover:bg-slate-50"
+                          >
+                            {item.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <aside className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-800">
+                  Editor
+                </h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  Select a category or subtype card and edit it here.
+                </p>
+              </div>
+
+              {taxonomyError ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                  {taxonomyError}
+                </div>
+              ) : null}
+
+              {editingTaxonomy ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">
+                        Editing {editingTaxonomy.option_type}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Fixed value: {editingTaxonomy.value}
+                      </p>
+                    </div>
+
+                    {renderStatusChip(editingTaxonomy.is_active)}
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Label
+                      </label>
+                      <input
+                        type="text"
+                        value={taxonomyLabel}
+                        onChange={(e) => onLabelChange(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Sort Order
+                      </label>
+                      <input
+                        type="number"
+                        value={taxonomySortOrder}
+                        onChange={(e) => onSortOrderChange(e.target.value)}
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+                      />
+                    </div>
+
+                    {editingTaxonomy.option_type === 'subtype' ? (
+                      <div className="space-y-1.5">
+                        <label className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                          Parent Category
+                        </label>
+                        <select
+                          value={taxonomyParent}
+                          onChange={(e) => onParentChange(e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+                        >
+                          <option value="">Select parent category</option>
+                          {categories.map((category) => (
+                            <option key={category.option_id} value={category.value}>
+                              {category.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+
+                    <div className="flex flex-col gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={onSave}
+                        disabled={isSavingTaxonomy}
+                        className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {isSavingTaxonomy ? 'Saving...' : 'Save Changes'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={onCancelEdit}
+                        disabled={isSavingTaxonomy}
+                        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white/70 p-6 text-center shadow-sm">
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100">
+                    <Edit className="size-5 text-slate-500" />
+                  </div>
+                  <p className="text-sm font-semibold text-slate-700">
+                    No item selected
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Click any card’s Edit button to modify it.
+                  </p>
+                </div>
+              )}
+            </aside>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 
 type SlotManagerModalProps = {
   open: boolean;
@@ -2792,10 +3257,27 @@ export default function AdminUnitManagement() {
   const [slotImagePreview, setSlotImagePreview] = useState<string>('');
   const slotFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [showAddCategory, setShowAddCategory] = useState(false);
-  const [newCategory, setNewCategory] = useState('');
 
-  const [isUpdatingParkingLimit, setIsUpdatingParkingLimit] = useState(false);
+type TaxonomyOption = {
+  option_id: string;
+  option_type: 'category' | 'subtype';
+  value: string;
+  label: string;
+  parent_category: string | null;
+  is_active: boolean;
+  sort_order: number;
+};
+
+const [taxonomyOptions, setTaxonomyOptions] = useState<TaxonomyOption[]>([]);
+const [taxonomyLoading, setTaxonomyLoading] = useState(false);
+const [taxonomyError, setTaxonomyError] = useState<string | null>(null);
+const [showTaxonomyManager, setShowTaxonomyManager] = useState(false);
+const [editingTaxonomy, setEditingTaxonomy] = useState<TaxonomyOption | null>(null);
+const [taxonomyLabel, setTaxonomyLabel] = useState('');
+const [taxonomyParent, setTaxonomyParent] = useState('');
+const [taxonomySortOrder, setTaxonomySortOrder] = useState('0');
+const [isSavingTaxonomy, setIsSavingTaxonomy] = useState(false);
+const [isUpdatingParkingLimit, setIsUpdatingParkingLimit] = useState(false);
 
   
 
@@ -2881,24 +3363,39 @@ const [showMobileFilters, setShowMobileFilters] = useState(false);
     setShowUnitModal(true);
   }, []);
 
-  const hasActiveSearch = Boolean(searchTerm.trim());
-const hasActiveFilters =
-  hasActiveSearch || typeFilter !== 'all' || availabilityFilter !== 'all';
-
-const resetFilters = useCallback(() => {
-  setSearchTerm('');
-  setTypeFilter('all');
-  setAvailabilityFilter('all');
-}, []);
-
-const closeMobileFilters = useCallback(() => {
-  setShowMobileFilters(false);
-}, []);
 
   const closeUnitModal = useCallback(() => {
     setShowUnitModal(false);
     setEditingUnitId(null);
   }, []);
+
+  const loadTaxonomyOptions = useCallback(async () => {
+  try {
+    setTaxonomyLoading(true);
+    setTaxonomyError(null);
+
+    const { data, error } = await supabase
+      .from('unit_taxonomy_options')
+      .select('*')
+      .order('option_type', { ascending: true })
+      .order('sort_order', { ascending: true })
+      .order('label', { ascending: true });
+
+    if (error) throw error;
+
+    setTaxonomyOptions((data ?? []) as TaxonomyOption[]);
+  } catch (error: any) {
+    setTaxonomyError(
+      error?.message || 'Failed to load taxonomy options.'
+    );
+  } finally {
+    setTaxonomyLoading(false);
+  }
+}, []);
+
+useEffect(() => {
+  loadTaxonomyOptions();
+}, [loadTaxonomyOptions]);
 
   const handleSaveUnit = useCallback(
     async ({
@@ -3057,6 +3554,95 @@ const confirmDelete = useCallback(async () => {
     setSlotError(null);
   },
   []
+);
+
+const openEditTaxonomy = useCallback((item: TaxonomyOption) => {
+  setEditingTaxonomy(item);
+  setTaxonomyLabel(item.label);
+  setTaxonomyParent(item.parent_category ?? '');
+  setTaxonomySortOrder(String(item.sort_order ?? 0));
+}, []);
+
+const closeTaxonomyManager = useCallback(() => {
+  if (isSavingTaxonomy) return;
+
+  setShowTaxonomyManager(false);
+  setEditingTaxonomy(null);
+  setTaxonomyLabel('');
+  setTaxonomyParent('');
+  setTaxonomySortOrder('0');
+}, [isSavingTaxonomy]);
+
+const cancelEditTaxonomy = useCallback(() => {
+  if (isSavingTaxonomy) return;
+
+  setEditingTaxonomy(null);
+  setTaxonomyLabel('');
+  setTaxonomyParent('');
+  setTaxonomySortOrder('0');
+}, [isSavingTaxonomy]);
+
+const saveTaxonomyChanges = useCallback(async () => {
+  if (!editingTaxonomy) return;
+
+  try {
+    setIsSavingTaxonomy(true);
+    setTaxonomyError(null);
+
+    const payload: any = {
+      label: taxonomyLabel.trim(),
+      sort_order: Number.parseInt(taxonomySortOrder, 10) || 0,
+    };
+
+    if (editingTaxonomy.option_type === 'subtype') {
+      payload.parent_category = taxonomyParent || null;
+    }
+
+    const { error } = await supabase
+      .from('unit_taxonomy_options')
+      .update(payload)
+      .eq('option_id', editingTaxonomy.option_id);
+
+    if (error) throw error;
+
+    await loadTaxonomyOptions();
+
+    setEditingTaxonomy(null);
+  } catch (error: any) {
+    setTaxonomyError(
+      error?.message || 'Failed to save changes.'
+    );
+  } finally {
+    setIsSavingTaxonomy(false);
+  }
+}, [
+  editingTaxonomy,
+  taxonomyLabel,
+  taxonomyParent,
+  taxonomySortOrder,
+  loadTaxonomyOptions,
+]);
+
+const toggleTaxonomyStatus = useCallback(
+  async (item: TaxonomyOption) => {
+    try {
+      const { error } = await supabase
+        .from('unit_taxonomy_options')
+        .update({
+          is_active: !item.is_active,
+        })
+        .eq('option_id', item.option_id);
+
+      if (error) throw error;
+
+      await loadTaxonomyOptions();
+    } catch (error: any) {
+      setTaxonomyError(
+        error?.message || 'Failed to update status.'
+      );
+    }
+  },
+  [loadTaxonomyOptions]
 );
 
   const handleSlotImageSelected = useCallback(
@@ -3228,13 +3814,23 @@ const confirmDelete = useCallback(async () => {
           </div>
 
           {!loadingUnits && (
-            <button
-              onClick={openAddModal}
-              className="hidden cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-100 transition-all active:scale-95 hover:bg-blue-700 lg:flex"
-            >
-              <Plus className="size-5" />
-              Add Unit
-            </button>
+            <div className="hidden items-center gap-3 lg:flex">
+              <button
+                onClick={openAddModal}
+                className="cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-100 transition-all active:scale-95 hover:bg-blue-700 lg:flex"
+              >
+                <Plus className="size-5" />
+                Add Unit
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowTaxonomyManager(true)}
+                className="cursor-pointer rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 active:scale-95"
+              >
+                Manage Categories
+              </button>
+            </div>
           )}
         </div>
 
@@ -3422,6 +4018,26 @@ const confirmDelete = useCallback(async () => {
           remainingParkingSlots={remainingParkingSlots}
           isUpdatingParkingLimit={isUpdatingParkingLimit}
           onUpdateParkingSlotLimit={handleUpdateParkingSlotLimit}
+        />
+
+        <TaxonomyManagerModal
+          open={showTaxonomyManager}
+          taxonomyOptions={taxonomyOptions}
+          taxonomyLoading={taxonomyLoading}
+          taxonomyError={taxonomyError}
+          editingTaxonomy={editingTaxonomy}
+          taxonomyLabel={taxonomyLabel}
+          taxonomyParent={taxonomyParent}
+          taxonomySortOrder={taxonomySortOrder}
+          isSavingTaxonomy={isSavingTaxonomy}
+          onClose={closeTaxonomyManager}
+          onEdit={openEditTaxonomy}
+          onLabelChange={setTaxonomyLabel}
+          onParentChange={setTaxonomyParent}
+          onSortOrderChange={setTaxonomySortOrder}
+          onSave={saveTaxonomyChanges}
+          onCancelEdit={cancelEditTaxonomy}
+          onToggleStatus={toggleTaxonomyStatus}
         />
 
         <DeleteUnitDialog

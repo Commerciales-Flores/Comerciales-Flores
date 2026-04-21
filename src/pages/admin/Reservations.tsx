@@ -4,6 +4,7 @@ import { useReservations } from '../../contexts/ReservationsContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { DataTable, DataCell, ActionCell } from '../../components/common/DataTable';
 import { formatDate } from '../../utils/date';
+import { useNavigate } from 'react-router-dom';
 import {
   Search,
   Eye,
@@ -19,7 +20,6 @@ import {
   Clock,
   Tag,
   FileText,
-  SlidersHorizontal,
 } from 'lucide-react';
 import { formatCurrency } from '../../utils/currency';
 import { getUnitTypeLabel } from '../../utils/propertyHelpers';
@@ -135,7 +135,8 @@ function getExtensionRequestDetails(reservation: any) {
 }
 
 function canHandleExtension(reservation: any) {
-  return reservation?.unitType === 'rental_space' || reservation?.unitType === 'parking_slot';
+  //return reservation?.unitType === 'rental_space' || reservation?.unitType === 'parking_slot';
+  return reservation?.unitType === 'rental_space';
 }
 
 function computeExtensionUpdate(reservation: any, months: number) {
@@ -201,6 +202,7 @@ export default function AdminReservations() {
 
   const loadStartRef = useRef<number | null>(null);
 const hasMeasuredRef = useRef(false);
+const navigate = useNavigate();
   const { updateReservation, getUnitById, loadingUnits } = useAdminData();
   const { users, isLoadingUsers, refreshUsers, getUserById } = useUsers();
   const { fetchReservationsPage, reservationsVersion } = useReservations();
@@ -346,6 +348,13 @@ const hasMeasuredRef = useRef(false);
     });
   }, [reservations, getUserById, getUnitById]);
 
+  const pendingParkingCount = useMemo(() => {
+  return reservations.filter(
+    (reservation) =>
+      reservation.unitType === 'parking_slot' &&
+      reservation.status === 'pending'
+  ).length;
+}, [reservations]);
 
 const filteredReservations = useMemo(() => {
   const term = debouncedSearch.trim().toLowerCase();
@@ -371,6 +380,8 @@ const filteredReservations = useMemo(() => {
     );
   });
 }, [enrichedReservations, debouncedSearch]);
+
+
 
   const selectedReservationData = useMemo(() => {
     return selectedReservation
@@ -616,6 +627,10 @@ const hasNoSearchResults =
   const closeCreateModal = useCallback(() => setIsActionModalOpen(false), []);
   const closeFilterPanel = useCallback(() => setIsFilterPanelOpen(false), []);
 
+  const openParkingRequests = useCallback(() => {
+    navigate('/admin/parking');
+  }, [navigate]);
+
   return (
     <div className="min-h-screen bg-white">
       <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
@@ -625,13 +640,34 @@ const hasNoSearchResults =
             <p className="text-sm text-gray-500">Manage and audit all Unit bookings</p>
           </div>
 
-          <button
-            onClick={openCreateModal}
-            className="hidden lg:flex items-center justify-center cursor-pointer gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md shadow-blue-100 transition-all text-sm font-bold active:scale-95"
-          >
-            <Plus className="size-5" />
-            <span className="hidden font-medium sm:inline">Create Reservation</span>
-          </button>
+          <div className="hidden lg:flex items-center gap-3">
+            <button
+              type="button"
+              onClick={openParkingRequests}
+              className="relative flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition-all hover:bg-slate-50 active:scale-95"
+            >
+              <Calendar className="size-5" />
+
+              <span className="hidden font-medium sm:inline">
+                Manage Parking Requests
+              </span>
+
+              {pendingParkingCount > 0 && (
+                <span className="absolute -right-2 -top-2 inline-flex min-w-[22px] items-center justify-center rounded-full bg-rose-500 px-1.5 py-1 text-[10px] font-bold leading-none text-white shadow-md">
+                  {pendingParkingCount > 99 ? '99+' : pendingParkingCount}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="flex items-center justify-center cursor-pointer gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-100 transition-all hover:bg-blue-700 active:scale-95"
+            >
+              <Plus className="size-5" />
+              <span className="hidden font-medium sm:inline">Create Reservation</span>
+            </button>
+          </div>
         </div>
 
         {shouldShowFilters && (

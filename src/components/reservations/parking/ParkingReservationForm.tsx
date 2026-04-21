@@ -1,30 +1,35 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReservationForm } from "../shared/reservation.types";
-import type { ParkingSlot } from "../../../data/types";
 import { formatDate } from "../../../utils/date";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import {
   getParkingDurationBounds,
   validateParkingDuration,
   getParkingMinStartDate,
   isSameParkingDay,
   getParkingEarliestStartTimeLabel,
-  getParkingDurationPolicyText,
   getParkingEarliestSelectableTimeValue,
+  buildParkingHourlyOptions,
 } from "./parking.utils";
+
+import {
+  fetchParkingRules,
+  DEFAULT_PARKING_RULES,
+  type ParkingRules,
+} from "../../../data/appSettings";
 
 type ParkingDurationType = "hours" | "days" | "months";
 
 interface Props {
   form: ReservationForm;
   setForm: React.Dispatch<React.SetStateAction<ReservationForm>>;
-  selectedSlotObject: ParkingSlot | null;
-  setIsSlotPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  clearSlotSelection: () => void;
   updateReservationField: (field: keyof ReservationForm, value: string) => void;
   handleFieldBlur: (field: keyof ReservationForm, value: string) => void;
   formErrors: Record<string, string>;
-  fallbackImage: string;
+  estimatedTotal: number;
+  subtotalAmount: number;
+  vatAmount: number;
+  formatCurrency: (value: number) => string;
 }
 
 function toDateInputValue(date?: Date) {
@@ -75,45 +80,21 @@ function timeValueToMinutes(value: string) {
   return hour * 60 + minute;
 }
 
-const HOURLY_TIME_OPTIONS = [
-  { value: "00:00", label: "12:00 AM" },
-  { value: "01:00", label: "1:00 AM" },
-  { value: "02:00", label: "2:00 AM" },
-  { value: "03:00", label: "3:00 AM" },
-  { value: "04:00", label: "4:00 AM" },
-  { value: "05:00", label: "5:00 AM" },
-  { value: "06:00", label: "6:00 AM" },
-  { value: "07:00", label: "7:00 AM" },
-  { value: "08:00", label: "8:00 AM" },
-  { value: "09:00", label: "9:00 AM" },
-  { value: "10:00", label: "10:00 AM" },
-  { value: "11:00", label: "11:00 AM" },
-  { value: "12:00", label: "12:00 PM" },
-  { value: "13:00", label: "1:00 PM" },
-  { value: "14:00", label: "2:00 PM" },
-  { value: "15:00", label: "3:00 PM" },
-  { value: "16:00", label: "4:00 PM" },
-  { value: "17:00", label: "5:00 PM" },
-  { value: "18:00", label: "6:00 PM" },
-  { value: "19:00", label: "7:00 PM" },
-  { value: "20:00", label: "8:00 PM" },
-  { value: "21:00", label: "9:00 PM" },
-  { value: "22:00", label: "10:00 PM" },
-  { value: "23:00", label: "11:00 PM" },
-];
 
 export default function ParkingReservationForm({
   form,
   setForm,
-  selectedSlotObject,
-  setIsSlotPanelOpen,
-  clearSlotSelection,
   updateReservationField,
   handleFieldBlur,
   formErrors,
-  fallbackImage,
+  estimatedTotal,
+  subtotalAmount,
+  vatAmount,
+  formatCurrency,
 }: Props) {
   const [isTimeDropdownOpen, setIsTimeDropdownOpen] = useState(false);
+  const [parkingRules, setParkingRules] =
+  useState<ParkingRules>(DEFAULT_PARKING_RULES);
   const timeDropdownRef = useRef<HTMLDivElement | null>(null);
 
   const parkingDurationType: ParkingDurationType =
@@ -133,18 +114,52 @@ export default function ParkingReservationForm({
   const minStartDate = getParkingMinStartDate();
   const minStartDateValue = toDateInputValue(minStartDate);
   const isSameDayStart = isSameParkingDay(form.startDate);
-  const earliestSameDayTimeValue = getParkingEarliestSelectableTimeValue();
+  const earliestSameDayTimeValue =
+  getParkingEarliestSelectableTimeValue(
+    parkingRules.same_day_lead_hours
+  );
 
   const availableHourlyOptions = useMemo(() => {
-    if (parkingDurationType !== "hours") return HOURLY_TIME_OPTIONS;
-    if (!isSameDayStart) return HOURLY_TIME_OPTIONS;
+  const baseOptions = buildParkingHourlyOptions(
+    parkingRules.hourly_start,
+    parkingRules.hourly_end
+  );
 
-    const earliestMinutes = timeValueToMinutes(earliestSameDayTimeValue);
+  if (parkingDurationType !== "hours") return baseOptions;
+  if (!isSameDayStart) return baseOptions;
 
-    return HOURLY_TIME_OPTIONS.filter(
-      (option) => timeValueToMinutes(option.value) >= earliestMinutes
-    );
-  }, [parkingDurationType, isSameDayStart, earliestSameDayTimeValue]);
+  const earliestMinutes = timeValueToMinutes(
+    earliestSameDayTimeValue
+  );
+
+  return baseOptions.filter(
+    (option) => timeValueToMinutes(option.value) >= earliestMinutes
+  );
+}, [
+  parkingDurationType,
+  isSameDayStart,
+  earliestSameDayTimeValue,
+  parkingRules.hourly_start,
+  parkingRules.hourly_end,
+]);
+
+  useEffect(() => {
+  let cancelled = false;
+
+  const loadParkingRules = async () => {
+    const rules = await fetchParkingRules();
+
+    if (!cancelled) {
+      setParkingRules(rules);
+    }
+  };
+
+  void loadParkingRules();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
 
   useEffect(() => {
     if (parkingDurationType !== "hours") return;
@@ -221,12 +236,6 @@ export default function ParkingReservationForm({
     }));
   };
 
-  const helperText =
-    parkingDurationType === "hours"
-      ? "Hourly parking is limited to whole-hour blocks only, up to 24 hours."
-      : parkingDurationType === "days"
-        ? "Daily parking is billed in full-day blocks only. Partial-day daily reservations are not supported."
-        : "Monthly parking is billed in full-month blocks only.";
 
   const durationLabel =
     parkingDurationType === "hours"
@@ -242,11 +251,26 @@ export default function ParkingReservationForm({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
-        Parking reservations may start <strong>today</strong>. Same-day hourly
-        reservations are time-sensitive and only show valid future time blocks.
-        <strong> Extensions are not supported</strong> for parking at this time.
-      </div>
+      <div className="space-y-3">
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+            Parking reservations are submitted as <strong>requests</strong>. A specific
+            slot will be assigned by admin after availability review.
+          </div>
+
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            Payment is collected <strong>only after admin approval</strong>. Please wait
+            for confirmation before making any parking payment.
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+            Hourly parking currently operates from{" "}
+            <strong>
+              {formatTime12h(parkingRules.hourly_start)} to{" "}
+              {formatTime12h(parkingRules.hourly_end)}
+            </strong>.
+            These hours may be adjusted by admin later.
+          </div>
+        </div>
 
       <div>
         <label className="mb-2 block text-sm text-gray-700">
@@ -280,10 +304,6 @@ export default function ParkingReservationForm({
             );
           })}
         </div>
-
-        <p className="mt-1 text-xs text-blue-600">
-          {getParkingDurationPolicyText(parkingDurationType)}
-        </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -419,7 +439,11 @@ export default function ParkingReservationForm({
             {isSameDayStart && availableHourlyOptions.length > 0 && (
               <p className="mt-1 text-xs text-blue-600">
                 For same-day hourly parking, the earliest allowed start time is{" "}
-                <strong>{getParkingEarliestStartTimeLabel()}</strong>.
+                <strong>
+                  {getParkingEarliestStartTimeLabel(
+                    parkingRules.same_day_lead_hours
+                  )}
+                </strong>
               </p>
             )}
 
@@ -442,6 +466,7 @@ export default function ParkingReservationForm({
             </div>
           )}
         </div>
+        
       )}
 
       <div>
@@ -477,122 +502,21 @@ export default function ParkingReservationForm({
       )}
 
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-        Charges are based on the <strong>reserved period</strong>. Leaving early
-        does not reduce the total reservation charge.
+        Once approved, parking charges will be based on the <strong>approved reserved
+        period</strong>. Leaving early does not reduce the final reservation charge.
       </div>
 
-      <div className="space-y-3">
-  <div>
-    <label className="mb-2 block text-sm font-medium text-gray-700">
-      Parking Slot
-    </label>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <p className="text-sm font-semibold text-slate-800">
+          Slot Assignment
+        </p>
 
-    {selectedSlotObject ? (
-      <div className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-gradient-to-r from-gray-50 to-white p-3 shadow-sm sm:flex-row sm:items-center sm:gap-4">
-        <img
-          src={selectedSlotObject.imageUrl || fallbackImage}
-          alt={
-            selectedSlotObject.slotCode ||
-            selectedSlotObject.label ||
-            "Parking Slot"
-          }
-          className="h-32 w-full rounded-xl object-cover sm:h-20 sm:w-28"
-        />
-
-        <div className="min-w-0 flex-1">
-          <p className="text-xs uppercase tracking-wide text-gray-500">
-            Selected Slot
-          </p>
-          <p className="mt-1 text-xs text-gray-500">
-            Additional time requires a new reservation request, subject to
-            slot availability and admin approval.
-          </p>
-          <p className="truncate text-lg font-bold text-blue-700">
-            {selectedSlotObject.slotCode ||
-              selectedSlotObject.label ||
-              "Parking Slot"}
-          </p>
-        </div>
-
-        <div className="flex w-full gap-2 sm:w-auto">
-          <button
-            type="button"
-            onClick={() => setIsSlotPanelOpen(true)}
-            className="flex-1 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-medium text-blue-700 transition hover:bg-blue-100 sm:flex-none"
-          >
-            Change
-          </button>
-
-          <button
-            type="button"
-            onClick={clearSlotSelection}
-            className="rounded-xl p-2 text-gray-500 transition hover:bg-red-50 hover:text-red-600"
-            aria-label="Clear selection"
-          >
-            <X className="size-5" />
-          </button>
-        </div>
+        <p className="mt-2 text-sm leading-relaxed text-slate-600">
+          You do not need to choose a specific parking slot. After you submit this
+          request, admin will review availability and assign a slot for your selected
+          schedule.
+        </p>
       </div>
-    ) : (
-      <button
-        type="button"
-        onClick={() => setIsSlotPanelOpen(true)}
-        className="w-full rounded-2xl border-2 border-dashed border-gray-300 bg-white px-4 py-4 text-sm font-medium text-gray-500 transition hover:border-blue-500 hover:bg-blue-50 hover:text-blue-600"
-      >
-        Click to View & Select a Slot
-      </button>
-    )}
-  </div>
-   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-    <p>
-      Slot availability is based on existing approved or confirmed reservations
-      for the selected date and time.
-    </p>
-
-    <p className="mt-1">
-      <span className="font-medium text-green-700">Available</span> — Slot can
-      still be reserved.
-    </p>
-
-    <p className="mt-1">
-      <span className="font-medium text-red-700">Occupied</span> — Another user
-      already reserved this slot for the selected schedule.
-    </p>
-
-    <p className="mt-1">
-      <span className="font-medium text-blue-700">Reserved by you</span> — You
-      already have a reservation for this slot.
-    </p>
-
-    <p className="mt-1">
-      <span className="font-medium text-gray-700">Unavailable</span> — Slot is
-      inactive, under maintenance, or currently blocked.
-    </p>
-  </div>
-
-  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-    <p>
-      Slot availability is checked against existing approved or confirmed parking
-      reservations for the same slot and selected date range.
-    </p>
-    <p className="mt-1">
-      <span className="font-medium text-green-700">Available</span> means the slot
-      can still be reserved for your selected schedule.
-    </p>
-    <p className="mt-1">
-      <span className="font-medium text-red-700">Occupied</span> means another user
-      already has an overlapping approved or confirmed reservation for that slot.
-    </p>
-    <p className="mt-1">
-      <span className="font-medium text-blue-700">Reserved by you</span> means the
-      overlapping reservation belongs to your account.
-    </p>
-    <p className="mt-1">
-      <span className="font-medium text-gray-700">Unavailable</span> means the slot
-      is inactive, under maintenance, or currently marked occupied.
-    </p>
-  </div>
-</div>
 
       <div>
         <label className="mb-2 block text-sm text-gray-700">
@@ -634,11 +558,52 @@ export default function ParkingReservationForm({
           placeholder="ABC 1234"
         />
         {formErrors.plateNumber && (
-          <p className="mt-1 text-xs text-red-600">
-            {formErrors.plateNumber}
-          </p>
-        )}
-      </div>
+  <p className="mt-1 text-xs text-red-600">
+    {formErrors.plateNumber}
+  </p>
+)}
+</div>
+
+<div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+  <p className="text-xs font-bold uppercase text-emerald-700">
+    Payment Summary
+  </p>
+
+  <div className="mt-2 space-y-1 text-sm text-gray-700">
+    <div className="flex items-center justify-between gap-4">
+      <span>Subtotal</span>
+      <span className="font-semibold text-gray-900">
+        {formatCurrency(subtotalAmount)}
+      </span>
+    </div>
+
+    <div className="flex items-center justify-between gap-4">
+      <span>VAT (12%)</span>
+      <span className="font-semibold text-gray-900">
+        {formatCurrency(vatAmount)}
+      </span>
+    </div>
+
+    <div className="flex items-center justify-between gap-4 border-t border-emerald-100 pt-2">
+      <span>Estimated Total</span>
+      <span className="font-bold text-emerald-700">
+        {formatCurrency(estimatedTotal)}
+      </span>
+    </div>
+  </div>
+
+  <p className="mt-3 text-xs leading-relaxed text-gray-500">
+    Payment is required only after admin approves your request and assigns an available slot.
+  </p>
+</div>
+
+<p className="text-xs text-blue-600">
+  {parkingDurationType === "hours"
+    ? "Hourly parking is available in whole-hour blocks only."
+    : parkingDurationType === "days"
+    ? "Daily parking is billed in full-day blocks."
+    : "Monthly parking is billed in full-month blocks."}
+</p>
     </div>
   );
 }
