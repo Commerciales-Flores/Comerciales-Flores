@@ -60,6 +60,23 @@ export const DEFAULT_CONTENT: ContentSettings = {
     emptyText:
       'There are currently no available featured spaces to display. Please check back later.',
   },
+  faq: {
+  title: 'Frequently Asked Questions',
+  subtitle:
+    'Find quick answers about reservations, payments, availability, and policies.',
+  items: [
+    {
+      question: 'How do I reserve a unit?',
+      answer:
+        'Choose your preferred unit, submit a reservation request, and wait for approval.',
+    },
+    {
+      question: 'What payment methods are accepted?',
+      answer:
+        'We support GCash, bank transfer, card payments, and other approved methods.',
+    },
+  ],
+},
   contact: {
     title: 'Send us a message',
     subtitle: 'We’ll get back to you as soon as possible.',

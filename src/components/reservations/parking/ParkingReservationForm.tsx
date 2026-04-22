@@ -116,7 +116,7 @@ export default function ParkingReservationForm({
   const isSameDayStart = isSameParkingDay(form.startDate);
   const earliestSameDayTimeValue =
   getParkingEarliestSelectableTimeValue(
-    parkingRules.same_day_lead_hours
+    parkingRules.same_day_lead_minutes
   );
 
   const availableHourlyOptions = useMemo(() => {
@@ -441,7 +441,7 @@ export default function ParkingReservationForm({
                 For same-day hourly parking, the earliest allowed start time is{" "}
                 <strong>
                   {getParkingEarliestStartTimeLabel(
-                    parkingRules.same_day_lead_hours
+                    parkingRules.same_day_lead_minutes
                   )}
                 </strong>
               </p>
@@ -502,8 +502,7 @@ export default function ParkingReservationForm({
       )}
 
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-        Once approved, parking charges will be based on the <strong>approved reserved
-        period</strong>. Leaving early does not reduce the final reservation charge.
+        Charges are based on the approved reservation period. Leaving early does not reduce the final billed amount.
       </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -564,45 +563,13 @@ export default function ParkingReservationForm({
 )}
 </div>
 
-<div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
-  <p className="text-xs font-bold uppercase text-emerald-700">
-    Payment Summary
-  </p>
 
-  <div className="mt-2 space-y-1 text-sm text-gray-700">
-    <div className="flex items-center justify-between gap-4">
-      <span>Subtotal</span>
-      <span className="font-semibold text-gray-900">
-        {formatCurrency(subtotalAmount)}
-      </span>
-    </div>
-
-    <div className="flex items-center justify-between gap-4">
-      <span>VAT (12%)</span>
-      <span className="font-semibold text-gray-900">
-        {formatCurrency(vatAmount)}
-      </span>
-    </div>
-
-    <div className="flex items-center justify-between gap-4 border-t border-emerald-100 pt-2">
-      <span>Estimated Total</span>
-      <span className="font-bold text-emerald-700">
-        {formatCurrency(estimatedTotal)}
-      </span>
-    </div>
-  </div>
-
-  <p className="mt-3 text-xs leading-relaxed text-gray-500">
-    Payment is required only after admin approves your request and assigns an available slot.
-  </p>
-</div>
-
-<p className="text-xs text-blue-600">
+<p className="text-xs text-slate-500">
   {parkingDurationType === "hours"
-    ? "Hourly parking is available in whole-hour blocks only."
+    ? "Billed in whole-hour blocks."
     : parkingDurationType === "days"
-    ? "Daily parking is billed in full-day blocks."
-    : "Monthly parking is billed in full-month blocks."}
+    ? "Billed in full-day blocks."
+    : "Billed in full-month blocks."}
 </p>
     </div>
   );

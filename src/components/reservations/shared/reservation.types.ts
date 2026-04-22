@@ -6,7 +6,9 @@ export type PaymentIntent = "pay_onsite" | "pay_later";
 export type PaymentMethod =
   | PaymentMethodCode
   | "not_applicable";
-export type PaymentCycle = "monthly" | "quarterly" | "full";
+
+export type PaymentCycle = "daily" | "weekly" | "monthly";
+export type PaymentMode = "full_upfront" | "deposit_plus_first_month";
 
 export type ReservationIntent =
   | "viewing_only"
@@ -25,6 +27,7 @@ export interface ReservationForm {
 
   paymentMethod: PaymentMethod;
   paymentCycle: PaymentCycle;
+  paymentMode?: PaymentMode;
 
   notes: string;
 

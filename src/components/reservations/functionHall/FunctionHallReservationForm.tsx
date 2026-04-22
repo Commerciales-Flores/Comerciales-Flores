@@ -82,10 +82,6 @@ export default function FunctionHallReservationForm({
   getCalendarTileClassName,
   selectedUnitBlockingReservations,
   rangesOverlap,
-  estimatedTotal,
-  subtotalAmount,
-  vatAmount,
-  formatCurrency,
   }: Props){
   return (
     <div className="space-y-4">
@@ -345,39 +341,6 @@ export default function FunctionHallReservationForm({
 )}
 </div>
 
-<div className="rounded-2xl border border-purple-100 bg-purple-50/70 p-4">
-  <p className="text-xs font-bold uppercase text-purple-700">
-    Payment Summary
-  </p>
-
-  <div className="mt-2 space-y-1 text-sm text-gray-700">
-    <div className="flex items-center justify-between gap-4">
-      <span>Subtotal</span>
-      <span className="font-semibold text-gray-900">
-        {formatCurrency(subtotalAmount)}
-      </span>
-    </div>
-
-    <div className="flex items-center justify-between gap-4">
-      <span>VAT (12%)</span>
-      <span className="font-semibold text-gray-900">
-        {formatCurrency(vatAmount)}
-      </span>
-    </div>
-
-    <div className="flex items-center justify-between gap-4 border-t border-purple-100 pt-2">
-      <span>Total Amount</span>
-      <span className="font-bold text-purple-700">
-        {formatCurrency(estimatedTotal)}
-      </span>
-    </div>
-  </div>
-
-  <p className="mt-3 text-xs leading-relaxed text-gray-500">
-    Full payment is required once this reservation is approved.
-    Reservation fees for function room bookings are non-refundable.
-  </p>
-</div>
 
 </div>
   );

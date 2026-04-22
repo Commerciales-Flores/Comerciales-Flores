@@ -12,22 +12,16 @@ export type ReservationStatus =
 
 export type PaymentReviewStatus = 'pending' | 'approved' | 'rejected';
 export type PaymentStatus = 'unpaid' | 'partial' | 'paid';
-// export type PaymentMethod =
-//   | 'cash'
-//   | 'cheque'
-//   | 'gcash'
-//   | 'paymaya'
-//   | 'bank_transfer'
-//   | 'credit_card'
-//   | 'not_applicable';
 
-  export type PaymentMethod =
+export type PaymentMethod =
   | 'gcash'
   | 'bank_transfer'
   | 'card'
   | 'not_applicable';
 
-export type PaymentCycle = 'monthly' | 'quarterly' | 'full';
+export type BookingTerm = 'daily' | 'weekly' | 'monthly';
+export type PaymentMode = 'full_upfront' | 'deposit_plus_first_month';
+
 export type InquiryStatus = 'open' | 'responded' | 'resolved';
 export type OverdueReason =
   | 'reservation_ended_with_balance'
@@ -37,22 +31,22 @@ export type OverdueReason =
 export type ParkingSlotStatus = 'active' | 'inactive' | 'maintenance';
 
 export interface ReservationDetails {
-  paymentCycle?: PaymentCycle;
+  bookingTerm?: BookingTerm;
+  paymentMode?: PaymentMode;
   businessType?: string;
   eventPurpose?: string;
   attendees?: number;
   slotId?: string;
-slotName?: string;
+  slotName?: string;
 
-assignedSlotId?: string;
-assignedSlotCode?: string;
-assignedSlotLabel?: string;
+  assignedSlotId?: string;
+  assignedSlotCode?: string;
+  assignedSlotLabel?: string;
 
-vehicleType?: string;
-plateNumber?: string;
+  vehicleType?: string;
+  plateNumber?: string;
   durationType?: 'hours' | 'days' | 'months' | 'years';
 
-  // 🔥 Extension system
   extensionRequested?: boolean;
   extensionMonths?: number;
   extensionRequestedAt?: string;
@@ -89,7 +83,7 @@ export interface Unit {
   subtype?: UnitSubtype | null;
   description: string;
   price: number;
-  images: string[];      // public URLs for rendering
+  images: string[];
   imagePaths: string[];
   videos?: string[];
   videoPaths?: string[];
@@ -124,7 +118,8 @@ export interface Reservation {
   paidAmount: number;
   requestDate: string;
   paymentMethod?: PaymentMethod;
-  paymentCycle?: PaymentCycle;
+  bookingTerm?: BookingTerm;
+  paymentMode?: PaymentMode;
   businessType?: string;
   appointmentDate?: string | null;
   appointmentTime?: string | null;
@@ -138,13 +133,11 @@ export interface Reservation {
   slotId?: string;
   slotName?: string;
 
-  /* user requested parking slot / legacy */
   assignedParkingSlotId?: string | null;
   assignedParkingSlotLabel?: string | null;
 
   location?: string;
-
-   details?: ReservationDetails;
+  details?: ReservationDetails;
 
   minimumPaymentPercentSnapshot?: number | null;
 
@@ -156,7 +149,6 @@ export interface Reservation {
   overdueReason?: OverdueReason | null;
   lastOverdueNotificationAt?: string | null;
 }
-
 export interface Payment {
   id: string;
   publicId?: string;
@@ -346,6 +338,14 @@ export interface ContentSettings {
     emptyTitle: string;
     emptyText: string;
   };
+  faq: {
+  title: string;
+  subtitle: string;
+  items: {
+    question: string;
+    answer: string;
+  }[];
+};
   contact: {
     title: string;
     subtitle: string;

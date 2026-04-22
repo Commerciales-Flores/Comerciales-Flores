@@ -31,7 +31,7 @@ export function ContentSettingsProvider({
     const { data, error } = await supabase
       .from('site_content')
       .select(
-        'content_id, hero, about, history, featured, contact, footer, menu, announcements, policies, updated_at'
+        'content_id, hero, about, history, featured, faq, contact, footer, menu, announcements, policies, updated_at'
       )
       .limit(1)
       .single();
@@ -43,6 +43,7 @@ export function ContentSettingsProvider({
         about: data.about ?? DEFAULT_CONTENT.about,
         history: data.history ?? DEFAULT_CONTENT.history,
         featured: data.featured ?? DEFAULT_CONTENT.featured,
+        faq: data.faq ?? DEFAULT_CONTENT.faq,
         contact: data.contact ?? DEFAULT_CONTENT.contact,
         footer: data.footer ?? DEFAULT_CONTENT.footer,
         menu: data.menu ?? DEFAULT_CONTENT.menu,
@@ -58,57 +59,58 @@ export function ContentSettingsProvider({
   }, []);
 
   useEffect(() => {
-  let timer: number | null = null;
+    let timer: number | null = null;
 
-  const scheduleRefresh = () => {
-    if (timer) {
-      window.clearTimeout(timer);
-    }
-
-    timer = window.setTimeout(() => {
-      void refreshContentSettings();
-    }, 150);
-  };
-
-  const channel = supabase
-    .channel('site-content-realtime')
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'site_content',
-      },
-      () => {
-        scheduleRefresh();
+    const scheduleRefresh = () => {
+      if (timer) {
+        window.clearTimeout(timer);
       }
-    )
-    .subscribe((status) => {
-      if (import.meta.env.DEV) {
-        console.log('Site content realtime status:', status);
-      }
-    });
 
-  return () => {
-    if (timer) {
-      window.clearTimeout(timer);
-    }
-    void supabase.removeChannel(channel);
-  };
-}, []);
+      timer = window.setTimeout(() => {
+        void refreshContentSettings();
+      }, 150);
+    };
+
+    const channel = supabase
+      .channel('site-content-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'site_content',
+        },
+        () => {
+          scheduleRefresh();
+        }
+      )
+      .subscribe((status) => {
+        if (import.meta.env.DEV) {
+          console.log('Site content realtime status:', status);
+        }
+      });
+
+    return () => {
+      if (timer) {
+        window.clearTimeout(timer);
+      }
+      void supabase.removeChannel(channel);
+    };
+  }, []);
 
   const updateContentSettings = async (settings: Partial<ContentSettings>) => {
-    const payload: any = {};
+    const payload: Partial<ContentSettings> = {};
 
     if (settings.hero !== undefined) payload.hero = settings.hero;
-if (settings.about !== undefined) payload.about = settings.about;
-if (settings.history !== undefined) payload.history = settings.history;
-if (settings.featured !== undefined) payload.featured = settings.featured;
-if (settings.contact !== undefined) payload.contact = settings.contact;
-if (settings.footer !== undefined) payload.footer = settings.footer;
-if (settings.menu !== undefined) payload.menu = settings.menu;
-if (settings.announcements !== undefined) payload.announcements = settings.announcements;
-if (settings.policies !== undefined) payload.policies = settings.policies;
+    if (settings.about !== undefined) payload.about = settings.about;
+    if (settings.history !== undefined) payload.history = settings.history;
+    if (settings.featured !== undefined) payload.featured = settings.featured;
+    if (settings.faq !== undefined) payload.faq = settings.faq;
+    if (settings.contact !== undefined) payload.contact = settings.contact;
+    if (settings.footer !== undefined) payload.footer = settings.footer;
+    if (settings.menu !== undefined) payload.menu = settings.menu;
+    if (settings.announcements !== undefined) payload.announcements = settings.announcements;
+    if (settings.policies !== undefined) payload.policies = settings.policies;
 
     const targetId = contentSettings.content_id;
 
@@ -121,12 +123,20 @@ if (settings.policies !== undefined) payload.policies = settings.policies;
 
       if (error) throw error;
 
-      setContentSettings((prev) => ({
-        ...prev,
-        ...payload,
+      setContentSettings({
         content_id: data.content_id,
+        hero: data.hero ?? DEFAULT_CONTENT.hero,
+        about: data.about ?? DEFAULT_CONTENT.about,
+        history: data.history ?? DEFAULT_CONTENT.history,
+        featured: data.featured ?? DEFAULT_CONTENT.featured,
+        faq: data.faq ?? DEFAULT_CONTENT.faq,
+        contact: data.contact ?? DEFAULT_CONTENT.contact,
+        footer: data.footer ?? DEFAULT_CONTENT.footer,
+        menu: data.menu ?? DEFAULT_CONTENT.menu,
+        announcements: Array.isArray(data.announcements) ? data.announcements : [],
+        policies: data.policies ?? '',
         updated_at: data.updated_at,
-      }));
+      });
 
       return;
     }
@@ -146,10 +156,11 @@ if (settings.policies !== undefined) payload.policies = settings.policies;
       about: data.about ?? DEFAULT_CONTENT.about,
       history: data.history ?? DEFAULT_CONTENT.history,
       featured: data.featured ?? DEFAULT_CONTENT.featured,
+      faq: data.faq ?? DEFAULT_CONTENT.faq,
       contact: data.contact ?? DEFAULT_CONTENT.contact,
       footer: data.footer ?? DEFAULT_CONTENT.footer,
       menu: data.menu ?? DEFAULT_CONTENT.menu,
-      announcements: data.announcements ?? [],
+      announcements: Array.isArray(data.announcements) ? data.announcements : [],
       policies: data.policies ?? '',
       updated_at: data.updated_at,
     });

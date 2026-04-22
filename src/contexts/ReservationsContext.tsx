@@ -84,11 +84,11 @@ interface ReservationsContextType {
 
 const ReservationsContext = createContext<ReservationsContextType | undefined>(undefined);
 const VAT_RATE = 0.12;
-const DEFAULT_SECURITY_DEPOSIT_MONTHS = 1;
 
 function buildReservationDetails(reservation: Partial<Reservation>) {
   const details = {
-    paymentCycle: reservation.paymentCycle,
+    bookingTerm: reservation.bookingTerm,
+    paymentMode: reservation.paymentMode,
     businessType: reservation.businessType
       ? normalizeText(reservation.businessType)
       : undefined,
@@ -281,7 +281,8 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         modeOfVisit: row.mode_of_visit,
         appointmentDate: row.appointment_date,
         appointmentTime: row.appointment_time,
-        paymentCycle: row.details?.paymentCycle as Reservation['paymentCycle'],
+        bookingTerm: row.details?.bookingTerm as Reservation['bookingTerm'],
+        paymentMode: row.details?.paymentMode as Reservation['paymentMode'],
         businessType: row.details?.businessType,
         eventPurpose: row.details?.eventPurpose,
         attendees: row.details?.attendees,
@@ -609,44 +610,51 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
       }
 
       if (reservationData.unitType === 'rental_space') {
-        if (reservationData.durationType !== 'months') {
-          throw new Error('Rental spaces must use monthly duration.');
-        }
+  if (!reservationData.bookingTerm) {
+    throw new Error('Please select a booking term for this rental space.');
+  }
 
-        if (
-          reservationData.paymentCycle &&
-          !['monthly', 'quarterly', 'full'].includes(reservationData.paymentCycle)
-        ) {
-          throw new Error('Invalid rental payment cycle.');
-        }
+  if (
+    !['daily', 'weekly', 'monthly'].includes(reservationData.bookingTerm)
+  ) {
+    throw new Error('Invalid booking term.');
+  }
 
-        if (!reservationData.paymentCycle) {
-          throw new Error('Please select a payment cycle for this rental space.');
-        }
+  if (
+    !Number.isFinite(Number(reservationData.duration)) ||
+    Number(reservationData.duration) <= 0
+  ) {
+    throw new Error('Reservation duration must be greater than zero.');
+  }
 
-        if (
-          !Number.isFinite(Number(reservationData.duration)) ||
-          Number(reservationData.duration) <= 0
-        ) {
-          throw new Error('Rental duration must be at least 1 month.');
-        }
+  if (
+    !Number.isFinite(Number(reservationData.totalAmount)) ||
+    Number(reservationData.totalAmount) <= 0
+  ) {
+    throw new Error('Rental total amount must be greater than zero.');
+  }
 
-        if (
-          !Number.isFinite(Number(reservationData.totalAmount)) ||
-          Number(reservationData.totalAmount) <= 0
-        ) {
-          throw new Error('Rental total amount must be greater than zero.');
-        }
+  if (
+    reservationData.bookingTerm === 'monthly' &&
+    reservationData.durationType !== 'months'
+  ) {
+    throw new Error('Monthly rental spaces must use monthly duration.');
+  }
 
-        if (
-          reservationData.paymentCycle === 'quarterly' &&
-          Number(reservationData.duration) < 3
-        ) {
-          throw new Error(
-            'Quarterly payment cycle requires at least 3 months of rental duration.'
-          );
-        }
-      }
+  if (
+    reservationData.bookingTerm === 'weekly' &&
+    reservationData.durationType !== 'days'
+  ) {
+    throw new Error('Weekly rental bookings must use day-based duration.');
+  }
+
+  if (
+    reservationData.bookingTerm === 'daily' &&
+    reservationData.durationType !== 'days'
+  ) {
+    throw new Error('Daily rental bookings must use day-based duration.');
+  }
+}
 
       const baseDetails = buildReservationDetails(reservationData);
 
@@ -662,37 +670,63 @@ const grandTotal = Number((baseSubtotal + vatAmount).toFixed(2));
 let initialDue = grandTotal;
 let securityDepositAmount = 0;
 let firstMonthAmount = 0;
+let paymentMode: Reservation['paymentMode'] = 'full_upfront';
 
 if (reservationData.unitType === 'rental_space') {
-  const durationMonths = Math.max(
-    1,
-    Number(reservationData.duration || 1)
-  );
+  if (reservationData.bookingTerm === 'monthly') {
+    const durationMonths = Math.max(1, Number(reservationData.duration || 1));
+    const monthlyBase = Number((baseSubtotal / durationMonths).toFixed(2));
 
-  const monthlyBase = Number(
-    (baseSubtotal / durationMonths).toFixed(2)
-  );
+    const detailsInput = reservationData.details ?? {};
 
-  securityDepositAmount = Number(
-    (monthlyBase * DEFAULT_SECURITY_DEPOSIT_MONTHS).toFixed(2)
-  );
+    const securityDepositMonths = Math.max(
+      0,
+      Number(
+        (detailsInput as any).securityDepositMonths ??
+          (detailsInput as any).security_deposit_months ??
+          1
+      )
+    );
 
-  firstMonthAmount = monthlyBase;
+    const advanceDepositMonths = Math.max(
+      1,
+      Number(
+        (detailsInput as any).advanceDepositMonths ??
+          (detailsInput as any).advance_deposit_months ??
+          1
+      )
+    );
 
-  const rentalInitialBase =
-    securityDepositAmount + firstMonthAmount;
+    securityDepositAmount = Number(
+      (monthlyBase * securityDepositMonths).toFixed(2)
+    );
 
-  const rentalInitialVat = Number(
-    (rentalInitialBase * VAT_RATE).toFixed(2)
-  );
+    firstMonthAmount = Number(
+      (monthlyBase * advanceDepositMonths).toFixed(2)
+    );
 
-  initialDue = Number(
-    (rentalInitialBase + rentalInitialVat).toFixed(2)
-  );
+    const taxableInitialBase = firstMonthAmount;
+    const rentalInitialVat = Number(
+      (taxableInitialBase * VAT_RATE).toFixed(2)
+    );
+
+    initialDue = Number(
+      (securityDepositAmount + firstMonthAmount + rentalInitialVat).toFixed(2)
+    );
+
+    paymentMode = 'deposit_plus_first_month';
+  } else {
+    initialDue = grandTotal;
+    paymentMode = 'full_upfront';
+  }
+} else {
+  initialDue = grandTotal;
+  paymentMode = 'full_upfront';
 }
 
 const cleanDetails = {
   ...baseDetails,
+  paymentMode,
   subtotalAmount: baseSubtotal,
   vatRate: VAT_RATE,
   vatAmount,
@@ -796,11 +830,20 @@ const cleanDetails = {
 
       if (error) throw error;
 
-      const cycle = data.details?.paymentCycle;
-      const safePaymentCycle =
-        cycle === 'monthly' || cycle === 'quarterly' || cycle === 'full'
-          ? cycle
-          : undefined;
+      const bookingTerm = data.details?.bookingTerm;
+const safeBookingTerm =
+  bookingTerm === 'daily' ||
+  bookingTerm === 'weekly' ||
+  bookingTerm === 'monthly'
+    ? bookingTerm
+    : undefined;
+
+const insertedPaymentMode = data.details?.paymentMode;
+const safePaymentMode =
+  insertedPaymentMode === 'full_upfront' ||
+  insertedPaymentMode === 'deposit_plus_first_month'
+    ? insertedPaymentMode
+    : undefined;
 
       const newReservation: Reservation = {
         id: data.reservation_id,
@@ -822,7 +865,8 @@ const cleanDetails = {
         modeOfVisit: data.mode_of_visit,
         appointmentDate: data.appointment_date,
         appointmentTime: data.appointment_time,
-        paymentCycle: safePaymentCycle,
+        bookingTerm: safeBookingTerm,
+        paymentMode: safePaymentMode,
         businessType: data.details?.businessType,
         eventPurpose: data.details?.eventPurpose,
         attendees: data.details?.attendees,

@@ -28,7 +28,16 @@ type PaymentsPageFilters = {
   searchTerm?: string;
 };
 
-type PaymentCategory = 'payment' | 'advance_deposit' | 'security_deposit';
+type PaymentCategory =
+  | 'payment'
+  | 'advance_deposit'
+  | 'security_deposit'
+  | 'reservation_fee'
+  | 'monthly_rent'
+  | 'parking_fee'
+  | 'function_room_fee'
+  | 'vat'
+  | 'penalty';
 
 interface PaymentsContextType {
   payments: Payment[];
@@ -54,7 +63,7 @@ interface PaymentsContextType {
   }) => Promise<void>;
   hasPendingPayment: (
   reservationId: string,
-  category?: 'payment' | 'advance_deposit' | 'security_deposit'
+  category?: PaymentCategory
 ) => boolean;
 }
 

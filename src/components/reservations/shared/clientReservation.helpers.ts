@@ -5,7 +5,7 @@ import { formatDate } from "../../../utils/date";
 export type DurationType = "hours" | "days" | "months" | "years";
 export type VisitMode = "online" | "onsite";
 export type PaymentIntent = "pay_onsite" | "pay_later";
-export type PaymentCycle = "monthly" | "quarterly" | "full";
+export type PaymentCycle = "daily" | "weekly" | "monthly";
 export type ReservationIntent =
   | "viewing_only"
   | "reserve_online"

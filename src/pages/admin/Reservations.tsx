@@ -1409,11 +1409,22 @@ const hasNoSearchResults =
                       </span>
                     </div>
 
-                    {selectedReservationData.paymentCycle && (
+                    {selectedReservationData.bookingTerm && (
                       <div className="flex justify-between gap-4 text-sm">
-                        <span className="text-slate-500">Cycle</span>
+                        <span className="text-slate-500">Booking Term</span>
                         <span className="font-semibold text-slate-900 capitalize">
-                          {selectedReservationData.paymentCycle}
+                          {selectedReservationData.bookingTerm}
+                        </span>
+                      </div>
+                    )}
+
+                    {selectedReservationData.paymentMode && (
+                      <div className="flex justify-between gap-4 text-sm">
+                        <span className="text-slate-500">Billing</span>
+                        <span className="font-semibold text-slate-900">
+                          {selectedReservationData.paymentMode === 'deposit_plus_first_month'
+                            ? 'Deposit + First Month'
+                            : 'Full Upfront'}
                         </span>
                       </div>
                     )}

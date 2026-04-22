@@ -7,6 +7,10 @@ import type {
 
 export const RESERVATION_LIMITS = {
   rental_space: {
+    minDays: 1,
+    maxDays: 30,
+    minWeeks: 1,
+    maxWeeks: 12,
     minMonths: 12,
     maxMonths: 30,
   },
@@ -31,6 +35,7 @@ type ReservationDefaults = Pick<
   | "modeOfVisit"
   | "paymentIntent"
   | "paymentCycle"
+  | "paymentMode"
 >;
 
 const UNIT_DEFAULTS: Record<UnitType, ReservationDefaults> = {
@@ -40,13 +45,15 @@ const UNIT_DEFAULTS: Record<UnitType, ReservationDefaults> = {
     modeOfVisit: "online",
     paymentIntent: "pay_later",
     paymentCycle: "monthly",
+    paymentMode: "deposit_plus_first_month",
   },
   function_hall: {
     duration: 0,
     durationType: "days",
     modeOfVisit: "online",
     paymentIntent: "pay_later",
-    paymentCycle: "full",
+    paymentCycle: "daily",
+    paymentMode: "full_upfront",
   },
   parking_slot: {
     duration: RESERVATION_LIMITS.parking_slot.minMonths,
@@ -54,6 +61,7 @@ const UNIT_DEFAULTS: Record<UnitType, ReservationDefaults> = {
     modeOfVisit: "online",
     paymentIntent: "pay_later",
     paymentCycle: "monthly",
+    paymentMode: "full_upfront",
   },
 };
 
@@ -90,6 +98,22 @@ export function computeEndFromForm(
   return end;
 }
 
+export function computeRentalEndFromForm(
+  start: Date,
+  duration: number,
+  paymentCycle: ReservationForm["paymentCycle"]
+) {
+  if (paymentCycle === "daily") {
+    return computeEndFromForm(start, duration, "days");
+  }
+
+  if (paymentCycle === "weekly") {
+    return computeEndFromForm(start, duration * 7, "days");
+  }
+
+  return computeEndFromForm(start, duration, "months");
+}
+
 export function clampNumber(value: number, min: number, max: number) {
   if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, value));
@@ -97,16 +121,29 @@ export function clampNumber(value: number, min: number, max: number) {
 
 export function getDurationBounds(
   unitType: UnitType,
-  durationType: DurationType
+  durationType: DurationType,
+  paymentCycle?: ReservationForm["paymentCycle"]
 ) {
   switch (unitType) {
     case "rental_space":
-      return durationType === "months"
-        ? {
-            min: RESERVATION_LIMITS.rental_space.minMonths,
-            max: RESERVATION_LIMITS.rental_space.maxMonths,
-          }
-        : { min: 1, max: 30 };
+      if (paymentCycle === "daily") {
+        return {
+          min: RESERVATION_LIMITS.rental_space.minDays,
+          max: RESERVATION_LIMITS.rental_space.maxDays,
+        };
+      }
+
+      if (paymentCycle === "weekly") {
+        return {
+          min: RESERVATION_LIMITS.rental_space.minWeeks,
+          max: RESERVATION_LIMITS.rental_space.maxWeeks,
+        };
+      }
+
+      return {
+        min: RESERVATION_LIMITS.rental_space.minMonths,
+        max: RESERVATION_LIMITS.rental_space.maxMonths,
+      };
 
     case "parking_slot":
       return durationType === "months"
@@ -176,6 +213,7 @@ export function buildInitialReservationForm(
 
     paymentMethod: defaultPaymentMethod,
     paymentCycle: defaults.paymentCycle,
+    paymentMode: defaults.paymentMode,
 
     notes: "",
 

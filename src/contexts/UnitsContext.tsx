@@ -21,8 +21,11 @@ import {
   normalizeUppercaseText,
 } from '../utils/DataNormalization';
 
-const DEFAULT_LOCATION = 'Quezon City';
-const LOCATION_OPTIONS = ['Quezon City'];
+const DEFAULT_LOCATION = 'Project 8, Quezon City';
+
+const LOCATION_OPTIONS = [
+  'Project 8, Quezon City',
+];
 const DEFAULT_UNIT_IMAGE =
   'https://images.unsplash.com/photo-1497366216548-37526070297c?w=800';
 

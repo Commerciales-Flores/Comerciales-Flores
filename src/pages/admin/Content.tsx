@@ -16,6 +16,8 @@ import {
   FileText,
   Mail,
   Eye,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 type EditableSection =
@@ -23,11 +25,12 @@ type EditableSection =
   | 'about'
   | 'history'
   | 'featured'
+  | 'faq'
   | 'contactSection'
   | 'contactInfo'
   | 'footerMenu'
   | 'announcements'
-  | null;
+  | null; 
 
 const CONTENT_LIMITS = {
   heroBadge: 50,
@@ -56,6 +59,12 @@ const CONTENT_LIMITS = {
   featuredViewAllText: 40,
   featuredEmptyTitle: 100,
   featuredEmptyText: 300,
+
+  faqTitle: 120,
+  faqSubtitle: 500,
+  faqQuestion: 150,
+  faqAnswer: 1000,
+  faqCount: 20,
 
   contactTitle: 120,
   contactSubtitle: 500,
@@ -175,6 +184,36 @@ export default function AdminContent() {
   const heroImageInputRef = useRef<HTMLInputElement | null>(null);
   const historyImagesInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [collapsedSections, setCollapsedSections] = useState<
+  Record<Exclude<EditableSection, null>, boolean>
+>({
+  hero: false,
+  about: true,
+  history: true,
+  featured: true,
+  faq: true,
+  contactSection: true,
+  contactInfo: true,
+  footerMenu: true,
+  announcements: true,
+});
+
+const toggleSectionCollapse = (section: Exclude<EditableSection, null>) => {
+  setCollapsedSections((prev) => ({
+    ...prev,
+    [section]: !prev[section],
+  }));
+};
+
+useEffect(() => {
+  if (!activeSection) return;
+
+  setCollapsedSections((prev) => ({
+    ...prev,
+    [activeSection]: false,
+  }));
+}, [activeSection]);
+
   useEffect(() => {
     setFormData(contentSettings);
   }, [contentSettings]);
@@ -194,6 +233,13 @@ export default function AdminContent() {
       about: { ...prev.about, ...patch },
     }));
   };
+
+  const updateFaq = (patch: Partial<typeof formData.faq>) => {
+  setFormData((prev) => ({
+    ...prev,
+    faq: { ...prev.faq, ...patch },
+  }));
+};
 
   const updateHistory = (patch: Partial<typeof formData.history>) => {
     setFormData((prev) => ({
@@ -336,6 +382,18 @@ export default function AdminContent() {
         ),
         points: historyPoints,
       },
+      faq: {
+  ...formData.faq,
+  title: normalizeText(formData.faq.title ?? '', CONTENT_LIMITS.faqTitle),
+  subtitle: normalizeText(formData.faq.subtitle ?? '', CONTENT_LIMITS.faqSubtitle),
+  items: (formData.faq.items ?? [])
+    .slice(0, CONTENT_LIMITS.faqCount)
+    .map((item) => ({
+      question: normalizeText(item?.question ?? '', CONTENT_LIMITS.faqQuestion),
+      answer: normalizeText(item?.answer ?? '', CONTENT_LIMITS.faqAnswer),
+    }))
+    .filter((item) => item.question || item.answer),
+},
       featured: {
         ...formData.featured,
         title: normalizeText(formData.featured.title ?? '', CONTENT_LIMITS.featuredTitle),
@@ -447,6 +505,8 @@ export default function AdminContent() {
         case 'contactSection':
         case 'contactInfo':
           return { ...prev, contact: contentSettings.contact };
+          case 'faq':
+  return { ...prev, faq: contentSettings.faq };
         case 'footerMenu':
           return {
             ...prev,
@@ -536,9 +596,11 @@ export default function AdminContent() {
           <div className="space-y-6 xl:col-span-8 2xl:col-span-9">
             <ContentCard
               title="Hero Section"
-              description="Controls the main headline, badge, calls-to-action, and visual shown at the top of the homepage."
+              description="Edit the homepage hero text, buttons, and image."
               icon={<Layout className="size-5 text-blue-600" />}
               isEditing={isEditing('hero')}
+              collapsed={collapsedSections.hero}
+              onToggleCollapse={() => toggleSectionCollapse('hero')}
               onEdit={() => setActiveSection('hero')}
               onCancel={() => resetSection('hero')}
               onSave={handleSaveSection}
@@ -787,6 +849,8 @@ export default function AdminContent() {
               description="Displays the introduction and supporting value cards for your business."
               icon={<Info className="size-5 text-violet-600" />}
               isEditing={isEditing('about')}
+              collapsed={collapsedSections.about}
+              onToggleCollapse={() => toggleSectionCollapse('about')}
               onEdit={() => setActiveSection('about')}
               onCancel={() => resetSection('about')}
               onSave={handleSaveSection}
@@ -927,6 +991,8 @@ export default function AdminContent() {
               description="Tells the story of your business with supporting text, image, and milestone points."
               icon={<ImageIcon className="size-5 text-amber-600" />}
               isEditing={isEditing('history')}
+              collapsed={collapsedSections.history}
+              onToggleCollapse={() => toggleSectionCollapse('history')}
               onEdit={() => setActiveSection('history')}
               onCancel={() => resetSection('history')}
               onSave={handleSaveSection}
@@ -1257,6 +1323,8 @@ export default function AdminContent() {
               description="Controls the heading, subheading, and empty-state messaging for featured spaces."
               icon={<FileText className="size-5 text-indigo-600" />}
               isEditing={isEditing('featured')}
+              collapsed={collapsedSections.featured}
+              onToggleCollapse={() => toggleSectionCollapse('featured')}
               onEdit={() => setActiveSection('featured')}
               onCancel={() => resetSection('featured')}
               onSave={handleSaveSection}
@@ -1389,10 +1457,207 @@ export default function AdminContent() {
             </ContentCard>
 
             <ContentCard
+  title="FAQ Section"
+  description="Manage the frequently asked questions shown on the landing page."
+  icon={<Info className="size-5 text-fuchsia-600" />}
+  isEditing={isEditing('faq')}
+  collapsed={collapsedSections.faq}
+onToggleCollapse={() => toggleSectionCollapse('faq')}
+  onEdit={() => setActiveSection('faq')}
+  onCancel={() => resetSection('faq')}
+  onSave={handleSaveSection}
+>
+  <div className="space-y-5">
+    <FieldWrapper label="FAQ Title">
+      {isEditing('faq') ? (
+        <input
+          type="text"
+          maxLength={CONTENT_LIMITS.faqTitle}
+          value={formData.faq.title}
+          onChange={(e) =>
+            updateFaq({
+              title: limitText(e.target.value, CONTENT_LIMITS.faqTitle),
+            })
+          }
+          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-base outline-none transition focus:ring-2 focus:ring-blue-500"
+        />
+      ) : (
+        <p className="text-lg font-semibold text-slate-900">
+          {contentSettings.faq.title || 'None'}
+        </p>
+      )}
+    </FieldWrapper>
+
+    <FieldWrapper label="FAQ Subtitle">
+      {isEditing('faq') ? (
+        <>
+          <textarea
+            value={formData.faq.subtitle}
+            maxLength={CONTENT_LIMITS.faqSubtitle}
+            onChange={(e) =>
+              updateFaq({
+                subtitle: limitText(e.target.value, CONTENT_LIMITS.faqSubtitle),
+              })
+            }
+            rows={3}
+            className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-blue-500"
+          />
+          <Counter
+            current={formData.faq.subtitle?.length ?? 0}
+            max={CONTENT_LIMITS.faqSubtitle}
+          />
+        </>
+      ) : (
+        <p className="text-sm leading-relaxed text-slate-600">
+          {contentSettings.faq.subtitle || 'None'}
+        </p>
+      )}
+    </FieldWrapper>
+
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+          FAQ Items
+        </label>
+
+        {isEditing('faq') && (
+          <button
+            type="button"
+            onClick={() => {
+              if ((formData.faq.items ?? []).length >= CONTENT_LIMITS.faqCount) {
+                setNotice({
+                  message: `You can only add up to ${CONTENT_LIMITS.faqCount} FAQ items.`,
+                  variant: 'warning',
+                });
+                return;
+              }
+
+              updateFaq({
+                items: [
+                  ...(formData.faq.items ?? []),
+                  { question: '', answer: '' },
+                ],
+              });
+            }}
+            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            <Plus className="size-4" />
+            Add FAQ
+          </button>
+        )}
+      </div>
+
+      {(formData.faq.items ?? []).length > 0 ? (
+        <div className="space-y-4">
+          {(formData.faq.items ?? []).map((item, index) => (
+            <div
+              key={index}
+              className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+            >
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <p className="text-sm font-semibold text-slate-900">
+                  FAQ #{index + 1}
+                </p>
+
+                {isEditing('faq') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateFaq({
+                        items: (formData.faq.items ?? []).filter((_, i) => i !== index),
+                      });
+                    }}
+                    className="rounded-lg p-1 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                  >
+                    <X className="size-4" />
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-4">
+                <FieldWrapper label="Question">
+                  {isEditing('faq') ? (
+                    <>
+                      <input
+                        type="text"
+                        maxLength={CONTENT_LIMITS.faqQuestion}
+                        value={item.question}
+                        onChange={(e) => {
+                          const items = [...(formData.faq.items ?? [])];
+                          items[index] = {
+                            ...items[index],
+                            question: limitText(
+                              e.target.value,
+                              CONTENT_LIMITS.faqQuestion
+                            ),
+                          };
+                          updateFaq({ items });
+                        }}
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-blue-500"
+                      />
+                      <Counter
+                        current={item.question?.length ?? 0}
+                        max={CONTENT_LIMITS.faqQuestion}
+                      />
+                    </>
+                  ) : (
+                    <p className="text-sm font-medium text-slate-800">
+                      {item.question || 'None'}
+                    </p>
+                  )}
+                </FieldWrapper>
+
+                <FieldWrapper label="Answer">
+                  {isEditing('faq') ? (
+                    <>
+                      <textarea
+                        value={item.answer}
+                        maxLength={CONTENT_LIMITS.faqAnswer}
+                        onChange={(e) => {
+                          const items = [...(formData.faq.items ?? [])];
+                          items[index] = {
+                            ...items[index],
+                            answer: limitText(
+                              e.target.value,
+                              CONTENT_LIMITS.faqAnswer
+                            ),
+                          };
+                          updateFaq({ items });
+                        }}
+                        rows={4}
+                        className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-blue-500"
+                      />
+                      <Counter
+                        current={item.answer?.length ?? 0}
+                        max={CONTENT_LIMITS.faqAnswer}
+                      />
+                    </>
+                  ) : (
+                    <p className="whitespace-pre-line text-sm leading-relaxed text-slate-600">
+                      {item.answer || 'None'}
+                    </p>
+                  )}
+                </FieldWrapper>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
+          <p className="text-sm text-slate-500">No FAQ items added yet.</p>
+        </div>
+      )}
+    </div>
+  </div>
+</ContentCard>
+
+            <ContentCard
               title="Contact Section"
               description="Controls the public contact form heading and location card text."
               icon={<Phone className="size-5 text-cyan-600" />}
               isEditing={isEditing('contactSection')}
+              collapsed={collapsedSections.contactSection}
+              onToggleCollapse={() => toggleSectionCollapse('contactSection')}
               onEdit={() => setActiveSection('contactSection')}
               onCancel={() => resetSection('contactSection')}
               onSave={handleSaveSection}
@@ -1449,6 +1714,8 @@ export default function AdminContent() {
               description="Public contact details shown across the website."
               icon={<Phone className="size-5 text-green-600" />}
               isEditing={isEditing('contactInfo')}
+              collapsed={collapsedSections.contactInfo}
+              onToggleCollapse={() => toggleSectionCollapse('contactInfo')}
               onEdit={() => setActiveSection('contactInfo')}
               onCancel={() => resetSection('contactInfo')}
               onSave={handleSaveSection}
@@ -1491,6 +1758,8 @@ export default function AdminContent() {
               description="Controls footer text, branding, and mobile menu title."
               icon={<Layout className="size-5 text-slate-600" />}
               isEditing={isEditing('footerMenu')}
+              collapsed={collapsedSections.footerMenu}
+              onToggleCollapse={() => toggleSectionCollapse('footerMenu')}
               onEdit={() => setActiveSection('footerMenu')}
               onCancel={() => resetSection('footerMenu')}
               onSave={handleSaveSection}
@@ -1594,6 +1863,8 @@ export default function AdminContent() {
               description="Short updates or alerts displayed on the landing page."
               icon={<Megaphone className="size-5 text-orange-500" />}
               isEditing={isEditing('announcements')}
+              collapsed={collapsedSections.announcements}
+              onToggleCollapse={() => toggleSectionCollapse('announcements')}
               onEdit={() => setActiveSection('announcements')}
               onCancel={() => resetSection('announcements')}
               onSave={handleSaveSection}
@@ -1721,6 +1992,10 @@ export default function AdminContent() {
                     value={`${formData.announcements.length} item(s)`}
                   />
                   <SnapshotTile
+                    label="FAQ items"
+                    value={`${formData.faq.items?.length ?? 0} item(s)`}
+                  />
+                  <SnapshotTile
                     label="Contact email"
                     value={formData.contact.email || 'Empty'}
                   />
@@ -1763,6 +2038,15 @@ export default function AdminContent() {
                     label="Featured Section"
                     status={formData.featured.title?.trim() ? 'complete' : 'empty'}
                     active={activeSection === 'featured'}
+                  />
+                  <StatusRow
+                    label="FAQ Section"
+                    status={
+                      formData.faq.title?.trim() || (formData.faq.items?.length ?? 0) > 0
+                        ? 'complete'
+                        : 'empty'
+                    }
+                    active={activeSection === 'faq'}
                   />
                   <StatusRow
                     label="Contact Section"
@@ -1861,6 +2145,8 @@ function formatSectionName(section: EditableSection) {
       return 'Contact Info';
     case 'footerMenu':
       return 'Footer & Menu';
+      case 'faq':
+  return 'FAQ Section';
     case 'announcements':
       return 'Announcements';
     default:
@@ -1878,6 +2164,8 @@ function ContentCard({
   icon,
   children,
   isEditing,
+  collapsed = false,
+  onToggleCollapse,
   onEdit,
   onCancel,
   onSave,
@@ -1887,6 +2175,8 @@ function ContentCard({
   icon: ReactNode;
   children: ReactNode;
   isEditing?: boolean;
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
   onEdit?: () => void;
   onCancel?: () => void;
   onSave?: () => void;
@@ -1900,7 +2190,7 @@ function ContentCard({
       }`}
     >
       <div className="border-b border-slate-100 bg-slate-50/70 px-6 py-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <div className="mt-0.5">{icon}</div>
             <div>
@@ -1909,7 +2199,25 @@ function ContentCard({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 self-end sm:self-start">
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-center">
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+            >
+              {collapsed ? (
+                <>
+                  <ChevronDown className="size-4" />
+                  <span className="hidden sm:inline">Show</span>
+                </>
+              ) : (
+                <>
+                  <ChevronUp className="size-4" />
+                  <span className="hidden sm:inline">Hide</span>
+                </>
+              )}
+            </button>
+
             {!isEditing ? (
               <button
                 type="button"
@@ -1942,7 +2250,7 @@ function ContentCard({
         </div>
       </div>
 
-      <div className="p-6">{children}</div>
+      {!collapsed && <div className="p-6">{children}</div>}
     </div>
   );
 }

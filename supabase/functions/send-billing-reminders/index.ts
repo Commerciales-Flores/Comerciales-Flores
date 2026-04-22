@@ -21,7 +21,7 @@ const jsonResponse = (body: unknown, status = 200) =>
   });
 
 type BillingStage = "upcoming" | "due" | "overdue";
-type BillingType = "monthly" | "quarterly" | "full" | null;
+type BillingType = "monthly" | null;
 
 type ReservationRow = {
   reservation_id: string;
@@ -32,8 +32,8 @@ type ReservationRow = {
   total_amount: number | null;
   paid_amount: number | null;
   details: {
-    paymentCycle?: BillingType;
-  } | null;
+  bookingTerm?: "daily" | "weekly" | "monthly" | null;
+} | null;
   last_billing_reminder_at: string | null;
   last_billing_reminder_stage: string | null;
   last_billing_due_date: string | null;
@@ -98,8 +98,8 @@ function addMonthsSafe(date: Date, months: number) {
 }
 
 function getBillingType(details: ReservationRow["details"]): BillingType {
-  const value = details?.paymentCycle;
-  if (value === "monthly" || value === "quarterly" || value === "full") {
+  const value = details?.bookingTerm;
+  if (value === "monthly") {
     return value;
   }
   return null;
@@ -107,10 +107,10 @@ function getBillingType(details: ReservationRow["details"]): BillingType {
 
 function getNextDueDate(
   startDateIso: string,
-  billingType: Exclude<BillingType, null | "full">,
+  billingType: Exclude<BillingType, null>,
   now = new Date()
 ) {
-  const intervalMonths = billingType === "monthly" ? 1 : 3;
+  const intervalMonths = 1;
   let dueDate = new Date(startDateIso);
 
   while (dueDate.getTime() < now.getTime()) {
@@ -227,10 +227,10 @@ serve(async (req) => {
       const publicId = rawReservation.public_id || rawReservation.reservation_id;
       const billingType = getBillingType(rawReservation.details);
 
-      if (!billingType || billingType === "full") {
-        skipped.push({ reservationId, reason: "not_recurring" });
-        continue;
-      }
+      if (!billingType) {
+  skipped.push({ reservationId, reason: "not_monthly_billing" });
+  continue;
+}
 
       if (!rawReservation.start_date) {
         skipped.push({ reservationId, reason: "missing_start_date" });

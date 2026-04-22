@@ -147,7 +147,7 @@ export default function AdminPayments() {
   const [proofImageUrl, setProofImageUrl] = useState<string | null>(null);
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
-  const [sortBy, setSortBy] = useState<PaymentSortOption>('newest');
+  const [sortBy, setSortBy] = useState<PaymentSortOption>('newest'); 
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
 

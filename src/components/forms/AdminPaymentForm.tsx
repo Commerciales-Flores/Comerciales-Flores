@@ -65,13 +65,14 @@ export default function AdminPaymentForm({
       : 0;
 
   const rentalRequiredPayment =
-    reservation?.unitType === 'rental_space'
-      ? reservation.paymentCycle === 'quarterly'
-        ? Math.min(rentalMonthlyAmount * 3, balance)
-        : reservation.paymentCycle === 'full'
-          ? balance
-          : Math.min(rentalMonthlyAmount, balance)
-      : 0;
+  reservation?.unitType === 'rental_space'
+    ? reservation.bookingTerm === 'daily' ||
+      reservation.bookingTerm === 'weekly'
+      ? balance
+      : reservation.paymentMode === 'deposit_plus_first_month'
+        ? Math.min(rentalMonthlyAmount, balance)
+        : Math.min(rentalMonthlyAmount, balance)
+    : 0;
 
   const minimumSubsequentPayment =
     reservation?.unitType === 'rental_space'
@@ -90,7 +91,7 @@ export default function AdminPaymentForm({
     referenceNumber: string;
   }>({
     amount: '',
-    method: 'cash',
+    method: 'gcash',
     notes: '',
     bank: '',
     referenceNumber: '',
@@ -102,10 +103,8 @@ export default function AdminPaymentForm({
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const showReferenceFields =
-    formState.method === 'bank_transfer' ||
-    formState.method === 'gcash' ||
-    formState.method === 'paymaya' ||
-    formState.method === 'cheque';
+  formState.method === 'bank_transfer' ||
+  formState.method === 'gcash';
 
   const enteredAmount = Number(formState.amount || 0);
 
@@ -117,12 +116,12 @@ export default function AdminPaymentForm({
     enteredAmount < effectiveMinimum;
 
   const paymentCycleLabel = useMemo(() => {
-    if (!reservation || reservation.unitType !== 'rental_space') return null;
+  if (!reservation || reservation.unitType !== 'rental_space') return null;
 
-    if (reservation.paymentCycle === 'quarterly') return 'Quarterly';
-    if (reservation.paymentCycle === 'full') return 'Full';
-    return 'Monthly';
-  }, [reservation]);
+  if (reservation.bookingTerm === 'daily') return 'Daily';
+  if (reservation.bookingTerm === 'weekly') return 'Weekly';
+  return 'Monthly';
+}, [reservation]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.[0]) return;
@@ -200,7 +199,7 @@ export default function AdminPaymentForm({
       setNotice({
         message: `Minimum required payment is ${formatCurrency(
           effectiveMinimum
-        )} for this ${reservation.paymentCycle ?? 'monthly'} rental billing cycle.`,
+        )} for this ${reservation.bookingTerm ?? 'monthly'} rental booking term.`,
         variant: 'warning',
       });
       return;
@@ -290,7 +289,7 @@ export default function AdminPaymentForm({
             {reservation.unitType === 'rental_space' && (
               <div className="mt-2 space-y-1">
                 <p className="text-xs text-slate-500">
-                  Payment Cycle:{' '}
+                  Booking Term:{' '}
                   <span className="font-medium text-slate-700">
                     {paymentCycleLabel}
                   </span>
@@ -397,17 +396,21 @@ export default function AdminPaymentForm({
 
                 {!isFirstPayment && reservation.unitType === 'rental_space' && (
                   <>
-                    {reservation.paymentCycle === 'quarterly'
-                      ? `Quarterly required: ${formatCurrency(
+                    {reservation.bookingTerm === 'daily'
+                      ? `Daily full payment required: ${formatCurrency(
                           minimumSubsequentPayment
                         )}`
-                      : reservation.paymentCycle === 'full'
-                        ? `Full payment required: ${formatCurrency(
+                      : reservation.bookingTerm === 'weekly'
+                        ? `Weekly full payment required: ${formatCurrency(
                             minimumSubsequentPayment
                           )}`
-                        : `Monthly required: ${formatCurrency(
-                            minimumSubsequentPayment
-                          )}`}
+                        : reservation.paymentMode === 'deposit_plus_first_month'
+                          ? `Monthly installment required: ${formatCurrency(
+                              minimumSubsequentPayment
+                            )}`
+                          : `Required payment: ${formatCurrency(
+                              minimumSubsequentPayment
+                            )}`}
                     {' • '}
                   </>
                 )}
@@ -417,98 +420,95 @@ export default function AdminPaymentForm({
             </div>
 
             <div className="space-y-1.5">
-              <label className="ml-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                Payment Method
-              </label>
-              <select
-                value={formState.method}
-                onChange={(e) =>
-                  setFormState({
-                    ...formState,
-                    method: e.target.value as PaymentMethod,
-                  })
-                }
-                disabled={isSubmitting}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <option value="cash">Cash</option>
-                <option value="bank_transfer">Bank Transfer</option>
-                <option value="gcash">GCash</option>
-                <option value="paymaya">PayMaya</option>
-                <option value="cheque">Cheque</option>
-              </select>
-            </div>
+  <label className="ml-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+    Payment Method
+  </label>
+  <select
+    value={formState.method}
+    onChange={(e) =>
+      setFormState({
+        ...formState,
+        method: e.target.value as PaymentMethod,
+      })
+    }
+    disabled={isSubmitting}
+    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+  >
+    <option value="gcash">GCash</option>
+    <option value="bank_transfer">Bank Transfer</option>
+  </select>
+</div>
 
-            {showReferenceFields && (
-              <div className="space-y-1.5">
-                <label className="ml-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                  Bank / Provider
-                </label>
-                <div className="relative">
-                  <Landmark className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    maxLength={100}
-                    value={formState.bank}
-                    onChange={(e) => {
-                      setFormState({ ...formState, bank: e.target.value });
-                      setFormErrors((prev) => {
-                        if (!prev.bank) return prev;
-                        const next = { ...prev };
-                        delete next.bank;
-                        return next;
-                      });
-                    }}
-                    onBlur={(e) => handleFieldBlur("bank", e.target.value)}
-                    placeholder="e.g. BDO, GCash, Maya"
-                    disabled={isSubmitting}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  />
-                </div>
-                {formErrors.bank && (
-                  <p className="ml-1 text-[11px] text-rose-500">
-                    {formErrors.bank}
-                  </p>
-                )}
-              </div>
-            )}
+{showReferenceFields && (
+  <div className="space-y-1.5">
+    <label className="ml-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+      Bank / Provider
+    </label>
+    <div className="relative">
+      <Landmark className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+      <input
+        type="text"
+        maxLength={100}
+        value={formState.bank}
+        onChange={(e) => {
+          setFormState({ ...formState, bank: e.target.value });
+          setFormErrors((prev) => {
+            if (!prev.bank) return prev;
+            const next = { ...prev };
+            delete next.bank;
+            return next;
+          });
+        }}
+        onBlur={(e) => handleFieldBlur("bank", e.target.value)}
+        placeholder="e.g. BDO, GCash"
+        disabled={isSubmitting}
+        className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+      />
+    </div>
+    {formErrors.bank && (
+      <p className="ml-1 text-[11px] text-rose-500">
+        {formErrors.bank}
+      </p>
+    )}
+  </div>
+)}
 
-            {showReferenceFields && (
-              <div className="space-y-1.5">
-                <label className="ml-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                  Reference Number
-                </label>
-                <div className="relative">
-                  <CreditCard className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    maxLength={100}
-                    value={formState.referenceNumber}
-                    onChange={(e) => {
-                      setFormState({
-                        ...formState,
-                        referenceNumber: e.target.value,
-                      });
-                      setFormErrors((prev) => {
-                        if (!prev.referenceNumber) return prev;
-                        const next = { ...prev };
-                        delete next.referenceNumber;
-                        return next;
-                      });
-                    }}
-                    onBlur={(e) => handleFieldBlur("referenceNumber", e.target.value)}
-                    placeholder="Optional reference or transaction no."
-                    disabled={isSubmitting}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  />
-                </div>
-                {formErrors.referenceNumber && (
-                  <p className="ml-1 text-[11px] text-rose-500">
-                    {formErrors.referenceNumber}
-                  </p>
-                )}
-              </div>
-            )}
+{showReferenceFields && (
+  <div className="space-y-1.5">
+    <label className="ml-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+      Reference Number
+    </label>
+    <div className="relative">
+      <CreditCard className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+      <input
+        type="text"
+        maxLength={100}
+        value={formState.referenceNumber}
+        onChange={(e) => {
+          setFormState({
+            ...formState,
+            referenceNumber: e.target.value,
+          });
+          setFormErrors((prev) => {
+            if (!prev.referenceNumber) return prev;
+            const next = { ...prev };
+            delete next.referenceNumber;
+            return next;
+          });
+        }}
+        onBlur={(e) => handleFieldBlur("referenceNumber", e.target.value)}
+        placeholder="Reference or transaction no."
+        disabled={isSubmitting}
+        className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+      />
+    </div>
+    {formErrors.referenceNumber && (
+      <p className="ml-1 text-[11px] text-rose-500">
+        {formErrors.referenceNumber}
+      </p>
+    )}
+  </div>
+)}
           </div>
         </div>
 

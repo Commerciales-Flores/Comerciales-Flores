@@ -237,7 +237,7 @@ function buildInitialForm(
       duration: 0,
       durationType: 'days',
       notes: '',
-      paymentCycle: 'full',
+      paymentCycle: 'daily',
       eventPurpose: '',
       attendees: '',
       vehicleType: '',
@@ -490,18 +490,17 @@ export default function AdminReservationForm({
   }, [unit, formState.duration, totalContractValue]);
 
   const rentalRequiredPayment = useMemo(() => {
-    if (!unit || unit.type !== 'rental_space') return 0;
+  if (!unit || unit.type !== 'rental_space') return 0;
 
-    if (formState.paymentCycle === 'quarterly') {
-      return Math.min(rentalMonthlyAmount * 3, totalContractValue);
-    }
+  if (
+    formState.paymentCycle === 'daily' ||
+    formState.paymentCycle === 'weekly'
+  ) {
+    return totalContractValue;
+  }
 
-    if (formState.paymentCycle === 'full') {
-      return totalContractValue;
-    }
-
-    return Math.min(rentalMonthlyAmount, totalContractValue);
-  }, [unit, formState.paymentCycle, rentalMonthlyAmount, totalContractValue]);
+  return Math.min(rentalMonthlyAmount, totalContractValue);
+}, [unit, formState.paymentCycle, rentalMonthlyAmount, totalContractValue]);
 
   const functionHallCalendarValue = useMemo(() => {
     if (formState.startDate && formState.endDate) {
@@ -719,7 +718,11 @@ export default function AdminReservationForm({
       status: 'approved',
 
       ...(unit.type === 'rental_space' && {
-        paymentCycle: formState.paymentCycle as PaymentCycle,
+        bookingTerm: formState.paymentCycle,
+paymentMode:
+  formState.paymentCycle === 'monthly'
+    ? 'deposit_plus_first_month'
+    : 'full_upfront',
         businessType: formState.businessType.trim(),
         durationType: 'months' as const,
       }),
@@ -727,14 +730,16 @@ export default function AdminReservationForm({
       ...(unit.type === 'function_hall' && {
         eventPurpose: formState.eventPurpose.trim(),
         attendees: Math.max(1, Number(formState.attendees) || 1),
-        paymentCycle: 'full' as const,
+        bookingTerm: 'daily',
+paymentMode: 'full_upfront',
         durationType: 'days' as const,
       }),
 
       ...(unit.type === 'parking_slot' && {
         vehicleType: formState.vehicleType.trim(),
         plateNumber: formState.plateNumber.trim(),
-        paymentCycle: formState.paymentCycle as PaymentCycle,
+        bookingTerm: formState.paymentCycle,
+paymentMode: 'full_upfront',
         durationType: 'months' as const,
         slotId: formState.slotId,
         slotName:
@@ -931,7 +936,7 @@ export default function AdminReservationForm({
             </div>
 
             <div>
-              <FieldLabel icon={<Wallet className="size-3.5" />}>Payment Cycle</FieldLabel>
+              <FieldLabel icon={<Wallet className="size-3.5" />}>Booking Term</FieldLabel>
               <select
                 value={formState.paymentCycle}
                 onChange={(e) =>
@@ -943,9 +948,9 @@ export default function AdminReservationForm({
                 className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-900 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
                 disabled={isSubmitting}
               >
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
                 <option value="monthly">Monthly</option>
-                <option value="quarterly">Quarterly</option>
-                <option value="full">Full (Upfront)</option>
               </select>
             </div>
           </div>
@@ -1391,7 +1396,7 @@ export default function AdminReservationForm({
 
         {unit.type === 'rental_space' && (
           <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4 text-sm text-blue-800">
-            Initial required payment for this cycle:{' '}
+            Initial required payment:{' '}
             <span className="font-bold">{formatCurrency(rentalRequiredPayment)}</span>
           </div>
         )}

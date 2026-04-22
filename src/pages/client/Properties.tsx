@@ -36,12 +36,18 @@ import {
   clampNumber,
   getDurationBounds,
   buildInitialReservationForm,
+  computeRentalEndFromForm,
 } from "../../components/reservations/shared/reservation.utils";
 
 import ParkingReservationForm from "../../components/reservations/parking/ParkingReservationForm";
 import RentalReservationForm from "../../components/reservations/rental/RentalSpaceReservationForm";
 import FunctionHallReservationForm from "../../components/reservations/functionHall/FunctionHallReservationForm";
 import UnitTaxonomyBadges from "../../components/common/UnitTaxonomyBadges";
+
+import {
+  computeOneTimeBilling,
+  computeRentalBilling,
+} from "../../utils/billing";
 
 import {
   Search,
@@ -630,9 +636,12 @@ useEffect(() => {
   if (!selectedUnitData) return;
 
   const bounds = getDurationBounds(
-    selectedUnitData.type,
-    reservationForm.durationType
-  );
+  selectedUnitData.type,
+  reservationForm.durationType,
+  selectedUnitData.type === "rental_space"
+    ? reservationForm.paymentCycle
+    : undefined
+);
 
   if (
     reservationForm.duration < bounds.min ||
@@ -707,17 +716,34 @@ useEffect(() => {
   if (selectedUnitData?.type !== "rental_space") return;
 
   setReservationForm((prev) => {
-    if (prev.durationType === "months") return prev;
+    let nextDuration = prev.duration;
+    let nextType: DurationType = prev.durationType;
+
+    if (prev.paymentCycle === "monthly") {
+      nextDuration = 12;
+      nextType = "months";
+    } else if (prev.paymentCycle === "weekly") {
+      nextDuration = 1;
+      nextType = "days"; // keep this as days if DurationType does not support "weeks"
+    } else {
+      nextDuration = 1;
+      nextType = "days";
+    }
 
     return {
       ...prev,
-      durationType: "months",
+      duration: nextDuration,
+      durationType: nextType,
       endDate: prev.startDate
-        ? computeEndFromForm(prev.startDate, prev.duration || 1, "months")
+        ? computeRentalEndFromForm(
+            prev.startDate,
+            nextDuration,
+            prev.paymentCycle
+          )
         : prev.endDate,
     };
   });
-}, [selectedUnitData]);
+}, [selectedUnitData, reservationForm.paymentCycle]);
 
 
 
@@ -936,69 +962,99 @@ const ownReservedSlotIds = useMemo(() => {
   
 
   const estimatedTotal = useMemo(() => {
-    if (!selectedUnitData) return 0;
+  if (!selectedUnitData) return 0;
 
-    return calculateTotalAmount(
-      selectedUnitData.type,
-      selectedUnitData.price,
-      reservationForm.duration,
-      reservationForm.paymentCycle
-    );
-  }, [
-    selectedUnitData,
+  if (selectedUnitData.type === "rental_space") {
+    return computeRentalBilling({
+      monthlyBase: Number(selectedUnitData.price || 0),
+      durationMonths: reservationForm.duration || 1,
+      paymentCycle: reservationForm.paymentCycle,
+    }).leaseTotal;
+  }
+
+  const oneTimeBase = calculateTotalAmount(
+    selectedUnitData.type,
+    selectedUnitData.price,
     reservationForm.duration,
-    reservationForm.paymentCycle,
-  ]);
+    reservationForm.paymentCycle
+  );
+
+  return computeOneTimeBilling({
+    baseAmount: oneTimeBase,
+  }).total;
+}, [
+  selectedUnitData,
+  reservationForm.duration,
+  reservationForm.paymentCycle,
+]);
+
+const rentalBilling = useMemo(() => {
+  if (!selectedUnitData || selectedUnitData.type !== "rental_space") return null;
+
+  return computeRentalBilling({
+    monthlyBase: Number(selectedUnitData.price || 0),
+    durationMonths: reservationForm.duration || 1,
+    paymentCycle: reservationForm.paymentCycle,
+  });
+}, [selectedUnitData, reservationForm.duration, reservationForm.paymentCycle]);
 
   const subtotalAmount = useMemo(() => {
-  return Number((estimatedTotal / 1.12).toFixed(2));
-}, [estimatedTotal]);
+  if (!selectedUnitData) return 0;
+
+  if (selectedUnitData.type === "rental_space") {
+    return rentalBilling?.leaseSubtotal ?? 0;
+  }
+
+  const oneTimeBase = calculateTotalAmount(
+    selectedUnitData.type,
+    selectedUnitData.price,
+    reservationForm.duration,
+    reservationForm.paymentCycle
+  );
+
+  return computeOneTimeBilling({
+    baseAmount: oneTimeBase,
+  }).subtotal;
+}, [selectedUnitData, reservationForm.duration, reservationForm.paymentCycle, rentalBilling]);
 
 const vatAmount = useMemo(() => {
-  return Number((estimatedTotal - subtotalAmount).toFixed(2));
-}, [estimatedTotal, subtotalAmount]);
+  if (!selectedUnitData) return 0;
+
+  if (selectedUnitData.type === "rental_space") {
+    return rentalBilling?.leaseVat ?? 0;
+  }
+
+  const oneTimeBase = calculateTotalAmount(
+    selectedUnitData.type,
+    selectedUnitData.price,
+    reservationForm.duration,
+    reservationForm.paymentCycle
+  );
+
+  return computeOneTimeBilling({
+    baseAmount: oneTimeBase,
+  }).vat;
+}, [selectedUnitData, reservationForm.duration, reservationForm.paymentCycle, rentalBilling]);
 
 const initialDue = useMemo(() => {
   if (!selectedUnitData) return estimatedTotal;
 
   if (selectedUnitData.type === "rental_space") {
-    const monthlyBase = Number(selectedUnitData.price || 0);
-    const deposit = monthlyBase;
-    const firstMonth = monthlyBase;
-    const raw = deposit + firstMonth;
-    const withVat = Number((raw * 1.12).toFixed(2));
-    return Math.min(withVat, estimatedTotal);
+    return rentalBilling?.initialDue ?? 0;
   }
 
   return estimatedTotal;
-}, [selectedUnitData, estimatedTotal]);
+}, [selectedUnitData, estimatedTotal, rentalBilling]);
 
   const rentalMonthlyAmount = useMemo(() => {
   if (!selectedUnitData || selectedUnitData.type !== "rental_space") return 0;
-  if (!reservationForm.duration || reservationForm.duration <= 0) return 0;
-
-  return estimatedTotal / reservationForm.duration;
-}, [selectedUnitData, reservationForm.duration, estimatedTotal]);
+  return rentalBilling?.monthlyBase ?? 0;
+}, [selectedUnitData, rentalBilling]);
 
 const rentalRequiredPayment = useMemo(() => {
   if (!selectedUnitData || selectedUnitData.type !== "rental_space") return 0;
-
-  if (reservationForm.paymentCycle === "quarterly") {
-    return Math.min(rentalMonthlyAmount * 3, estimatedTotal);
-  }
-
-  if (reservationForm.paymentCycle === "full") {
-    return estimatedTotal;
-  }
-
-  return Math.min(rentalMonthlyAmount, estimatedTotal);
-}, [
-  selectedUnitData,
-  reservationForm.paymentCycle,
-  rentalMonthlyAmount,
-  estimatedTotal,
-]);
-
+  return rentalBilling?.selectedCycleTotal ?? 0;
+}, [selectedUnitData, rentalBilling]);
 
 
 const appointmentTimeOptions = useMemo(() => {
@@ -1063,15 +1119,24 @@ const canSubmit = (() => {
   }
 
   if (selectedUnitData.type === "rental_space") {
-    if (!reservationForm.startDate || !reservationForm.endDate) return false;
-    if (
-      !reservationForm.duration ||
-      reservationForm.duration < RESERVATION_LIMITS.rental_space.minMonths
-    ) {
-      return false;
-    }
-    if (!reservationForm.businessType.trim()) return false;
+  if (!reservationForm.startDate || !reservationForm.endDate) return false;
+
+  const rentalBounds = getDurationBounds(
+    "rental_space",
+    reservationForm.paymentCycle === "monthly" ? "months" : "days",
+    reservationForm.paymentCycle
+  );
+
+  if (
+    !reservationForm.duration ||
+    reservationForm.duration < rentalBounds.min ||
+    reservationForm.duration > rentalBounds.max
+  ) {
+    return false;
   }
+
+  if (!reservationForm.businessType.trim()) return false;
+}
 
   return true;
 })();
@@ -1330,66 +1395,75 @@ const validateReservationForm = useCallback(() => {
     }
 
     if (selectedUnitData.type === "rental_space") {
-      if (!reservationForm.startDate || !reservationForm.endDate) {
-        setNotice({
-          message: "Please select your lease dates first.",
-          variant: "warning",
-        });
-        return;
-      }
+  if (!reservationForm.startDate || !reservationForm.endDate) {
+    setNotice({
+      message: "Please select your booking dates first.",
+      variant: "warning",
+    });
+    return;
+  }
 
-      if (reservationForm.durationType !== "months") {
-        setNotice({
-          message: "Rental spaces must use monthly duration.",
-          variant: "warning",
-        });
-        return;
-      }
+  const expectedDurationType =
+    reservationForm.paymentCycle === "monthly" ? "months" : "days";
 
-      if (!reservationForm.paymentCycle) {
-        setNotice({
-          message: "Rental spaces must use monthly duration.",
-          variant: "warning",
-        });
-        return;
-      }
+  if (reservationForm.durationType !== expectedDurationType) {
+    setNotice({
+      message: "Booking term and duration unit do not match.",
+      variant: "warning",
+    });
+    return;
+  }
 
-      if (
-        reservationForm.paymentCycle === "quarterly" &&
-        reservationForm.duration < RESERVATION_LIMITS.rental_space.minMonths
-      ) {
-        setNotice({
-          message: `Quarterly payment cycle requires at least ${RESERVATION_LIMITS.rental_space.minMonths} months.`,
-          variant: "warning",
-        });
-        return;
-      }
+  const rentalBounds = getDurationBounds(
+    "rental_space",
+    expectedDurationType,
+    reservationForm.paymentCycle
+  );
 
-      if (!reservationForm.businessType.trim()) {
-        setNotice({
-          message: "Please enter your business type.",
-          variant: "warning",
-        });
-        return;
-      }
+  if (
+    reservationForm.duration < rentalBounds.min ||
+    reservationForm.duration > rentalBounds.max
+  ) {
+    setNotice({
+      message: `Please enter a valid duration between ${rentalBounds.min} and ${rentalBounds.max}.`,
+      variant: "warning",
+    });
+    return;
+  }
 
-      const hasRentalConflict = blockingReservations.some((r) =>
-        rangesOverlap(
-          reservationForm.startDate,
-          reservationForm.endDate,
-          r.startDate,
-          r.endDate
-        )
-      );
+  if (!reservationForm.paymentMode) {
+    setNotice({
+      message: "Please select a billing option.",
+      variant: "warning",
+    });
+    return;
+  }
 
-      if (hasRentalConflict) {
-        setNotice({
-          message: "This rental space is occupied for the selected lease period.",
-          variant: "error",
-        });
-        return;
-      }
-    }
+  if (!reservationForm.businessType.trim()) {
+    setNotice({
+      message: "Please enter your business type.",
+      variant: "warning",
+    });
+    return;
+  }
+
+  const hasRentalConflict = blockingReservations.some((r) =>
+    rangesOverlap(
+      reservationForm.startDate,
+      reservationForm.endDate,
+      r.startDate,
+      r.endDate
+    )
+  );
+
+  if (hasRentalConflict) {
+    setNotice({
+      message: "This rental space is occupied for the selected booking period.",
+      variant: "error",
+    });
+    return;
+  }
+}
 
     if (selectedUnitData.type === "function_hall") {
       if (
@@ -1486,9 +1560,12 @@ const validateReservationForm = useCallback(() => {
     }
 
     const durationBounds = getDurationBounds(
-      selectedUnitData.type,
-      reservationForm.durationType
-    );
+  selectedUnitData.type,
+  reservationForm.durationType,
+  selectedUnitData.type === "rental_space"
+    ? reservationForm.paymentCycle
+    : undefined
+);
 
     if (
       reservationForm.duration < durationBounds.min ||
@@ -1571,7 +1648,8 @@ const validateReservationForm = useCallback(() => {
     };
 
     if (selectedUnitData.type === "rental_space") {
-      reservationData.paymentCycle = reservationForm.paymentCycle;
+      reservationData.bookingTerm = reservationForm.paymentCycle;
+      reservationData.paymentMode = reservationForm.paymentMode;
       reservationData.businessType = reservationForm.businessType.trim();
     }
 

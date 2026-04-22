@@ -789,23 +789,53 @@ const rentalMonthlyAmount = useMemo(() => {
 }, [selectedReservationData]);
 
 const rentalRequiredPayment = useMemo(() => {
-  if (!selectedReservationData || selectedReservationData.unitType !== 'rental_space') return 0;
-
-  const cycle = selectedReservationData.paymentCycle;
-
-  if (cycle === 'quarterly') {
-    return Math.min(rentalMonthlyAmount * 3, selectedReservationBalance);
+  if (
+    !selectedReservationData ||
+    selectedReservationData.unitType !== 'rental_space'
+  ) {
+    return 0;
   }
 
-  if (cycle === 'full') {
+  const bookingTerm = selectedReservationData.bookingTerm;
+  const paymentMode = selectedReservationData.paymentMode;
+
+  // Daily / Weekly rentals = full upfront
+  if (bookingTerm === 'daily' || bookingTerm === 'weekly') {
     return selectedReservationBalance;
   }
 
-  return Math.min(rentalMonthlyAmount, selectedReservationBalance);
+  // Monthly rentals = deposit + first month initially
+  if (
+    bookingTerm === 'monthly' &&
+    paymentMode === 'deposit_plus_first_month'
+  ) {
+    const initialDue =
+      Number(
+        (selectedReservationData.details as any)?.initialDue || 0
+      );
+
+    const alreadyPaid = getReservationPaidFromLedger(
+      selectedReservationData.id
+    );
+
+    const remainingInitial = Math.max(0, initialDue - alreadyPaid);
+
+    if (remainingInitial > 0) {
+      return Math.min(remainingInitial, selectedReservationBalance);
+    }
+
+    return Math.min(
+      rentalMonthlyAmount,
+      selectedReservationBalance
+    );
+  }
+
+  return selectedReservationBalance;
 }, [
   selectedReservationData,
-  rentalMonthlyAmount,
   selectedReservationBalance,
+  rentalMonthlyAmount,
+  getReservationPaidFromLedger,
 ]);
 
   const handlePaymentSubmit = useCallback(
@@ -835,7 +865,7 @@ const rentalRequiredPayment = useMemo(() => {
         setNotice({
           message: `Minimum required payment is ${formatCurrency(
             rentalRequiredPayment
-          )} based on your ${reservation.paymentCycle} billing.`,
+          )} based on your ${reservation.bookingTerm} booking term.`,
           variant: 'warning',
         });
         return;
@@ -2104,10 +2134,12 @@ const handleFilterChange = useCallback((status: PaymentFilterStatus) => {
 
                             <div className="flex items-center justify-between">
                               <span className="text-slate-500">
-                                {selectedReservationData.paymentCycle === 'quarterly'
-                                  ? 'Quarterly Required'
-                                  : selectedReservationData.paymentCycle === 'full'
-                                  ? 'Full Payment Required'
+                                {selectedReservationData.bookingTerm === 'daily'
+                                  ? 'Daily Full Payment Required'
+                                  : selectedReservationData.bookingTerm === 'weekly'
+                                  ? 'Weekly Full Payment Required'
+                                  : selectedReservationData.paymentMode === 'deposit_plus_first_month'
+                                  ? 'Deposit + First Month Required'
                                   : 'Monthly Required'}
                               </span>
                               <span className="font-semibold text-slate-900">

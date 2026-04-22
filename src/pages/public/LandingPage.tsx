@@ -944,6 +944,43 @@ const featuredSlides = useMemo(() => {
       </section>
 
       <GuestParking />
+      {contentSettings.faq?.items?.length > 0 && (
+  <section className="bg-white px-4 py-16 sm:px-6 md:py-24 lg:px-8">
+    <div className="mx-auto max-w-4xl">
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.7 }}
+        className="text-center"
+      >
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600">
+          FAQs
+        </p>
+
+        <h2 className="mt-3 text-2xl font-bold text-slate-900 md:text-4xl">
+          {contentSettings.faq.title || "Frequently Asked Questions"}
+        </h2>
+
+        {contentSettings.faq.subtitle?.trim() && (
+          <p className="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-slate-500 md:text-lg">
+            {contentSettings.faq.subtitle}
+          </p>
+        )}
+      </motion.div>
+
+      <div className="mt-10 space-y-4">
+        {contentSettings.faq.items.map((item, index) => (
+          <FaqItem
+            key={index}
+            question={item.question}
+            answer={item.answer}
+          />
+        ))}
+      </div>
+    </div>
+  </section>
+)}
 
       <section id="contact" className="bg-gray-50 py-20">
         <div className="mx-auto grid max-w-7xl gap-12 px-4 sm:px-6 lg:grid-cols-2 lg:px-8">
@@ -1195,6 +1232,55 @@ const featuredSlides = useMemo(() => {
       {selectedUnitData && (
         <UnitModal Unit={selectedUnitData} onClose={closeUnit} />
       )}
+    </div>
+  );
+}
+function FaqItem({
+  question,
+  answer,
+}: {
+  question: string;
+  answer: string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
+      >
+        <span className="text-sm font-semibold text-slate-900 md:text-base">
+          {question}
+        </span>
+
+        <span
+          className={`text-xl font-light text-slate-400 transition-transform ${
+            open ? "rotate-45" : ""
+          }`}
+        >
+          +
+        </span>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="overflow-hidden"
+          >
+            <div className="border-t border-slate-200 px-5 py-4">
+              <p className="text-sm leading-relaxed text-slate-600 md:text-base">
+                {answer}
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

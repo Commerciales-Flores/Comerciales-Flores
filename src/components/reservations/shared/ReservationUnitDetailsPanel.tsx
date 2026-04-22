@@ -292,7 +292,7 @@ export default function ReservationUnitDetailsPanel({
                                 className="size-10 rounded-full object-cover"
                               />
                             ) : (
-                              <div className="flex size-10 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">
+                              <div className="flex size-10 items-center justify-center rounded-full text-xs font-bold text-blue-700">
                                 {reviewerInitials}
                               </div>
                             )}
@@ -359,7 +359,7 @@ export default function ReservationUnitDetailsPanel({
         </div>
       </div>
 
-      <div className="mb-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
+      <div className="mb-4 rounded-2xl border border-blue-100 p-4">
   <p className="mb-1 text-xs text-gray-600 sm:text-sm">
     Base Price
   </p>
@@ -375,28 +375,16 @@ export default function ReservationUnitDetailsPanel({
     Prices are tax-exclusive. A 12% VAT is added during billing.
   </p>
 
-  {selectedUnitData.minimumPaymentPercent ? (
-    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 sm:text-sm">
-      Minimum initial payment:{" "}
-      <strong>{selectedUnitData.minimumPaymentPercent}%</strong> of total
-      amount.
-    </div>
-  ) : null}
+  <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 sm:text-sm">
+  {selectedUnitData.type === "rental_space" &&
+    "Initial due upon approval includes the required security deposit and first month rent."}
 
-  <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 sm:text-sm">
-    {selectedUnitData.type === "rental_space" &&
-      "Initial billing includes deposit and first month. Recurring payments follow your selected billing cycle."}
+  {selectedUnitData.type === "function_hall" &&
+    "Full payment is required upon approval."}
 
-    {selectedUnitData.type === "function_hall" &&
-      "Full payment is required after approval. Reservation fees are non-refundable."}
-
-    {selectedUnitData.type === "parking_slot" &&
-      (reservationDurationType === "hours"
-        ? "Hourly parking requests are reviewed first. Payment is collected after approval."
-        : reservationDurationType === "days"
-          ? "Daily parking requests are reviewed first. Payment is collected after approval."
-          : "Monthly parking dues must be completed on time after approval.")}
-  </div>
+  {selectedUnitData.type === "parking_slot" &&
+    "Full payment is required upon approval."}
+</div>
 </div>
 
       <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">

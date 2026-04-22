@@ -155,7 +155,7 @@ function renderEmailLayout({
                               letter-spacing:0.08em;
                               text-transform:uppercase;
                               color:#2563eb;
-                              margin-top:10 px;
+                              margin-top:10px;
                               margin-bottom:10px;
                             ">
                               ${escapeHtml(heroEyebrow)}
@@ -689,7 +689,7 @@ function formatDueDate(date: Date) {
 export function billingReminderTemplate(params: {
   customerName?: string | null;
   reservationPublicId: string;
-  billingType: "monthly" | "quarterly";
+  billingType: "monthly";
   stage: "upcoming" | "due" | "overdue";
   dueDate: Date;
   remainingBalance: number;
@@ -698,7 +698,7 @@ export function billingReminderTemplate(params: {
   const greetingName = params.customerName?.trim() || "Valued Client";
   const formattedBalance = formatPhp(params.remainingBalance);
   const formattedDueDate = formatDueDate(params.dueDate);
-  const cycleLabel = params.billingType === "monthly" ? "Monthly" : "Quarterly";
+  const cycleLabel = "Monthly";
 
   const subject =
     params.stage === "overdue"
@@ -716,17 +716,17 @@ export function billingReminderTemplate(params: {
 
   const heroSubtitle =
     params.stage === "overdue"
-      ? "Your recurring billing payment has passed its due date and needs immediate attention."
+      ? "Your scheduled monthly billing payment has passed its due date and needs immediate attention."
       : params.stage === "due"
-      ? "This is a reminder that your recurring billing payment is due today."
-      : "This is a reminder that your recurring billing payment is due soon.";
+      ? "This is a reminder that your scheduled monthly billing payment is due today."
+      : "This is a reminder that your scheduled monthly billing payment is due soon.";
 
   const message =
     params.stage === "overdue"
-      ? `Your ${params.billingType} billing payment for reservation ${params.reservationPublicId} is overdue. Remaining balance: ${formattedBalance}.`
-      : params.stage === "due"
-      ? `Your ${params.billingType} billing payment for reservation ${params.reservationPublicId} is due today. Remaining balance: ${formattedBalance}.`
-      : `Your ${params.billingType} billing payment for reservation ${params.reservationPublicId} is due on ${formattedDueDate}. Remaining balance: ${formattedBalance}.`;
+      ? `Your monthly billing payment for reservation ${params.reservationPublicId} is overdue. Remaining balance: ${formattedBalance}.`
+: params.stage === "due"
+? `Your monthly billing payment for reservation ${params.reservationPublicId} is due today. Remaining balance: ${formattedBalance}.`
+: `Your monthly billing payment for reservation ${params.reservationPublicId} is due on ${formattedDueDate}. Remaining balance: ${formattedBalance}.`;
 
   const text = [
     `Hello ${greetingName},`,
@@ -734,7 +734,7 @@ export function billingReminderTemplate(params: {
     message,
     "",
     `Reservation: ${params.reservationPublicId}`,
-    `Billing Cycle: ${cycleLabel}`,
+    `Billing Schedule: ${cycleLabel}`,
     `Due Date: ${formattedDueDate}`,
     `Remaining Balance: ${formattedBalance}`,
     params.appUrl ? `Review your account: ${params.appUrl}/payments` : null,
@@ -762,9 +762,9 @@ export function billingReminderTemplate(params: {
         <div><strong style="color:#334155;">Reservation:</strong> ${escapeHtml(
           params.reservationPublicId
         )}</div>
-        <div><strong style="color:#334155;">Billing Cycle:</strong> ${escapeHtml(
-          cycleLabel
-        )}</div>
+       <div><strong style="color:#334155;">Billing Schedule:</strong> ${escapeHtml(
+        cycleLabel
+      )}</div>
         <div><strong style="color:#334155;">Due Date:</strong> ${escapeHtml(
           formattedDueDate
         )}</div>

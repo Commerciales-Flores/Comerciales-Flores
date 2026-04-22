@@ -63,49 +63,97 @@ export default function ReservationPaymentSection({
   formatCurrency,
 }: ReservationPaymentSectionProps) {
   const isRental = unitType === "rental_space";
-  const isFunctionHall = unitType === "function_hall";
   const isParking = unitType === "parking_slot";
 
   const paymentRuleText = isRental
     ? "Initial payment includes the required security deposit and first month, subject to admin approval."
-    : "Full payment is required once this reservation is approved.";
+    : "Select your preferred payment method for this booking.";
 
-  const refundRuleText = isFunctionHall
-    ? "Function room reservation fees are non-refundable."
-    : isRental
-      ? "Security deposits are refundable, subject to policy review."
-      : null;
+  const refundRuleText = isRental
+    ? "Security deposits are refundable, subject to policy review."
+    : null;
 
   return (
     <>
       {shouldShowPaymentSection && (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
-            <p className="text-sm font-semibold text-blue-900">
-              Payment & Billing
-            </p>
+  <div
+  className={`rounded-2xl border bg-white p-4 shadow-sm ${
+    isRental
+      ? "border-blue-200"
+      : isParking
+        ? "border-orange-200"
+        : "border-purple-200"
+  }`}
+>
+  <div className="flex items-start justify-between gap-3">
+    <div>
+      <p
+        className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${
+          isRental
+            ? "text-blue-600"
+            : isParking
+              ? "text-orange-600"
+              : "text-purple-600"
+        }`}
+      >
+        Payment Details
+      </p>
 
-            <div className="mt-2 space-y-1 text-sm text-blue-800">
-              <p>{paymentRuleText}</p>
-              <p>Displayed prices are tax-exclusive. A 12% VAT is applied separately.</p>
+      <p className="mt-1 text-sm font-medium text-gray-900">
+        {isRental
+          ? "Deposit + First Month Required"
+          : "Full Payment Upfront"}
+      </p>
+    </div>
 
-              {(isParking || isFunctionHall) && (
-                <p>
-                  Expected payment upon approval:{" "}
-                  <strong>{formatCurrency(estimatedTotal)}</strong>
-                </p>
-              )}
+    <div
+      className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+        isRental
+          ? "bg-blue-50 text-blue-700"
+          : isParking
+            ? "bg-orange-50 text-orange-700"
+            : "bg-purple-50 text-purple-700"
+      }`}
+    >
+      {isRental ? "Monthly Billing" : "One-Time Payment"}
+    </div>
+  </div>
 
-              {isRental && (
-                <p>
-                  Expected initial payment upon approval:{" "}
-                  <strong>{formatCurrency(initialDue)}</strong>
-                </p>
-              )}
+  <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
+    <div className="space-y-2 text-sm text-gray-600">
+      <p>
+        {isRental
+          ? "Residential and commercial units require a security deposit plus the first month’s rent upon approval."
+          : isParking
+            ? "Parking reservations require full payment before the slot is confirmed."
+            : "Function hall reservations require full payment before the booking is confirmed."}
+      </p>
 
-              {refundRuleText && <p>{refundRuleText}</p>}
-            </div>
-          </div>
+      <p>
+        Displayed prices are tax-exclusive. A{" "}
+        <span className="font-medium text-gray-900">12% VAT</span> is applied separately.
+      </p>
+
+      {isRental && (
+        <div className="rounded-lg bg-white px-3 py-2">
+          <p className="text-xs uppercase tracking-wide text-gray-500">
+            Estimated Initial Due
+          </p>
+          <p className="mt-1 text-sm font-semibold text-gray-900">
+            {formatCurrency(initialDue)}
+          </p>
+        </div>
+      )}
+
+      {refundRuleText && (
+        <p className="text-xs text-gray-500">
+          {refundRuleText}
+        </p>
+      )}
+    </div>
+  </div>
+</div>
 
           <div>
             <label className="mb-2 block text-sm text-gray-700">
@@ -167,24 +215,24 @@ export default function ReservationPaymentSection({
         </div>
 
         {selectedUnitData.contractFilePath ? (
-          <div className="mt-3">
-            <button
-              type="button"
-              onClick={() => {
-                const { data } = supabase.storage
-                  .from("unit_contracts")
-                  .getPublicUrl(selectedUnitData.contractFilePath!);
+  <div className="mt-3">
+    <button
+      type="button"
+      onClick={() => {
+        const { data } = supabase.storage
+          .from("unit_contracts")
+          .getPublicUrl(selectedUnitData.contractFilePath!);
 
-                if (data?.publicUrl) {
-                  window.open(data.publicUrl, "_blank", "noopener,noreferrer");
-                }
-              }}
-              className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100 sm:text-base"
-            >
-              View Contract PDF
-            </button>
-          </div>
-        ) : null}
+        if (data?.publicUrl) {
+          window.open(data.publicUrl, "_blank", "noopener,noreferrer");
+        }
+      }}
+      className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 transition hover:bg-blue-100 sm:text-sm"
+    >
+      View Contract PDF
+    </button>
+  </div>
+) : null}
 
         <label className="mt-3 flex items-start gap-3">
           <input

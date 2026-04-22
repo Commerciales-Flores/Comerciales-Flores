@@ -866,16 +866,34 @@ const confirmCancelReservation = useCallback(async () => {
                                           </span>
                                         </div>
 
-                                        {reservation.paymentCycle && (
+                                        {reservation.bookingTerm && (
                                           <div className="flex items-center justify-between gap-3">
                                             <div className="flex items-center gap-2 text-gray-500">
                                               <Clock className="size-4 text-amber-600" />
-                                              <span className={uiTypography.miniStatLabel}>Cycle</span>
+                                              <span className={uiTypography.miniStatLabel}>Booking Term</span>
                                             </div>
+
                                             <span
                                               className={`${uiTypography.infoBlockValue} capitalize text-gray-900 text-right`}
                                             >
-                                              {reservation.paymentCycle}
+                                              {reservation.bookingTerm}
+                                            </span>
+                                          </div>
+                                        )}
+
+                                        {reservation.paymentMode && (
+                                          <div className="flex items-center justify-between gap-3">
+                                            <div className="flex items-center gap-2 text-gray-500">
+                                              <CreditCard className="size-4 text-emerald-600" />
+                                              <span className={uiTypography.miniStatLabel}>Billing</span>
+                                            </div>
+
+                                            <span
+                                              className={`${uiTypography.infoBlockValue} text-gray-900 text-right`}
+                                            >
+                                              {reservation.paymentMode === 'deposit_plus_first_month'
+                                                ? 'Deposit + First Month'
+                                                : 'Full Upfront'}
                                             </span>
                                           </div>
                                         )}

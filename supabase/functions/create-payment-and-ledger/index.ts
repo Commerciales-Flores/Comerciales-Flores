@@ -10,7 +10,12 @@ type PaymentMethod =
 
 type PaymentStatus = 'paid' | 'partial' | 'unpaid';
 type PaymentReviewStatus = 'pending' | 'approved' | 'rejected';
-type PaymentCycle = 'monthly' | 'quarterly' | 'full' | null;
+type BookingTerm = 'daily' | 'weekly' | 'monthly' | null;
+
+type PaymentMode =
+  | 'full_upfront'
+  | 'deposit_plus_first_month'
+  | null;
 type PaymentCategory =
   | 'payment'
   | 'advance_deposit'
@@ -31,8 +36,9 @@ type ReservationRow = {
   duration: number | null;
   minimum_payment_percent_snapshot: number | null;
   details: {
-    paymentCycle?: PaymentCycle;
-  } | null;
+  bookingTerm?: BookingTerm;
+  paymentMode?: PaymentMode;
+} | null;
 };
 
 const corsHeaders = {
@@ -127,7 +133,8 @@ function validateScheduledSubsequentPayment(params: {
   totalAmount: number;
   paidAmount: number;
   duration?: number | null;
-  paymentCycle?: PaymentCycle | null;
+  bookingTerm?: BookingTerm | null;
+paymentMode?: PaymentMode | null;
 }) {
   return (amount: number) => {
     const submittedAmount = clampMoney(amount);
@@ -150,25 +157,37 @@ function validateScheduledSubsequentPayment(params: {
     }
 
     const duration = Math.max(1, Number(params.duration ?? 1));
-    const cycle: PaymentCycle = params.paymentCycle ?? 'monthly';
-    const monthlyAmount = duration > 0 ? totalAmount / duration : totalAmount;
+    const bookingTerm: BookingTerm =
+  params.bookingTerm ?? 'monthly';
 
-    let minimumRequired = 0;
+const paymentMode: PaymentMode =
+  params.paymentMode ?? 'deposit_plus_first_month';
 
-    if (cycle === 'monthly') {
-      minimumRequired = monthlyAmount;
-    } else if (cycle === 'quarterly') {
-      minimumRequired = monthlyAmount * 3;
-    } else if (cycle === 'full') {
-      minimumRequired = remaining;
-    }
+const monthlyAmount =
+  duration > 0 ? totalAmount / duration : totalAmount;
+
+let minimumRequired = 0;
+
+if (
+  bookingTerm === 'daily' ||
+  bookingTerm === 'weekly' ||
+  paymentMode === 'full_upfront'
+) {
+  minimumRequired = remaining;
+} else {
+  minimumRequired = monthlyAmount;
+}
 
     minimumRequired = Math.min(clampMoney(minimumRequired), remaining);
 
     if (minimumRequired <= 0) return;
 
     if (submittedAmount < minimumRequired) {
-      if (cycle === 'full') {
+      if (
+  bookingTerm === 'daily' ||
+  bookingTerm === 'weekly' ||
+  paymentMode === 'full_upfront'
+) {
         throw new Error(
           `Full payment is required for this rental reservation (₱${minimumRequired.toFixed(
             2,
@@ -178,8 +197,11 @@ function validateScheduledSubsequentPayment(params: {
 
       throw new Error(
         `${
-          cycle === 'quarterly' ? 'Quarterly' : 'Monthly'
-        } rental payments must be at least ₱${minimumRequired.toFixed(2)}.`,
+  bookingTerm === 'monthly'
+    ? 'Monthly'
+    : 'Required'
+}
+rental payments must be at least ₱${minimumRequired.toFixed(2)}.`,
       );
     }
   };
@@ -379,7 +401,8 @@ if (!depositPayment) {
     totalAmount: Number(reservation.total_amount),
     paidAmount: ledgerPaid,
     duration: reservation.duration,
-    paymentCycle: reservation.details?.paymentCycle ?? null,
+    bookingTerm: reservation.details?.bookingTerm ?? null,
+paymentMode: reservation.details?.paymentMode ?? null,
   });
 
   // Keep existing minimum-first-payment logic for rentals until
