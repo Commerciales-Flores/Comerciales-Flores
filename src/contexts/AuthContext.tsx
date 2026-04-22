@@ -292,21 +292,25 @@ const clearLogoutGreeting = useCallback(() => {
   sessionStorage.removeItem(LAST_LOGIN_USER_KEY);
   sessionStorage.removeItem(LOGOUT_GREETING_ACTIVE_KEY);
 }, []);
-const resetLoginFailures = useCallback(async (email?: string | null) => {
-  const normalizedEmail = normalizeEmail(email ?? '');
+const resetLoginFailures = useCallback(
+  async (email?: string | null, userId?: string | null) => {
+    const normalizedEmail = normalizeEmail(email ?? '');
 
-  if (!normalizedEmail) return;
+    if (!normalizedEmail) return;
 
-  try {
-    await supabase.rpc('reset_login_failures', {
-      p_email: normalizedEmail,
-    });
-  } catch (error) {
-    if (import.meta.env.DEV) {
-      console.warn('Failed to reset login failures:', error);
+    try {
+      await supabase.rpc('clear_login_failures', {
+        p_email: normalizedEmail,
+        p_user_id: userId ?? null,
+      });
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.warn('Failed to reset login failures:', error);
+      }
     }
-  }
-}, []);
+  },
+  []
+);
     
   const getActivityStorage = useCallback((role?: User['role']) => {
   return role === 'admin' ? localStorage : sessionStorage;
@@ -930,7 +934,7 @@ if (isOAuthProvider) {
 
       persistUserSession(nextProfile);
       writeActivity(nextProfile.role, Date.now());
-      await resetLoginFailures(session.user?.email);
+      await resetLoginFailures(session.user?.email, session.user?.id);
     } catch (error) {
       console.error('Session init failed:', error);
       if (isMountedRef.current) {
@@ -1153,7 +1157,7 @@ useEffect(() => {
 
         persistUserSession(nextProfile);
         writeActivity(nextProfile.role, Date.now());
-        await resetLoginFailures(session.user?.email);  
+        await resetLoginFailures(session.user?.email, session.user?.id);
       } catch (error) {
         console.error('onAuthStateChange error:', error);
       }
@@ -1430,7 +1434,7 @@ const nextProfile: User = {
 persistUserSession(nextProfile);
 writeActivity(nextProfile.role, Date.now());
 
-await resetLoginFailures(normalizedEmail);
+await resetLoginFailures(normalizedEmail, data.user.id);
 
 void addAuthAuditLog({
   userId: data.user.id,

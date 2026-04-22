@@ -12,6 +12,10 @@ import PasswordStrengthIndicator from '../../components/common/PasswordStrengthI
 import FormField from '../../components/common/FormField';
 import { isPasswordPolicyValid } from '../../utils/passwordStrength';
 import AdminUserForm from '../../components/forms/AdminUserForm';
+import SortSelect from '../../components/shared/filters/SortSelect';
+import type { CustomerSortOption } from '../../data/sorting';
+import { CUSTOMER_SORT_OPTIONS } from '../../utils/sorting/sortingOptions';
+import { sortCustomers } from '../../utils/sorting/sortCustomers';
 import {
   normalizeName,
   normalizeEmail,
@@ -59,6 +63,7 @@ type CustomerRow = {
   address?: string;
   is_active?: boolean;
   lastLogin?: string | null;
+  createdAt?: string | null;
 
   hasActiveOccupancy?: boolean;
   activeUnitName?: string | null;
@@ -213,6 +218,7 @@ function mapUserToCustomerRow(u: any): CustomerRow {
     address,
     is_active: u.isActive,
     lastLogin: u.lastLogin ?? null,
+    createdAt: u.createdAt ?? u.created_at ?? null,
 
     hasActiveOccupancy: u.hasActiveOccupancy ?? false,
     activeUnitName: u.activeUnitName ?? null,
@@ -295,6 +301,8 @@ const [newCustomer, setNewCustomer] = useState<NewCustomerForm>(INITIAL_CUSTOMER
 const [newCustomerErrors, setNewCustomerErrors] = useState<Partial<Record<string, string>>>({});
 const [pageInput, setPageInput] = useState('1');
 
+const [sortBy, setSortBy] = useState<CustomerSortOption>('recent_login');
+
   const [isSubmittingDeletionDecision, setIsSubmittingDeletionDecision] = useState(false);
   const [deletionDecisionState, setDeletionDecisionState] = useState<{
     target: CustomerRow | null;
@@ -313,7 +321,9 @@ const [pageInput, setPageInput] = useState('1');
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
 
-  const filteredRows = rows;
+  const filteredRows = useMemo(() => {
+  return sortCustomers(rows, sortBy);
+}, [rows, sortBy]);
 
 
 const confirmTarget = useMemo(
@@ -325,9 +335,11 @@ const confirmTarget = useMemo(
 );
   const hasActiveSearch = debouncedSearchTerm.trim() !== '';
 const hasActiveFilters =
+  hasActiveSearch ||
   accountFilter !== 'all' ||
   deletionFilter !== 'all' ||
-  businessFilter !== 'all';
+  businessFilter !== 'all' ||
+  sortBy !== 'recent_login';
 
 const hasNoCustomers = !loading && !hasActiveSearch && !hasActiveFilters && totalCount === 0;
 const hasNoSearchResults =
@@ -850,7 +862,7 @@ const reloadUsers = useCallback(async () => {
 
   useEffect(() => {
   setPage((prev) => (prev === 1 ? prev : 1));
-}, [debouncedSearchTerm, accountFilter, deletionFilter, businessFilter]);
+}, [debouncedSearchTerm, accountFilter, deletionFilter, businessFilter, sortBy]);
 
   useEffect(() => {
   let cancelled = false;
@@ -962,7 +974,7 @@ const reloadUsers = useCallback(async () => {
     onToggleMobileFilters={() => setShowMobileFilters((prev) => !prev)}
     filters={
       <AdminFilterGroup align="between">
-        <div className="grid w-full grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid w-full grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
           <select
             value={accountFilter}
             onChange={(e) =>
@@ -1005,9 +1017,16 @@ const reloadUsers = useCallback(async () => {
             <option value="upcoming">Upcoming</option>
             <option value="unpaid">Unpaid</option>
           </select>
+
+          <SortSelect<CustomerSortOption>
+  value={sortBy}
+  onChange={setSortBy}
+  options={CUSTOMER_SORT_OPTIONS}
+  className="w-full"
+/>
         </div>
 
-        {(hasActiveSearch || hasActiveFilters) && (
+        {hasActiveFilters && (
           <div className="flex w-full justify-end lg:w-auto">
             <button
               type="button" 
@@ -1017,6 +1036,7 @@ const reloadUsers = useCallback(async () => {
                 setDeletionFilter('all');
                 setBusinessFilter('all');
                 setShowMobileFilters(false);
+                setSortBy('recent_login');
               }}
               className={FILTER_BUTTON_CLASS}
             >
@@ -1572,6 +1592,11 @@ const reloadUsers = useCallback(async () => {
                     icon={<Clock3 size={18} />}
                     label="Last Login"
                     value={formatLastLogin(customer.lastLogin)}
+                  />
+                  <CustomerDetailItem
+                    icon={<CalendarDays size={18} />}
+                    label="Joined Date"
+                    value={customer.createdAt ? formatDate(customer.createdAt) : '—'}
                   />
 
                   {customer.hasActiveOccupancy && (

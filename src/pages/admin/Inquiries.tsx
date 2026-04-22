@@ -12,6 +12,10 @@ import {
 import { useNotifications } from '../../contexts/NotificationContext';
 import { formatDate, formatDateTime } from '../../utils/date';
 import EmptyState from '../../components/common/EmptyState';
+import SortSelect from '../../components/shared/filters/SortSelect';
+import type { InquirySortOption } from '../../data/sorting';
+import { INQUIRY_SORT_OPTIONS } from '../../utils/sorting/sortingOptions';
+import { sortInquiries } from '../../utils/sorting/sortInquiries';
 import {
   Send,
   MessageSquare,
@@ -207,13 +211,6 @@ const AdminContactListItem = React.memo(function AdminContactListItem({
   );
 });
 
-type TicketAvatarInfo = {
-  avatarUrl?: string | null;
-  firstName?: string | null;
-  lastName?: string | null;
-  email?: string | null;
-  isGuest: boolean;
-};
 
 type AdminTicketListItemProps = {
   ticket: SupportTicket;
@@ -514,6 +511,7 @@ export default function AdminInquiries() {
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [showMobileThread, setShowMobileThread] = useState(false);
   const [isComposingNewTicket, setIsComposingNewTicket] = useState(false);
+  const [sortBy, setSortBy] = useState<InquirySortOption>('latest_activity');
 
   const [activeMobilePane, setActiveMobilePane] = useState<'contacts' | 'tickets'>('contacts');
 const [showStatusFilters, setShowStatusFilters] = useState(false);
@@ -884,9 +882,13 @@ const handleUnblockUser = useCallback(async () => {
   }, [ticketsForSelectedContact]);
 
   const filteredTicketsForSelectedContact = useMemo(() => {
-    if (filterStatus === 'all') return ticketsForSelectedContact;
-    return ticketsForSelectedContact.filter((ticket) => ticket.status === filterStatus);
-  }, [ticketsForSelectedContact, filterStatus]);
+  const filtered =
+    filterStatus === 'all'
+      ? ticketsForSelectedContact
+      : ticketsForSelectedContact.filter((ticket) => ticket.status === filterStatus);
+
+  return sortInquiries(filtered, sortBy);
+}, [ticketsForSelectedContact, filterStatus, sortBy]);
 
   const selectedTicket = useMemo(
     () =>
@@ -1580,20 +1582,28 @@ const handleResolve = useCallback(async () => {
                     )}
                   </div>
 
-                  <div className="mt-4 flex items-center gap-2">
-                    <select
-                      value={filterSenderType}
-                      onChange={(e) =>
-                        setFilterSenderType(e.target.value as TicketSenderFilter)
-                      }
-                      className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-                    >
-                      <option value="all">All Senders</option>
-                      <option value="customer">Customer</option>
-                      <option value="guest">Guest</option>
-                      <option value="support">Support</option>
-                    </select>
-                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+  <select
+    value={filterSenderType}
+    onChange={(e) =>
+      setFilterSenderType(e.target.value as TicketSenderFilter)
+    }
+    className="h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-600 outline-none transition focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+  >
+    <option value="all">All Senders</option>
+    <option value="customer">Customer</option>
+    <option value="guest">Guest</option>
+    <option value="support">Support</option>
+  </select>
+
+  <SortSelect<InquirySortOption>
+  value={sortBy}
+  onChange={setSortBy}
+  options={INQUIRY_SORT_OPTIONS}
+  size="compact"
+  className="w-full shadow-none"
+/>
+</div>
                   
                 </div>
 

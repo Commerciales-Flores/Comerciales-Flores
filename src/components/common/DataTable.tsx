@@ -36,6 +36,7 @@ type DataCellProps = {
   nowrap?: boolean;
   mono?: boolean;
   muted?: boolean;
+  raw?: boolean;
 };
 
 export function DataCell({
@@ -44,19 +45,24 @@ export function DataCell({
   nowrap = false,
   mono = false,
   muted = false,
+  raw = false,
 }: DataCellProps) {
   return (
     <td className={`px-4 py-2.5 align-middle ${className}`}>
-      <div
-        className={[
-          'min-w-0 text-sm leading-snug',
-          mono ? 'font-mono font-semibold text-sm text-gray-700' : 'font-normal text-gray-600',
-          muted ? 'text-gray-500' : '',
-          nowrap ? 'whitespace-nowrap' : 'whitespace-normal break-words',
-        ].join(' ')}
-      >
-        {value || '—'}
-      </div>
+      {raw ? (
+        value || '—'
+      ) : (
+        <div
+          className={[
+            'min-w-0 text-sm leading-snug',
+            mono ? 'font-mono font-semibold text-sm text-gray-700' : 'font-normal text-gray-600',
+            muted ? 'text-gray-500' : '',
+            nowrap ? 'whitespace-nowrap' : 'whitespace-normal break-words',
+          ].join(' ')}
+        >
+          {value || '—'}
+        </div>
+      )}
     </td>
   );
 }

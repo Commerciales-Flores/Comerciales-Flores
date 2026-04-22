@@ -11,6 +11,8 @@ import {
   CheckCircle,
   XCircle,
   Clock,
+  Settings,
+  ChevronDown,
 } from 'lucide-react';
 
 import supabase from '../../supabaseClient';
@@ -26,11 +28,17 @@ import { useUsers } from '../../contexts/UsersContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { DataTable, DataCell, ActionCell } from '../../components/common/DataTable';
 import EmptyState from '../../components/common/EmptyState';
+import type { Reservation, ReservationStatus } from '../../data/types';
+
 import AdminFilterBar, {
   FILTER_SELECT_CLASS,
 } from '../../components/common/AdminFilterBar';
 import { formatDate } from '../../utils/date';
 import { formatCurrency } from '../../utils/currency';
+import SortSelect from '../../components/shared/filters/SortSelect';
+import type { ReservationSortOption } from '../../data/sorting';
+import { RESERVATION_SORT_OPTIONS } from '../../utils/sorting/sortingOptions';
+import { sortReservations } from '../../utils/sorting/sortReservations';
 
 type ParkingReservationStatus =
   | 'all'
@@ -57,7 +65,7 @@ type ParkingReservation = {
   unitId: string;
   unitName: string;
   unitType: string;
-  status: string;
+  status: ReservationStatus;
   startDate: string;
   endDate: string;
   requestDate: string;
@@ -199,6 +207,8 @@ export default function Parking() {
   const [filterStatus, setFilterStatus] = useState<ParkingReservationStatus>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+const [sortBy, setSortBy] =
+  useState<ReservationSortOption>('newest');
 
   const [slotOptions, setSlotOptions] = useState<ParkingSlotOption[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
@@ -207,6 +217,7 @@ export default function Parking() {
   const [isAssigning, setIsAssigning] = useState(false);
   const [parkingRules, setParkingRules] =
   useState<ParkingRules>(DEFAULT_PARKING_RULES);
+  const [showSettings, setShowSettings] = useState(false);
 
 const [isSavingRules, setIsSavingRules] = useState(false);
 const [rulesSaved, setRulesSaved] = useState(false);
@@ -296,32 +307,54 @@ const [rulesError, setRulesError] = useState<string | null>(null);
   }, [reservations, getUserById, getUnitById]);
 
   const filteredReservations = useMemo(() => {
-    const term = debouncedSearch.trim().toLowerCase();
-    if (!term) return enrichedReservations;
+  const term = debouncedSearch.trim().toLowerCase();
 
-    return enrichedReservations.filter((r) => {
-      const fields = [
-        r.fullName,
-        r.reservationPublicId,
-        r.userPublicId,
-        r.unitName,
-        r.location,
-        r.status,
-        getVehicleType(r),
-        getPlateNumber(r),
-      ];
+  const searched = !term
+    ? enrichedReservations
+    : enrichedReservations.filter((r) => {
+        const fields = [
+          r.fullName,
+          r.reservationPublicId,
+          r.userPublicId,
+          r.unitName,
+          r.location,
+          r.status,
+          getVehicleType(r),
+          getPlateNumber(r),
+        ];
 
-      return fields.some((value) =>
-        String(value ?? '').toLowerCase().includes(term)
-      );
-    });
-  }, [enrichedReservations, debouncedSearch]);
+        return fields.some((value) =>
+          String(value ?? '').toLowerCase().includes(term)
+        );
+      });
+
+  return sortReservations(
+    searched.map((r) => ({
+      ...r,
+      created_at: r.requestDate,
+      start_date: r.startDate,
+      total_amount: r.totalAmount,
+      public_id: r.reservationPublicId,
+    })),
+    sortBy
+  );
+}, [enrichedReservations, debouncedSearch, sortBy]);
 
   const selectedReservation = useMemo(() => {
     return (
       filteredReservations.find((reservation) => reservation.id === selectedReservationId) ?? null
     );
   }, [filteredReservations, selectedReservationId]);
+
+  const canAssignSlot =
+  !!selectedReservation &&
+  (
+    selectedReservation.status === 'pending' ||
+    (
+      selectedReservation.status === 'confirmed' &&
+      !selectedReservation.assignedParkingSlotId
+    )
+  );
 
   const slotMap = useMemo(() => {
     return new Map(slotOptions.map((slot) => [slot.slot_id, slot]));
@@ -418,57 +451,73 @@ const [rulesError, setRulesError] = useState<string | null>(null);
   );
 
   const handleAssignAndApprove = useCallback(async () => {
-    if (!selectedReservation) return;
-    if (!selectedSlotId) {
-      setAssignmentError('Please select a parking slot before approving.');
-      return;
-    }
+  if (!selectedReservation) return;
+  if (!selectedSlotId) {
+    setAssignmentError(
+      selectedReservation.status === 'pending'
+        ? 'Please select a parking slot before approving.'
+        : 'Please select a parking slot before assigning.'
+    );
+    return;
+  }
 
-    const assignedSlot = slotMap.get(selectedSlotId);
-    if (!assignedSlot) {
-      setAssignmentError('Selected slot is invalid or no longer available.');
-      return;
-    }
+  const assignedSlot = slotMap.get(selectedSlotId);
+  if (!assignedSlot) {
+    setAssignmentError('Selected slot is invalid or no longer available.');
+    return;
+  }
 
-    try {
-      setIsAssigning(true);
-      setAssignmentError(null);
+  try {
+    setIsAssigning(true);
+    setAssignmentError(null);
 
-      const nextDetails = {
-        ...(selectedReservation.details ?? {}),
-        assignedSlotCode: assignedSlot.slot_code,
-        assignedSlotLabel: assignedSlot.label ?? assignedSlot.slot_code,
-        assignedAt: new Date().toISOString(),
-      };
+    const nextDetails = {
+      ...(selectedReservation.details ?? {}),
+      assignedSlotCode: assignedSlot.slot_code,
+      assignedSlotLabel: assignedSlot.label ?? assignedSlot.slot_code,
+      assignedAt: new Date().toISOString(),
+    };
 
-      await updateReservation(selectedReservation.id, {
-        status: 'confirmed',
-        assignedParkingSlotId: assignedSlot.slot_id,
-        details: nextDetails as any,
-      });
+    const nextStatus: ReservationStatus =
+  selectedReservation.status === 'pending'
+    ? 'confirmed'
+    : selectedReservation.status;
 
+    await updateReservation(selectedReservation.id, {
+      status: nextStatus,
+      assignedParkingSlotId: assignedSlot.slot_id,
+      details: nextDetails as any,
+    });
+
+    if (selectedReservation.status === 'pending') {
       await sendReservationNotification({
         userId: selectedReservation.userId,
         reservationPublicId: selectedReservation.reservationPublicId,
         action: 'approved',
       });
-
-      setSelectedReservationId(null);
-      await loadParkingReservations();
-    } catch (error: any) {
-      console.error('Failed to assign parking slot:', error);
-      setAssignmentError(error?.message || 'Failed to assign and approve request.');
-    } finally {
-      setIsAssigning(false);
     }
-  }, [
-    selectedReservation,
-    selectedSlotId,
-    slotMap,
-    updateReservation,
-    sendReservationNotification,
-    loadParkingReservations,
-  ]);
+
+    setSelectedReservationId(null);
+    await loadParkingReservations();
+  } catch (error: any) {
+    console.error('Failed to assign parking slot:', error);
+    setAssignmentError(
+      error?.message ||
+        (selectedReservation.status === 'pending'
+          ? 'Failed to assign and approve request.'
+          : 'Failed to assign parking slot.')
+    );
+  } finally {
+    setIsAssigning(false);
+  }
+}, [
+  selectedReservation,
+  selectedSlotId,
+  slotMap,
+  updateReservation,
+  sendReservationNotification,
+  loadParkingReservations,
+]);
 
   const handleSaveParkingRules = useCallback(async () => {
   try {
@@ -489,7 +538,10 @@ const [rulesError, setRulesError] = useState<string | null>(null);
   }
 }, [parkingRules]);
 
-  const hasActiveFilters = filterStatus !== 'all' || Boolean(debouncedSearch.trim());
+  const hasActiveFilters =
+  filterStatus !== 'all' ||
+  Boolean(debouncedSearch.trim()) ||
+  sortBy !== 'newest';
   const hasNoReservations = !loading && filteredReservations.length === 0 && !hasActiveFilters;
   const hasNoSearchResults = !loading && filteredReservations.length === 0 && hasActiveFilters;
 
@@ -504,98 +556,6 @@ const [rulesError, setRulesError] = useState<string | null>(null);
             </p>
           </div>
         </div>
-
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-  <div className="mb-5">
-    <h2 className="text-lg font-bold text-slate-900">
-      Parking Settings
-    </h2>
-
-    <p className="mt-1 text-sm text-slate-500">
-      Adjust hourly parking schedule and same-day request rules.
-    </p>
-  </div>
-
-  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-    <div>
-      <label className="mb-2 block text-[11px] font-bold uppercase tracking-widest text-slate-400">
-        Hourly Start
-      </label>
-
-      <input
-        type="time"
-        value={parkingRules.hourly_start}
-        onChange={(e) =>
-          setParkingRules((prev) => ({
-            ...prev,
-            hourly_start: e.target.value,
-          }))
-        }
-        className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
-      />
-    </div>
-
-    <div>
-      <label className="mb-2 block text-[11px] font-bold uppercase tracking-widest text-slate-400">
-        Hourly End
-      </label>
-
-      <input
-        type="time"
-        value={parkingRules.hourly_end}
-        onChange={(e) =>
-          setParkingRules((prev) => ({
-            ...prev,
-            hourly_end: e.target.value,
-          }))
-        }
-        className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
-      />
-    </div>
-
-    <div>
-      <label className="mb-2 block text-[11px] font-bold uppercase tracking-widest text-slate-400">
-        Lead Hours
-      </label>
-
-      <input
-        type="number"
-        min={0}
-        value={parkingRules.same_day_lead_hours}
-        onChange={(e) =>
-          setParkingRules((prev) => ({
-            ...prev,
-            same_day_lead_hours: Number(e.target.value || 0),
-          }))
-        }
-        className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
-      />
-    </div>
-  </div>
-
-  {rulesError && (
-    <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-      {rulesError}
-    </div>
-  )}
-
-  {rulesSaved && !rulesError && (
-    <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-      Parking settings saved successfully.
-    </div>
-  )}
-
-  <div className="mt-5 flex justify-end">
-    <button
-      type="button"
-      onClick={handleSaveParkingRules}
-      disabled={isSavingRules}
-      className="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-    >
-      {isSavingRules ? 'Saving...' : 'Save Changes'}
-    </button>
-  </div>
-</div>
 
         <AdminFilterBar
           searchTerm={searchTerm}
@@ -619,12 +579,20 @@ const [rulesError, setRulesError] = useState<string | null>(null);
                 <option value="overdue">Overdue</option>
               </select>
 
+              <SortSelect<ReservationSortOption>
+                value={sortBy}
+                onChange={setSortBy}
+                options={RESERVATION_SORT_OPTIONS}
+                className="min-w-[220px]"
+              />
+
               {hasActiveFilters && (
                 <button
                   type="button"
                   onClick={() => {
                     setSearchTerm('');
                     setFilterStatus('all');
+                    setSortBy('newest');
                     setIsFilterPanelOpen(false);
                   }}
                   className="inline-flex rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
@@ -649,6 +617,13 @@ const [rulesError, setRulesError] = useState<string | null>(null);
                 <option value="rejected">Rejected</option>
                 <option value="overdue">Overdue</option>
               </select>
+
+              <SortSelect<ReservationSortOption>
+                value={sortBy}
+                onChange={setSortBy}
+                options={RESERVATION_SORT_OPTIONS}
+                className="w-full"
+              />
             </div>
           }
         />
@@ -855,7 +830,122 @@ const [rulesError, setRulesError] = useState<string | null>(null);
             </>
           )}
         </div>
+        <div className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+  <button
+    type="button"
+    onClick={() => setShowSettings((prev) => !prev)}
+    className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-slate-50"
+  >
+    <div className="flex items-start gap-3">
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2.5 text-slate-600">
+        <Settings className="size-4" />
       </div>
+
+      <div>
+        <h2 className="text-lg font-bold text-slate-900">
+          Parking Settings
+        </h2>
+
+        <p className="mt-1 text-sm text-slate-500">
+          Adjust hourly parking schedule and same-day request rules.
+        </p>
+      </div>
+    </div>
+
+    <ChevronDown
+      className={`size-5 text-slate-400 transition-transform duration-200 ${
+        showSettings ? 'rotate-180' : ''
+      }`}
+    />
+  </button>
+
+  {showSettings && (
+    <div className="border-t border-slate-200 px-5 pb-5 pt-5">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div>
+          <label className="mb-2 block text-[11px] font-bold uppercase tracking-widest text-slate-400">
+            Hourly Start
+          </label>
+
+          <input
+            type="time"
+            value={parkingRules.hourly_start}
+            onChange={(e) =>
+              setParkingRules((prev) => ({
+                ...prev,
+                hourly_start: e.target.value,
+              }))
+            }
+            className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-[11px] font-bold uppercase tracking-widest text-slate-400">
+            Hourly End
+          </label>
+
+          <input
+            type="time"
+            value={parkingRules.hourly_end}
+            onChange={(e) =>
+              setParkingRules((prev) => ({
+                ...prev,
+                hourly_end: e.target.value,
+              }))
+            }
+            className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-[11px] font-bold uppercase tracking-widest text-slate-400">
+            Lead Time (Minutes)
+          </label>
+
+          <input
+            type="number"
+            min={0}
+            step={30}
+            value={parkingRules.same_day_lead_minutes}
+            onChange={(e) =>
+              setParkingRules((prev) => ({
+                ...prev,
+                same_day_lead_minutes: Number(e.target.value || 0),
+              }))
+            }
+            className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+          />
+        </div>
+      </div>
+
+      {rulesError && (
+        <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {rulesError}
+        </div>
+      )}
+
+      {rulesSaved && !rulesError && (
+        <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          Parking settings saved successfully.
+        </div>
+      )}
+
+      <div className="mt-5 flex justify-end">
+        <button
+          type="button"
+          onClick={handleSaveParkingRules}
+          disabled={isSavingRules}
+          className="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {isSavingRules ? 'Saving...' : 'Save Changes'}
+        </button>
+      </div>
+    </div>
+  )}
+</div>
+      </div>
+      
 
       {isFilterPanelOpen && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center lg:hidden">
@@ -974,7 +1064,7 @@ const [rulesError, setRulesError] = useState<string | null>(null);
                   Slot Assignment
                 </h4>
 
-                {selectedReservation.status === 'pending' ? (
+                {canAssignSlot ? (
                   <div className="space-y-4">
                     {assignmentError && (
                       <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -1043,7 +1133,7 @@ const [rulesError, setRulesError] = useState<string | null>(null);
                   </span>
                 </div>
 
-                {selectedReservation.status === 'pending' && (
+                {canAssignSlot && (
                   <div className="flex flex-wrap gap-2">
                     <button
                       onClick={() => handleReject(selectedReservation)}
@@ -1063,7 +1153,11 @@ const [rulesError, setRulesError] = useState<string | null>(null);
                     >
                       <span className="inline-flex items-center gap-2">
                         <CheckCircle className="size-4" />
-                        {isAssigning ? 'Assigning...' : 'Assign & Approve'}
+                        {isAssigning
+                          ? 'Assigning...'
+                          : selectedReservation.status === 'pending'
+                          ? 'Assign & Approve'
+                          : 'Assign Slot'}
                       </span>
                     </button>
                   </div>

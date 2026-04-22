@@ -5,7 +5,7 @@ export type SlotAssignmentMode = "admin_assigns_later";
 export type ParkingRules = {
   hourly_start: string;
   hourly_end: string;
-  same_day_lead_hours: number;
+  same_day_lead_minutes: number;
   guest_payment_after_approval: boolean;
   slot_assignment_mode: SlotAssignmentMode;
 };
@@ -13,7 +13,7 @@ export type ParkingRules = {
 export const DEFAULT_PARKING_RULES: ParkingRules = {
   hourly_start: "09:00",
   hourly_end: "17:00",
-  same_day_lead_hours: 2,
+  same_day_lead_minutes: 120,
   guest_payment_after_approval: true,
   slot_assignment_mode: "admin_assigns_later",
 };
@@ -48,12 +48,12 @@ function sanitizeParkingRules(value: unknown): ParkingRules {
     ? value.hourly_end
     : DEFAULT_PARKING_RULES.hourly_end;
 
-  const sameDayLeadHours =
-    typeof value.same_day_lead_hours === "number" &&
-    Number.isInteger(value.same_day_lead_hours) &&
-    value.same_day_lead_hours >= 0
-      ? value.same_day_lead_hours
-      : DEFAULT_PARKING_RULES.same_day_lead_hours;
+  const sameDayLeadMinutes =
+    typeof value.same_day_lead_minutes === "number" &&
+    Number.isInteger(value.same_day_lead_minutes) &&
+    value.same_day_lead_minutes >= 0
+      ? value.same_day_lead_minutes
+      : DEFAULT_PARKING_RULES.same_day_lead_minutes;
 
   const guestPaymentAfterApproval =
     typeof value.guest_payment_after_approval === "boolean"
@@ -68,7 +68,7 @@ function sanitizeParkingRules(value: unknown): ParkingRules {
   return {
     hourly_start: hourlyStart,
     hourly_end: hourlyEnd,
-    same_day_lead_hours: sameDayLeadHours,
+    same_day_lead_minutes: sameDayLeadMinutes,
     guest_payment_after_approval: guestPaymentAfterApproval,
     slot_assignment_mode: slotAssignmentMode,
   };

@@ -5,6 +5,10 @@ import { formatDate, formatDateTime } from '../../utils/date';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotifications } from '../../contexts/NotificationContext';
 import { normalizeLowercaseText } from '../../utils/DataNormalization';
+import SortSelect from '../../components/shared/filters/SortSelect';
+import type { InquirySortOption } from '../../data/sorting';
+import { INQUIRY_SORT_OPTIONS } from '../../utils/sorting/sortingOptions';
+import { sortInquiries } from '../../utils/sorting/sortInquiries';
 import {
   useInquiries,
   type SupportMessage,
@@ -658,6 +662,8 @@ const isDetailVisible = isDesktop || showDetail;
 const [filterStatus, setFilterStatus] = useState<TicketFilterStatus>('all');
 const [showFilterMenu, setShowFilterMenu] = useState(false);
 
+const [sortBy, setSortBy] = useState<InquirySortOption>('latest_activity');
+
   const userId = user?.id ?? '';
 
   const filterCounts = useMemo(() => {
@@ -688,7 +694,7 @@ const [showFilterMenu, setShowFilterMenu] = useState(false);
   };
 }, [tickets, userId]);
 
-const sortedTickets = useMemo(() => {
+const filteredTickets = useMemo(() => {
   if (!userId) return [];
 
   const query = searchQuery.trim().toLowerCase();
@@ -697,7 +703,7 @@ const sortedTickets = useMemo(() => {
     (ticket: SupportTicket) => ticket.userId === userId
   );
 
-  const filtered = userTickets.filter((ticket) => {
+  return userTickets.filter((ticket) => {
     const matchesFilter =
       filterStatus === 'all' ? true : ticket.status === filterStatus;
 
@@ -720,11 +726,11 @@ const sortedTickets = useMemo(() => {
 
     return searchableText.includes(query);
   });
-
-  return [...filtered].sort(
-    (a, b) => getTimestamp(b.lastMessageAt) - getTimestamp(a.lastMessageAt)
-  );
 }, [tickets, userId, searchQuery, filterStatus, getMessagesByTicketId]);
+
+const sortedTickets = useMemo(() => {
+  return sortInquiries(filteredTickets, sortBy);
+}, [filteredTickets, sortBy]);
 
   const selectedTicket = useMemo(
     () => sortedTickets.find((ticket) => ticket.id === selectedTicketId) ?? null,
@@ -756,6 +762,18 @@ const sortedTickets = useMemo(() => {
     setSelectedTicketId(sortedTickets[0].id);
   }
 }, [isDesktop, selectedTicketId, sortedTickets]);
+
+useEffect(() => {
+  if (!selectedTicketId) return;
+
+  const stillExists = sortedTickets.some((ticket) => ticket.id === selectedTicketId);
+  if (!stillExists) {
+    setSelectedTicketId(sortedTickets[0]?.id ?? null);
+    if (!sortedTickets.length) {
+      setShowDetail(false);
+    }
+  }
+}, [sortedTickets, selectedTicketId]);
 
   const currentReply = selectedTicket ? replyDrafts[selectedTicket.id] ?? '' : '';
 
@@ -956,37 +974,46 @@ const handleFilterSelectFromSheet = useCallback((status: TicketFilterStatus) => 
 ) : (
   <>
     <div className="flex w-full flex-col gap-3">
-      <div className="flex w-full items-stretch gap-2 sm:gap-3">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            maxLength={100}
-            placeholder="Search tickets..."
-            value={searchQuery}
-            onChange={(e) =>
-              setSearchQuery(normalizeLowercaseText(e.target.value))
-            }
-            className="w-full rounded-xl border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-          />
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setShowFilterMenu(true)}
-          aria-label="Open ticket filters"
-          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-300 bg-white text-gray-700 transition hover:bg-gray-50 md:hidden"
-        >
-          <Filter className="size-4" />
-        </button>
+  <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-stretch lg:gap-3">
+    <div className="flex w-full items-stretch gap-2 sm:gap-3">
+      <div className="relative min-w-0 flex-1">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
+        <input
+          type="text"
+          maxLength={100}
+          placeholder="Search tickets..."
+          value={searchQuery}
+          onChange={(e) =>
+            setSearchQuery(normalizeLowercaseText(e.target.value))
+          }
+          className="w-full rounded-xl border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+        />
       </div>
 
-      <TicketFilterTabs
-        filter={filterStatus}
-        counts={filterCounts}
-        onChange={handleFilterChange}
-      />
+      <button
+        type="button"
+        onClick={() => setShowFilterMenu(true)}
+        aria-label="Open ticket filters"
+        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-gray-300 bg-white text-gray-700 transition hover:bg-gray-50 md:hidden"
+      >
+        <Filter className="size-4" />
+      </button>
     </div>
+
+    <SortSelect<InquirySortOption>
+      value={sortBy}
+      onChange={setSortBy}
+      options={INQUIRY_SORT_OPTIONS}
+      className="h-11 min-w-[220px]"
+    />
+  </div>
+
+  <TicketFilterTabs
+    filter={filterStatus}
+    counts={filterCounts}
+    onChange={handleFilterChange}
+  />
+</div>
 
     {sortedTickets.length === 0 ? (
       <motion.div

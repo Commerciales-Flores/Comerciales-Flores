@@ -13,6 +13,10 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { normalizeLowercaseText } from "../../utils/DataNormalization";
 import { finalizeAmountInput, normalizeAmountInput } from '../../utils/priceNormalization';
 import { useUnits } from '../../contexts/UnitsContext';
+import SortSelect from '../../components/shared/filters/SortSelect';
+import type { PaymentSortOption } from '../../data/sorting';
+import { PAYMENT_SORT_OPTIONS } from '../../utils/sorting/sortingOptions';
+import { sortPayments } from '../../utils/sorting/sortPayments';
 import {
   CreditCard,
   CheckCircle2,
@@ -396,6 +400,8 @@ const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [paymentForm, setPaymentForm] = useState(buildInitialPaymentForm());
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
+  const [sortBy, setSortBy] = useState<PaymentSortOption>('newest');
+
   const { activePaymentMethods, getPaymentMethodByCode } = usePaymentMethods();
 
   const defaultPaymentMethod = useMemo(() => {
@@ -556,7 +562,7 @@ const getReservationRemainingFromLedger = useCallback(
   const filteredPayments = useMemo(() => {
   const query = normalizeLowercaseText(searchQuery);
 
-  const list = userPayments.filter((payment) => {
+  return userPayments.filter((payment) => {
     const matchesFilter =
       filterStatus === 'all' ? true : payment.status === filterStatus;
 
@@ -580,24 +586,24 @@ const getReservationRemainingFromLedger = useCallback(
       ledgerEntry?.description?.toLowerCase().includes(query)
     );
   });
-
-  return [...list].sort(
-    (a, b) => getSafeDate(b.date).getTime() - getSafeDate(a.date).getTime()
-  );
 }, [userPayments, reservationMap, ledgerByPaymentId, searchQuery, filterStatus]);
 
-  
+const visiblePayments = useMemo(() => {
+  return sortPayments(filteredPayments, sortBy);
+}, [filteredPayments, sortBy]);
 
   
 
-  const totalPages = useMemo(() => {
-  return Math.max(1, Math.ceil(filteredPayments.length / ITEMS_PER_PAGE));
-}, [filteredPayments.length, ITEMS_PER_PAGE]);
+  
+
+const totalPages = useMemo(() => {
+  return Math.max(1, Math.ceil(visiblePayments.length / ITEMS_PER_PAGE));
+}, [visiblePayments.length, ITEMS_PER_PAGE]);
 
 const paginatedPayments = useMemo(() => {
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  return filteredPayments.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-}, [filteredPayments, currentPage, ITEMS_PER_PAGE]);
+  return visiblePayments.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+}, [visiblePayments, currentPage, ITEMS_PER_PAGE]);
 
   const paymentOverview = useMemo(() => {
   const totalPaid = userLedger
@@ -923,185 +929,370 @@ const handleDownloadInvoice = useCallback(
     if (!ledgerEntry) {
       setNotice({
         message:
-          'Invoice is not available yet. It can be downloaded once this payment has been verified.',
-        variant: 'info',
+          "Invoice is not available yet. It can be downloaded once this payment has been verified.",
+        variant: "info",
       });
       return;
     }
+
+    const formatPdfCurrency = (value?: number | null) => {
+      const amount = Number(value || 0);
+      return `PHP ${amount.toLocaleString("en-PH", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+    };
+
+    const safeText = (value?: string | null) => value?.trim() || "N/A";
 
     try {
       const invoiceNumber = ledgerEntry.publicId || ledgerEntry.id || payment.id;
       const invoiceDate = ledgerEntry.recordedAt || payment.date;
       const amount = Number(ledgerEntry.amount ?? payment.amount) || 0;
+      const totalBill = Number(reservation?.totalAmount || 0);
       const paidToDate = getReservationPaidFromLedger(payment.reservationId);
-      const remaining = Math.max(
-        0,
-        Number(reservation?.totalAmount || 0) - paidToDate
-      );
+      const remaining = Math.max(0, totalBill - paidToDate);
 
       const doc = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
       });
 
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
-      const marginX = 18;
-      let y = 18;
 
-      // Optional logo
-      try {
-        const logoUrl =
-  'https://nlermulroebcmfwvyhmo.supabase.co/storage/v1/object/public/property_media/public/logos/building-2.png';
-    const logoDataUrl = await loadImageAsDataUrl(logoUrl);
-    doc.addImage(logoDataUrl, 'PNG', marginX, y - 4, 18, 18);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.setTextColor(40, 40, 40);
-    doc.text('Comerciales Flores', marginX + 22, y + 3);
+      const marginX = 14;
+      const topMargin = 14;
+      const contentWidth = pageWidth - marginX * 2;
+      const gap = 8;
+      const colWidth = (contentWidth - gap) / 2;
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(120, 120, 120);
-    doc.text('Official Payment Invoice', marginX + 22, y + 8);
-      } catch {
-        // logo is optional
-      }
+      let y = topMargin;
 
-      // Header
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(18);
-      doc.text('INVOICE', pageWidth - marginX, y + 2, { align: 'right' });
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
-      doc.setTextColor(90, 90, 90);
-      doc.text('Commerciales Flores', pageWidth - marginX, y + 8, { align: 'right' });
-      doc.text(`Invoice No: ${invoiceNumber}`, pageWidth - marginX, y + 13, { align: 'right' });
-      doc.text(`Invoice Date: ${formatDate(invoiceDate)}`, pageWidth - marginX, y + 18, {
-        align: 'right',
-      });
-
-      y += 28;
-
-      doc.setDrawColor(220, 220, 220);
-      doc.line(marginX, y, pageWidth - marginX, y);
-      y += 8;
-
-      const writeSectionTitle = (title: string) => {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(11);
-        doc.setTextColor(30, 30, 30);
-        doc.text(title, marginX, y);
-        y += 6;
+      const palette = {
+        navy: [15, 23, 42] as const,
+        slate: [51, 65, 85] as const,
+        muted: [100, 116, 139] as const,
+        border: [226, 232, 240] as const,
+        soft: [248, 250, 252] as const,
+        brand: [37, 99, 235] as const,
+        white: [255, 255, 255] as const,
       };
 
-      const writeRow = (label: string, value: string) => {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(10);
-        doc.setTextColor(80, 80, 80);
-        doc.text(label, marginX, y);
-
-        doc.setFont('helvetica', 'normal');
-        doc.setTextColor(35, 35, 35);
-        doc.text(value || 'N/A', 62, y);
-        y += 6;
+      const drawText = (
+        text: string,
+        x: number,
+        yPos: number,
+        options?: {
+          align?: "left" | "center" | "right";
+          fontSize?: number;
+          color?: readonly [number, number, number];
+          weight?: "normal" | "bold";
+        }
+      ) => {
+        doc.setFont("helvetica", options?.weight || "normal");
+        doc.setFontSize(options?.fontSize || 10);
+        const color = options?.color || palette.slate;
+        doc.setTextColor(color[0], color[1], color[2]);
+        doc.text(text, x, yPos, { align: options?.align || "left" });
       };
 
-      writeSectionTitle('Customer');
-      writeRow('Name', fullName || 'N/A');
-      writeRow('Email', user?.email ?? 'N/A');
-      y += 3;
-
-      writeSectionTitle('Payment');
-      writeRow('Payment ID', payment.publicId || payment.id);
-      writeRow('Method', formatPaymentMethod(ledgerEntry.method || payment.method));
-      writeRow(
-        'Status',
-        String(ledgerEntry.status || payment.status || 'N/A').toUpperCase()
-      );
-      writeRow('Submitted On', formatDate(payment.date));
-      writeRow('Reference No', ledgerEntry.referenceNo || 'N/A');
-      y += 3;
-
-      writeSectionTitle('Ledger Entry');
-      writeRow('Ledger ID', ledgerEntry.publicId || ledgerEntry.id);
-      writeRow('Entry Type', formatPaymentMethod(ledgerEntry.entryType));
-      writeRow('Recorded Date', formatDate(ledgerEntry.recordedAt));
-      writeRow('Amount', formatCurrency(amount));
-      y += 3;
-
-      writeSectionTitle('Reservation');
-      writeRow('Reservation ID', reservation?.publicId ?? reservation?.id ?? 'N/A');
-      writeRow('Unit', reservation?.unitName ?? 'N/A');
-      writeRow(
-        'Unit Type',
-        reservation ? getUnitTypeLabel(reservation.unitType) : 'N/A'
-      );
-      writeRow('Total Bill', formatCurrency(reservation?.totalAmount || 0));
-      writeRow('Paid To Date', formatCurrency(paidToDate));
-      writeRow('Remaining Balance', formatCurrency(remaining));
-      y += 4;
-
-      const writeParagraphBlock = (title: string, value: string) => {
-        writeSectionTitle(title);
-
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(10);
-        doc.setTextColor(45, 45, 45);
-
-        const lines = doc.splitTextToSize(value || 'N/A', pageWidth - marginX * 2);
-        doc.text(lines, marginX, y);
-        y += lines.length * 5 + 4;
+      const drawDivider = (yPos: number) => {
+        doc.setDrawColor(...palette.border);
+        doc.line(marginX, yPos, pageWidth - marginX, yPos);
       };
 
-      writeParagraphBlock(
-        'Description',
-        ledgerEntry.description?.trim() || 'No description provided.'
+      const getCardHeight = (rows: Array<[string, string]>) => {
+        return 14 + rows.length * 6 + 6;
+      };
+
+      const drawCardAt = (
+        x: number,
+        top: number,
+        width: number,
+        title: string,
+        rows: Array<[string, string]>
+      ) => {
+        const cardHeight = getCardHeight(rows);
+
+        doc.setFillColor(...palette.white);
+        doc.setDrawColor(...palette.border);
+        doc.roundedRect(x, top, width, cardHeight, 4, 4, "FD");
+
+        drawText(title, x + 4, top + 7, {
+          fontSize: 10,
+          weight: "bold",
+          color: palette.navy,
+        });
+
+        let rowY = top + 14;
+        rows.forEach(([label, value]) => {
+          drawText(label, x + 4, rowY, {
+            fontSize: 8.4,
+            weight: "bold",
+            color: palette.muted,
+          });
+
+          const valueLines = doc.splitTextToSize(value || "N/A", width - 34);
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(8.8);
+          doc.setTextColor(...palette.slate);
+          doc.text(valueLines, x + 28, rowY);
+
+          rowY += 6;
+        });
+
+        return cardHeight;
+      };
+
+      const drawParagraphCard = (
+        top: number,
+        title: string,
+        value: string
+      ) => {
+        const lines = doc.splitTextToSize(value || "N/A", contentWidth - 10);
+        const cardHeight = 14 + lines.length * 4.5 + 6;
+
+        doc.setFillColor(...palette.white);
+        doc.setDrawColor(...palette.border);
+        doc.roundedRect(marginX, top, contentWidth, cardHeight, 4, 4, "FD");
+
+        drawText(title, marginX + 4, top + 7, {
+          fontSize: 10,
+          weight: "bold",
+          color: palette.navy,
+        });
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.8);
+        doc.setTextColor(...palette.slate);
+        doc.text(lines, marginX + 4, top + 13);
+
+        return cardHeight;
+      };
+
+      const drawSummaryStrip = (top: number) => {
+        const height = 24;
+
+        doc.setFillColor(...palette.soft);
+        doc.setDrawColor(...palette.border);
+        doc.roundedRect(marginX, top, contentWidth, height, 4, 4, "FD");
+
+        drawText("Billing Summary", marginX + 4, top + 7, {
+          fontSize: 10,
+          weight: "bold",
+          color: palette.navy,
+        });
+
+        const thirds = contentWidth / 3;
+
+        const items = [
+          ["Total Bill", formatPdfCurrency(totalBill)],
+          ["Paid To Date", formatPdfCurrency(paidToDate)],
+          ["Remaining", formatPdfCurrency(remaining)],
+        ];
+
+        items.forEach(([label, value], i) => {
+          const startX = marginX + thirds * i + 4;
+          drawText(label, startX, top + 14, {
+            fontSize: 8,
+            color: palette.muted,
+            weight: "bold",
+          });
+          drawText(value, startX, top + 19, {
+            fontSize: 9,
+            color: i === 2 ? palette.brand : palette.navy,
+            weight: "bold",
+          });
+        });
+
+        return height;
+      };
+
+      const drawHeader = async () => {
+        const headerHeight = 28;
+
+        doc.setFillColor(...palette.white);
+        doc.setDrawColor(...palette.border);
+        doc.roundedRect(marginX, y, contentWidth, headerHeight, 5, 5, "FD");
+
+        const iconBoxX = marginX + 5;
+        const iconBoxY = y + 6;
+
+        doc.setFillColor(...palette.brand);
+        doc.roundedRect(iconBoxX, iconBoxY, 13, 13, 3, 3, "F");
+
+        try {
+          const logoUrl =
+            "https://nlermulroebcmfwvyhmo.supabase.co/storage/v1/object/public/property_media/public/logos/building-2.png";
+          const logoDataUrl = await loadImageAsDataUrl(logoUrl);
+          doc.addImage(logoDataUrl, "PNG", iconBoxX + 2.5, iconBoxY + 2.5, 8, 8);
+        } catch {
+          drawText("CF", iconBoxX + 6.5, iconBoxY + 8.5, {
+            align: "center",
+            fontSize: 8.5,
+            weight: "bold",
+            color: palette.white,
+          });
+        }
+
+        drawText("Commerciales Flores", marginX + 23, y + 10, {
+          fontSize: 14,
+          weight: "bold",
+          color: palette.navy,
+        });
+
+        drawText("Official Payment Invoice", marginX + 23, y + 17, {
+          fontSize: 8.6,
+          color: palette.muted,
+        });
+
+        drawText(`Invoice No. ${invoiceNumber}`, pageWidth - marginX - 4, y + 10, {
+          align: "right",
+          fontSize: 10,
+          weight: "bold",
+          color: palette.navy,
+        });
+
+        drawText(`Date Issued: ${formatDate(invoiceDate)}`, pageWidth - marginX - 4, y + 17, {
+          align: "right",
+          fontSize: 8.4,
+          color: palette.muted,
+        });
+
+        y += headerHeight + 8;
+      };
+
+      const drawFooter = () => {
+        const footerY = pageHeight - 22;
+
+        drawDivider(footerY);
+
+        drawText("Comerciales Flores", marginX, footerY + 6, {
+          fontSize: 8.4,
+          weight: "bold",
+          color: palette.navy,
+        });
+
+        drawText(
+          "This is a system-generated invoice and does not require a signature.",
+          marginX,
+          footerY + 11,
+          {
+            fontSize: 7.5,
+            color: palette.muted,
+          }
+        );
+
+        drawText(`Generated on ${formatDate(new Date())}`, marginX, footerY + 16, {
+          fontSize: 7.5,
+          color: palette.muted,
+        });
+
+        drawText("Billing Reference", pageWidth - marginX, footerY + 6, {
+          align: "right",
+          fontSize: 7.8,
+          weight: "bold",
+          color: palette.muted,
+        });
+
+        drawText(String(invoiceNumber), pageWidth - marginX, footerY + 11, {
+          align: "right",
+          fontSize: 8.4,
+          weight: "bold",
+          color: palette.navy,
+        });
+
+        drawText("commercialesflores.com", pageWidth - marginX, footerY + 16, {
+          align: "right",
+          fontSize: 7.5,
+          color: palette.muted,
+        });
+      };
+
+      await drawHeader();
+
+      const leftTop = y;
+      const rightTop = y;
+
+      const leftHeight = drawCardAt(marginX, leftTop, colWidth, "Customer Information", [
+        ["Name", safeText(fullName)],
+        ["Email", safeText(user?.email)],
+      ]);
+
+      const rightHeight = drawCardAt(
+        marginX + colWidth + gap,
+        rightTop,
+        colWidth,
+        "Reservation Details",
+        [
+          ["Reservation ID", safeText(reservation?.publicId ?? reservation?.id)],
+          ["Unit", safeText(reservation?.unitName)],
+          ["Unit Type", safeText(reservation ? getUnitTypeLabel(reservation.unitType) : "N/A")],
+        ]
       );
 
-      writeParagraphBlock(
-        'Notes',
-        ledgerEntry.notes?.trim() || payment.notes?.trim() || 'No notes provided.'
+      y += Math.max(leftHeight, rightHeight) + 6;
+
+      const secondRowTop = y;
+
+      const leftHeight2 = drawCardAt(marginX, secondRowTop, colWidth, "Payment Details", [
+        ["Payment ID", safeText(payment.publicId || payment.id)],
+        ["Method", safeText(formatPaymentMethod(ledgerEntry.method || payment.method))],
+        ["Status", safeText(String(ledgerEntry.status || payment.status || "N/A").toUpperCase())],
+        ["Submitted", safeText(formatDate(payment.date))],
+      ]);
+
+      const rightHeight2 = drawCardAt(
+        marginX + colWidth + gap,
+        secondRowTop,
+        colWidth,
+        "Ledger Information",
+        [
+          ["Ledger ID", safeText(ledgerEntry.publicId || ledgerEntry.id)],
+          ["Entry Type", safeText(formatPaymentMethod(ledgerEntry.entryType))],
+          ["Recorded", safeText(formatDate(ledgerEntry.recordedAt))],
+          ["Amount", formatPdfCurrency(amount)],
+        ]
       );
 
-      // Footer
-      doc.setDrawColor(220, 220, 220);
-      doc.line(marginX, pageHeight - 24, pageWidth - marginX, pageHeight - 24);
+      y += Math.max(leftHeight2, rightHeight2) + 6;
 
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.setTextColor(110, 110, 110);
-      doc.text(
-        'Thank you for your payment. This invoice was generated by Commerciales Flores.',
-        marginX,
-        pageHeight - 16
-      );
-      doc.text(
-        `Generated on ${formatDate(new Date())}`,
-        marginX,
-        pageHeight - 10
-      );
+      y += drawSummaryStrip(y) + 6;
+
+      y += drawParagraphCard(
+        y,
+        "Description",
+        ledgerEntry.description?.trim() || "No description provided."
+      ) + 6;
+
+      y += drawParagraphCard(
+        y,
+        "Notes",
+        ledgerEntry.notes?.trim() || payment.notes?.trim() || "No notes provided."
+      ) + 6;
+
+      drawFooter();
 
       const reservationLabel = sanitizeFilenamePart(
-        reservation?.publicId || reservation?.unitName || 'reservation'
+        reservation?.publicId || reservation?.unitName || "reservation"
       );
 
       const invoiceLabel = sanitizeFilenamePart(
         ledgerEntry?.publicId ||
-          `pay-${String(payment.id).replace(/-/g, '').slice(-6).toUpperCase()}`,
-        'invoice'
+          `pay-${String(payment.id).replace(/-/g, "").slice(-6).toUpperCase()}`,
+        "invoice"
       );
 
       const invoiceDateLabel = formatFileDate(invoiceDate);
 
       doc.save(`Invoice-${reservationLabel}-${invoiceLabel}-${invoiceDateLabel}.pdf`);
     } catch (error) {
-      console.error('Failed to generate invoice PDF:', error);
+      console.error("Failed to generate invoice PDF:", error);
       setNotice({
-        message: 'Failed to generate invoice PDF. Please try again.',
-        variant: 'error',
+        message: "Failed to generate invoice PDF. Please try again.",
+        variant: "error",
       });
     }
   },
@@ -1114,6 +1305,7 @@ const handleDownloadInvoice = useCallback(
     setNotice,
   ]
 );
+
 
   const handleExportCSV = useCallback(() => {
     const csvData = userPayments.map((payment) => {
@@ -1173,10 +1365,10 @@ const handleDownloadInvoice = useCallback(
   }, [viewingImage, showPaymentModal, resetPaymentModalState]);
 
   useEffect(() => {
-  setCurrentPage(1);
-  setExpandedPaymentId(null);
-  setExpandedPaymentDetailsId(null);
-}, [searchQuery, filterStatus]);
+    setCurrentPage(1);
+    setExpandedPaymentId(null);
+    setExpandedPaymentDetailsId(null);
+  }, [searchQuery, filterStatus, sortBy]);
 
 useEffect(() => {
   if (currentPage > totalPages) {
@@ -1217,10 +1409,6 @@ const handleFilterChange = useCallback((status: PaymentFilterStatus) => {
   setFilterStatus(status);
 }, []);
 
-const handleFilterSelectFromSheet = useCallback((status: PaymentFilterStatus) => {
-  setFilterStatus(status);
-  setShowFilterMenu(false);
-}, []);
 
   useEffect(() => {
     return () => {
@@ -1431,50 +1619,59 @@ const handleFilterSelectFromSheet = useCallback((status: PaymentFilterStatus) =>
     </div>
 
     <div className="flex w-full flex-col gap-3">
-      <div className="flex w-full items-stretch gap-2 sm:gap-3">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            maxLength={100}
-            placeholder="Search payments..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(normalizeLowercaseText(e.target.value))}
-            className={`w-full rounded-xl border border-slate-300 bg-white py-3 pl-10 pr-4 text-sm outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
-          />
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setShowFilterMenu(true)}
-          aria-label="Open payment filters"
-          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-50 md:hidden"
-        >
-          <Filter className="size-4" />
-        </button>
-
-        <button
-          type="button"
-          onClick={handleExportCSV}
-          aria-label="Export CSV"
-          title="Export CSV"
-          className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-slate-900 to-slate-700 px-3 text-white transition hover:opacity-95 sm:px-4"
-        >
-          <Download className="size-4" />
-          <span className="hidden sm:inline">Export CSV</span>
-        </button>
+  <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-stretch lg:gap-3">
+    <div className="flex min-w-0 flex-1 items-stretch gap-2 sm:gap-3">
+      <div className="relative min-w-0 flex-1">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+        <input
+          type="text"
+          maxLength={100}
+          placeholder="Search payments..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(normalizeLowercaseText(e.target.value))}
+          className={`w-full rounded-xl border border-slate-300 bg-white py-3 pl-10 pr-4 text-sm outline-none transition focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 ${uiTypography.inputText}`}
+        />
       </div>
 
-      <PaymentFilterTabs
-        filter={filterStatus}
-        counts={filterCounts}
-        onChange={handleFilterChange}
-      />
+      <button
+        type="button"
+        onClick={() => setShowFilterMenu(true)}
+        aria-label="Open payment filters"
+        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-50 md:hidden"
+      >
+        <Filter className="size-4" />
+      </button>
+
+      <button
+        type="button"
+        onClick={handleExportCSV}
+        aria-label="Export CSV"
+        title="Export CSV"
+        className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-slate-900 to-slate-700 px-3 text-white transition hover:opacity-95 sm:px-4"
+      >
+        <Download className="size-4" />
+        <span className="hidden sm:inline">Export CSV</span>
+      </button>
     </div>
+
+    <SortSelect
+      value={sortBy}
+      onChange={setSortBy}
+      options={PAYMENT_SORT_OPTIONS}
+      className="h-11 min-w-[220px]"
+    />
+  </div>
+
+  <PaymentFilterTabs
+    filter={filterStatus}
+    counts={filterCounts}
+    onChange={handleFilterChange}
+  />
+</div>
   </div>
 </div>
 
-            {filteredPayments.length > 0 ? (
+            {visiblePayments.length > 0 ? (
               <div className="grid gap-4 p-5 sm:p-6">
                 {paginatedPayments.map((payment) => {
                   const reservation = reservationMap.get(payment.reservationId);
@@ -1751,8 +1948,8 @@ const handleFilterSelectFromSheet = useCallback((status: PaymentFilterStatus) =>
   <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-100 px-5 pb-5 pt-2 sm:flex-row sm:px-6 sm:pb-6">
     <p className="text-xs text-slate-500 sm:text-sm">
       Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}–
-      {Math.min(currentPage * ITEMS_PER_PAGE, filteredPayments.length)} of{" "}
-      {filteredPayments.length} payments
+      {Math.min(currentPage * ITEMS_PER_PAGE, visiblePayments.length)} of{" "}
+      {visiblePayments.length} payments
     </p>
 
     <div className="flex items-center gap-2">

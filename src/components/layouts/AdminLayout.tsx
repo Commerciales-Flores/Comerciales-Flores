@@ -23,6 +23,7 @@ import {
   ClipboardClock,
   Menu,
   X,
+  Car,
 } from "lucide-react";
 
 type AdminNavItem = {
@@ -101,6 +102,11 @@ const pendingReservationsCount = useMemo(() => {
         badge: pendingReservationsCount,
       },
       {
+        to: "/admin/parking",
+        icon: Car,
+        label: "Parking",
+      },
+      {
         to: "/admin/payments",
         icon: CreditCard,
         label: "Payments",
@@ -115,6 +121,7 @@ const pendingReservationsCount = useMemo(() => {
       { to: "/admin/content", icon: FileText, label: "Content" },
       { to: "/admin/analytics", icon: BarChart3, label: "Analytics" },
       { to: "/admin/profile", icon: User, label: "Profile" },
+      
     ],
     [
   pendingPaymentsCount,
@@ -129,6 +136,7 @@ const pendingReservationsCount = useMemo(() => {
       ...navItems.map((item) => item.to),
       "/admin/reviews",
       "/admin/payment-methods",
+      "/admin/parking",
     ],
     [navItems]
   );

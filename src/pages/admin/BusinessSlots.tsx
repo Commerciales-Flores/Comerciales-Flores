@@ -7,6 +7,10 @@ import supabase from '../../supabaseClient';
 import { DataCell, ActionCell, DataTable } from '../../components/common/DataTable';
 import { normalizeAmountInput, finalizeAmountInput } from '../../utils/priceNormalization';
 import AppNotice from '../../components/common/AppNotice';
+import SortSelect from '../../components/shared/filters/SortSelect';
+import type { UnitSortOption } from '../../data/sorting';
+import { UNIT_SORT_OPTIONS } from '../../utils/sorting/sortingOptions';
+import { sortUnits } from '../../utils/sorting/sortUnits';
 import {
   Plus,
   Edit,
@@ -2171,7 +2175,7 @@ const TaxonomyManagerModal = React.memo(function TaxonomyManagerModal({
           <div className="grid grid-cols-1 gap-6 p-6 sm:p-8 xl:grid-cols-[1.2fr_1.2fr_0.95fr]">
             <section className="space-y-4">
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-800">
+                <h3 className="text-sm uppercase font-bold text-slate-800">
                   Categories
                 </h3>
                 <p className="mt-1 text-sm text-slate-500">
@@ -2230,7 +2234,7 @@ const TaxonomyManagerModal = React.memo(function TaxonomyManagerModal({
                           <button
                             type="button"
                             onClick={() => onEdit(item)}
-                            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold uppercase tracking-widest text-slate-700 transition hover:bg-slate-50"
+                            className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
                           >
                             Edit
                           </button>
@@ -2238,7 +2242,11 @@ const TaxonomyManagerModal = React.memo(function TaxonomyManagerModal({
                           <button
                             type="button"
                             onClick={() => onToggleStatus(item)}
-                            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold uppercase tracking-widest text-slate-700 transition hover:bg-slate-50"
+                            className={`rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                              item.is_active
+                                ? 'border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                                : 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            }`}
                           >
                             {item.is_active ? 'Deactivate' : 'Activate'}
                           </button>
@@ -2252,7 +2260,7 @@ const TaxonomyManagerModal = React.memo(function TaxonomyManagerModal({
 
             <section className="space-y-4">
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-800">
+                <h3 className="text-sm uppercase font-bold text-slate-800">
                   Subtypes
                 </h3>
                 <p className="mt-1 text-sm text-slate-500">
@@ -2314,7 +2322,7 @@ const TaxonomyManagerModal = React.memo(function TaxonomyManagerModal({
                           <button
                             type="button"
                             onClick={() => onEdit(item)}
-                            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold uppercase tracking-widest text-slate-700 transition hover:bg-slate-50"
+                            className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
                           >
                             Edit
                           </button>
@@ -2322,7 +2330,11 @@ const TaxonomyManagerModal = React.memo(function TaxonomyManagerModal({
                           <button
                             type="button"
                             onClick={() => onToggleStatus(item)}
-                            className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold uppercase tracking-widest text-slate-700 transition hover:bg-slate-50"
+                            className={`rounded-xl px-4 py-2 text-xs font-semibold transition ${
+                              item.is_active
+                                ? 'border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                                : 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            }`}
                           >
                             {item.is_active ? 'Deactivate' : 'Activate'}
                           </button>
@@ -2336,7 +2348,7 @@ const TaxonomyManagerModal = React.memo(function TaxonomyManagerModal({
 
             <aside className="space-y-4">
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-black uppercase tracking-[0.18em] text-slate-800">
+                <h3 className="text-sm uppercase font-bold text-slate-800">
                   Editor
                 </h3>
                 <p className="mt-1 text-sm text-slate-500">
@@ -3290,6 +3302,8 @@ const [showMobileFilters, setShowMobileFilters] = useState(false);
     [units, unitToDelete]
   );
 
+  const [sortBy, setSortBy] = useState<UnitSortOption>('recommended');
+
   const editingUnit = useMemo(
     () => units.find((unit) => unit.id === editingUnitId) ?? null,
     [units, editingUnitId]
@@ -3353,6 +3367,21 @@ const [showMobileFilters, setShowMobileFilters] = useState(false);
     return matchesSearch && matchesType && matchesAvailability;
   });
 }, [units, searchTerm, typeFilter, availabilityFilter]);
+
+
+const sortedUnits = useMemo(() => {
+  return sortUnits(
+    filteredUnits.map((unit) => ({
+      ...unit,
+      title: unit.name,
+      price: Number(unit.price || 0),
+      isAvailable: Boolean(unit.available),
+    })),
+    sortBy
+  );
+}, [filteredUnits, sortBy]);
+
+
   const openAddModal = useCallback(() => {
     setEditingUnitId(null);
     setShowUnitModal(true);
@@ -3878,20 +3907,31 @@ const toggleTaxonomyStatus = useCallback(
           <option value="unavailable">Unavailable</option>
         </select>
 
-        {(searchTerm.trim() || typeFilter !== 'all' || availabilityFilter !== 'all') && (
-          <button
-            type="button"
-            onClick={() => {
-              setSearchTerm('');
-              setTypeFilter('all');
-              setAvailabilityFilter('all');
-              setShowMobileFilters(false);
-            }}
-            className="inline-flex rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
-          >
-            Clear
-          </button>
-        )}
+        <SortSelect<UnitSortOption>
+          value={sortBy}
+          onChange={setSortBy}
+          options={UNIT_SORT_OPTIONS}
+          className="min-w-[220px]"
+        />
+
+        {(searchTerm.trim() ||
+  typeFilter !== 'all' ||
+  availabilityFilter !== 'all' ||
+  sortBy !== 'recommended') && (
+  <button
+    type="button"
+    onClick={() => {
+      setSearchTerm('');
+      setTypeFilter('all');
+      setAvailabilityFilter('all');
+      setSortBy('recommended');
+      setShowMobileFilters(false);
+    }}
+    className="inline-flex rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
+  >
+    Clear
+  </button>
+)}
       </div>
     }
     filters={
@@ -3921,20 +3961,32 @@ const toggleTaxonomyStatus = useCallback(
       <option value="unavailable">Unavailable</option>
     </select>
 
-    {(searchTerm.trim() || typeFilter !== 'all' || availabilityFilter !== 'all') && (
-      <button
-        type="button"
-        onClick={() => {
-          setSearchTerm('');
-          setTypeFilter('all');
-          setAvailabilityFilter('all');
-          setShowMobileFilters(false);
-        }}
-        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
-      >
-        Clear
-      </button>
-    )}
+    <SortSelect<UnitSortOption>
+      value={sortBy}
+      onChange={setSortBy}
+      options={UNIT_SORT_OPTIONS}
+      className="w-full"
+    />
+    
+
+    {(searchTerm.trim() ||
+  typeFilter !== 'all' ||
+  availabilityFilter !== 'all' ||
+  sortBy !== 'recommended') && (
+  <button
+    type="button"
+    onClick={() => {
+      setSearchTerm('');
+      setTypeFilter('all');
+      setAvailabilityFilter('all');
+      setSortBy('recommended');
+      setShowMobileFilters(false);
+    }}
+    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
+  >
+    Clear
+  </button>
+)}
   </div>
 }
   />
@@ -3958,25 +4010,25 @@ const toggleTaxonomyStatus = useCallback(
               description="Units will appear here once an administrator adds rentable spaces, halls, or parking areas."
             />
           ) : (
-            filteredUnits.length === 0 ? (
+            sortedUnits.length === 0 ? (
   <div className="rounded-2xl border border-gray-200 bg-white px-6 py-16 shadow-sm">
     <EmptyState
       icon={<AlertTriangle className="size-10 text-amber-500" />}
       title="No matching units found"
-      description="Try adjusting your search, type, or availability filter."
+      description="Try adjusting your search, type, availability, or sort settings."
     />
   </div>
 ) : (
   <UnitsList
-  units={filteredUnits}
-  slotStatsByUnit={slotStatsByUnit}
-  onEdit={handleEdit}
-  onDelete={handleDelete}
-  onManageSlots={openSlotManager}
-  loading={loadingUnits}
-  hasNoProperties={!loadingUnits && units.length === 0}
-  hasNoSearchResults={!loadingUnits && units.length > 0 && filteredUnits.length === 0}
-/>
+    units={sortedUnits}
+    slotStatsByUnit={slotStatsByUnit}
+    onEdit={handleEdit}
+    onDelete={handleDelete}
+    onManageSlots={openSlotManager}
+    loading={loadingUnits}
+    hasNoProperties={!loadingUnits && units.length === 0}
+    hasNoSearchResults={!loadingUnits && units.length > 0 && sortedUnits.length === 0}
+  />
 )
           )}
         </div>

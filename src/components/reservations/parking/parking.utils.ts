@@ -6,7 +6,7 @@ import type {
 import { computeEndFromForm } from "../shared/reservation.utils";
 
 const BLOCKING_STATUSES = ["approved", "confirmed"] as const;
-const DEFAULT_SAME_DAY_HOURLY_LEAD_HOURS = 2;
+const DEFAULT_SAME_DAY_HOURLY_LEAD_MINUTES = 120;
 
 export const PARKING_DURATION_LIMITS = {
   hours: { min: 1, max: 24 },
@@ -221,26 +221,18 @@ function roundUpToNextWholeHour(date: Date) {
   return next;
 }
 
-/**
- * For same-day hourly parking:
- * current time + lead hours, then rounded up to the next whole hour.
- *
- * Example:
- * - now = 12:52 AM, lead = 2 hours => 3:00 AM
- * - now = 1:13 PM, lead = 2 hours => 4:00 PM
- */
 export function getParkingEarliestSelectableDateTime(
-  leadHours = DEFAULT_SAME_DAY_HOURLY_LEAD_HOURS
+  leadMinutes = DEFAULT_SAME_DAY_HOURLY_LEAD_MINUTES
 ) {
   const next = new Date();
-  next.setHours(next.getHours() + leadHours);
+  next.setMinutes(next.getMinutes() + leadMinutes);
   return roundUpToNextWholeHour(next);
 }
 
 export function getParkingEarliestSelectableTimeValue(
-  leadHours = DEFAULT_SAME_DAY_HOURLY_LEAD_HOURS
+  leadMinutes = DEFAULT_SAME_DAY_HOURLY_LEAD_MINUTES
 ) {
-  const next = getParkingEarliestSelectableDateTime(leadHours);
+  const next = getParkingEarliestSelectableDateTime(leadMinutes);
 
   return `${String(next.getHours()).padStart(2, "0")}:${String(
     next.getMinutes()
@@ -248,9 +240,9 @@ export function getParkingEarliestSelectableTimeValue(
 }
 
 export function getParkingEarliestStartTimeLabel(
-  leadHours = DEFAULT_SAME_DAY_HOURLY_LEAD_HOURS
+  leadMinutes = DEFAULT_SAME_DAY_HOURLY_LEAD_MINUTES
 ) {
-  const next = getParkingEarliestSelectableDateTime(leadHours);
+  const next = getParkingEarliestSelectableDateTime(leadMinutes);
 
   const hours = next.getHours();
   const minutes = next.getMinutes();
@@ -260,17 +252,37 @@ export function getParkingEarliestStartTimeLabel(
   return `${hour12}:${String(minutes).padStart(2, "0")} ${suffix}`;
 }
 
-/**
- * Validates same-day hourly parking against the exact same rule used
- * by the UI time dropdown: lead time first, then round up to next hour.
- */
+export function filterParkingHourlyOptionsByEarliestTime(
+  options: Array<{ value: string; label: string }>,
+  params?: {
+    selectedDate?: Date;
+    leadMinutes?: number;
+  }
+) {
+  const {
+    selectedDate,
+    leadMinutes = DEFAULT_SAME_DAY_HOURLY_LEAD_MINUTES,
+  } = params ?? {};
+
+  if (!selectedDate || !isSameParkingDay(selectedDate)) {
+    return options;
+  }
+
+  const earliestValue = getParkingEarliestSelectableTimeValue(leadMinutes);
+
+  return options.filter((option) => option.value >= earliestValue);
+}
+
 export function validateSameDayHourlyParking(params: {
   startDate?: Date;
   startTime?: string;
-  leadHours?: number;
+  leadMinutes?: number;
 }) {
-  const { startDate, startTime, leadHours = DEFAULT_SAME_DAY_HOURLY_LEAD_HOURS } =
-    params;
+  const {
+    startDate,
+    startTime,
+    leadMinutes = DEFAULT_SAME_DAY_HOURLY_LEAD_MINUTES,
+  } = params;
 
   if (!startDate || !startTime) return "";
   if (!isSameParkingDay(startDate)) return "";
@@ -286,17 +298,16 @@ export function validateSameDayHourlyParking(params: {
   const selected = new Date(startDate);
   selected.setHours(hour, minute, 0, 0);
 
-  const earliest = getParkingEarliestSelectableDateTime(leadHours);
+  const earliest = getParkingEarliestSelectableDateTime(leadMinutes);
 
   if (selected.getTime() < earliest.getTime()) {
     return `For same-day hourly parking, the earliest allowed start time is ${getParkingEarliestStartTimeLabel(
-      leadHours
+      leadMinutes
     )}.`;
   }
 
   return "";
 }
-
 export function getParkingAvailability(params: {
   unitId: string;
   parkingSlots: Array<{

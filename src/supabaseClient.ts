@@ -5,6 +5,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 const storage =
   typeof window !== 'undefined' ? window.sessionStorage : undefined;
+  
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {

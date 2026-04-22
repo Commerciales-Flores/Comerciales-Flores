@@ -5,6 +5,10 @@ import type { Notification } from '../../contexts/DataContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatDate, formatDateTime } from '../../utils/date';
 import { normalizeLowercaseText } from "../../utils/DataNormalization";
+import SortSelect from '../../components/shared/filters/SortSelect';
+import type { NotificationSortOption } from '../../data/sorting';
+import { NOTIFICATION_SORT_OPTIONS } from '../../utils/sorting/sortingOptions';
+import { sortNotifications } from '../../utils/sorting/sortNotifications';
 import {
   Bell,
   CheckCheck,
@@ -412,16 +416,19 @@ export default function ClientNotifications() {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
 
+  const [sortBy, setSortBy] =
+  useState<NotificationSortOption>('newest'); 
+
   const userId = user?.id ?? '';
 
-  const sortedNotifications = useMemo(() => {
-    if (!userId) return [];
-    const notifications = getNotificationsByUserId(userId) ?? [];
+const userNotifications = useMemo(() => {
+  if (!userId) return [];
+  return getNotificationsByUserId(userId) ?? [];
+}, [getNotificationsByUserId, userId]);
 
-    return [...notifications].sort(
-      (a, b) => getTimestamp(b.date) - getTimestamp(a.date)
-    );
-  }, [getNotificationsByUserId, userId]);
+const sortedNotifications = useMemo(() => {
+  return sortNotifications(userNotifications, sortBy);
+}, [userNotifications, sortBy]);
 
   useEffect(() => {
     const validIds = new Set(sortedNotifications.map((n) => n.id));
@@ -506,8 +513,8 @@ export default function ClientNotifications() {
   const filteredCount = filteredNotifications.length;
 
   useEffect(() => {
-    setCurrentPage(1);
-  }, [filter, searchQuery]);
+  setCurrentPage(1);
+}, [filter, searchQuery, sortBy]);
 
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -642,33 +649,48 @@ export default function ClientNotifications() {
           </div>
 
           {!selectionMode && hasNotifications && (
-            <div className="flex w-full flex-col gap-3">
-              <div className="flex w-full items-stretch gap-2 sm:gap-3">
-                <div className="relative min-w-0 flex-1">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    maxLength={100}
-                    placeholder="Search notifications..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(normalizeLowercaseText(e.target.value))}
-                    className="w-full rounded-xl border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                  />
-                </div>
+  <div className="flex w-full flex-col gap-3">
+    <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-stretch lg:gap-3">
+      <div className="flex w-full items-stretch gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
 
-                <button
-                  type="button"
-                  onClick={() => setShowFilterMenu(true)}
-                  className="rounded-xl border border-gray-200 bg-white px-3 shadow-sm transition active:scale-95 md:hidden"
-                  aria-label="Open notification filters"
-                >
-                  <Filter className="size-5 text-gray-600" />
-                </button>
-              </div>
+          <input
+            type="text"
+            maxLength={100}
+            placeholder="Search notifications..."
+            value={searchQuery}
+            onChange={(e) =>
+              setSearchQuery(normalizeLowercaseText(e.target.value))
+            }
+            className="w-full rounded-xl border border-gray-300 bg-white py-3 pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+          />
+        </div>
 
-              <FilterTabs filter={filter} onChange={handleFilterChange} />
-            </div>
-          )}
+        <button
+          type="button"
+          onClick={() => setShowFilterMenu(true)}
+          className="rounded-xl border border-gray-200 bg-white px-3 shadow-sm transition active:scale-95 md:hidden"
+          aria-label="Open notification filters"
+        >
+          <Filter className="size-5 text-gray-600" />
+        </button>
+      </div>
+
+      <SortSelect<NotificationSortOption>
+        value={sortBy}
+        onChange={setSortBy}
+        options={NOTIFICATION_SORT_OPTIONS}
+        className="h-11 min-w-[220px]"
+      />
+    </div>
+
+    <FilterTabs
+      filter={filter}
+      onChange={handleFilterChange}
+    />
+  </div>
+)}
         </div>
 
         <div className="space-y-8">

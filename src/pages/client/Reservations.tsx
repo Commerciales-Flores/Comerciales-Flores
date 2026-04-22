@@ -4,6 +4,11 @@ import { useClientData } from '../../contexts/ClientDataContext';
 import { useReservations } from '../../contexts/ReservationsContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatDate } from '../../utils/date';
+import SortSelect from '../../components/shared/filters/SortSelect';
+import type { ReservationSortOption } from '../../data/sorting';
+import { RESERVATION_SORT_OPTIONS } from '../../utils/sorting/sortingOptions';
+import { sortReservations } from '../../utils/sorting/sortReservations';
+
 import {
   Clock,
   MapPin,
@@ -295,6 +300,7 @@ export default function ClientReservations() {
 
   const [expandedDetailsId, setExpandedDetailsId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
+  const [sortBy, setSortBy] = useState<ReservationSortOption>('newest');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -387,10 +393,8 @@ const [isCancellingReservation, setIsCancellingReservation] = useState(false);
 }, [filterStatus, searchTerm, userReservations, reservationUnitMap]);
 
   const sortedReservations = useMemo(() => {
-    return [...filteredReservations].sort(
-      (a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime()
-    );
-  }, [filteredReservations]);
+  return sortReservations(filteredReservations, sortBy);
+}, [filteredReservations, sortBy]);
 
   const totalPages = useMemo(() => {
   return Math.max(1, Math.ceil(sortedReservations.length / ITEMS_PER_PAGE));
@@ -407,8 +411,8 @@ const paginatedReservations = useMemo(() => {
   }, [extensionModalReservationId, userReservations]);
 
   useEffect(() => {
-  setCurrentPage(1);
-}, [filterStatus, searchTerm]);
+    setCurrentPage(1);
+  }, [filterStatus, searchTerm, sortBy]);
 
 useEffect(() => {
   if (currentPage > totalPages) {
@@ -555,26 +559,35 @@ const confirmCancelReservation = useCallback(async () => {
   </header>
 
   {userReservations.length > 0 && (
-    <div className="flex items-center gap-2">
-      <div className="relative flex-1">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-        <input
-          type="text"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(normalizeLowercaseText(e.target.value))}
-          placeholder="Search reservations"
-          className="h-10 w-full rounded-xl border border-gray-300 bg-white pl-10 pr-3 text-sm text-gray-700 outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-        />
+    <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-3">
+      <div className="flex items-center gap-2 flex-1">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(normalizeLowercaseText(e.target.value))}
+            placeholder="Search reservations"
+            className="h-10 w-full rounded-xl border border-gray-300 bg-white pl-10 pr-3 text-sm text-gray-700 outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowFilterMenu(true)}
+          aria-label="Open reservation filters"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-300 bg-white transition hover:bg-gray-50 md:hidden"
+        >
+          <Filter className="size-5 text-gray-600" />
+        </button>
       </div>
 
-      <button
-        type="button"
-        onClick={() => setShowFilterMenu(true)}
-        aria-label="Open reservation filters"
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-300 bg-white transition hover:bg-gray-50 md:hidden"
-      >
-        <Filter className="size-5 text-gray-600" />
-      </button>
+      <SortSelect
+        value={sortBy}
+        onChange={setSortBy}
+        options={RESERVATION_SORT_OPTIONS}
+        className="h-10 min-w-[230px]"
+      />
     </div>
   )}
 </div>

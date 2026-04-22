@@ -17,6 +17,10 @@ import ReservationVisitFlowSection from "../../components/reservations/shared/Re
 import ReservationPaymentSection from "../../components/reservations/shared/ReservationPaymentSection";
 import ReservationSummarySection from "../../components/reservations/shared/ReservationSummarySection";
 import ParkingSlotPanel from "../../components/reservations/parking/ParkingSlotPanel";
+import SortSelect from "../../components/shared/filters/SortSelect";
+import type { UnitSortOption } from "../../data/sorting";
+import { UNIT_SORT_OPTIONS } from "../../utils/sorting/sortingOptions";
+import { sortUnits } from "../../utils/sorting/sortUnits";
 import {
   sanitizePlainText,
 } from "../../utils/DataNormalization";
@@ -367,6 +371,8 @@ export default function ClientUnits() {
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
+  const [sortBy, setSortBy] = useState<UnitSortOption>("recommended");
+
   const [isSelectingRangeEnd, setIsSelectingRangeEnd] = useState(false);
 
   const [functionHallConflictMessage, setFunctionHallConflictMessage] = useState("");
@@ -414,7 +420,7 @@ useEffect(() => {
   });
 
   setHoveredCardId(null);
-}, [searchTerm, filterType, filterLocation, minPriceFilter, maxPriceFilter]);
+}, [searchTerm, filterType, filterLocation, minPriceFilter, maxPriceFilter, sortBy]);
 
 
 useEffect(() => {
@@ -801,8 +807,24 @@ useEffect(() => {
     });
   }, [units, searchTerm, filterType, filterLocation, minPriceFilter, maxPriceFilter]);
 
+  const sortedUnits = useMemo(() => {
+  return sortUnits(
+    filteredUnits.map((unit) => {
+      const availability = unitAvailabilityMap.get(unit.id);
+
+      return {
+        ...unit,
+        title: unit.name,
+        price: Number(unit.price || 0),
+        isAvailable: !availability?.reserveDisabled,
+      };
+    }),
+    sortBy
+  );
+}, [filteredUnits, unitAvailabilityMap, sortBy]);
+
   const filteredUnitCards = useMemo(() => {
-  return filteredUnits.map((unit) => {
+  return sortedUnits.map((unit) => {
     const latestReview = latestReviewByUnitId.get(unit.id);
     const latestReviewComment =
       typeof latestReview?.comment === "string" ? latestReview.comment.trim() : "";
@@ -813,7 +835,7 @@ useEffect(() => {
       averageRating: latestReviewByUnitId.get(unit.id)?.rating ?? 0,
     };
   });
-}, [filteredUnits, latestReviewByUnitId]);
+}, [sortedUnits, latestReviewByUnitId]);
   
 
   const reservedSlotIds = useMemo(() => {
@@ -1784,6 +1806,13 @@ const calendarLegend = (
                   </option>
                 ))}
               </select>
+
+              <SortSelect<UnitSortOption>
+  value={sortBy}
+  onChange={setSortBy}
+  options={UNIT_SORT_OPTIONS}
+  className="min-w-[220px]"
+/>
             </div>
           </div>
         )}
@@ -2063,6 +2092,18 @@ const calendarLegend = (
               >
                 Apply Filters
               </button>
+              <div className="mb-6">
+                <label className="mb-1 block text-sm text-gray-600">
+                  Sort By
+                </label>
+
+                <SortSelect<UnitSortOption>
+                  value={sortBy}
+                  onChange={setSortBy}
+                  options={UNIT_SORT_OPTIONS}
+                  className="w-full"
+                />
+              </div>
             </div>
           </div>
         )}

@@ -9,6 +9,10 @@ import { useRecords } from '../../contexts/RecordsContext';
 import AppNotice from '../../components/common/AppNotice';
 import { formatDate } from '../../utils/date';
 import { normalizeAmountInput, finalizeAmountInput } from '../../utils/priceNormalization';
+import SortSelect from '../../components/shared/filters/SortSelect';
+import type { PaymentSortOption } from '../../data/sorting';
+import { PAYMENT_SORT_OPTIONS } from '../../utils/sorting/sortingOptions';
+import { sortPayments } from '../../utils/sorting/sortPayments';
 import {
   CreditCard,
   CheckCircle,
@@ -143,7 +147,7 @@ export default function AdminPayments() {
   const [proofImageUrl, setProofImageUrl] = useState<string | null>(null);
   const [isActionModalOpen, setIsActionModalOpen] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
-
+  const [sortBy, setSortBy] = useState<PaymentSortOption>('newest');
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
 
@@ -211,8 +215,8 @@ export default function AdminPayments() {
   );
 
   useEffect(() => {
-    setPage(1);
-  }, [filterStatus, debouncedSearch]);
+  setPage(1);
+}, [filterStatus, debouncedSearch, sortBy]);
 
   useEffect(() => {
     void loadPaymentsPage();
@@ -380,6 +384,19 @@ const progress =
   });
 }, [paymentViews, debouncedSearch, filterStatus]);
 
+const sortedPaymentViews = useMemo(() => {
+  return sortPayments(
+    filteredPaymentViews.map((payment) => ({
+      ...payment,
+      created_at: payment.date,
+      total_amount: payment.amount,
+      public_id: payment.publicId,
+      method: payment.method,
+      status: payment.derivedStatus,
+    })),
+    sortBy
+  );
+}, [filteredPaymentViews, sortBy]);
 
   const selectedPaymentData = useMemo(() => {
     return selectedPayment
@@ -392,19 +409,21 @@ const progress =
 
   
 
- const hasNoPayments =
+const hasNoPayments =
   !isTableLoading &&
-  filteredPaymentViews.length === 0 &&
+  sortedPaymentViews.length === 0 &&
   filterStatus === 'all' &&
   trimmedSearch.length === 0;
 
 const hasNoSearchResults =
   !isTableLoading &&
-  filteredPaymentViews.length === 0 &&
+  sortedPaymentViews.length === 0 &&
   (trimmedSearch.length > 0 || filterStatus !== 'all');
 
     const hasActiveFilters =
-  trimmedSearch.length > 0 || filterStatus !== 'all';
+  trimmedSearch.length > 0 ||
+  filterStatus !== 'all' ||
+  sortBy !== 'newest';
 
 const shouldShowFilters =
   !isTableLoading && (!hasNoPayments || hasActiveFilters);
@@ -601,7 +620,7 @@ const shouldShowFilters =
       return;
     }
 
-    const csvData = filteredPaymentViews.map((payment) => ({
+    const csvData = sortedPaymentViews.map((payment) => ({
       'Payment ID': payment.publicId ?? payment.id,
       'Reservation ID': payment.reservationPublicId,
       Category: getPaymentCategoryLabel(payment.category),
@@ -684,14 +703,22 @@ const shouldShowFilters =
           <option value="unpaid">Pending</option>
         </select>
 
-        {hasActiveFilters && (
-          <button
-            type="button"
-            onClick={() => {
-              setSearchTerm('');
-              setFilterStatus('all');
-              setShowMobileFilters(false);
-            }}
+        <SortSelect<PaymentSortOption>
+  value={sortBy}
+  onChange={setSortBy}
+  options={PAYMENT_SORT_OPTIONS}
+  className="w-full"
+/>
+
+{hasActiveFilters && (
+  <button
+    type="button"
+    onClick={() => {
+      setSearchTerm('');
+      setFilterStatus('all');
+      setSortBy('newest');
+      setShowMobileFilters(false);
+    }}
             className="inline-flex rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
           >
             Clear
@@ -721,14 +748,22 @@ const shouldShowFilters =
           <option value="unpaid">Pending</option>
         </select>
 
-        {hasActiveFilters && (
-          <button
-            type="button"
-            onClick={() => {
-              setSearchTerm('');
-              setFilterStatus('all');
-              setShowMobileFilters(false);
-            }}
+        <SortSelect<PaymentSortOption>
+  value={sortBy}
+  onChange={setSortBy}
+  options={PAYMENT_SORT_OPTIONS}
+  className="min-w-[230px]"
+/>
+
+{hasActiveFilters && (
+  <button
+    type="button"
+    onClick={() => {
+      setSearchTerm('');
+      setFilterStatus('all');
+      setSortBy('newest');
+      setShowMobileFilters(false);
+    }}
             className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
           >
             Clear Filters
@@ -792,7 +827,7 @@ const shouldShowFilters =
               </div>
             </motion.div>
           ) : (
-            filteredPaymentViews.map((payment) => (
+            sortedPaymentViews.map((payment) => (
               <div
                 key={payment.id}
                 className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
@@ -943,7 +978,7 @@ const shouldShowFilters =
                 'Actions',
               ]}
             >
-              {filteredPaymentViews.map((payment) => (
+              {sortedPaymentViews.map((payment) => (
                 <tr key={payment.id} className="transition-colors hover:bg-blue-50/30">
                   <DataCell
                     value={payment.userPublicId}

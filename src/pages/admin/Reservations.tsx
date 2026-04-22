@@ -5,6 +5,10 @@ import { useNotifications } from '../../contexts/NotificationContext';
 import { DataTable, DataCell, ActionCell } from '../../components/common/DataTable';
 import { formatDate } from '../../utils/date';
 import { useNavigate } from 'react-router-dom';
+import SortSelect from '../../components/shared/filters/SortSelect';
+import type { ReservationSortOption } from '../../data/sorting';
+import { RESERVATION_SORT_OPTIONS } from '../../utils/sorting/sortingOptions';
+import { sortReservations } from '../../utils/sorting/sortReservations';
 import {
   Search,
   Eye,
@@ -103,6 +107,27 @@ function hasRecordedPayment(reservation: {
 }) {
   return Number(reservation.paidAmount || 0) > 0;
 }
+
+function isOverdueReservation(reservation: {
+  status?: string | null;
+  endDate?: string | Date | null;
+  totalAmount?: number | null;
+  paidAmount?: number | null;
+}) {
+  if (reservation.status !== 'confirmed') return false;
+  if (isFullyPaid(reservation)) return false;
+  if (!reservation.endDate) return false;
+
+  const end = new Date(reservation.endDate).getTime();
+  if (Number.isNaN(end)) return false;
+
+  return end < Date.now();
+}
+
+function getDisplayReservationStatus(reservation: any) {
+  return isOverdueReservation(reservation) ? 'overdue' : reservation.status;
+}
+
 
 function getExtensionRequestDetails(reservation: any) {
   const details = reservation?.details ?? {};
@@ -224,6 +249,8 @@ const navigate = useNavigate();
   const [isProcessingExtension, setIsProcessingExtension] = useState(false);
   const [extensionError, setExtensionError] = useState<string | null>(null);
 
+  const [sortBy, setSortBy] = useState<ReservationSortOption>('newest');
+
   const debouncedSearch = useDebouncedValue(searchTerm, 250);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(25);
@@ -248,7 +275,7 @@ const navigate = useNavigate();
         const result = await fetchReservationsPage({
           page,
           pageSize,
-          status: filterStatus,
+          status: filterStatus === 'overdue' ? 'all' : filterStatus,
           searchTerm: debouncedSearch,
         });
 
@@ -323,8 +350,8 @@ const navigate = useNavigate();
   );
 
   useEffect(() => {
-    setPage(1);
-  }, [filterStatus, debouncedSearch]);
+  setPage(1);
+}, [filterStatus, debouncedSearch, sortBy]);
 
   useEffect(() => {
     void loadReservationsPage();
@@ -359,16 +386,23 @@ const navigate = useNavigate();
 const filteredReservations = useMemo(() => {
   const term = debouncedSearch.trim().toLowerCase();
 
-  if (!term) return enrichedReservations;
+  const baseReservations =
+    filterStatus === 'overdue'
+      ? enrichedReservations.filter((reservation) =>
+          isOverdueReservation(reservation)
+        )
+      : enrichedReservations;
 
-  return enrichedReservations.filter((r) => {
+  if (!term) return baseReservations;
+
+  return baseReservations.filter((r) => {
     const fields = [
       r.fullName,
       r.reservationPublicId,
       r.userPublicId,
       r.unitName,
       r.location,
-      r.status,
+      getDisplayReservationStatus(r),
       r.modeOfVisit,
       r.linkedUser?.email,
       r.linkedUser?.firstName,
@@ -379,9 +413,22 @@ const filteredReservations = useMemo(() => {
       String(value ?? '').toLowerCase().includes(term)
     );
   });
-}, [enrichedReservations, debouncedSearch]);
+}, [enrichedReservations, debouncedSearch, filterStatus]);
 
-
+const sortedReservations = useMemo(() => {
+  return sortReservations(
+    filteredReservations.map((reservation) => ({
+      ...reservation,
+      created_at: reservation.requestDate,
+      start_date: reservation.startDate,
+      total_amount: reservation.totalAmount,
+      public_id: reservation.reservationPublicId,
+      unitName: reservation.unitName,
+      status: reservation.status,
+    })),
+    sortBy
+  );
+}, [filteredReservations, sortBy]);
 
   const selectedReservationData = useMemo(() => {
     return selectedReservation
@@ -401,18 +448,18 @@ const filteredReservations = useMemo(() => {
   !shouldShowLoadingState && enrichedReservations.length === 0 && !hasActiveFilters;
 
 const hasNoSearchResults =
-  !shouldShowLoadingState && filteredReservations.length === 0 && hasActiveFilters;
+  !shouldShowLoadingState && sortedReservations.length === 0 && hasActiveFilters;
 
   const shouldShowFilters =
     !shouldShowLoadingState && (!hasNoReservations || hasActiveFilters);
 
   const reloadPage = useCallback(async () => {
     const result = await fetchReservationsPage({
-      page,
-      pageSize,
-      status: filterStatus,
-      searchTerm: debouncedSearch,
-    });
+  page,
+  pageSize,
+  status: filterStatus === 'overdue' ? 'all' : filterStatus,
+  searchTerm: debouncedSearch,
+});
     setReservations(result.data);
     setTotalCount(result.count);
   }, [fetchReservationsPage, page, pageSize, filterStatus, debouncedSearch]);
@@ -631,6 +678,9 @@ const hasNoSearchResults =
     navigate('/admin/parking');
   }, [navigate]);
 
+  const isParkingReservation = (reservation: any) =>
+  reservation.unitType === 'parking_slot';
+
   return (
     <div className="min-h-screen bg-white">
       <div className="flex flex-col gap-6 p-4 sm:p-6 lg:p-8">
@@ -693,14 +743,22 @@ const hasNoSearchResults =
           <option value="rejected">Rejected</option>
         </select>
 
-        {(searchTerm.trim() || filterStatus !== 'all') && (
-          <button
-            type="button"
-            onClick={() => {
-              setSearchTerm('');
-              setFilterStatus('all');
-              setIsFilterPanelOpen(false);
-            }}
+        <SortSelect<ReservationSortOption>
+      value={sortBy}
+      onChange={setSortBy}
+      options={RESERVATION_SORT_OPTIONS}
+      className="min-w-[230px]"
+    />
+
+        {(searchTerm.trim() || filterStatus !== 'all' || sortBy !== 'newest') && (
+  <button
+    type="button"
+    onClick={() => {
+      setSearchTerm('');
+      setFilterStatus('all');
+      setSortBy('newest');
+      setIsFilterPanelOpen(false);
+    }}
             className="inline-flex rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
           >
             Clear
@@ -724,14 +782,22 @@ const hasNoSearchResults =
           <option value="rejected">Rejected</option>
         </select>
 
-        {(searchTerm.trim() || filterStatus !== 'all') && (
-          <button
-            type="button"
-            onClick={() => {
-              setSearchTerm('');
-              setFilterStatus('all');
-              setIsFilterPanelOpen(false);
-            }}
+        <SortSelect<ReservationSortOption>
+      value={sortBy}
+      onChange={setSortBy}
+      options={RESERVATION_SORT_OPTIONS}
+      className="w-full"
+    />
+
+        {(searchTerm.trim() || filterStatus !== 'all' || sortBy !== 'newest') && (
+  <button
+    type="button"
+    onClick={() => {
+      setSearchTerm('');
+      setFilterStatus('all');
+      setSortBy('newest');
+      setIsFilterPanelOpen(false);
+    }}
             className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50"
           >
             Clear Filters
@@ -781,7 +847,7 @@ const hasNoSearchResults =
           ) : (
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:hidden gap-4">
-                {filteredReservations.map((reservation) => (
+                {sortedReservations.map((reservation) => (
                   <div
                     key={reservation.id}
                     className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm space-y-4"
@@ -794,10 +860,10 @@ const hasNoSearchResults =
                       <div className="flex flex-wrap justify-end gap-2">
                         <span
                           className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${
-                            statusColors[reservation.status as keyof typeof statusColors]
+                            statusColors[getDisplayReservationStatus(reservation) as keyof typeof statusColors]
                           }`}
                         >
-                          {reservation.status.toUpperCase()}
+                          {getDisplayReservationStatus(reservation).toUpperCase()}
                         </span>
 
                         {getExtensionRequestDetails(reservation) && canHandleExtension(reservation) && (
@@ -851,45 +917,45 @@ const hasNoSearchResults =
                           <Eye className="size-5" />
                         </button>
 
-                        {reservation.status === 'pending' && (
-                          <>
-                            {reservation.modeOfVisit === 'onsite' && (
-                              <>
-                                <button
-                                  onClick={() => handleConfirmVisit(reservation)}
-                                  className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg"
-                                  title="Confirm Visit"
-                                >
-                                  <Calendar className="size-4" />
-                                </button>
+                        {reservation.status === 'pending' && !isParkingReservation(reservation) && (
+  <>
+    {reservation.modeOfVisit === 'onsite' && (
+      <>
+        <button
+          onClick={() => handleConfirmVisit(reservation)}
+          className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg"
+          title="Confirm Visit"
+        >
+          <Calendar className="size-4" />
+        </button>
 
-                                <button
-                                  onClick={() => handleRequestReschedule(reservation)}
-                                  className="p-2 text-amber-600 hover:bg-amber-100 rounded-lg"
-                                  title="Request Reschedule"
-                                >
-                                  <Clock className="size-4" />
-                                </button>
-                              </>
-                            )}
+        <button
+          onClick={() => handleRequestReschedule(reservation)}
+          className="p-2 text-amber-600 hover:bg-amber-100 rounded-lg"
+          title="Request Reschedule"
+        >
+          <Clock className="size-4" />
+        </button>
+      </>
+    )}
 
-                            <button
-                              onClick={() => handleApprove(reservation)}
-                              className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"
-                              title="Approve"
-                            >
-                              <CheckCircle className="size-4" />
-                            </button>
+    <button
+      onClick={() => handleApprove(reservation)}
+      className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg"
+      title="Approve"
+    >
+      <CheckCircle className="size-4" />
+    </button>
 
-                            <button
-                              onClick={() => handleReject(reservation)}
-                              className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg"
-                              title="Reject"
-                            >
-                              <XCircle className="size-4" />
-                            </button>
-                          </>
-                        )}
+    <button
+      onClick={() => handleReject(reservation)}
+      className="p-2 text-rose-600 hover:bg-rose-50 rounded-lg"
+      title="Reject"
+    >
+      <XCircle className="size-4" />
+    </button>
+  </>
+)}
 
                         {reservation.status === 'confirmed' && (
                           <button
@@ -936,7 +1002,7 @@ const hasNoSearchResults =
                         <span className="block">Actions</span>,
                       ]}
                     >
-                  {filteredReservations.map((reservation) => (
+                  {sortedReservations.map((reservation) => (
                     <tr key={reservation.id} className="transition-colors hover:bg-blue-50/30">
                       <DataCell
                         value={reservation.reservationPublicId}
@@ -973,20 +1039,25 @@ const hasNoSearchResults =
                       />
 
                       <DataCell
-                        className="w-[180px]"
+                        className="w-[220px]"
+                        mono
                         value={
-                          <div className="flex flex-col gap-0.5">
-                            <span className="text-sm font-medium text-gray-900">
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                              Price
+                            </p>
+
+                            <p className="mt-1 text-sm font-bold text-slate-700">
                               {formatCurrency(reservation.totalAmount)}
-                            </span>
+                            </p>
 
                             <span
-                              className={`w-fit rounded-full px-2 py-0.5 text-xs font-medium ${
+                              className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                                 isFullyPaid(reservation)
                                   ? 'bg-green-100 text-green-700'
                                   : hasRecordedPayment(reservation)
                                   ? 'bg-blue-100 text-blue-700'
-                                  : 'bg-gray-100 text-gray-500'
+                                  : 'bg-slate-100 text-slate-500'
                               }`}
                             >
                               {isFullyPaid(reservation)
@@ -1046,10 +1117,10 @@ const hasNoSearchResults =
                           <div className="flex flex-wrap gap-1.5">
                             <span
                               className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-medium ${
-                                statusColors[reservation.status as keyof typeof statusColors]
+                                statusColors[getDisplayReservationStatus(reservation) as keyof typeof statusColors]
                               }`}
                             >
-                              {reservation.status.toUpperCase()}
+                              {getDisplayReservationStatus(reservation).toUpperCase()}
                             </span>
 
                             {getExtensionRequestDetails(reservation) && canHandleExtension(reservation) && (
@@ -1070,45 +1141,45 @@ const hasNoSearchResults =
                           <Eye size={16} />
                         </button>
 
-                        {reservation.status === 'pending' && (
-                          <>
-                            {reservation.modeOfVisit === 'onsite' && (
-                              <>
-                                <button
-                                  onClick={() => handleConfirmVisit(reservation)}
-                                  className="flex h-8 w-8 items-center justify-center rounded-md text-indigo-600 hover:bg-indigo-100"
-                                  title="Confirm Visit"
-                                >
-                                  <Calendar size={16} />
-                                </button>
+                        {reservation.status === 'pending' && !isParkingReservation(reservation) && (
+  <>
+    {reservation.modeOfVisit === 'onsite' && (
+      <>
+        <button
+          onClick={() => handleConfirmVisit(reservation)}
+          className="flex h-8 w-8 items-center justify-center rounded-md text-indigo-600 hover:bg-indigo-100"
+          title="Confirm Visit"
+        >
+          <Calendar size={16} />
+        </button>
 
-                                <button
-                                  onClick={() => handleRequestReschedule(reservation)}
-                                  className="flex h-8 w-8 items-center justify-center rounded-md text-amber-600 hover:bg-amber-100"
-                                  title="Request Reschedule"
-                                >
-                                  <Clock size={16} />
-                                </button>
-                              </>
-                            )}
+        <button
+          onClick={() => handleRequestReschedule(reservation)}
+          className="flex h-8 w-8 items-center justify-center rounded-md text-amber-600 hover:bg-amber-100"
+          title="Request Reschedule"
+        >
+          <Clock size={16} />
+        </button>
+      </>
+    )}
 
-                            <button
-                              onClick={() => handleApprove(reservation)}
-                              className="flex h-8 w-8 items-center justify-center rounded-md text-emerald-600 hover:bg-emerald-100"
-                              title="Approve"
-                            >
-                              <CheckCircle size={16} />
-                            </button>
+    <button
+      onClick={() => handleApprove(reservation)}
+      className="flex h-8 w-8 items-center justify-center rounded-md text-emerald-600 hover:bg-emerald-100"
+      title="Approve"
+    >
+      <CheckCircle size={16} />
+    </button>
 
-                            <button
-                              onClick={() => handleReject(reservation)}
-                              className="flex h-8 w-8 items-center justify-center rounded-md text-rose-600 hover:bg-rose-100"
-                              title="Reject"
-                            >
-                              <XCircle size={16} />
-                            </button>
-                          </>
-                        )}
+    <button
+      onClick={() => handleReject(reservation)}
+      className="flex h-8 w-8 items-center justify-center rounded-md text-rose-600 hover:bg-rose-100"
+      title="Reject"
+    >
+      <XCircle size={16} />
+    </button>
+  </>
+)}
 
                         {reservation.status === 'confirmed' && (
                           <button
@@ -1488,10 +1559,10 @@ const hasNoSearchResults =
                   <span className="text-sm text-slate-500">Current Status</span>
                   <span
                     className={`px-3 py-1 text-[11px] font-bold rounded-full border uppercase tracking-wide ${
-                      statusColors[selectedReservationData.status as keyof typeof statusColors]
+                      statusColors[getDisplayReservationStatus(selectedReservationData) as keyof typeof statusColors]
                     }`}
                   >
-                    {selectedReservationData.status}
+                    {getDisplayReservationStatus(selectedReservationData)}
                   </span>
                 </div>
 
@@ -1563,55 +1634,57 @@ const hasNoSearchResults =
                     </div>
                   )}
 
-                {(selectedReservationData.status === 'pending' ||
-                  selectedReservationData.status === 'overdue') && (
-                  <div className="flex gap-2">
-                    {selectedReservationData.status === 'pending' && (
-                      <>
-                        {selectedReservationData.modeOfVisit === 'onsite' && (
-                          <>
-                            <button
-                              onClick={() => handleConfirmVisit(selectedReservationData)}
-                              className="px-5 py-2.5 border border-indigo-200 text-indigo-600 rounded-xl hover:bg-indigo-50 font-semibold transition-all"
-                            >
-                              Confirm Visit
-                            </button>
+                {((selectedReservationData.status === 'pending' &&
+  !isParkingReservation(selectedReservationData)) ||
+  getDisplayReservationStatus(selectedReservationData) === 'overdue') && (
+  <div className="flex gap-2">
+    {selectedReservationData.status === 'pending' &&
+      !isParkingReservation(selectedReservationData) && (
+        <>
+          {selectedReservationData.modeOfVisit === 'onsite' && (
+            <>
+              <button
+                onClick={() => handleConfirmVisit(selectedReservationData)}
+                className="px-5 py-2.5 border border-indigo-200 text-indigo-600 rounded-xl hover:bg-indigo-50 font-semibold transition-all"
+              >
+                Confirm Visit
+              </button>
 
-                            <button
-                              onClick={() => handleRequestReschedule(selectedReservationData)}
-                              className="px-5 py-2.5 border border-amber-200 text-amber-600 rounded-xl hover:bg-amber-50 font-semibold transition-all"
-                            >
-                              Request Reschedule
-                            </button>
-                          </>
-                        )}
+              <button
+                onClick={() => handleRequestReschedule(selectedReservationData)}
+                className="px-5 py-2.5 border border-amber-200 text-amber-600 rounded-xl hover:bg-amber-50 font-semibold transition-all"
+              >
+                Request Reschedule
+              </button>
+            </>
+          )}
 
-                        <button
-                          onClick={() => handleReject(selectedReservationData)}
-                          className="px-5 py-2.5 border border-rose-200 text-rose-600 rounded-xl hover:bg-rose-500 hover:text-white font-semibold transition-all"
-                        >
-                          Reject
-                        </button>
+          <button
+            onClick={() => handleReject(selectedReservationData)}
+            className="px-5 py-2.5 border border-rose-200 text-rose-600 rounded-xl hover:bg-rose-500 hover:text-white font-semibold transition-all"
+          >
+            Reject
+          </button>
 
-                        <button
-                          onClick={() => handleApprove(selectedReservationData)}
-                          className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-semibold transition-all"
-                        >
-                          Approve
-                        </button>
-                      </>
-                    )}
+          <button
+            onClick={() => handleApprove(selectedReservationData)}
+            className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-semibold transition-all"
+          >
+            Approve
+          </button>
+        </>
+      )}
 
-                    {selectedReservationData.status === 'overdue' && (
-                      <button
-                        onClick={() => handleSendOverdueNotice(selectedReservationData)}
-                        className="px-5 py-2.5 rounded-xl font-semibold border border-orange-200 text-orange-600 hover:bg-orange-50 transition-all"
-                      >
-                        Send Overdue Notice
-                      </button>
-                    )}
-                  </div>
-                )}
+    {getDisplayReservationStatus(selectedReservationData) === 'overdue' && (
+      <button
+        onClick={() => handleSendOverdueNotice(selectedReservationData)}
+        className="px-5 py-2.5 rounded-xl font-semibold border border-orange-200 text-orange-600 hover:bg-orange-50 transition-all"
+      >
+        Send Overdue Notice
+      </button>
+    )}
+  </div>
+)}
               </div>
             </div>
           </div>

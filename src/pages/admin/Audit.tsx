@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAdminData } from '../../contexts/AdminDataContext';
 import { useRecords } from '../../contexts/RecordsContext';
@@ -10,6 +10,10 @@ import AdminFilterBar, {
   FILTER_SELECT_CLASS,
 } from '../../components/common/AdminFilterBar';
 import { AdminFilterGroup } from '../../components/common/AdminFilterGroup';
+import SortSelect from '../../components/shared/filters/SortSelect';
+import type { AuditSortOption } from '../../data/sorting';
+import { AUDIT_SORT_OPTIONS } from '../../utils/sorting/sortingOptions';
+import { sortAuditLogs } from '../../utils/sorting/sortAuditLogs';
 import {
   Search,
   Tag,
@@ -242,6 +246,8 @@ export default function AdminAudit() {
   const [endDate, setEndDate] = useState('');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
+  const [sortBy, setSortBy] = useState<AuditSortOption>('newest');
+
   const debouncedSearchTerm = useDebouncedValue(searchTerm, 250);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -288,8 +294,8 @@ export default function AdminAudit() {
 );
 
   useEffect(() => {
-    setPage(1);
-  }, [debouncedSearchTerm, selectedAction, selectedModule, startDate, endDate]);
+  setPage(1);
+}, [debouncedSearchTerm, selectedAction, selectedModule, startDate, endDate, sortBy]);
 
   useEffect(() => {
     let cancelled = false;
@@ -428,13 +434,18 @@ export default function AdminAudit() {
     pageSize,
   ]);
 
+  const sortedRows = useMemo(() => {
+  return sortAuditLogs(rows, sortBy);
+}, [rows, sortBy]);
+
   const hasActiveSearch = Boolean(debouncedSearchTerm.trim());
   const hasActiveFilters =
-    hasActiveSearch ||
-    selectedAction !== 'All' ||
-    selectedModule !== 'All' ||
-    Boolean(startDate) ||
-    Boolean(endDate);
+  hasActiveSearch ||
+  selectedAction !== 'All' ||
+  selectedModule !== 'All' ||
+  Boolean(startDate) ||
+  Boolean(endDate) ||
+  sortBy !== 'newest';
 
   const hasNoLogs = !loading && totalCount === 0 && !hasActiveFilters;
   const hasNoSearchResults = !loading && totalCount === 0 && hasActiveFilters;
@@ -452,15 +463,12 @@ export default function AdminAudit() {
   );
 
   const resetFilters = useCallback(() => {
-    setSearchTerm('');
-    setSelectedAction('All');
-    setSelectedModule('All');
-    setStartDate('');
-    setEndDate('');
-  }, []);
-
-const closeMobileFilters = useCallback(() => {
-  setShowMobileFilters(false);
+  setSearchTerm('');
+  setSelectedAction('All');
+  setSelectedModule('All');
+  setStartDate('');
+  setEndDate('');
+  setSortBy('newest');
 }, []);
 
   return (
@@ -482,63 +490,70 @@ const closeMobileFilters = useCallback(() => {
     onToggleMobileFilters={() => setShowMobileFilters((prev) => !prev)}
     filters={
       <AdminFilterGroup align="between">
-        <div className="grid w-full grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
-          <select
-            value={selectedAction}
-            onChange={(e) => setSelectedAction(e.target.value)}
-            className={FILTER_SELECT_CLASS}
-          >
-            {ACTION_OPTIONS.map((action) => (
-              <option key={action} value={action}>
-                {action === 'All' ? 'All Actions' : action}
-              </option>
-            ))}
-          </select>
+  <div className="grid w-full grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-5 items-start">
+    <select
+      value={selectedAction}
+      onChange={(e) => setSelectedAction(e.target.value)}
+      className={`${FILTER_SELECT_CLASS} relative z-20`}
+    >
+      {ACTION_OPTIONS.map((action) => (
+        <option key={action} value={action}>
+          {action === 'All' ? 'All Actions' : action}
+        </option>
+      ))}
+    </select>
 
-          <select
-            value={selectedModule}
-            onChange={(e) => setSelectedModule(e.target.value)}
-            className={FILTER_SELECT_CLASS}
-          >
-            {MODULE_OPTIONS.map((module) => (
-              <option key={module} value={module}>
-                {module === 'All'
-                  ? 'All Modules'
-                  : module.charAt(0).toUpperCase() + module.slice(1)}
-              </option>
-            ))}
-          </select>
+    <select
+      value={selectedModule}
+      onChange={(e) => setSelectedModule(e.target.value)}
+      className={`${FILTER_SELECT_CLASS} relative z-20`}
+    >
+      {MODULE_OPTIONS.map((module) => (
+        <option key={module} value={module}>
+          {module === 'All'
+            ? 'All Modules'
+            : module.charAt(0).toUpperCase() + module.slice(1)}
+        </option>
+      ))}
+    </select>
 
-          <input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className={FILTER_SELECT_CLASS}
-          />
+    <input
+      type="date"
+      value={startDate}
+      onChange={(e) => setStartDate(e.target.value)}
+      className={`${FILTER_SELECT_CLASS} relative z-20`}
+    />
 
-          <input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className={FILTER_SELECT_CLASS}
-          />
-        </div>
+    <input
+      type="date"
+      value={endDate}
+      onChange={(e) => setEndDate(e.target.value)}
+      className={`${FILTER_SELECT_CLASS} relative z-20`}
+    />
 
-        {hasActiveFilters && (
-          <div className="w-full lg:w-auto">
-            <button
-              type="button"
-              onClick={() => {
-                resetFilters();
-                setShowMobileFilters(false);
-              }}
-              className={`${FILTER_BUTTON_CLASS} w-full justify-center lg:w-auto`}
-            >
-              Clear
-            </button>
-          </div>
-        )}
-      </AdminFilterGroup>
+    <SortSelect<AuditSortOption>
+      value={sortBy}
+      onChange={setSortBy}
+      options={AUDIT_SORT_OPTIONS}
+      className="w-full"
+    />
+  </div>
+
+  {hasActiveFilters && (
+    <div className="w-full lg:w-auto">
+      <button
+        type="button"
+        onClick={() => {
+          resetFilters();
+          setShowMobileFilters(false);
+        }}
+        className={`${FILTER_BUTTON_CLASS} w-full justify-center lg:w-auto`}
+      >
+        Clear
+      </button>
+    </div>
+  )}
+</AdminFilterGroup>
     }
   />
 )}
@@ -577,7 +592,7 @@ const closeMobileFilters = useCallback(() => {
         <span className="block">Details</span>,
       ]}
     >
-      {rows.map((log) => (
+      {sortedRows.map((log) => (
         <tr key={log.id} className="transition-colors hover:bg-gray-50/70">
           <DataCell value={log.publicId ?? log.id} mono />
           <DataCell
@@ -645,7 +660,7 @@ const closeMobileFilters = useCallback(() => {
                 <NoResultsState />
               </div>
             ) : (
-              rows.map((log) => (
+              sortedRows.map((log) => (
                 <div
                   key={log.id}
                   className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
