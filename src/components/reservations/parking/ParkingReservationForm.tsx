@@ -4,6 +4,7 @@ import { formatDate } from "../../../utils/date";
 import { ChevronDown } from "lucide-react";
 import {
   getParkingDurationBounds,
+  getBusinessNow,
   validateParkingDuration,
   getParkingMinStartDate,
   isSameParkingDay,
@@ -62,7 +63,7 @@ function computeHourlyEndTime(start?: string, duration?: number) {
 
   if (!Number.isFinite(h) || !Number.isFinite(m)) return "";
 
-  const date = new Date();
+  const date = getBusinessNow();
   date.setHours(h, m, 0, 0);
   date.setHours(date.getHours() + duration);
 
@@ -314,7 +315,7 @@ export default function ParkingReservationForm({
             onChange={(e) => {
               const value = e.target.value;
               const nextStart = value
-                ? new Date(`${value}T00:00:00`)
+                ? new Date(`${value}T00:00:00+08:00`)
                 : undefined;
 
               setForm((prev) => ({

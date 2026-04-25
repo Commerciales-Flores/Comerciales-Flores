@@ -16,6 +16,7 @@ import {
 } from "../../utils/DataNormalization";
 import {
   getParkingDurationBounds,
+  getBusinessNow,
   validateParkingDuration,
   getParkingMinStartDate,
   isSameParkingDay,
@@ -120,7 +121,7 @@ function computeEndTime(start?: string, duration?: number) {
   const [h, m] = start.split(":").map(Number);
   if (!Number.isFinite(h) || !Number.isFinite(m)) return "";
 
-  const date = new Date();
+  const date = getBusinessNow();
   date.setHours(h, m, 0, 0);
   date.setHours(date.getHours() + duration);
 
@@ -228,6 +229,13 @@ const availableHourlyOptions = useMemo(() => {
     earliestSameDayTimeValue,
     availableHourlyOptions,
   ]);
+
+  useEffect(() => {
+  setForm((prev) => ({
+    ...prev,
+    startDate: getTodayInputValue(),
+  }));
+}, []);
 
   useEffect(() => {
   let cancelled = false;
