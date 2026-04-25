@@ -163,9 +163,9 @@ export default function GuestParking() {
   const earliestSameDayTimeValue = useMemo(
   () =>
     getParkingEarliestSelectableTimeValue(
-      parkingRules.same_day_lead_hours
+      parkingRules.same_day_lead_minutes
     ),
-  [parkingRules.same_day_lead_hours]
+  [parkingRules.same_day_lead_minutes]
 );
 
 const availableHourlyOptions = useMemo(() => {
@@ -264,7 +264,7 @@ const availableHourlyOptions = useMemo(() => {
     return validateSameDayHourlyParking({
   startDate: startDateObject,
   startTime: form.startTime,
-  leadHours: parkingRules.same_day_lead_hours,
+  leadMinutes: parkingRules.same_day_lead_minutes,
 });
   }, [form.durationType, startDateObject, form.startTime]);
 
