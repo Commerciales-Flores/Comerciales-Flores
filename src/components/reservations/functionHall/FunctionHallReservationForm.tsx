@@ -232,6 +232,7 @@ export default function FunctionHallReservationForm({
                   ? [form.startDate, form.endDate]
                   : form.startDate ?? null
               }
+              calendarType="gregory"
               selectRange={false}
               minDate={getTomorrow()}
               maxDate={getFunctionHallMaxDate()}

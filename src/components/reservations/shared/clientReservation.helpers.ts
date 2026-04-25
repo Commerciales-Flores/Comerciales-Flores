@@ -191,18 +191,23 @@ export function getParkingAvailability(params: {
     };
   }
 
-  if (availableActiveSlots.length === 0) {
-    return {
-      status: "occupied",
-      badgeText:
-        ownReservedSlots.length > 0
-          ? "All other slots occupied"
-          : "Fully occupied",
-      badgeTone: ownReservedSlots.length > 0 ? "blue" : "red",
-      reserveDisabled: true,
-      reserveLabel: "No Slots Left",
-    };
-  }
+if (availableActiveSlots.length === 0) {
+  return {
+    status: "occupied",
+    badgeText:
+      ownReservedSlots.length > 0
+        ? `${ownReservedSlots.length} slot${
+            ownReservedSlots.length > 1 ? "s" : ""
+          } reserved by you • All other slots occupied`
+        : "Fully occupied",
+    badgeTone: ownReservedSlots.length > 0 ? "blue" : "red",
+    reserveDisabled: true,
+    reserveLabel:
+      ownReservedSlots.length > 0
+        ? "Already Reserved"
+        : "No Slots Left",
+  };
+}
 
   if (ownReservedSlots.length > 0) {
     return {

@@ -27,18 +27,34 @@ html, body {
   color: #7f1d1d !important;
 }
 
-/* TODAY (PASTEL GREEN — DISTINCT) */
+/* TODAY (SOLID GREEN) */
 .react-calendar__tile--now {
-  background: #bbf7d0 !important;   /* green-200 */
-  color: #14532d !important;        /* green-900 */
-  border: 1px solid #86efac !important; /* green-300 */
+  background: #22c55e !important;   /* green-500 */
+  color: #ffffff !important;
+  border: 1px solid #16a34a !important; /* green-600 */
   border-radius: 0.75rem !important;
   font-weight: 700 !important;
 }
 
 .react-calendar__tile--now:hover {
-  background: #86efac !important;   /* green-300 */
-  color: #14532d !important;
+  background: #16a34a !important;   /* green-600 */
+  color: #ffffff !important;
+}
+
+/* if today is also disabled */
+.react-calendar__tile--now:disabled {
+  background: #22c55e !important;
+  color: #ffffff !important;
+  opacity: 0.9 !important;
+}
+
+/* if today is selected, selected wins */
+.react-calendar__tile--active.react-calendar__tile--now,
+.react-calendar__tile--rangeStart.react-calendar__tile--now,
+.react-calendar__tile--rangeEnd.react-calendar__tile--now {
+  background: #2563eb !important;   /* blue selected */
+  border-color: #1d4ed8 !important;
+  color: #ffffff !important;
 }
 
 /* SELECTED START / END (PASTEL BLUE) */
@@ -111,24 +127,35 @@ html, body {
   background: #fca5a5 !important;
   color: #7f1d1d !important;
 }
-/* RESET SATURDAY */
-.react-calendar__month-view__days__day--weekend:nth-child(7n-1) {
-  color: inherit !important;
-  background: transparent !important;
-  border: none !important;
-  font-weight: inherit !important;
+/* DISABLED DAYS */
+.react-calendar__tile:disabled {
+  background: #f1f5f9 !important; /* slate-100 */
+  color: #94a3b8 !important;      /* slate-400 */
+  cursor: not-allowed !important;
+  border-radius: 0.75rem !important;
 }
 
-/* SUNDAY ONLY (RED TEXT ONLY) */
-.react-calendar__month-view__days__day--weekend:nth-child(7n) {
-  color: #ef4444 !important; /* red-500 */
-  background: transparent !important;
-  border: none !important;
-  border-radius: 0 !important;
+/* WEEKENDS SHOULD NOT BREAK SELECTED/BLOCKED/DISABLED STATES */
+.react-calendar__month-view__days__day--weekend {
+  color: inherit;
+}
+
+/* SUNDAY TEXT ONLY - only when normal day */
+.react-calendar__month-view__days__day--weekend:not(:disabled):not(.calendar-tile-blocked):not(.calendar-tile-selected):not(.react-calendar__tile--active):not(.react-calendar__tile--range):not(.react-calendar__tile--rangeStart):not(.react-calendar__tile--rangeEnd) {
+  color: #ef4444 !important;
   font-weight: 600 !important;
 }
 
-.react-calendar__month-view__days__day--weekend:nth-child(7n):hover {
-  color: #ef4444 !important;
-  background: transparent !important;
+/* TODAY MUST STAY SOLID UNLESS SELECTED */
+.react-calendar__tile.react-calendar__tile--now:not(.react-calendar__tile--active):not(.react-calendar__tile--rangeStart):not(.react-calendar__tile--rangeEnd) {
+  background: #22c55e !important;
+  color: #ffffff !important;
+  border: 1px solid #16a34a !important;
+  border-radius: 0.75rem !important;
+  font-weight: 700 !important;
+}
+
+.react-calendar__tile.react-calendar__tile--now:not(.react-calendar__tile--active):not(.react-calendar__tile--rangeStart):not(.react-calendar__tile--rangeEnd):hover {
+  background: #16a34a !important;
+  color: #ffffff !important;
 }

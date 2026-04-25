@@ -89,6 +89,7 @@ export default function RentalReservationForm({
               value={form.startDate ?? undefined}
               tileDisabled={isCalendarTileDisabled}
               tileClassName={getCalendarTileClassName}
+              calendarType="gregory"
               selectRange={false}
               minDate={getTomorrow()}
               maxDate={getMaxReservationDate(selectedUnitData.type)}

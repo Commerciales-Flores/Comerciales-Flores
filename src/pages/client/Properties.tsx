@@ -1251,30 +1251,39 @@ const getEffectiveAvailability = useCallback(
       reserveLabel: "Reserve Now",
     };
 
-    if (unit.type === "parking_slot" && parkingRequestsClosedNow) {
-  const userHasActiveParkingReservation = reservations.some(
-  (reservation) =>
-    reservation.unitType === "parking_slot" &&
-    reservation.unitId === unit.id &&
-    reservation.userId === user?.id &&
-    isBlockingReservation(reservation.status)
-);
+    if (unit.type !== "parking_slot") {
+      return baseAvailability;
+    }
 
+    const userHasActiveParkingReservation = reservations.some(
+      (reservation) =>
+        reservation.unitType === "parking_slot" &&
+        reservation.unitId === unit.id &&
+        reservation.userId === user?.id &&
+        isBlockingReservation(reservation.status)
+    );
+
+    if (userHasActiveParkingReservation) {
+      return {
+        ...baseAvailability,
+        badgeText: baseAvailability.badgeText,
+        badgeTone: baseAvailability.badgeTone,
+        reserveDisabled: true,
+        reserveLabel: "Already Reserved",
+        nextAvailableText: parkingRequestsClosedNow
+          ? "You already have an active parking reservation. New parking requests are closed for today."
+          : baseAvailability.nextAvailableText,
+      };
+    }
+
+    if (parkingRequestsClosedNow && !baseAvailability.reserveDisabled) {
   return {
     ...baseAvailability,
-    badgeText: userHasActiveParkingReservation
-      ? "Reserved by you"
-      : "Requests closed today",
-    badgeTone: userHasActiveParkingReservation
-      ? ("blue" as const)
-      : ("gray" as const),
     reserveDisabled: true,
-    reserveLabel: userHasActiveParkingReservation
-      ? "Already Reserved"
-      : "Closed Today",
-    nextAvailableText: userHasActiveParkingReservation
-      ? "You already have an active parking reservation. New parking requests are closed for today."
-      : "Parking requests reopen on the next available schedule.",
+    reserveLabel: "Closed Today",
+    nextAvailableText: `Closed now • Hours: ${formatTimeLabel(
+  parkingRules.hourly_start
+)} - ${formatTimeLabel(parkingRules.hourly_end)}`
   };
 }
 
