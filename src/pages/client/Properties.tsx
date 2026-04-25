@@ -20,7 +20,13 @@ import ParkingSlotPanel from "../../components/reservations/parking/ParkingSlotP
 import SortSelect from "../../components/shared/filters/SortSelect";
 import type { UnitSortOption } from "../../data/sorting";
 import { UNIT_SORT_OPTIONS } from "../../utils/sorting/sortingOptions";
+import ReservationPromoDetailsBadge from "../../components/reservations/shared/ReservationPromoDetailsBadge";
 import { sortUnits } from "../../utils/sorting/sortUnits";
+import {
+  fetchParkingRules,
+  DEFAULT_PARKING_RULES,
+  type ParkingRules,
+} from "../../data/appSettings";
 import {
   sanitizePlainText,
 } from "../../utils/DataNormalization";
@@ -268,6 +274,48 @@ function PriceFilterModal({
   );
 }
 
+function timeToMinutes(value?: string) {
+  if (!value) return null;
+
+  const [hour, minute] = value.split(":").map(Number);
+
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+
+  return hour * 60 + minute;
+}
+
+function getRoundedLeadTimeMinutes(leadMinutes: number) {
+  const next = new Date();
+  next.setMinutes(next.getMinutes() + leadMinutes);
+
+  if (
+    next.getMinutes() > 0 ||
+    next.getSeconds() > 0 ||
+    next.getMilliseconds() > 0
+  ) {
+    next.setHours(next.getHours() + 1);
+  }
+
+  next.setMinutes(0, 0, 0);
+
+  return next.getHours() * 60 + next.getMinutes();
+}
+
+function isParkingRequestClosedNow(rules: ParkingRules) {
+  const startMinutes = timeToMinutes(rules.hourly_start);
+  const endMinutes = timeToMinutes(rules.hourly_end);
+
+  if (startMinutes === null || endMinutes === null) return false;
+
+  const earliestSelectableMinutes = getRoundedLeadTimeMinutes(
+    rules.same_day_lead_minutes
+  );
+
+  const nextAllowedStart = Math.max(startMinutes, earliestSelectableMinutes);
+
+  return nextAllowedStart >= endMinutes;
+}
+
 
 export default function ClientUnits() {
   const { user } = useAuth();
@@ -277,6 +325,9 @@ export default function ClientUnits() {
   const { sendSystemNotification } = useNotifications();
 
   const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
+
+  const [parkingRules, setParkingRules] =
+  useState<ParkingRules>(DEFAULT_PARKING_RULES);
 
   const [notice, setNotice] = useState<{
     message: string;
@@ -428,6 +479,23 @@ useEffect(() => {
   setHoveredCardId(null);
 }, [searchTerm, filterType, filterLocation, minPriceFilter, maxPriceFilter, sortBy]);
 
+useEffect(() => {
+  let cancelled = false;
+
+  const loadParkingRules = async () => {
+    const rules = await fetchParkingRules();
+
+    if (!cancelled) {
+      setParkingRules(rules);
+    }
+  };
+
+  void loadParkingRules();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
 
 useEffect(() => {
   if (showReservationModal) {
@@ -965,12 +1033,16 @@ const ownReservedSlotIds = useMemo(() => {
   if (!selectedUnitData) return 0;
 
   if (selectedUnitData.type === "rental_space") {
-    return computeRentalBilling({
-      monthlyBase: Number(selectedUnitData.price || 0),
-      durationMonths: reservationForm.duration || 1,
-      paymentCycle: reservationForm.paymentCycle,
-    }).leaseTotal;
-  }
+  return computeRentalBilling({
+    monthlyBase: Number(selectedUnitData.price || 0),
+    durationMonths: reservationForm.duration || 1,
+    paymentCycle: reservationForm.paymentCycle,
+    securityDepositMonths:
+      Number(selectedUnitData.securityDepositMonths) || 1,
+    advanceRentMonths:
+      Number(selectedUnitData.advanceRentMonths) || 1,
+  }).leaseTotal;
+}
 
   const oneTimeBase = calculateTotalAmount(
     selectedUnitData.type,
@@ -981,7 +1053,7 @@ const ownReservedSlotIds = useMemo(() => {
 
   return computeOneTimeBilling({
     baseAmount: oneTimeBase,
-  }).total;
+  }).totalAmount;
 }, [
   selectedUnitData,
   reservationForm.duration,
@@ -992,10 +1064,14 @@ const rentalBilling = useMemo(() => {
   if (!selectedUnitData || selectedUnitData.type !== "rental_space") return null;
 
   return computeRentalBilling({
-    monthlyBase: Number(selectedUnitData.price || 0),
-    durationMonths: reservationForm.duration || 1,
-    paymentCycle: reservationForm.paymentCycle,
-  });
+  monthlyBase: Number(selectedUnitData.price || 0),
+  durationMonths: reservationForm.duration || 1,
+  paymentCycle: reservationForm.paymentCycle,
+  securityDepositMonths:
+    Number(selectedUnitData.securityDepositMonths) || 1,
+  advanceRentMonths:
+    Number(selectedUnitData.advanceRentMonths) || 1,
+});
 }, [selectedUnitData, reservationForm.duration, reservationForm.paymentCycle]);
 
   const subtotalAmount = useMemo(() => {
@@ -1033,7 +1109,7 @@ const vatAmount = useMemo(() => {
 
   return computeOneTimeBilling({
     baseAmount: oneTimeBase,
-  }).vat;
+  }).vatAmount;
 }, [selectedUnitData, reservationForm.duration, reservationForm.paymentCycle, rentalBilling]);
 
 const initialDue = useMemo(() => {
@@ -1161,24 +1237,72 @@ useEffect(() => {
   };
 }, []);
 
-    const handleReserveNow = useCallback(
+
+
+    const parkingRequestsClosedNow = isParkingRequestClosedNow(parkingRules);
+
+const getEffectiveAvailability = useCallback(
+  (unit: (typeof units)[number]) => {
+    const baseAvailability = unitAvailabilityMap.get(unit.id) ?? {
+      status: "available",
+      badgeText: "Available",
+      badgeTone: "green" as const,
+      reserveDisabled: false,
+      reserveLabel: "Reserve Now",
+    };
+
+    if (unit.type === "parking_slot" && parkingRequestsClosedNow) {
+  const userHasActiveParkingReservation = reservations.some(
+  (reservation) =>
+    reservation.unitType === "parking_slot" &&
+    reservation.unitId === unit.id &&
+    reservation.userId === user?.id &&
+    isBlockingReservation(reservation.status)
+);
+
+  return {
+    ...baseAvailability,
+    badgeText: userHasActiveParkingReservation
+      ? "Reserved by you"
+      : "Requests closed today",
+    badgeTone: userHasActiveParkingReservation
+      ? ("blue" as const)
+      : ("gray" as const),
+    reserveDisabled: true,
+    reserveLabel: userHasActiveParkingReservation
+      ? "Already Reserved"
+      : "Closed Today",
+    nextAvailableText: userHasActiveParkingReservation
+      ? "You already have an active parking reservation. New parking requests are closed for today."
+      : "Parking requests reopen on the next available schedule.",
+  };
+}
+
+    return baseAvailability;
+  },
+  [unitAvailabilityMap, parkingRequestsClosedNow, reservations, user?.id]
+);
+
+const handleReserveNow = useCallback(
   (unitId: string) => {
     const unit = units.find((u) => u.id === unitId);
     if (!unit) return;
 
-    const availability = unitAvailabilityMap.get(unitId);
-    if (availability?.reserveDisabled) return;
+    const availability = getEffectiveAvailability(unit);
+    if (availability.reserveDisabled) return;
 
     setSelectedUnitId(unitId);
     setCurrentImageIndex(0);
-    setReservationForm(buildInitialReservationForm(unit.type, defaultPaymentMethod));
+    setReservationForm(
+      buildInitialReservationForm(unit.type, defaultPaymentMethod)
+    );
     setReservationSuccess(false);
     setIsSlotPanelOpen(false);
     setFunctionHallConflictMessage("");
     setShowCalendar(false);
     setShowReservationModal(true);
   },
-  [units, unitAvailabilityMap, defaultPaymentMethod]
+  [units, getEffectiveAvailability, defaultPaymentMethod]
 );
 
 const getParkingSlotState = useCallback(
@@ -1776,6 +1900,7 @@ const calendarLegend = (
   </div>
 );
 
+
   return (
     <div className="min-h-screen bg-white">
       <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
@@ -1908,13 +2033,7 @@ const calendarLegend = (
             unitReviews.length
           : 0;
 
-      const availability = unitAvailabilityMap.get(unit.id) ?? {
-        status: "available",
-        badgeText: "Available",
-        badgeTone: "green" as const,
-        reserveDisabled: false,
-        reserveLabel: "Reserve Now",
-      };
+      const availability = getEffectiveAvailability(unit);
 
       return (
       <div
@@ -2038,6 +2157,10 @@ const calendarLegend = (
             ) : (
               <div className="min-h-[16px]" />
             )}
+            <ReservationPromoDetailsBadge
+              unitId={unit.id}
+              compact
+            />
 
             <div className="flex min-h-[44px] items-end justify-between">
               <div>
@@ -2423,6 +2546,13 @@ const calendarLegend = (
                         estimatedTotal={estimatedTotal}
                         initialDue={initialDue}
                         formatCurrency={formatCurrency}
+                      />
+
+                      <ReservationPromoDetailsBadge
+                        unitId={selectedUnitData.id}
+                        detailed
+                        subtotal={subtotalAmount}
+                        unitType={selectedUnitData.type}
                       />
 
                       <ReservationSummarySection

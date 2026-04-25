@@ -24,20 +24,17 @@ import {
 type PaymentsPageFilters = {
   page?: number;
   pageSize?: number;
-  status?: 'all' | 'paid' | 'unpaid' | 'partial';
+  status?: 'all' | 'paid' | 'unpaid';
   searchTerm?: string;
 };
 
 type PaymentCategory =
   | 'payment'
+  | 'reservation_payment'
   | 'advance_deposit'
   | 'security_deposit'
-  | 'reservation_fee'
   | 'monthly_rent'
-  | 'parking_fee'
-  | 'function_room_fee'
-  | 'vat'
-  | 'penalty';
+  | 'late_fee';
 
 interface PaymentsContextType {
   payments: Payment[];
@@ -87,6 +84,11 @@ function mapPaymentRow(row: any): Payment {
     paymentMethodId: row.payment_method_id ?? null,
     paymentMethodSnapshot: row.payment_method_snapshot ?? null,
     category: (row.category ?? 'payment') as PaymentCategory,
+    subtotalAmount: row.subtotal_amount ?? null,
+    vatRate: row.vat_rate ?? null,
+    vatAmount: row.vat_amount ?? null,
+    discountAmount: row.discount_amount ?? null,
+    billingSnapshot: row.billing_snapshot ?? null,
   };
 }
 
@@ -162,7 +164,29 @@ const refreshPaymentsPromiseRef = useRef<Promise<void> | null>(null);
     const { data, error } = await supabase
       .from('payments')
       .select(
-        'payment_id, public_id, reservation_id, user_id, amount, method, status, review_status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category'
+        `
+payment_id,
+public_id,
+reservation_id,
+user_id,
+amount,
+method,
+status,
+review_status,
+proofOfPayment,
+date,
+notes,
+created_at,
+updated_at,
+payment_method_id,
+payment_method_snapshot,
+category,
+subtotal_amount,
+vat_rate,
+vat_amount,
+discount_amount,
+billing_snapshot
+`
       )
       .order('created_at', { ascending: false });
 
@@ -305,7 +329,29 @@ const refreshPaymentsPromiseRef = useRef<Promise<void> | null>(null);
     let query = supabase
       .from('payments')
       .select(
-        'payment_id, public_id, reservation_id, user_id, amount, method, status, review_status, proofOfPayment, date, notes, created_at, updated_at, payment_method_id, payment_method_snapshot, category',
+        `
+payment_id,
+public_id,
+reservation_id,
+user_id,
+amount,
+method,
+status,
+review_status,
+proofOfPayment,
+date,
+notes,
+created_at,
+updated_at,
+payment_method_id,
+payment_method_snapshot,
+category,
+subtotal_amount,
+vat_rate,
+vat_amount,
+discount_amount,
+billing_snapshot
+`,
         { count: 'exact' }
       )
       .order('date', { ascending: false });

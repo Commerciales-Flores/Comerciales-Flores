@@ -578,16 +578,20 @@ export function paymentUpdateTemplate(params: {
 export function reservationUpdateTemplate(params: {
   customerName?: string | null;
   reservationPublicId: string;
-  action: "approved" | "rejected" | "completed";
+  action: "approved" | "rejected" | "completed" | "cancelled" | "confirmed";
   notes?: string | null;
   appUrl?: string | null;
 }) {
   const statusLabel =
-    params.action === "approved"
-      ? "Approved"
-      : params.action === "completed"
-      ? "Completed"
-      : "Rejected";
+  params.action === "approved"
+    ? "Approved"
+    : params.action === "completed"
+    ? "Completed"
+    : params.action === "confirmed"
+    ? "Confirmed"
+    : params.action === "cancelled"
+    ? "Cancelled"
+    : "Rejected";
 
   const text = [
     `Hello${params.customerName ? ` ${params.customerName}` : ""},`,

@@ -24,6 +24,7 @@ import {
   Menu,
   X,
   Car,
+  BadgePercent,
 } from "lucide-react";
 
 type AdminNavItem = {
@@ -94,7 +95,7 @@ const pendingReservationsCount = useMemo(() => {
         badge: specialUserRequestsCount,
       },
       { to: "/admin/audit", icon: ClipboardClock, label: "Audit Log" },
-      { to: "/admin/business-slots", icon: CalendarDays, label: "Business Slots" },
+      { to: "/admin/business-slots", icon: CalendarDays, label: "Units" },
       {
         to: "/admin/reservations",
         icon: Calendar,
@@ -111,6 +112,11 @@ const pendingReservationsCount = useMemo(() => {
         icon: CreditCard,
         label: "Payments",
         badge: pendingPaymentsCount,
+      },
+      {
+        to: "/admin/promotions",
+        icon: BadgePercent,
+        label: "Promos",
       },
       {
         to: "/admin/inquiries",

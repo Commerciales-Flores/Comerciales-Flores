@@ -76,7 +76,7 @@ export default function ReservationSummarySection({
         </span>
       </div>
 
-      <div className="flex items-center justify-between gap-4">
+      {/* <div className="flex items-center justify-between gap-4">
         <span>Subtotal</span>
         <span className="font-medium text-gray-900">
           {formatCurrency(resolvedSubtotal)}
@@ -88,7 +88,7 @@ export default function ReservationSummarySection({
         <span className="font-medium text-gray-900">
           {formatCurrency(resolvedVat)}
         </span>
-      </div>
+      </div> */}
 
       <div className="flex items-center justify-between gap-4 pt-1">
         <span>{isRental ? "Due Upon Approval" : "Estimated Total"}</span>

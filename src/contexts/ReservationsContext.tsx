@@ -30,6 +30,7 @@ async function notifyAdminsNewReservation(params: {
   startDate?: string | null;
   endDate?: string | null;
   amount?: number | null;
+  reservationType?: string | null;
 }) {
   const secret = import.meta.env.VITE_ADMIN_NEW_RESERVATION_SECRET;
 
@@ -69,7 +70,7 @@ interface ReservationsContextType {
   addReservation: (
     reservation: Omit<
       Reservation,
-      'id' | 'requestDate' | 'status' | 'paidAmount' | 'minimumPaymentPercentSnapshot'
+      'id' | 'requestDate' | 'status' | 'paidAmount' | 'securityDepositMonthsSnapshot' | 'advanceRentMonthsSnapshot'
     >
   ) => Promise<string>;
   updateReservation: (id: string, reservation: Partial<Reservation>) => Promise<void>;
@@ -272,6 +273,17 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         duration: row.duration,
         details: row.details ?? {},
         totalAmount: Number(row.total_amount),
+        reservationType: row.reservation_type ?? null,
+        subtotalAmount: row.subtotal_amount ?? null,
+        vatRate: row.vat_rate ?? null,
+        vatAmount: row.vat_amount ?? null,
+        discountAmount: row.discount_amount ?? null,
+        amountDue: row.amount_due ?? null,
+        billingBreakdown: row.billing_breakdown ?? null,
+        promoId: row.promo_id ?? null,
+        discountSnapshot: row.discount_snapshot ?? null,
+        requiresFullPayment: row.requires_full_payment ?? true,
+        paymentDueAt: row.payment_due_at ?? null,
         status: computedStatus,
         notes: row.notes,
         paidAmount: finalPaidAmount,
@@ -301,7 +313,10 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         confirmedVisitDate: row.confirmed_visit_date,
         confirmedVisitTime: row.confirmed_visit_time,
         visitStatus: row.visit_status ?? 'requested',
-        minimumPaymentPercentSnapshot: row.minimum_payment_percent_snapshot ?? null,
+        securityDepositMonthsSnapshot:
+          row.security_deposit_months_snapshot ?? null,
+        advanceRentMonthsSnapshot:
+          row.advance_rent_months_snapshot ?? null,
       };
 
       if (isOverdueReservation(baseReservation)) {
@@ -339,6 +354,17 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         end_date,
         duration,
         total_amount,
+        reservation_type,
+        subtotal_amount,
+        vat_rate,
+        vat_amount,
+        discount_amount,
+        amount_due,
+        billing_breakdown,
+        promo_id,
+        discount_snapshot,
+        requires_full_payment,
+        payment_due_at,
         status,
         notes,
         paid_amount,
@@ -353,7 +379,8 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         visit_status,
         details,
         assigned_parking_slot_id,
-        minimum_payment_percent_snapshot
+        security_deposit_months_snapshot,
+        advance_rent_months_snapshot
       `)
       .order('created_at', { ascending: false });
 
@@ -508,6 +535,17 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         end_date,
         duration,
         total_amount,
+        reservation_type,
+        subtotal_amount,
+        vat_rate,
+        vat_amount,
+        discount_amount,
+        amount_due,
+        billing_breakdown,
+        promo_id,
+        discount_snapshot,
+        requires_full_payment,
+        payment_due_at,
         status,
         notes,
         paid_amount,
@@ -522,7 +560,8 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         visit_status,
         details,
         assigned_parking_slot_id,
-        minimum_payment_percent_snapshot,
+        security_deposit_months_snapshot,
+        advance_rent_months_snapshot,
         users:user_id (
           first_name,
           last_name,
@@ -602,7 +641,7 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
     async (
       reservationData: Omit<
         Reservation,
-        'id' | 'requestDate' | 'status' | 'paidAmount' | 'minimumPaymentPercentSnapshot'
+        'id' | 'requestDate' | 'status' | 'paidAmount' | 'securityDepositMonthsSnapshot' | 'advanceRentMonthsSnapshot'
       >
     ): Promise<string> => {
       if (!user?.id) {
@@ -688,7 +727,7 @@ if (reservationData.unitType === 'rental_space') {
       )
     );
 
-    const advanceDepositMonths = Math.max(
+    const advanceRentMonths = Math.max(
       1,
       Number(
         (detailsInput as any).advanceDepositMonths ??
@@ -702,7 +741,7 @@ if (reservationData.unitType === 'rental_space') {
     );
 
     firstMonthAmount = Number(
-      (monthlyBase * advanceDepositMonths).toFixed(2)
+      (monthlyBase * advanceRentMonths).toFixed(2)
     );
 
     const taxableInitialBase = firstMonthAmount;
@@ -786,18 +825,21 @@ const cleanDetails = {
       }
 
       const { data: unitRow, error: unitError } = await supabase
-        .from('units')
-        .select('minimum_payment_percent')
-        .eq('unit_id', reservationData.unitId)
-        .single();
+  .from('units')
+  .select('security_deposit_months, advance_rent_months')
+  .eq('unit_id', reservationData.unitId)
+  .single();
 
-      if (unitError) {
-        console.error('Failed to fetch unit minimum payment:', unitError);
-        throw new Error('Unable to determine minimum payment requirement.');
-      }
+if (unitError) {
+  console.error('Failed to fetch unit lease terms:', unitError);
+  throw new Error('Unable to determine lease payment requirements.');
+}
 
-      const minimumPaymentPercentSnapshot =
-        unitRow?.minimum_payment_percent ?? null;
+const securityDepositMonthsSnapshot =
+  unitRow?.security_deposit_months ?? 1;
+
+const advanceRentMonthsSnapshot =
+  unitRow?.advance_rent_months ?? 1;
 
 
       const { data, error } = await supabase
@@ -812,6 +854,20 @@ const cleanDetails = {
             end_date: reservationData.endDate,
             duration: reservationData.duration,
             total_amount: grandTotal,
+            reservation_type: reservationData.reservationType ?? null,
+            subtotal_amount: baseSubtotal,
+            vat_rate: VAT_RATE,
+            vat_amount: vatAmount,
+            discount_amount: reservationData.discountAmount ?? 0,
+            amount_due: initialDue,
+            billing_breakdown: reservationData.billingBreakdown ?? cleanDetails,
+            promo_id: reservationData.promoId ?? null,
+            discount_snapshot: reservationData.discountSnapshot ?? null,
+            requires_full_payment: reservationData.reservationType !== 'monthly_lease',
+            payment_due_at:
+              reservationData.reservationType === 'monthly_lease'
+                ? reservationData.startDate
+    : null,
             status: 'pending',
             payment_method: reservationData.paymentMethod ?? null,
             payment_intent: reservationData.paymentIntent ?? null,
@@ -822,7 +878,10 @@ const cleanDetails = {
               ? normalizeText(reservationData.notes)
               : null,
             details: cleanDetails,
-            minimum_payment_percent_snapshot: minimumPaymentPercentSnapshot,
+            security_deposit_months_snapshot:
+              securityDepositMonthsSnapshot,
+            advance_rent_months_snapshot:
+              advanceRentMonthsSnapshot,
           },
         ])
         .select()
@@ -856,6 +915,17 @@ const safePaymentMode =
         endDate: data.end_date,
         duration: data.duration,
         totalAmount: grandTotal,
+        reservationType: data.reservation_type ?? null,
+        subtotalAmount: data.subtotal_amount ?? null,
+        vatRate: data.vat_rate ?? null,
+        vatAmount: data.vat_amount ?? null,
+        discountAmount: data.discount_amount ?? null,
+        amountDue: data.amount_due ?? null,
+        billingBreakdown: data.billing_breakdown ?? null,
+        promoId: data.promo_id ?? null,
+        discountSnapshot: data.discount_snapshot ?? null,
+        requiresFullPayment: data.requires_full_payment ?? true,
+        paymentDueAt: data.payment_due_at ?? null,
         status: data.status,
         notes: data.notes,
         paidAmount: 0,
@@ -875,7 +945,8 @@ const safePaymentMode =
         vehicleType: data.details?.vehicleType,
         plateNumber: data.details?.plateNumber,
         durationType: data.details?.durationType,
-        minimumPaymentPercentSnapshot,
+        securityDepositMonthsSnapshot: data.security_deposit_months_snapshot ?? null,
+        advanceRentMonthsSnapshot: data.advance_rent_months_snapshot ?? null,
       };
 
             try {
@@ -905,7 +976,8 @@ const safePaymentMode =
           unitType: newReservation.unitType,
           startDate: newReservation.startDate,
           endDate: newReservation.endDate,
-          amount: Number(newReservation.totalAmount ?? 0),
+          amount: Number(newReservation.amountDue ?? newReservation.totalAmount ?? 0),
+          reservationType: newReservation.reservationType ?? null,
         });
       } catch (notificationError) {
         console.error(
@@ -991,15 +1063,25 @@ const previousStatus = existingReservation.status;
 const nextStatus = reservationUpdate.status;
 
 if (nextStatus && nextStatus !== previousStatus) {
-  let action: 'approved' | 'rejected' | 'completed' | null = null;
+  let action:
+  | 'approved'
+  | 'confirmed'
+  | 'rejected'
+  | 'completed'
+  | 'cancelled'
+  | null = null;
 
-  if (nextStatus === 'confirmed') {
-    action = 'approved';
-  } else if (nextStatus === 'rejected') {
-    action = 'rejected';
-  } else if (nextStatus === 'completed') {
-    action = 'completed';
-  }
+if (nextStatus === 'approved') {
+  action = 'approved';
+} else if (nextStatus === 'confirmed') {
+  action = 'confirmed';
+} else if (nextStatus === 'rejected') {
+  action = 'rejected';
+} else if (nextStatus === 'completed') {
+  action = 'completed';
+} else if (nextStatus === 'cancelled') {
+  action = 'cancelled';
+}
 
   if (action) {
     try {

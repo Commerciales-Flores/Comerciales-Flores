@@ -244,7 +244,7 @@ export default function RentalReservationForm({
       ),
     };
   });
-}}
+}}  
     className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:text-base"
   >
     <option value="daily">Daily</option>
@@ -253,9 +253,9 @@ export default function RentalReservationForm({
   </select>
 
   <p className="mt-2 text-xs text-gray-500">
-    Daily and weekly bookings require full upfront payment.
-    Monthly leases require deposit + first month.
-  </p>
+  Daily and weekly bookings are flexible stays and require full upfront payment.
+  Monthly leases require a security deposit plus the first month.
+</p>
 </div>
 
       <div className="rounded-2xl border border-blue-100 bg-white p-4">
@@ -265,7 +265,13 @@ export default function RentalReservationForm({
 
   <div className="mt-3 space-y-2 text-sm text-gray-700">
     <div className="flex items-center justify-between gap-4">
-      <span>Monthly base rate</span>
+      <span>
+  {form.paymentCycle === "daily"
+    ? "Daily base rate"
+    : form.paymentCycle === "weekly"
+      ? "Weekly base rate"
+      : "Monthly base rate"}
+</span>
       <span className="font-medium text-gray-900">
         {formatCurrency(rentalMonthlyAmount)}
       </span>
@@ -331,8 +337,8 @@ export default function RentalReservationForm({
 
   <p className="mt-3 text-xs leading-relaxed text-gray-500">
     {form.paymentCycle === "monthly"
-  ? "Initial payment includes the required security deposit and first month. Monthly billing continues after approval."
-  : "Full payment is required upfront for this booking term."}
+  ? "Initial payment includes the security deposit and first month. The remaining lease continues through monthly billing."
+  : "Flexible stays are billed upfront based on the selected daily or weekly term."}
   </p>
 </div>
 

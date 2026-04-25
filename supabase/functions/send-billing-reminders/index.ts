@@ -21,19 +21,18 @@ const jsonResponse = (body: unknown, status = 200) =>
   });
 
 type BillingStage = "upcoming" | "due" | "overdue";
-type BillingType = "monthly" | null;
+type BillingType = "monthly";
 
 type ReservationRow = {
   reservation_id: string;
   user_id: string;
   public_id: string | null;
+  reservation_type: string | null;
   start_date: string | null;
-  end_date: string | null;
-  total_amount: number | null;
+  payment_due_at: string | null;
+  amount_due: number | null;
   paid_amount: number | null;
-  details: {
-  bookingTerm?: "daily" | "weekly" | "monthly" | null;
-} | null;
+  status: string | null;
   last_billing_reminder_at: string | null;
   last_billing_reminder_stage: string | null;
   last_billing_due_date: string | null;
@@ -80,8 +79,8 @@ function isWithinBusinessHours(date = new Date()) {
   return hour >= 8 && hour < 20;
 }
 
-function getRemainingBalance(totalAmount: number | null, paidAmount: number | null) {
-  return Math.max(Number(totalAmount || 0) - Number(paidAmount || 0), 0);
+function getRemainingBalance(amountDue: number | null, paidAmount: number | null) {
+  return Math.max(Number(amountDue || 0) - Number(paidAmount || 0), 0);
 }
 
 function addMonthsSafe(date: Date, months: number) {
@@ -97,24 +96,11 @@ function addMonthsSafe(date: Date, months: number) {
   return result;
 }
 
-function getBillingType(details: ReservationRow["details"]): BillingType {
-  const value = details?.bookingTerm;
-  if (value === "monthly") {
-    return value;
-  }
-  return null;
-}
-
-function getNextDueDate(
-  startDateIso: string,
-  billingType: Exclude<BillingType, null>,
-  now = new Date()
-) {
-  const intervalMonths = 1;
+function getNextDueDate(startDateIso: string, now = new Date()) {
   let dueDate = new Date(startDateIso);
 
   while (dueDate.getTime() < now.getTime()) {
-    dueDate = addMonthsSafe(dueDate, intervalMonths);
+    dueDate = addMonthsSafe(dueDate, 1);
   }
 
   return dueDate;
@@ -126,11 +112,13 @@ function getBillingStage(dueDate: Date, now = new Date()): BillingStage | null {
 
   const todayUtc = Date.UTC(manilaNow.year, manilaNow.month - 1, manilaNow.day);
   const dueUtc = Date.UTC(manilaDue.year, manilaDue.month - 1, manilaDue.day);
+
   const diffDays = Math.floor((dueUtc - todayUtc) / (1000 * 60 * 60 * 24));
 
   if (diffDays < 0) return "overdue";
   if (diffDays === 0) return "due";
   if (diffDays <= 3) return "upcoming";
+
   return null;
 }
 
@@ -161,7 +149,10 @@ serve(async (req) => {
     }
 
     if (authHeader !== `Bearer ${cronSecret}`) {
-      return jsonResponse({ success: false, reason: "Unauthorized." }, 401);
+      return jsonResponse(
+        { success: false, reason: "Unauthorized." },
+        401
+      );
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -179,6 +170,7 @@ serve(async (req) => {
     }
 
     const admin = createClient(supabaseUrl, serviceRoleKey);
+
     const now = new Date();
     const nowIso = now.toISOString();
     const todayKey = getManilaDateKey(now);
@@ -200,17 +192,19 @@ serve(async (req) => {
         reservation_id,
         user_id,
         public_id,
+        reservation_type,
         start_date,
-        end_date,
-        total_amount,
+        payment_due_at,
+        amount_due,
         paid_amount,
-        details,
+        status,
         last_billing_reminder_at,
         last_billing_reminder_stage,
         last_billing_due_date,
         last_billing_cycle_type
       `)
-      .eq("status", "confirmed");
+      .eq("status", "confirmed")
+      .eq("reservation_type", "monthly_lease");
 
     if (error) throw error;
 
@@ -220,58 +214,64 @@ serve(async (req) => {
 
     const skipped: Array<{ reservationId: string; reason: string }> = [];
 
-    for (const rawReservation of (reservations ?? []) as ReservationRow[]) {
+    for (const reservation of (reservations ?? []) as ReservationRow[]) {
       scanned += 1;
 
-      const reservationId = rawReservation.reservation_id;
-      const publicId = rawReservation.public_id || rawReservation.reservation_id;
-      const billingType = getBillingType(rawReservation.details);
+      const reservationId = reservation.reservation_id;
+      const publicId = reservation.public_id || reservationId;
 
-      if (!billingType) {
-  skipped.push({ reservationId, reason: "not_monthly_billing" });
-  continue;
-}
+      const baseDate = reservation.payment_due_at || reservation.start_date;
 
-      if (!rawReservation.start_date) {
-        skipped.push({ reservationId, reason: "missing_start_date" });
+      if (!baseDate) {
+        skipped.push({
+          reservationId,
+          reason: "missing_due_basis",
+        });
+        continue;
+      }
+
+      const dueDate = reservation.payment_due_at
+        ? new Date(reservation.payment_due_at)
+        : getNextDueDate(baseDate, now);
+
+      const stage = getBillingStage(dueDate, now);
+
+      if (!stage) {
+        skipped.push({
+          reservationId,
+          reason: "not_in_window",
+        });
         continue;
       }
 
       const remainingBalance = getRemainingBalance(
-        rawReservation.total_amount,
-        rawReservation.paid_amount
+        reservation.amount_due,
+        reservation.paid_amount
       );
 
       if (remainingBalance <= 0) {
-        skipped.push({ reservationId, reason: "fully_paid" });
+        skipped.push({
+          reservationId,
+          reason: "fully_paid",
+        });
         continue;
       }
 
-      const dueDate = getNextDueDate(rawReservation.start_date, billingType, now);
-const stage = getBillingStage(dueDate, now);
-const daysLate = getDaysLate(dueDate, now);
-
-if (!stage) {
-  skipped.push({ reservationId, reason: "not_in_window" });
-  continue;
-}
-
-      const dueDateIso = dueDate.toISOString();
       const dueDateKey = getManilaDateKey(dueDate);
 
-      const lastReminderManila = rawReservation.last_billing_reminder_at
-        ? getManilaDateKey(new Date(rawReservation.last_billing_reminder_at))
+      const lastReminderKey = reservation.last_billing_reminder_at
+        ? getManilaDateKey(new Date(reservation.last_billing_reminder_at))
         : null;
 
-      const lastDueDateKey = rawReservation.last_billing_due_date
-        ? getManilaDateKey(new Date(rawReservation.last_billing_due_date))
+      const lastDueKey = reservation.last_billing_due_date
+        ? getManilaDateKey(new Date(reservation.last_billing_due_date))
         : null;
 
       if (
-        rawReservation.last_billing_reminder_stage === stage &&
-        rawReservation.last_billing_cycle_type === billingType &&
-        lastReminderManila === todayKey &&
-        lastDueDateKey === dueDateKey
+        reservation.last_billing_reminder_stage === stage &&
+        reservation.last_billing_cycle_type === "monthly" &&
+        lastReminderKey === todayKey &&
+        lastDueKey === dueDateKey
       ) {
         skipped.push({
           reservationId,
@@ -283,21 +283,13 @@ if (!stage) {
       const { data: userProfile, error: userError } = await admin
         .from("users")
         .select("email, first_name")
-        .eq("user_id", rawReservation.user_id)
+        .eq("user_id", reservation.user_id)
         .maybeSingle<UserRow>();
 
-      if (userError) {
+      if (userError || !userProfile?.email) {
         skipped.push({
           reservationId,
-          reason: `user_lookup_failed:${userError.message}`,
-        });
-        continue;
-      }
-
-      if (!userProfile?.email) {
-        skipped.push({
-          reservationId,
-          reason: "missing_email",
+          reason: "missing_user_email",
         });
         continue;
       }
@@ -305,21 +297,26 @@ if (!stage) {
       const reminder = billingReminderTemplate({
         customerName: userProfile.first_name,
         reservationPublicId: publicId,
-        billingType,
+        billingType: "monthly",
         stage,
         dueDate,
         remainingBalance,
         appUrl,
       });
 
-      const { error: notificationError } = await admin.from("notifications").insert({
-        user_id: rawReservation.user_id,
-        title: reminder.subject,
-        message: reminder.message,
-        type: "billing",
-        is_read: false,
-        date: nowIso,
-      });
+      const { error: notificationError } = await admin
+        .from("notifications")
+        .insert({
+          user_id: reservation.user_id,
+          title: reminder.subject,
+          message: reminder.message,
+          type: "billing",
+          is_read: false,
+          date: nowIso,
+          related_table: "reservations",
+          related_id: reservationId,
+          action_url: `/reservations/${publicId}`,
+        });
 
       if (notificationError) {
         skipped.push({
@@ -338,98 +335,79 @@ if (!stage) {
           html: reminder.html,
           text: reminder.text,
         });
+
         emailed += 1;
-      } catch (emailError) {
-        console.error(
-          `Billing email failed for reservation ${reservationId}:`,
-          emailError
-        );
+      } catch (_) {
+        // keep process going
       }
 
-      if (stage === "overdue" && daysLate >= 5) {
-  const penaltyAmount = Number((remainingBalance * 0.05).toFixed(2));
-  const penaltyDescription = `Late fee ${dueDateKey}`;
+      if (stage === "overdue") {
+        const daysLate = getDaysLate(dueDate, now);
 
-  const { data: existingPenalty, error: penaltyLookupError } = await admin
-    .from("ledger")
-    .select("ledger_id")
-    .eq("reservation_id", reservationId)
-    .eq("entry_type", "penalty")
-    .eq("description", penaltyDescription)
-    .limit(1)
-    .maybeSingle();
+        if (daysLate >= 5) {
+          const penaltyDescription = `Late fee ${dueDateKey}`;
 
-  if (penaltyLookupError) {
-    skipped.push({
-      reservationId,
-      reason: `penalty_lookup_failed:${penaltyLookupError.message}`,
-    });
-  } else if (!existingPenalty) {
-    const { error: penaltyInsertError } = await admin.from("ledger").insert({
-      user_id: rawReservation.user_id,
-      reservation_id: reservationId,
-      payment_id: null,
-      entry_type: "penalty",
-      deposit_type: null,
-      amount: penaltyAmount,
-      method: null,
-      status: "verified",
-      reference_no: null,
-      description: penaltyDescription,
-      notes: `5% late fee applied after 5 days overdue for billing cycle due ${dueDateKey}.`,
-      recorded_at: nowIso,
-      created_at: nowIso,
-      created_by: null,
-    });
+          const { data: existingPenalty } = await admin
+            .from("ledger")
+            .select("ledger_id")
+            .eq("reservation_id", reservationId)
+            .eq("entry_type", "penalty")
+            .eq("description", penaltyDescription)
+            .limit(1)
+            .maybeSingle();
 
-    if (penaltyInsertError) {
-      skipped.push({
-        reservationId,
-        reason: `penalty_insert_failed:${penaltyInsertError.message}`,
-      });
-    }
-  }
-}
+          if (!existingPenalty) {
+            const penaltyAmount = Number(
+              (remainingBalance * 0.05).toFixed(2)
+            );
 
-let nextTotalAmount = Number(rawReservation.total_amount || 0);
+            await admin.from("ledger").insert({
+              user_id: reservation.user_id,
+              reservation_id: reservationId,
+              payment_id: null,
+              entry_type: "penalty",
+              deposit_type: null,
+              amount: penaltyAmount,
+              method: null,
+              status: "verified",
+              reference_no: null,
+              description: penaltyDescription,
+              notes: `5% late fee applied for due cycle ${dueDateKey}.`,
+              recorded_at: nowIso,
+              created_at: nowIso,
+              created_by: null,
+            });
 
-if (stage === "overdue" && daysLate >= 5) {
-  const penaltyAmount = Number((remainingBalance * 0.05).toFixed(2));
+            await admin
+              .from("reservations")
+              .update({
+                amount_due: Number(
+                  (Number(reservation.amount_due || 0) + penaltyAmount).toFixed(2)
+                ),
+                updated_at: nowIso,
+              })
+              .eq("reservation_id", reservationId);
+          }
+        }
+      }
 
-  const { data: existingPenalty } = await admin
-    .from("ledger")
-    .select("ledger_id")
-    .eq("reservation_id", reservationId)
-    .eq("entry_type", "penalty")
-    .eq("description", `Late fee ${dueDateKey}`)
-    .limit(1)
-    .maybeSingle();
+      const { error: trackingError } = await admin
+        .from("reservations")
+        .update({
+          last_billing_reminder_at: nowIso,
+          last_billing_reminder_stage: stage,
+          last_billing_due_date: dueDate.toISOString(),
+          last_billing_cycle_type: "monthly",
+          updated_at: nowIso,
+        })
+        .eq("reservation_id", reservationId);
 
-  if (!existingPenalty) {
-    nextTotalAmount = Number(
-      (nextTotalAmount + penaltyAmount).toFixed(2)
-    );
-  }
-}
-
-const { error: updateError } = await admin
-  .from("reservations")
-  .update({
-    total_amount: nextTotalAmount,
-    last_billing_reminder_at: nowIso,
-    last_billing_reminder_stage: stage,
-    last_billing_due_date: dueDateIso,
-    last_billing_cycle_type: billingType,
-    updated_at: nowIso,
-  })
-  .eq("reservation_id", reservationId);
-
-if (updateError) {
-  skipped.push({
-    reservationId,
-    reason: `billing_tracking_update_failed:${updateError.message}`,
-  });
-}
+      if (trackingError) {
+        skipped.push({
+          reservationId,
+          reason: `tracking_update_failed:${trackingError.message}`,
+        });
+      }
     }
 
     return jsonResponse({

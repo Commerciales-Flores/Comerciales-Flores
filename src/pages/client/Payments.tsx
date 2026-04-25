@@ -190,34 +190,17 @@ function getReservationProgress(totalAmount?: number, paidAmount?: number) {
   return clampPercentage((Number(paidAmount || 0) / Number(totalAmount)) * 100);
 }
 
-function getMinimumFirstPaymentAmount(
-  reservation:
-    | {
-        totalAmount?: number | null;
-        minimumPaymentPercentSnapshot?: number | null;
-      }
-    | null
-    | undefined
-) {
-  if (!reservation) return 0;
-
-  const percent = Number(reservation.minimumPaymentPercentSnapshot || 0);
-  const total = Number(reservation.totalAmount || 0);
-
-  if (!percent || !total) return 0;
-  return (total * percent) / 100;
-}
 
 function getMinimumSubsequentPaymentAmount(paidAmount?: number | null) {
   return Number(paidAmount || 0) > 0 ? 500 : 0;
 }
 
-type PaymentFilterStatus = 'all' | 'paid' | 'partial' | 'unpaid';
+type PaymentFilterStatus = 'all' | 'paid' | 'pending' | 'unpaid';
 
 const PAYMENT_FILTER_OPTIONS: PaymentFilterStatus[] = [
   'all',
   'paid',
-  'partial',
+  'pending',
   'unpaid',
 ];
 
@@ -543,7 +526,7 @@ const getReservationRemainingFromLedger = useCallback(
   return {
     all: userPayments.length,
     paid: userPayments.filter((payment) => payment.status === 'paid').length,
-    partial: userPayments.filter((payment) => payment.status === 'partial').length,
+    pending: userPayments.filter((payment) => payment.status === 'unpaid').length,
     unpaid: userPayments.filter((payment) => payment.status === 'unpaid').length,
   };
 }, [userPayments]);
@@ -646,14 +629,10 @@ const paginatedPayments = useMemo(() => {
   .filter((p) => p.status === 'unpaid')
   .reduce((sum, p) => sum + p.amount, 0);
 
-  const partialAmount = userPayments
-  .filter((p) => p.status === 'partial')
-  .reduce((sum, p) => sum + p.amount, 0);
 
   return {
     totalPaid: netPaid,
     pendingAmount: pendingAmount, // optional (can remove entirely)
-    partialAmount: partialAmount,
     transactions: userPayments.length,
     grandTotal,
     totalPaidAcrossReservations,
@@ -765,9 +744,6 @@ const paginatedPayments = useMemo(() => {
   return getReservationRemainingFromLedger(selectedReservationData);
 }, [selectedReservationData, getReservationRemainingFromLedger]);
 
-  const selectedReservationMinimumFirstPayment = useMemo(() => {
-    return getMinimumFirstPaymentAmount(selectedReservationData);
-  }, [selectedReservationData]);
 
   const selectedReservationMinimumSubsequentPayment = useMemo(() => {
   if (!selectedReservationData) return 0;
@@ -2126,9 +2102,19 @@ const handleFilterChange = useCallback((status: PaymentFilterStatus) => {
                         {selectedReservationData.unitType === 'rental_space' ? (
                           <>
                             <div className="flex items-center justify-between">
-                              <span className="text-slate-500">Monthly Rate</span>
+                              <span className="text-slate-500">
+                                {selectedReservationData.bookingTerm === 'monthly'
+                                  ? 'Monthly Rate'
+                                  : selectedReservationData.bookingTerm === 'weekly'
+                                    ? 'Weekly Required Payment'
+                                    : 'Daily Required Payment'}
+                              </span>
                               <span className="font-semibold text-slate-900">
-                                {formatCurrency(rentalMonthlyAmount)}
+                                {formatCurrency(
+                                  selectedReservationData.bookingTerm === 'monthly'
+                                    ? rentalMonthlyAmount
+                                    : rentalRequiredPayment
+                                )}
                               </span>
                             </div>
 
@@ -2137,10 +2123,10 @@ const handleFilterChange = useCallback((status: PaymentFilterStatus) => {
                                 {selectedReservationData.bookingTerm === 'daily'
                                   ? 'Daily Full Payment Required'
                                   : selectedReservationData.bookingTerm === 'weekly'
-                                  ? 'Weekly Full Payment Required'
-                                  : selectedReservationData.paymentMode === 'deposit_plus_first_month'
-                                  ? 'Deposit + First Month Required'
-                                  : 'Monthly Required'}
+                                    ? 'Weekly Full Payment Required'
+                                    : selectedReservationData.paymentMode === 'deposit_plus_first_month'
+                                      ? 'Deposit + Advance Rent Required'
+                                      : 'Monthly Required'}
                               </span>
                               <span className="font-semibold text-slate-900">
                                 {formatCurrency(rentalRequiredPayment)}
@@ -2148,31 +2134,12 @@ const handleFilterChange = useCallback((status: PaymentFilterStatus) => {
                             </div>
                           </>
                         ) : (
-                          <>
-                            {getReservationPaidFromLedger(selectedReservationData.id) <= 0 &&
-                              selectedReservationMinimumFirstPayment > 0 && (
-                                <div className="flex items-center justify-between">
-                                  <span className="text-slate-500">
-                                    Minimum First Payment
-                                    {selectedReservationData.minimumPaymentPercentSnapshot
-                                      ? ` (${selectedReservationData.minimumPaymentPercentSnapshot}%)`
-                                      : ''}
-                                  </span>
-                                  <span className="font-semibold text-slate-900">
-                                    {formatCurrency(selectedReservationMinimumFirstPayment)}
-                                  </span>
-                                </div>
-                              )}
-
-                            {getReservationPaidFromLedger(selectedReservationData.id) > 0 && (
-                              <div className="flex items-center justify-between">
-                                <span className="text-slate-500">Minimum Subsequent Payment</span>
-                                <span className="font-semibold text-slate-900">
-                                  {formatCurrency(selectedReservationMinimumSubsequentPayment)}
-                                </span>
-                              </div>
-                            )}
-                          </>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500">Required Payment</span>
+                            <span className="font-semibold text-slate-900">
+                              {formatCurrency(selectedReservationBalance)}
+                            </span>
+                          </div>
                         )}
                       </div>
                     )}

@@ -20,6 +20,15 @@ const jsonResponse = (body: unknown, status = 200) =>
     },
   });
 
+const CATEGORY_LABELS: Record<string, string> = {
+  reservation_payment: "Reservation Payment",
+  advance_deposit: "Advance Deposit",
+  security_deposit: "Security Deposit",
+  monthly_rent: "Monthly Rent",
+  late_fee: "Late Fee",
+  payment: "Payment",
+};
+
 type AdminRow = {
   user_id: string;
   email: string | null;
@@ -52,7 +61,10 @@ serve(async (req) => {
     }
 
     if (authHeader !== `Bearer ${secret}`) {
-      return jsonResponse({ success: false, reason: "Unauthorized." }, 401);
+      return jsonResponse(
+        { success: false, reason: "Unauthorized." },
+        401
+      );
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -85,7 +97,7 @@ serve(async (req) => {
       return jsonResponse(
         {
           success: false,
-          reason: "amount must be a number greater than zero.",
+          reason: "amount must be greater than zero.",
         },
         400
       );
@@ -93,6 +105,9 @@ serve(async (req) => {
 
     const admin = createClient(supabaseUrl, serviceRoleKey);
     const nowIso = new Date().toISOString();
+
+    const categoryLabel =
+      CATEGORY_LABELS[payload.paymentCategory ?? "payment"] ?? "Payment";
 
     const { data: admins, error: adminsError } = await admin
       .from("users")
@@ -104,6 +119,7 @@ serve(async (req) => {
 
     let notified = 0;
     let emailed = 0;
+
     const skipped: Array<{ adminId?: string; reason: string }> = [];
 
     for (const recipient of (admins ?? []) as AdminRow[]) {
@@ -113,18 +129,25 @@ serve(async (req) => {
         reservationPublicId: payload.reservationPublicId,
         paymentPublicId: payload.paymentPublicId,
         amount: payload.amount,
-        paymentCategory: payload.paymentCategory,
+        paymentCategory: categoryLabel,
         appUrl,
       });
 
-      const { error: notificationError } = await admin.from("notifications").insert({
-        user_id: recipient.user_id,
-        title: emailTemplate.subject,
-        message: emailTemplate.message,
-        type: "payment",
-        is_read: false,
-        date: nowIso,
-      });
+      const { error: notificationError } = await admin
+        .from("notifications")
+        .insert({
+          user_id: recipient.user_id,
+          title: emailTemplate.subject,
+          message:
+            emailTemplate.message ??
+            `${categoryLabel} ${payload.paymentPublicId} requires review.`,
+          type: "payment",
+          is_read: false,
+          date: nowIso,
+          related_table: "payments",
+          related_id: payload.paymentId,
+          action_url: `/admin/payments/${payload.paymentPublicId}`,
+        });
 
       if (notificationError) {
         skipped.push({
@@ -151,6 +174,7 @@ serve(async (req) => {
           html: emailTemplate.html,
           text: emailTemplate.text,
         });
+
         emailed += 1;
       } catch (error) {
         skipped.push({
@@ -162,6 +186,17 @@ serve(async (req) => {
         });
       }
     }
+
+    await admin.from("audit_log").insert({
+      user_id: null,
+      action: "ADMIN_PAYMENT_SUBMITTED_ALERT_SENT",
+      target_table: "payments",
+      target_id: payload.paymentId,
+      target_public_id: payload.paymentPublicId,
+      changed_fields: ["admin_notification"],
+      notes: `${categoryLabel} submitted by customer. ${notified} admins notified.`,
+      timestamp: nowIso,
+    });
 
     return jsonResponse({
       success: true,

@@ -224,6 +224,8 @@ export function buildInitialReservationForm(
     eventPurpose: "",
     attendees: "",
 
+    promoCode: "",
+
     businessType: "",
 
     appointmentDate: undefined,

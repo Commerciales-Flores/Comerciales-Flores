@@ -12,6 +12,8 @@ import {
   ShieldCheck,
   TrendingUp,
   Wallet,
+  Tag,
+BadgePercent,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -32,6 +34,7 @@ import type {
   ValueType,
 } from "recharts/types/component/DefaultTooltipContent";
 import { useReactToPrint } from "react-to-print";
+import { usePromotions } from "../../contexts/PromotionsContext";
 
 import { useAdminData } from "../../contexts/AdminDataContext";
 import type { UnitType } from "../../data/types";
@@ -226,7 +229,7 @@ function countTooltipFormatter(
 
 export default function AdminAnalytics() {
   const { reservations, payments, units } = useAdminData();
-
+  const { promotions } = usePromotions();
   const [granularity, setGranularity] = useState<Granularity>("monthly");
   const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>("category");
 
@@ -243,6 +246,68 @@ export default function AdminAnalytics() {
     () => payments.filter((payment) => payment.status === "paid"),
     [payments]
   );
+
+  const promoReservations = useMemo(() => {
+  return reservations.filter((reservation) => {
+    const promoCode =
+      (reservation as any).promoCode ??
+      (reservation as any).promo_code ??
+      null;
+
+    const discountAmount =
+      Number(
+        (reservation as any).discountAmount ??
+          (reservation as any).discount_amount ??
+          0
+      );
+
+    return Boolean(promoCode) || discountAmount > 0;
+  });
+}, [reservations]);
+
+const totalPromoDiscount = useMemo(() => {
+  return promoReservations.reduce((sum, reservation) => {
+    return (
+      sum +
+      Number(
+        (reservation as any).discountAmount ??
+          (reservation as any).discount_amount ??
+          0
+      )
+    );
+  }, 0);
+}, [promoReservations]);
+
+const promoRevenueInfluenced = useMemo(() => {
+  const promoReservationIds = new Set(promoReservations.map((r) => r.id));
+
+  return paidPayments
+    .filter((payment) => promoReservationIds.has(payment.reservationId))
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+}, [paidPayments, promoReservations]);
+
+const activePromosCount = useMemo(() => {
+  return promotions.filter((promo) => promo.isActive).length;
+}, [promotions]);
+
+const topPromoCode = useMemo(() => {
+  const map = new Map<string, number>();
+
+  promoReservations.forEach((reservation) => {
+    const code =
+      String(
+        (reservation as any).promoCode ??
+          (reservation as any).promo_code ??
+          ""
+      )
+        .trim()
+        .toUpperCase() || "PROMO";
+
+    map.set(code, (map.get(code) ?? 0) + 1);
+  });
+
+  return Array.from(map.entries()).sort((a, b) => b[1] - a[1])[0] ?? null;
+}, [promoReservations]);
 
   const reservationById = useMemo(() => {
     const map = new Map<string, (typeof reservations)[number]>();
@@ -314,17 +379,18 @@ export default function AdminAnalytics() {
     [approvedOrBetterReservations]
   );
 
-  const outstandingTotal = useMemo(
-    () =>
-      approvedOrBetterReservations.reduce((sum, reservation) => {
-        const remaining =
-          Number(reservation.totalAmount || 0) -
-          Number(reservation.paidAmount || 0);
+  const outstandingTotal = useMemo(() => {
+  return approvedOrBetterReservations.reduce((sum, reservation) => {
+    const paid = paidPayments
+      .filter((p) => p.reservationId === reservation.id)
+      .reduce((s, p) => s + Number(p.amount || 0), 0);
 
-        return sum + Math.max(remaining, 0);
-      }, 0),
-    [approvedOrBetterReservations]
-  );
+    const remaining =
+      Number(reservation.totalAmount || 0) - paid;
+
+    return sum + Math.max(remaining, 0);
+  }, 0);
+}, [approvedOrBetterReservations, paidPayments]);
 
   const collectionRate = useMemo(() => {
     if (expectedTotal <= 0) return 0;
@@ -355,9 +421,24 @@ export default function AdminAnalytics() {
   const globalOccupancyRate = useMemo(() => {
     if (units.length === 0) return 0;
 
-    const activeReservationUnitIds = new Set(
-      approvedOrBetterReservations.map((reservation) => reservation.unitId)
-    );
+    const now = new Date();
+
+const activeReservationUnitIds = new Set(
+  reservations
+    .filter((reservation) => {
+      const start = getSafeDate(reservation.startDate);
+      const end = getSafeDate(reservation.endDate);
+
+      return (
+        reservation.status === "confirmed" &&
+        start &&
+        end &&
+        start <= now &&
+        end >= now
+      );
+    })
+    .map((reservation) => reservation.unitId)
+);
 
     return clampPercentage((activeReservationUnitIds.size / units.length) * 100);
   }, [approvedOrBetterReservations, units.length]);
@@ -787,7 +868,7 @@ export default function AdminAnalytics() {
                   value={formatCurrency(totalRevenue)}
                   subtext={
                     hasPaidPayments
-                      ? "Based on paid payments"
+                      ? "Verified payments only"
                       : "Waiting for paid payments"
                   }
                   icon={<TrendingUp className="size-4 text-emerald-600 sm:size-5" />}
@@ -820,7 +901,7 @@ export default function AdminAnalytics() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
                 <InsightCard
                   title="Average Reservation Value"
                   value={formatCurrency(averageReservationValue)}
@@ -829,9 +910,9 @@ export default function AdminAnalytics() {
                 />
 
                 <InsightCard
-                  title="Average Duration"
+                  title="Average Booking Length"
                   value={averageDuration > 0 ? averageDuration.toFixed(1) : "0.0"}
-                  note="Average reservation duration across confirmed and completed reservations"
+                  note="Average raw booking duration across confirmed bookings"
                   icon={<Activity className="size-5 text-emerald-600" />}
                 />
 
@@ -845,7 +926,49 @@ export default function AdminAnalytics() {
                   }
                   icon={<PieChartIcon className="size-5 text-violet-600" />}
                 />
+                <InsightCard
+                  title="Top Promo"
+                  value={topPromoCode ? topPromoCode[0] : "No data"}
+                  note={
+                    topPromoCode
+                      ? `${topPromoCode[1]} uses`
+                      : "No promo reservations yet"
+                  }
+                  icon={<Tag className="size-5 text-orange-600" />}
+                />
               </div>
+
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+  <MetricCard
+    label="Active Promos"
+    value={activePromosCount}
+    subtext="Currently enabled promos"
+    icon={<Tag className="size-4 text-emerald-600 sm:size-5" />}
+  />
+
+  <MetricCard
+    label="Promo Reservations"
+    value={promoReservations.length}
+    subtext="Bookings with promo usage"
+    icon={<BadgePercent className="size-4 text-violet-600 sm:size-5" />}
+  />
+
+  <MetricCard
+    label="Discounts Given"
+    value={formatCurrency(totalPromoDiscount)}
+    subtext="Total promo savings granted"
+    icon={<CircleDollarSign className="size-4 text-orange-600 sm:size-5" />}
+    valueClassName="text-orange-600"
+  />
+
+  <MetricCard
+    label="Revenue Influenced"
+    value={formatCurrency(promoRevenueInfluenced)}
+    subtext="Verified revenue from promo bookings"
+    icon={<TrendingUp className="size-4 text-blue-600 sm:size-5" />}
+    valueClassName="text-blue-600"
+  />
+</div>
 
               <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
                 <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

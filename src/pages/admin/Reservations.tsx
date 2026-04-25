@@ -95,6 +95,29 @@ function getRemainingBalance(reservation: {
   );
 }
 
+function getDueNow(reservation: any) {
+  return Number(
+    reservation.initialDue ??
+      reservation.amountDue ??
+      reservation.minimumInitialPayment ??
+      reservation.totalAmount ??
+      0
+  );
+}
+
+function getBillingLabel(reservation: any) {
+  if (reservation.unitType === 'rental_space') {
+    if (reservation.bookingTerm === 'monthly') return 'Monthly Lease';
+    if (reservation.bookingTerm === 'weekly') return 'Weekly Stay';
+    if (reservation.bookingTerm === 'daily') return 'Daily Stay';
+  }
+
+  if (reservation.unitType === 'function_hall') return 'Function Hall';
+  if (reservation.unitType === 'parking_slot') return 'Parking';
+
+  return 'Reservation';
+}
+
 function isFullyPaid(reservation: {
   totalAmount?: number | null;
   paidAmount?: number | null;
@@ -156,6 +179,17 @@ function getExtensionRequestDetails(reservation: any) {
     extensionRequested: true,
     extensionMonths,
     proposedEndDate,
+  };
+}
+
+function getCancellationRequestDetails(reservation: any) {
+  const details = reservation?.details ?? {};
+
+  if (details.cancellationRequested !== true) return null;
+
+  return {
+    reason: details.cancellationReason ?? '',
+    requestedAt: details.cancellationRequestedAt ?? null,
   };
 }
 
@@ -871,6 +905,11 @@ const hasNoSearchResults =
                             EXTENSION REQUESTED
                           </span>
                         )}
+                        {getCancellationRequestDetails(reservation) && (
+                          <span className="px-2 py-0.5 text-[10px] font-bold rounded-full border border-red-200 bg-red-50 text-red-700">
+                            CANCELLATION REQUESTED
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -1039,36 +1078,44 @@ const hasNoSearchResults =
                       />
 
                       <DataCell
-                        className="w-[220px]"
-                        mono
-                        value={
-                          <div>
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                              Price
-                            </p>
+  className="w-[220px]"
+  mono
+  value={
+    <div className="space-y-1.5">
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+          Due Now
+        </p>
+        <p className="mt-1 text-sm font-bold text-blue-700">
+          {formatCurrency(getDueNow(reservation))}
+        </p>
+      </div>
 
-                            <p className="mt-1 text-sm font-bold text-slate-700">
-                              {formatCurrency(reservation.totalAmount)}
-                            </p>
+      <div className="text-[11px] text-slate-500">
+        Total:{" "}
+        <span className="font-semibold text-slate-700">
+          {formatCurrency(reservation.totalAmount)}
+        </span>
+      </div>
 
-                            <span
-                              className={`mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                                isFullyPaid(reservation)
-                                  ? 'bg-green-100 text-green-700'
-                                  : hasRecordedPayment(reservation)
-                                  ? 'bg-blue-100 text-blue-700'
-                                  : 'bg-slate-100 text-slate-500'
-                              }`}
-                            >
-                              {isFullyPaid(reservation)
-                                ? 'Paid'
-                                : hasRecordedPayment(reservation)
-                                ? 'Partial'
-                                : 'Unpaid'}
-                            </span>
-                          </div>
-                        }
-                      />
+      <span
+        className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+          isFullyPaid(reservation)
+            ? "bg-green-100 text-green-700"
+            : hasRecordedPayment(reservation)
+              ? "bg-blue-100 text-blue-700"
+              : "bg-slate-100 text-slate-500"
+        }`}
+      >
+        {isFullyPaid(reservation)
+          ? "Paid"
+          : hasRecordedPayment(reservation)
+            ? "Partial"
+            : "Unpaid"}
+      </span>
+    </div>
+  }
+/>
 
                       <DataCell
                         className="w-[180px]"
@@ -1126,6 +1173,11 @@ const hasNoSearchResults =
                             {getExtensionRequestDetails(reservation) && canHandleExtension(reservation) && (
                               <span className="inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
                                 Extension requested
+                              </span>
+                            )}
+                            {getCancellationRequestDetails(reservation) && (
+                              <span className="px-2 py-0.5 text-[10px] font-bold rounded-full border border-red-200 bg-red-50 text-red-700">
+                                CANCELLATION REQUESTED
                               </span>
                             )}
                           </div>
@@ -1474,6 +1526,49 @@ const hasNoSearchResults =
                       )}
                   </div>
                 </div>
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-5">
+  <h4 className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-emerald-600">
+    <CreditCard className="size-4" />
+    Billing Summary
+  </h4>
+
+  <div className="space-y-3">
+    <div className="flex justify-between gap-4 text-sm">
+      <span className="text-slate-500">Billing Type</span>
+      <span className="font-semibold text-slate-900">
+        {getBillingLabel(selectedReservationData)}
+      </span>
+    </div>
+
+    <div className="flex justify-between gap-4 text-sm">
+      <span className="text-slate-500">Due Upon Approval</span>
+      <span className="font-bold text-emerald-700">
+        {formatCurrency(getDueNow(selectedReservationData))}
+      </span>
+    </div>
+
+    <div className="flex justify-between gap-4 text-sm">
+      <span className="text-slate-500">Paid To Date</span>
+      <span className="font-semibold text-blue-700">
+        {formatCurrency(selectedReservationData.paidAmount)}
+      </span>
+    </div>
+
+    <div className="flex justify-between gap-4 border-t border-emerald-100 pt-3 text-sm">
+      <span className="text-slate-500">Remaining Balance</span>
+      <span className="font-bold text-slate-900">
+        {formatCurrency(getRemainingBalance(selectedReservationData))}
+      </span>
+    </div>
+
+    <div className="flex justify-between gap-4 text-sm">
+      <span className="text-slate-500">Total Contract</span>
+      <span className="font-semibold text-slate-900">
+        {formatCurrency(selectedReservationData.totalAmount)}
+      </span>
+    </div>
+  </div>
+</div>
               </div>
 
               {selectedReservationData.modeOfVisit === 'onsite' && (
@@ -1546,6 +1641,33 @@ const hasNoSearchResults =
                           ? formatDate(selectedReservationExtension.proposedEndDate)
                           : 'Unable to calculate'}
                       </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {getCancellationRequestDetails(selectedReservationData) && (
+                <div className="rounded-2xl border border-red-100 bg-red-50/70 p-5">
+                  <h4 className="text-[11px] font-semibold text-red-600 uppercase tracking-wide mb-3 flex items-center gap-2">
+                    <XCircle className="size-4" />
+                    Cancellation Request
+                  </h4>
+
+                  <div className="space-y-3">
+                    <div className="flex justify-between gap-4 text-sm">
+                      <span className="text-slate-500">Requested At</span>
+                      <span className="font-semibold text-slate-900">
+                        {formatDate(
+                          getCancellationRequestDetails(selectedReservationData)?.requestedAt
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="text-sm">
+                      <span className="text-slate-500 block mb-1">Reason</span>
+                      <p className="rounded-xl border border-red-100 bg-white px-3 py-2 text-slate-700">
+                        {getCancellationRequestDetails(selectedReservationData)?.reason ||
+                          'No reason provided'}
+                      </p>
                     </div>
                   </div>
                 </div>

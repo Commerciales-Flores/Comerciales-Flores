@@ -45,23 +45,29 @@ const RecordsContext = createContext<RecordsContextType | undefined>(undefined);
 
 function mapLedgerRow(row: any): LedgerEntry {
   return {
-    id: row.ledger_id,
-    userId: row.user_id,
-    publicId: row.public_id,
-    reservationId: row.reservation_id,
-    paymentId: row.payment_id,
-    entryType: row.entry_type,
-    depositType: row.deposit_type ?? null,
-    amount: Number(row.amount),
-    method: row.method,
-    status: row.status,
-    referenceNo: row.reference_no,
-    description: row.description ? normalizeText(row.description) : null,
-    notes: row.notes ? normalizeText(row.notes) : null,
-    recordedAt: row.recorded_at,
-    createdAt: row.created_at,
-    createdBy: row.created_by,
-  };
+  id: row.ledger_id,
+  userId: row.user_id,
+  publicId: row.public_id,
+  reservationId: row.reservation_id,
+  paymentId: row.payment_id,
+  entryType: row.entry_type,
+  depositType: row.deposit_type ?? null,
+  amount: Number(row.amount),
+  method: row.method,
+  status: row.status,
+  referenceNo: row.reference_no,
+  description: row.description ? normalizeText(row.description) : null,
+  notes: row.notes ? normalizeText(row.notes) : null,
+  recordedAt: row.recorded_at,
+  createdAt: row.created_at,
+  createdBy: row.created_by,
+
+  subtotalAmount: row.subtotal_amount ?? null,
+  vatRate: row.vat_rate ?? null,
+  vatAmount: row.vat_amount ?? null,
+  discountAmount: row.discount_amount ?? null,
+  billingSnapshot: row.billing_snapshot ?? null,
+};
 }
 
 function mapAuditRow(row: any): AuditLog {
@@ -120,7 +126,12 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
         notes,
         recorded_at,
         created_at,
-        created_by
+        created_by,
+        subtotal_amount,
+        vat_rate,
+        vat_amount,
+        discount_amount,
+        billing_snapshot
       `)
       .order('recorded_at', { ascending: false });
 
@@ -319,6 +330,11 @@ export function RecordsProvider({ children }: { children: ReactNode }) {
             recorded_at: entry.recordedAt,
             created_at: entry.createdAt,
             created_by: entry.createdBy,
+            subtotal_amount: entry.subtotalAmount ?? null,
+            vat_rate: entry.vatRate ?? null,
+            vat_amount: entry.vatAmount ?? null,
+            discount_amount: entry.discountAmount ?? null,
+            billing_snapshot: entry.billingSnapshot ?? null,
           },
         ])
         .select()

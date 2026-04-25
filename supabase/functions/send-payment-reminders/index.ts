@@ -20,14 +20,15 @@ const jsonResponse = (body: unknown, status = 200) =>
     },
   });
 
-type ReminderStage = "three_day" | "one_day" | "same_day";
+type ReminderStage = "three_day" | "one_day" | "same_day" | "overdue";
 
 type ReservationRow = {
   reservation_id: string;
   user_id: string;
   public_id: string | null;
-  end_date: string;
-  total_amount: number | null;
+  reservation_type: string | null;
+  payment_due_at: string | null;
+  amount_due: number | null;
   paid_amount: number | null;
   status: string | null;
   last_payment_reminder_at: string | null;
@@ -39,8 +40,8 @@ type UserRow = {
   first_name: string | null;
 };
 
-function getRemainingBalance(totalAmount: number | null, paidAmount: number | null) {
-  return Math.max(Number(totalAmount || 0) - Number(paidAmount || 0), 0);
+function getRemainingBalance(amountDue: number | null, paidAmount: number | null) {
+  return Math.max(Number(amountDue || 0) - Number(paidAmount || 0), 0);
 }
 
 function getManilaNowParts(now = new Date()) {
@@ -75,18 +76,18 @@ function isWithinReminderHours(now = new Date()) {
 }
 
 function getReminderStage(
-  endDateIso: string,
+  dueDateIso: string,
   now = new Date()
 ): ReminderStage | null {
   const manilaNow = getManilaNowParts(now);
-  const manilaEnd = getManilaNowParts(new Date(endDateIso));
+  const manilaDue = getManilaNowParts(new Date(dueDateIso));
 
   const todayUtc = Date.UTC(manilaNow.year, manilaNow.month - 1, manilaNow.day);
-  const endUtc = Date.UTC(manilaEnd.year, manilaEnd.month - 1, manilaEnd.day);
+  const dueUtc = Date.UTC(manilaDue.year, manilaDue.month - 1, manilaDue.day);
 
-  const diffDays = Math.floor((endUtc - todayUtc) / (1000 * 60 * 60 * 24));
+  const diffDays = Math.floor((dueUtc - todayUtc) / (1000 * 60 * 60 * 24));
 
-  if (diffDays < 0) return null;
+  if (diffDays < 0) return "overdue";
   if (diffDays === 0) return "same_day";
   if (diffDays === 1) return "one_day";
   if (diffDays <= 3) return "three_day";
@@ -152,15 +153,17 @@ serve(async (req) => {
         reservation_id,
         user_id,
         public_id,
-        end_date,
-        total_amount,
+        reservation_type,
+        payment_due_at,
+        amount_due,
         paid_amount,
         status,
         last_payment_reminder_at,
         last_payment_reminder_stage
       `)
       .eq("status", "confirmed")
-      .not("end_date", "is", null);
+      .eq("reservation_type", "monthly_lease")
+      .not("payment_due_at", "is", null);
 
     if (reservationsError) {
       throw reservationsError;
@@ -175,8 +178,16 @@ serve(async (req) => {
     for (const reservation of (reservations ?? []) as ReservationRow[]) {
       scanned += 1;
 
+      if (!reservation.payment_due_at) {
+        skipped.push({
+          reservationId: reservation.reservation_id,
+          reason: "missing_payment_due_at",
+        });
+        continue;
+      }
+
       const remainingBalance = getRemainingBalance(
-        reservation.total_amount,
+        reservation.amount_due,
         reservation.paid_amount
       );
 
@@ -188,7 +199,8 @@ serve(async (req) => {
         continue;
       }
 
-      const stage = getReminderStage(reservation.end_date, now);
+      const stage = getReminderStage(reservation.payment_due_at, now);
+
       if (!stage) {
         skipped.push({
           reservationId: reservation.reservation_id,
@@ -233,7 +245,7 @@ serve(async (req) => {
         customerName: userProfile?.first_name,
         reservationPublicId: publicId,
         remainingBalance,
-        endDate: reservation.end_date,
+        endDate: reservation.payment_due_at,
         stage,
         appUrl,
       });
@@ -247,6 +259,9 @@ serve(async (req) => {
           type: "payment",
           is_read: false,
           date: nowIso,
+          related_table: "reservations",
+          related_id: reservation.reservation_id,
+          action_url: `/reservations/${publicId}`,
         });
 
       if (notificationError) {
@@ -275,11 +290,6 @@ serve(async (req) => {
 
           emailed += 1;
         } catch (emailError) {
-          console.error(
-            `Payment reminder email failed for reservation ${reservation.reservation_id}:`,
-            emailError
-          );
-
           skipped.push({
             reservationId: reservation.reservation_id,
             reason:
@@ -304,7 +314,6 @@ serve(async (req) => {
           reservationId: reservation.reservation_id,
           reason: `reminder_tracking_update_failed:${updateError.message}`,
         });
-        continue;
       }
     }
 

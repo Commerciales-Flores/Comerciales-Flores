@@ -93,14 +93,18 @@ const NotificationContext = createContext<NotificationsDataContextType | undefin
 
 function mapNotificationRow(row: any): Notification {
   return {
-    id: row.notification_id,
-    userId: row.user_id,
-    title: normalizeText(row.title ?? ''),
-    message: normalizeText(row.message ?? ''),
-    type: row.type,
-    read: row.is_read,
-    date: row.date,
-  };
+  id: row.notification_id,
+  userId: row.user_id,
+  title: normalizeText(row.title ?? ''),
+  message: normalizeText(row.message ?? ''),
+  type: row.type,
+  read: row.is_read,
+  date: row.date,
+
+  relatedTable: row.related_table ?? null,
+  relatedId: row.related_id ?? null,
+  actionUrl: row.action_url ?? null,
+};
 }
 
 
@@ -116,7 +120,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const fetchNotifications = useCallback(async () => {
     const { data, error } = await supabase
       .from('notifications')
-      .select('notification_id, user_id, title, message, type, is_read, date')
+      .select(`
+notification_id,
+user_id,
+title,
+message,
+type,
+is_read,
+date,
+related_table,
+related_id,
+action_url
+`)
       .order('date', { ascending: false });
 
     if (error) {
@@ -133,7 +148,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     const load = async () => {
       const { data, error } = await supabase
         .from('notifications')
-        .select('notification_id, user_id, title, message, type, is_read, date')
+        .select(`
+notification_id,
+user_id,
+title,
+message,
+type,
+is_read,
+date,
+related_table,
+related_id,
+action_url
+`)
         .order('date', { ascending: false });
 
       if (!mounted) return;
@@ -223,6 +249,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         type: notification.type,
         is_read: false,
         date: new Date().toISOString(),
+
+        related_table: notification.relatedTable ?? null,
+        related_id: notification.relatedId ?? null,
+        action_url: notification.actionUrl ?? null,
       };
 
       const { error } = await supabase
@@ -381,7 +411,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }: {
       userId: string;
       reservationPublicId: string;
-      action: 'approved' | 'rejected' | 'completed';
+      action:
+  | 'approved'
+  | 'confirmed'
+  | 'rejected'
+  | 'completed'
+  | 'cancelled';
     }): Promise<void> => {
       await addNotification({
         userId,

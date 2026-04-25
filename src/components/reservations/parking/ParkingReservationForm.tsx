@@ -87,10 +87,6 @@ export default function ParkingReservationForm({
   updateReservationField,
   handleFieldBlur,
   formErrors,
-  estimatedTotal,
-  subtotalAmount,
-  vatAmount,
-  formatCurrency,
 }: Props) {
   const [isTimeDropdownOpen, setIsTimeDropdownOpen] = useState(false);
   const [parkingRules, setParkingRules] =

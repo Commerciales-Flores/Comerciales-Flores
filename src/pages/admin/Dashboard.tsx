@@ -296,7 +296,7 @@ export default function AdminDashboard() {
     const paidPayments = payments.filter((p) => p.status === 'paid');
     const paidPaymentsCount = paidPayments.length;
     const pendingPayments = payments.filter(
-      (p) => p.status === 'unpaid' || p.status === 'partial'
+      (p) => p.status !== 'paid'
     );
 
     const recentInquiries = (tickets ?? [])

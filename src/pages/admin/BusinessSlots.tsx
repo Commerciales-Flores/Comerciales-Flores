@@ -11,6 +11,7 @@ import SortSelect from '../../components/shared/filters/SortSelect';
 import type { UnitSortOption } from '../../data/sorting';
 import { UNIT_SORT_OPTIONS } from '../../utils/sorting/sortingOptions';
 import { sortUnits } from '../../utils/sorting/sortUnits';
+import { usePromotions } from '../../contexts/PromotionsContext';
 import {
   Plus,
   Edit,
@@ -75,7 +76,8 @@ const INITIAL_FORM_STATE = {
   features: '',
   propertyId: '',
   location: '',
-  minimumPaymentPercent: '',
+  securityDepositMonths: '1',
+  advanceRentMonths: '1',
   contractFilePath: '',
   contractFileName: '',
 };
@@ -145,7 +147,8 @@ type UnitRecord = {
   features: string[];
   propertyId?: string | null;
   location?: string | null;
-  minimumPaymentPercent?: number | null;
+  securityDepositMonths?: number | null;
+  advanceRentMonths?: number | null;
   contractFilePath?: string | null;
   contractFileName?: string | null;
 };
@@ -359,7 +362,8 @@ type UnitFormModalProps = {
       features: string[];
       propertyId: string;
       location: string;
-      minimumPaymentPercent?: number | null;
+      securityDepositMonths?: number | null;
+      advanceRentMonths?: number | null;
       contractFilePath?: string | null;
       contractFileName?: string | null;
     };
@@ -394,6 +398,45 @@ const UnitFormModal = React.memo(function UnitFormModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
 
+  const {
+    promotions,
+    attachPromotionToUnit,
+    detachPromotionFromUnit,
+  } = usePromotions();
+
+  const attachedPromo = useMemo(() => {
+    if (!editingUnit) return null;
+
+    return (
+      promotions.find((promo) =>
+        promo.attachedUnitIds?.includes(editingUnit.id)
+      ) ?? null
+    );
+  }, [editingUnit, promotions]);
+
+  const handleAttachPromo = useCallback(
+    async (promoId: string) => {
+      if (!editingUnit || !promoId) return;
+
+      try {
+        await attachPromotionToUnit(promoId, editingUnit.id);
+      } catch (error: any) {
+        setFormError(error?.message || 'Failed to attach promo.');
+      }
+    },
+    [attachPromotionToUnit, editingUnit]
+  );
+
+  const handleDetachPromo = useCallback(async () => {
+    if (!editingUnit || !attachedPromo) return;
+
+    try {
+      await detachPromotionFromUnit(attachedPromo.id, editingUnit.id);
+    } catch (error: any) {
+      setFormError(error?.message || 'Failed to detach promo.');
+    }
+  }, [attachedPromo, detachPromotionFromUnit, editingUnit]);
+
   const videoInputRef = useRef<HTMLInputElement | null>(null);
   const [videoPreviews, setVideoPreviews] = useState<ImagePreviewItem[]>([]);
   const [isUploadingVideos, setIsUploadingVideos] = useState(false);
@@ -405,6 +448,7 @@ const [subtypes, setSubtypes] = useState<TaxonomyOption[]>([]);
   const [newCategoryLabel, setNewCategoryLabel] = useState('');
   const [newSubtypeLabel, setNewSubtypeLabel] = useState('');
   const [isSavingTaxonomy, setIsSavingTaxonomy] = useState(false);
+  
 
   const allPreviewsRef = useRef<ImagePreviewItem[]>([]);
 
@@ -519,11 +563,8 @@ const [subtypes, setSubtypes] = useState<TaxonomyOption[]>([]);
       features: editingUnit.features.join(', '),
       propertyId: editingUnit.propertyId || '',
       location: editingUnit.location || defaultLocation,
-      minimumPaymentPercent:
-        editingUnit.minimumPaymentPercent !== null &&
-        editingUnit.minimumPaymentPercent !== undefined
-          ? String(editingUnit.minimumPaymentPercent)
-          : '',
+      securityDepositMonths: editingUnit.securityDepositMonths?.toString() || '1',
+      advanceRentMonths: editingUnit.advanceRentMonths?.toString() || '1',
       contractFilePath: editingUnit.contractFilePath || '',
       contractFileName: editingUnit.contractFileName || '',
     });
@@ -1029,8 +1070,8 @@ const filteredSubtypes = useMemo(() => {
     try {
       const parsedPrice = Number(unitForm.price);
 
-      if (!Number.isFinite(parsedPrice) || parsedPrice < 500) {
-        setFormError('Price must be at least ₱500.');
+      if (!Number.isFinite(parsedPrice) || parsedPrice < 1) {
+  setFormError('Price must be at least ₱1.');
         setIsSubmitting(false);
         return;
       }
@@ -1071,37 +1112,49 @@ if (
 }
           
 
-      const parsedMinimumPaymentPercent =
-        unitForm.minimumPaymentPercent === ''
-          ? null
-          : parseInt(unitForm.minimumPaymentPercent, 10);
-
             await onSave({
-        unitId: editingUnit?.id,
-        data: {
-          name: unitForm.name.trim(),
-          type: unitForm.type,
-          category: unitForm.unitCategory || null,
-          subtype: unitForm.unitSubtype || null,
-          description: unitForm.description.trim(),
-          price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
-          imagePaths: parseCommaSeparated(unitForm.images),
-          videoPaths: parseCommaSeparated(unitForm.videos),
-          policies: unitForm.policies.trim(),
-          capacity: parsedCapacity,
-          available: unitForm.available,
-          features: parseCommaSeparated(unitForm.features),
-          propertyId: unitForm.propertyId,
-          contractFilePath: unitForm.contractFilePath || null,
-          contractFileName: unitForm.contractFileName || null,
-          location: unitForm.location || defaultLocation,
-          minimumPaymentPercent:
-            parsedMinimumPaymentPercent !== null &&
-            Number.isFinite(parsedMinimumPaymentPercent)
-              ? parsedMinimumPaymentPercent
-              : null,
-        },
-      });
+  unitId: editingUnit?.id,
+  data: {
+    name: unitForm.name.trim(),
+    type: unitForm.type,
+    category: unitForm.unitCategory || null,
+    subtype: unitForm.unitSubtype || null,
+    description: unitForm.description.trim(),
+    price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
+    imagePaths: parseCommaSeparated(unitForm.images),
+    videoPaths: parseCommaSeparated(unitForm.videos),
+    policies: unitForm.policies.trim(),
+    capacity: parsedCapacity,
+    available: unitForm.available,
+    features: parseCommaSeparated(unitForm.features),
+    propertyId: unitForm.propertyId,
+    contractFilePath: unitForm.contractFilePath || null,
+    contractFileName: unitForm.contractFileName || null,
+    location: unitForm.location || defaultLocation,
+
+    securityDepositMonths:
+      unitForm.type === 'rental_space'
+        ? Math.min(
+            6,
+            Math.max(
+              0,
+              parseInt(unitForm.securityDepositMonths || '1', 10)
+            )
+          )
+        : null,
+
+    advanceRentMonths:
+      unitForm.type === 'rental_space'
+        ? Math.min(
+            6,
+            Math.max(
+              1,
+              parseInt(unitForm.advanceRentMonths || '1', 10)
+            )
+          )
+        : null,
+  },
+});
 
       onClose();
     } catch (error: any) {
@@ -1428,7 +1481,7 @@ if (
                   updateFormField(
                     'price',
                     finalizeAmountInput(e.target.value, {
-                      min: 500,
+                      min: 1,
                       max: 999_999_999.99,
                       decimals: 2,
                       allowEmpty: true,
@@ -1439,49 +1492,151 @@ if (
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
               />
               <p className="ml-1 text-[11px] text-slate-400">
-                Minimum price is ₱500.
-                {unitForm.type === 'rental_space' && ' Monthly rate'}
-                {unitForm.type === 'function_hall' && ' Daily rate'}
-                {unitForm.type === 'parking_slot' && ' Base monthly rate for this parking area'}
+                {!unitForm.type && 'Enter the base price for this unit.'}
+
+                {unitForm.type === 'rental_space' &&
+                  'Enter the monthly rental rate for this space.'}
+
+                {unitForm.type === 'function_hall' &&
+                  'Enter the daily booking rate for this function hall.'}
+
+                {unitForm.type === 'parking_slot' &&
+                  'Enter the default parking rate. Hourly and daily pricing may also apply.'}
               </p>
             </div>
 
-            <div className="space-y-1.5">
-              <label
-                htmlFor="minimumPaymentPercent"
-                className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400"
-              >
-                Minimum Initial Payment
-              </label>
-              <select
-                id="minimumPaymentPercent"
-                value={unitForm.minimumPaymentPercent}
-                onChange={(e) => updateFormField('minimumPaymentPercent', e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
-              >
-                <option value="">No minimum</option>
-                <option value="10">10%</option>
-                <option value="20">20%</option>
-                <option value="30">30%</option>
-                <option value="40">40%</option>
-                <option value="50">50%</option>
-                <option value="60">60%</option>
-                <option value="70">70%</option>
-                <option value="80">80%</option>
-                <option value="90">90%</option>
-                <option value="100">100%</option>
-              </select>
-              <p className="ml-1 text-[11px] text-slate-400">
-                {unitForm.type === 'rental_space' &&
-                  'Required minimum for the first payment only. Later payments follow the selected billing cycle.'}
-                {unitForm.type === 'function_hall' &&
-                  'Required minimum for the first payment only. Later payments may be completed through flexible partial payments.'}
-                {unitForm.type === 'parking_slot' &&
-                  'Required minimum for the first payment only. Later payments may be completed based on the approved parking dues policy.'}
-                {!unitForm.type &&
-                  'Set the required minimum for the first payment.'}
+            {unitForm.type === 'rental_space' ? (
+  <div className="grid grid-cols-1 gap-5 sm:col-span-2 sm:grid-cols-2">
+    <div className="space-y-1.5">
+      <label className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400">
+        Security Deposit Months
+      </label>
+
+      <select
+        value={unitForm.securityDepositMonths}
+        onChange={(e) =>
+          updateFormField('securityDepositMonths', e.target.value)
+        }
+        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+      >
+        <option value="0">0 months</option>
+        <option value="1">1 month</option>
+        <option value="2">2 months</option>
+        <option value="3">3 months</option>
+        <option value="6">6 months</option>
+      </select>
+
+      <p className="ml-1 text-[11px] text-slate-400">
+        Refundable security deposit collected upfront.
+      </p>
+    </div>
+
+    <div className="space-y-1.5">
+      <label className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400">
+        Advance Rent Months
+      </label>
+
+      <select
+        value={unitForm.advanceRentMonths}
+        onChange={(e) =>
+          updateFormField('advanceRentMonths', e.target.value)
+        }
+        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
+      >
+        <option value="1">1 month</option>
+        <option value="2">2 months</option>
+        <option value="3">3 months</option>
+        <option value="6">6 months</option>
+      </select>
+
+      <p className="ml-1 text-[11px] text-slate-400">
+        Number of rent months paid upfront before move-in.
+      </p>
+    </div>
+  </div>
+) : (
+  <div className="space-y-1.5 sm:col-span-2">
+    <label className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400">
+      Payment Policy
+    </label>
+
+    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
+      Full payment upfront
+    </div>
+
+    <p className="ml-1 text-[11px] text-slate-400">
+      Function halls and parking reservations require full payment before confirmation.
+    </p>
+  </div>
+)}
+
+            {editingUnit && (
+  <div className="space-y-1.5 sm:col-span-2">
+    <label className="ml-1 block text-[10px] font-bold uppercase tracking-widest text-slate-400">
+      Applied Promotion
+    </label>
+
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      {attachedPromo ? (
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-bold text-slate-900">
+                {attachedPromo.code}
+              </p>
+              <p className="text-xs text-slate-500">
+                {attachedPromo.discountType === 'percent'
+                  ? `${attachedPromo.discountValue}% OFF`
+                  : `${formatCurrency(attachedPromo.discountValue)} OFF`}
               </p>
             </div>
+
+            <button
+              type="button"
+              onClick={() => void handleDetachPromo()}
+              className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold uppercase tracking-widest text-red-600 transition hover:bg-red-100"
+            >
+              Remove from Unit
+            </button>
+          </div>
+
+          <p className="text-[11px] text-slate-400">
+            Removing this promo only detaches it from this unit. The promo will remain available in Promotions.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+          <select
+            defaultValue=""
+            onChange={(e) => {
+              if (e.target.value) {
+                void handleAttachPromo(e.target.value);
+                e.currentTarget.value = '';
+              }
+            }}
+            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-50"
+          >
+            <option value="">No promo assigned — select promo</option>
+            {promotions
+              .filter((promo) => promo.isActive)
+              .map((promo) => (
+                <option key={promo.id} value={promo.id}>
+                  {promo.code} ·{' '}
+                  {promo.discountType === 'percent'
+                    ? `${promo.discountValue}% OFF`
+                    : `${formatCurrency(promo.discountValue)} OFF`}
+                </option>
+              ))}
+          </select>
+
+          <span className="flex items-center rounded-xl bg-slate-100 px-4 py-3 text-xs font-semibold text-slate-500">
+            One promo per unit
+          </span>
+        </div>
+      )}
+    </div>
+  </div>
+)}
 
             {unitForm.type === 'function_hall' && (
               <div className="space-y-1.5">
@@ -3444,7 +3599,8 @@ useEffect(() => {
         features: string[];
         propertyId: string;
         location: string;
-        minimumPaymentPercent?: number | null;
+        securityDepositMonths?: number | null;
+        advanceRentMonths?: number | null;
         contractFilePath?: string | null;
         contractFileName?: string | null;
       };

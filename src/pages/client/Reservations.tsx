@@ -151,6 +151,49 @@ function canCancelReservation(reservation: {
   return false;
 }
 
+function canRequestCancellation(reservation: {
+  status: ReservationStatus;
+  paidAmount?: number;
+  startDate?: string;
+  unitType?: string;
+  bookingTerm?: string;
+  details?: ReservationDetails | null;
+}) {
+  if (['cancelled', 'completed', 'rejected', 'overdue'].includes(reservation.status)) {
+    return false;
+  }
+
+  const hasStarted =
+    !!reservation.startDate &&
+    new Date(reservation.startDate).getTime() <= Date.now();
+
+  if (hasStarted) return false;
+
+  const hasPayment = Number(reservation.paidAmount || 0) > 0;
+  const alreadyRequested = reservation.details?.cancellationRequested === true;
+
+  const isMonthlyRental =
+    reservation.unitType === 'rental_space' &&
+    reservation.bookingTerm === 'monthly';
+
+  return (
+    isMonthlyRental &&
+    ['approved', 'confirmed'].includes(reservation.status) &&
+    hasPayment &&
+    !alreadyRequested
+  );
+}
+function getCancellationRequestDetails(reservation: any) {
+  const details = reservation?.details ?? {};
+
+  if (details.cancellationRequested !== true) return null;
+
+  return {
+    requestedAt: details.cancellationRequestedAt ?? null,
+    reason: details.cancellationReason ?? '',
+  };
+}
+
 type ReservationFilterTabsProps = {
   filter: FilterStatus;
   counts: Record<FilterStatus, number>;
@@ -321,6 +364,15 @@ export default function ClientReservations() {
   startDate?: string;
 } | null>(null);
 
+const [reservationToRequestCancel, setReservationToRequestCancel] = useState<{
+  id: string;
+  unitName: string;
+  paidAmount: number;
+} | null>(null);
+
+const [cancellationReason, setCancellationReason] = useState('');
+const [isRequestingCancellation, setIsRequestingCancellation] = useState(false);
+
 const [isCancellingReservation, setIsCancellingReservation] = useState(false);
 
   const [extensionModalReservationId, setExtensionModalReservationId] = useState<string | null>(null);
@@ -480,6 +532,46 @@ const confirmCancelReservation = useCallback(async () => {
     setIsCancellingReservation(false);
   }
 }, [reservationToCancel, isCancellingReservation, updateReservation]);
+
+const confirmRequestCancellation = useCallback(async () => {
+  if (!reservationToRequestCancel || isRequestingCancellation) return;
+
+  if (!cancellationReason.trim()) {
+    return;
+  }
+
+  const reservation = userReservations.find(
+    (item) => item.id === reservationToRequestCancel.id
+  );
+
+  try {
+    setIsRequestingCancellation(true);
+
+    const nextDetails: ReservationDetails = {
+      ...(reservation?.details ?? {}),
+      cancellationRequested: true,
+      cancellationRequestedAt: new Date().toISOString(),
+      cancellationReason: cancellationReason.trim(),
+    };
+
+    await updateReservation(reservationToRequestCancel.id, {
+      details: nextDetails as any,
+    });
+
+    setReservationToRequestCancel(null);
+    setCancellationReason('');
+  } catch (error) {
+    console.error('Failed to request cancellation:', error);
+  } finally {
+    setIsRequestingCancellation(false);
+  }
+}, [
+  reservationToRequestCancel,
+  isRequestingCancellation,
+  cancellationReason,
+  userReservations,
+  updateReservation,
+]);
 
   const toggleExpand = useCallback(
     (id: string) => {
@@ -675,6 +767,17 @@ const confirmCancelReservation = useCallback(async () => {
                   startDate: reservation.startDate,
                 });
 
+                const cancellationDetails = getCancellationRequestDetails(reservation);
+
+const canRequestCancel = canRequestCancellation({
+  status,
+  paidAmount: Number(reservation.paidAmount || 0),
+  startDate: reservation.startDate,
+  unitType: reservation.unitType,
+  bookingTerm: reservation.bookingTerm,
+  details: reservation.details,
+});
+
                 return (
                   <motion.div
                     layout
@@ -718,6 +821,11 @@ const confirmCancelReservation = useCallback(async () => {
           EXTENSION REQUESTED
         </span>
       )}
+      {cancellationDetails && (
+  <span className="shrink-0 rounded-full border border-red-200 bg-red-50 px-1.5 py-0.5 text-[9px] font-bold text-red-700 shadow-sm md:text-xs">
+    CANCELLATION REQUESTED
+  </span>
+)}
     </div>
   </div>
 
@@ -1041,6 +1149,20 @@ const confirmCancelReservation = useCallback(async () => {
                                           </div>
                                         </div>
                                       )}
+
+                                      {cancellationDetails && (
+  <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+    <p className="text-xs font-semibold uppercase tracking-wide text-red-700">
+      Cancellation Under Review
+    </p>
+    <p className="mt-1 text-[13px] text-red-700 sm:text-sm">
+      Your cancellation request has been submitted for admin review.
+      {cancellationDetails.requestedAt
+        ? ` Requested on ${formatDate(cancellationDetails.requestedAt)}.`
+        : ''}
+    </p>
+  </div>
+)}
                                     </div>
                                   </motion.div>
                                 )}
@@ -1215,24 +1337,39 @@ const confirmCancelReservation = useCallback(async () => {
 
   <div className="w-full sm:w-auto">
     {canCancel ? (
-      <button
-        type="button"
-        onClick={() =>
-          handleCancelReservation(
-            reservation.id,
-            reservation.unitName,
-            status,
-            Number(reservation.paidAmount || 0),
-            reservation.startDate
-          )
-        }
-        className={`w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 min-h-[44px] bg-red-600 text-white text-[13px] sm:text-sm ${uiTypography.buttonText} rounded-xl hover:bg-red-700 transition-colors shadow-sm`}
-      >
-        Cancel Reservation
-      </button>
-    ) : (
-      <div className="hidden sm:block w-[180px] h-[44px]" />
-    )}
+  <button
+    type="button"
+    onClick={() =>
+      handleCancelReservation(
+        reservation.id,
+        reservation.unitName,
+        status,
+        Number(reservation.paidAmount || 0),
+        reservation.startDate
+      )
+    }
+    className={`w-full rounded-xl bg-red-600 px-4 py-2.5 text-[13px] text-white shadow-sm transition-colors hover:bg-red-700 sm:w-auto sm:px-6 sm:py-3 sm:text-sm ${uiTypography.buttonText}`}
+  >
+    Cancel Reservation
+  </button>
+) : canRequestCancel ? (
+  <button
+    type="button"
+    onClick={() => {
+      setReservationToRequestCancel({
+        id: reservation.id,
+        unitName: reservation.unitName,
+        paidAmount: Number(reservation.paidAmount || 0),
+      });
+      setCancellationReason('');
+    }}
+    className={`w-full rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-[13px] text-red-700 shadow-sm transition hover:bg-red-100 sm:w-auto sm:px-6 sm:py-3 sm:text-sm ${uiTypography.buttonText}`}
+  >
+    Request Cancellation
+  </button>
+) : (
+  <div className="hidden h-[44px] w-[180px] sm:block" />
+)}
   </div>
 </div>
                           </div>
@@ -1447,9 +1584,41 @@ const confirmCancelReservation = useCallback(async () => {
               ?
             </p>
 
-            <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-              This will mark the reservation as cancelled instead of deleting it.
-            </div>
+            {(() => {
+  const hasPayment = Number(reservationToCancel.paidAmount || 0) > 0;
+  const isApprovedState = ['approved', 'confirmed'].includes(
+    reservationToCancel.status
+  );
+
+  if (isApprovedState && hasPayment) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 space-y-1">
+        <p className="font-semibold">This booking will be cancelled.</p>
+        <p>
+          Payments already made may be non-refundable based on your unit type
+          and management policy.
+        </p>
+        <p>The reserved slot/date will be released.</p>
+      </div>
+    );
+  }
+
+  if (isApprovedState && !hasPayment) {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 space-y-1">
+        <p className="font-semibold">This approved reservation will be cancelled.</p>
+        <p>No payment has been recorded.</p>
+        <p>The reserved slot/date will be released immediately.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+      This will mark the reservation as cancelled instead of deleting it.
+    </div>
+  );
+})()}
           </div>
 
           <div className="flex gap-3 border-t border-gray-100 px-6 py-5">
@@ -1469,6 +1638,101 @@ const confirmCancelReservation = useCallback(async () => {
               className="flex-1 rounded-2xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
             >
               {isCancellingReservation ? 'Cancelling...' : 'Yes, Cancel'}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </>
+  )}
+</AnimatePresence>
+<AnimatePresence>
+  {reservationToRequestCancel && (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[80] bg-black/50"
+        onClick={() => {
+          if (isRequestingCancellation) return;
+          setReservationToRequestCancel(null);
+          setCancellationReason('');
+        }}
+      />
+
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 12 }}
+        transition={{ duration: 0.18 }}
+        className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+      >
+        <div className="w-full max-w-md rounded-[28px] border border-gray-200 bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">
+                Request Cancellation
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                {reservationToRequestCancel.unitName}
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                if (isRequestingCancellation) return;
+                setReservationToRequestCancel(null);
+                setCancellationReason('');
+              }}
+              className="rounded-full bg-gray-100 p-2 transition hover:bg-gray-200"
+            >
+              <X className="size-5 text-gray-500" />
+            </button>
+          </div>
+
+          <div className="space-y-4 px-6 py-5">
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Since this reservation already has a recorded payment, cancellation requires admin review. Refunds, if applicable, will be handled by the admin.
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-gray-800">
+                Reason for cancellation
+              </label>
+              <textarea
+                value={cancellationReason}
+                onChange={(e) => setCancellationReason(e.target.value.slice(0, 500))}
+                rows={4}
+                maxLength={500}
+                className="w-full rounded-2xl border border-gray-300 px-4 py-3 text-sm outline-none transition focus:border-red-500 focus:ring-4 focus:ring-red-100"
+                placeholder="Briefly explain why you want to cancel this reservation"
+              />
+              <p className="mt-1 text-xs text-gray-400">
+                {cancellationReason.length}/500
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-3 border-t border-gray-100 px-6 py-5">
+            <button
+              type="button"
+              onClick={() => {
+                setReservationToRequestCancel(null);
+                setCancellationReason('');
+              }}
+              disabled={isRequestingCancellation}
+              className="flex-1 rounded-2xl border border-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+            >
+              Keep Reservation
+            </button>
+
+            <button
+              type="button"
+              disabled={isRequestingCancellation || !cancellationReason.trim()}
+              onClick={confirmRequestCancellation}
+              className="flex-1 rounded-2xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
+            >
+              {isRequestingCancellation ? 'Submitting...' : 'Submit Request'}
             </button>
           </div>
         </div>

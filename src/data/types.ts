@@ -11,13 +11,27 @@ export type ReservationStatus =
   | 'rejected';
 
 export type PaymentReviewStatus = 'pending' | 'approved' | 'rejected';
-export type PaymentStatus = 'unpaid' | 'partial' | 'paid';
+export type PaymentStatus = 'unpaid' | 'paid';
 
 export type PaymentMethod =
   | 'gcash'
   | 'bank_transfer'
   | 'card'
   | 'not_applicable';
+
+export type ReservationType =
+  | 'flexible_stay'
+  | 'monthly_lease'
+  | 'function_hall'
+  | 'parking';
+
+export type PaymentCategory =
+  | 'reservation_payment'
+  | 'advance_deposit'
+  | 'security_deposit'
+  | 'monthly_rent'
+  | 'late_fee'
+  | 'payment';
 
 export type BookingTerm = 'daily' | 'weekly' | 'monthly';
 export type PaymentMode = 'full_upfront' | 'deposit_plus_first_month';
@@ -54,6 +68,31 @@ export interface ReservationDetails {
   extensionApprovedMonths?: number;
   extensionRejectedAt?: string;
   extensionRejectedMonths?: number;
+
+  cancellationRequested?: boolean;
+cancellationRequestedAt?: string;
+cancellationReason?: string;
+cancellationReviewedAt?: string;
+cancellationReviewedBy?: string;
+cancellationDecision?: 'approved' | 'rejected';
+cancellationAdminNotes?: string;
+}
+
+export interface BillingBreakdown {
+  reservationType?: ReservationType;
+  stayDays?: number;
+  months?: number;
+  weeks?: number;
+  days?: number;
+  subtotalAmount?: number;
+  discountAmount?: number;
+  taxableSubtotal?: number;
+  vatRate?: number;
+  vatAmount?: number;
+  totalAmount?: number;
+  amountDue?: number;
+  securityDepositAmount?: number;
+  advanceRentAmount?: number;
 }
 
 export interface ParkingSlot {
@@ -97,9 +136,15 @@ export interface Unit {
     title: string;
     address: string;
   } | null;
-  minimumPaymentPercent?: number | null;
   contractFilePath?: string | null;
   contractFileName?: string | null;
+  dailyRate?: number | null;
+  weeklyRate?: number | null;
+  monthlyRate?: number | null;
+  allowsFlexibleStay?: boolean;
+  allowsMonthlyLease?: boolean;
+  securityDepositMonths?: number | null;
+  advanceRentMonths?: number | null;
 }
 
 export interface Reservation {
@@ -139,7 +184,8 @@ export interface Reservation {
   location?: string;
   details?: ReservationDetails;
 
-  minimumPaymentPercentSnapshot?: number | null;
+  securityDepositMonthsSnapshot?: number | null;
+advanceRentMonthsSnapshot?: number | null;
 
   confirmedVisitDate?: string | null;
   confirmedVisitTime?: string | null;
@@ -148,6 +194,18 @@ export interface Reservation {
   overdueAt?: string | null;
   overdueReason?: OverdueReason | null;
   lastOverdueNotificationAt?: string | null;
+
+  reservationType?: ReservationType | null;
+  subtotalAmount?: number | null;
+  vatRate?: number | null;
+  vatAmount?: number | null;
+  discountAmount?: number | null;
+  amountDue?: number | null;
+  billingBreakdown?: BillingBreakdown | null;
+  promoId?: string | null;
+  discountSnapshot?: Record<string, any> | null;
+  requiresFullPayment?: boolean;
+  paymentDueAt?: string | null;
 }
 export interface Payment {
   id: string;
@@ -167,16 +225,13 @@ export interface Payment {
   paymentMethodId?: string | null;
 paymentMethodSnapshot?: Record<string, any> | null;
 
-category?:
-  | 'payment'
-  | 'advance_deposit'
-  | 'security_deposit'
-  | 'reservation_fee'
-  | 'monthly_rent'
-  | 'parking_fee'
-  | 'function_room_fee'
-  | 'vat'
-  | 'penalty';
+subtotalAmount?: number | null;
+vatRate?: number | null;
+vatAmount?: number | null;
+discountAmount?: number | null;
+billingSnapshot?: Record<string, any> | null;
+
+  category?: PaymentCategory;
 }
 
 export interface LedgerEntry {
@@ -203,6 +258,11 @@ export interface LedgerEntry {
   recordedAt: string;
   createdAt: string;
   createdBy?: string | null;
+  subtotalAmount?: number | null;
+  vatRate?: number | null;
+  vatAmount?: number | null;
+  discountAmount?: number | null;
+  billingSnapshot?: Record<string, any> | null;
 }
 
 export interface AuditLog {
@@ -272,6 +332,9 @@ export interface Inquiry {
 export type NotificationType =
   | 'reservation'
   | 'payment'
+  | 'appointment'
+  | 'promo'
+  | 'billing'
   | 'inquiry'
   | 'review'
   | 'system';
@@ -284,6 +347,9 @@ export interface Notification {
   type: NotificationType;
   read: boolean;
   date: string;
+  relatedTable?: string | null;
+  relatedId?: string | null;
+  actionUrl?: string | null;
 }
 
 export interface BusinessSlot {

@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 import supabase from "../../../supabaseClient";
 import type { UnitType } from "../../../data/types";
 import type { ReservationForm, PaymentMethod } from "./reservation.types";
-import type { PaymentMethodCode } from "../../../contexts/PaymentMethodsContext";
+import { usePromotions } from "../../../contexts/PromotionsContext";
 
 interface UnitLike {
   policies?: string | null;
@@ -33,9 +33,7 @@ interface ReservationPaymentSectionProps {
   formatCurrency: (value: number) => string;
 }
 
-function normalizePaymentMethodCode(
-  value?: string | null
-): PaymentMethod {
+function normalizePaymentMethodCode(value?: string | null): PaymentMethod {
   switch (value) {
     case "gcash":
       return "gcash";
@@ -64,96 +62,202 @@ export default function ReservationPaymentSection({
 }: ReservationPaymentSectionProps) {
   const isRental = unitType === "rental_space";
   const isParking = unitType === "parking_slot";
+  const isMonthlyRental = isRental && reservationForm.paymentCycle === "monthly";
+  const { activePromotions } = usePromotions();
 
-  const paymentRuleText = isRental
-    ? "Initial payment includes the required security deposit and first month, subject to admin approval."
-    : "Select your preferred payment method for this booking.";
+  const accentClasses = isRental
+    ? {
+        border: "border-blue-200",
+        text: "text-blue-600",
+        badge: "bg-blue-50 text-blue-700",
+      }
+    : isParking
+      ? {
+          border: "border-orange-200",
+          text: "text-orange-600",
+          badge: "bg-orange-50 text-orange-700",
+        }
+      : {
+          border: "border-purple-200",
+          text: "text-purple-600",
+          badge: "bg-purple-50 text-purple-700",
+        };
 
-  const refundRuleText = isRental
-    ? "Security deposits are refundable, subject to policy review."
-    : null;
+  const paymentTitle = isRental
+    ? isMonthlyRental
+      ? "Deposit + First Month Required"
+      : "Full Payment Upfront"
+    : "Full Payment Upfront";
+
+  const paymentBadge = isRental
+    ? isMonthlyRental
+      ? "Monthly Billing"
+      : "Flexible Stay"
+    : "One-Time Payment";
+
+  const paymentDescription = isRental
+    ? isMonthlyRental
+      ? "Residential and commercial monthly leases require a security deposit plus the first month’s rent upon approval."
+      : reservationForm.paymentCycle === "weekly"
+        ? "Weekly flexible stays require full payment before the booking is confirmed."
+        : "Daily flexible stays require full payment before the booking is confirmed."
+    : isParking
+      ? "Parking reservations require full payment before the slot is confirmed."
+      : "Function hall reservations require full payment before the booking is confirmed.";
+
+  const dueLabel = isRental
+    ? isMonthlyRental
+      ? "Estimated Initial Due"
+      : "Estimated Full Payment"
+    : "Estimated Full Payment";
+
+    const promoCode = (reservationForm.promoCode || "").trim().toUpperCase();
+
+const matchedPromo = promoCode
+  ? activePromotions.find((promo) => promo.code === promoCode)
+  : null;
+
+const promoBaseAmount =
+  isRental && isMonthlyRental
+    ? Math.max(0, initialDue) // temporary until advance-rent-only prop is passed
+    : Math.max(0, estimatedTotal);
+
+const rawPromoDiscount = matchedPromo
+  ? matchedPromo.discountType === "percent"
+    ? promoBaseAmount * (matchedPromo.discountValue / 100)
+    : matchedPromo.discountValue
+  : 0;
+
+const promoDiscount = Math.min(
+  promoBaseAmount,
+  Math.max(0, rawPromoDiscount)
+);
+
+const finalTotal = Math.max(0, promoBaseAmount - promoDiscount);
 
   return (
     <>
       {shouldShowPaymentSection && (
         <div className="space-y-4">
-  <div
-  className={`rounded-2xl border bg-white p-4 shadow-sm ${
-    isRental
-      ? "border-blue-200"
-      : isParking
-        ? "border-orange-200"
-        : "border-purple-200"
-  }`}
->
-  <div className="flex items-start justify-between gap-3">
-    <div>
-      <p
-        className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${
-          isRental
-            ? "text-blue-600"
-            : isParking
-              ? "text-orange-600"
-              : "text-purple-600"
-        }`}
-      >
-        Payment Details
-      </p>
+          <div className={`rounded-2xl border bg-white p-4 shadow-sm ${accentClasses.border}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p
+                  className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${accentClasses.text}`}
+                >
+                  Payment Details
+                </p>
 
-      <p className="mt-1 text-sm font-medium text-gray-900">
-        {isRental
-          ? "Deposit + First Month Required"
-          : "Full Payment Upfront"}
-      </p>
+                <p className="mt-1 text-sm font-medium text-gray-900">
+                  {paymentTitle}
+                </p>
+              </div>
+
+              <div
+                className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${accentClasses.badge}`}
+              >
+                {paymentBadge}
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
+              <div className="space-y-2 text-sm text-gray-600">
+                <p>{paymentDescription}</p>
+
+                <p>
+                  Displayed prices are tax-exclusive. A{" "}
+                  <span className="font-medium text-gray-900">12% VAT</span>{" "}
+                  is applied separately.
+                </p>
+
+                {/* {isRental && (
+                  <div className="rounded-lg bg-white px-3 py-2">
+                    <p className="text-xs uppercase tracking-wide text-gray-500">
+                      {dueLabel}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-gray-900">
+                      {formatCurrency(initialDue)}
+                    </p>
+                  </div>
+                )} */}
+
+                {isMonthlyRental && (
+                  <p className="text-xs text-gray-500">
+                    Security deposits are refundable, subject to policy review.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700">
+                  Promo Code
+                </p>
+                <p className="mt-1 text-sm font-medium text-gray-900">
+                  Have a promo? Apply it before checkout.
+                </p>
+              </div>
+
+              <div className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                Optional
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input
+                type="text"
+                value={reservationForm.promoCode || ""}
+                onChange={(e) =>
+                  setReservationForm((prev) => ({
+                    ...prev,
+                    promoCode: e.target.value.toUpperCase(),
+                  }))
+                }
+                placeholder="Enter promo code"
+                className="flex-1 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
+              />
+
+              <button
+                type="button"
+                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700"
+              >
+                Apply
+              </button>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-emerald-100 bg-white p-3">
+  <div className="space-y-1 text-sm">
+    <div className="flex items-center justify-between">
+      <span className="text-gray-500">
+  {isMonthlyRental ? "Promo Base" : "Subtotal"}
+</span>
+      <span className="font-medium text-gray-900">
+        {formatCurrency(promoBaseAmount)}
+      </span>
     </div>
 
-    <div
-      className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
-        isRental
-          ? "bg-blue-50 text-blue-700"
-          : isParking
-            ? "bg-orange-50 text-orange-700"
-            : "bg-purple-50 text-purple-700"
-      }`}
-    >
-      {isRental ? "Monthly Billing" : "One-Time Payment"}
+    <div className="flex items-center justify-between">
+      <span className="text-gray-500">Discount</span>
+      <span className="font-medium text-emerald-700">
+        -{formatCurrency(promoDiscount)}
+      </span>
     </div>
-  </div>
 
-  <div className="mt-3 rounded-xl border border-gray-100 bg-gray-50 p-3">
-    <div className="space-y-2 text-sm text-gray-600">
-      <p>
-        {isRental
-          ? "Residential and commercial units require a security deposit plus the first month’s rent upon approval."
-          : isParking
-            ? "Parking reservations require full payment before the slot is confirmed."
-            : "Function hall reservations require full payment before the booking is confirmed."}
-      </p>
+    <div className="flex items-center justify-between border-t border-gray-100 pt-2">
+      <span className="font-semibold text-gray-900">
+        Final Total
+      </span>
 
-      <p>
-        Displayed prices are tax-exclusive. A{" "}
-        <span className="font-medium text-gray-900">12% VAT</span> is applied separately.
-      </p>
-
-      {isRental && (
-        <div className="rounded-lg bg-white px-3 py-2">
-          <p className="text-xs uppercase tracking-wide text-gray-500">
-            Estimated Initial Due
-          </p>
-          <p className="mt-1 text-sm font-semibold text-gray-900">
-            {formatCurrency(initialDue)}
-          </p>
-        </div>
-      )}
-
-      {refundRuleText && (
-        <p className="text-xs text-gray-500">
-          {refundRuleText}
-        </p>
-      )}
+      <span className="font-bold text-emerald-700">
+        {formatCurrency(finalTotal)}
+      </span>
     </div>
   </div>
 </div>
+          </div>
 
           <div>
             <label className="mb-2 block text-sm text-gray-700">
@@ -215,24 +319,24 @@ export default function ReservationPaymentSection({
         </div>
 
         {selectedUnitData.contractFilePath ? (
-  <div className="mt-3">
-    <button
-      type="button"
-      onClick={() => {
-        const { data } = supabase.storage
-          .from("unit_contracts")
-          .getPublicUrl(selectedUnitData.contractFilePath!);
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={() => {
+                const { data } = supabase.storage
+                  .from("unit_contracts")
+                  .getPublicUrl(selectedUnitData.contractFilePath!);
 
-        if (data?.publicUrl) {
-          window.open(data.publicUrl, "_blank", "noopener,noreferrer");
-        }
-      }}
-      className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 transition hover:bg-blue-100 sm:text-sm"
-    >
-      View Contract PDF
-    </button>
-  </div>
-) : null}
+                if (data?.publicUrl) {
+                  window.open(data.publicUrl, "_blank", "noopener,noreferrer");
+                }
+              }}
+              className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 transition hover:bg-blue-100 sm:text-sm"
+            >
+              View Contract PDF
+            </button>
+          </div>
+        ) : null}
 
         <label className="mt-3 flex items-start gap-3">
           <input

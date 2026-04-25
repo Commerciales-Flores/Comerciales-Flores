@@ -1,5 +1,5 @@
 import { Check, ChevronDown } from "lucide-react";
-import React from "react";
+import React, { useMemo } from "react";
 import type {
   PaymentIntent,
   ReservationForm,
@@ -33,6 +33,13 @@ export default function ReservationVisitFlowSection({
   timeSelectRef,
   isViewingOnly,
 }: ReservationVisitFlowSectionProps) {
+  const tomorrow = useMemo(() => {
+    const date = new Date();
+    date.setDate(date.getDate() + 1);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }, []);
+
   return (
     <div>
       <label className="mb-1 block text-sm font-medium text-gray-700">
@@ -42,14 +49,14 @@ export default function ReservationVisitFlowSection({
       <select
         value={reservationForm.modeOfVisit}
         onChange={(e) => handleModeChange(e.target.value as VisitMode)}
-        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:text-base"
       >
         <option value="online">Reserve Online</option>
-        <option value="onsite">Visit On-site First</option>
+        <option value="onsite">Schedule On-site Visit</option>
       </select>
 
       {reservationForm.modeOfVisit === "onsite" && (
-        <div className="border-t border-gray-200 pt-4 mt-4">
+        <div className="mt-4 border-t border-gray-200 pt-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
               Appointment Date
@@ -58,7 +65,7 @@ export default function ReservationVisitFlowSection({
             <input
               type="date"
               value={getDateInputValue(reservationForm.appointmentDate)}
-              min={getDateInputValue(new Date())}
+              min={getDateInputValue(tomorrow)}
               onChange={(e) =>
                 setReservationForm((prev) => ({
                   ...prev,
@@ -67,8 +74,13 @@ export default function ReservationVisitFlowSection({
                     : undefined,
                 }))
               }
-              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm sm:text-base outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:text-base"
             />
+
+            <p className="mt-2 text-xs text-gray-500">
+              Same-day appointments are not allowed. The earliest available
+              appointment date is tomorrow.
+            </p>
 
             {formErrors.appointmentDate && (
               <p className="mt-1 text-xs text-red-600">
@@ -86,7 +98,7 @@ export default function ReservationVisitFlowSection({
               <button
                 type="button"
                 onClick={() => setIsTimeSelectOpen((prev) => !prev)}
-                className="flex w-full items-center justify-between rounded-xl border border-gray-300 bg-white px-3 py-2 text-left text-sm sm:text-base outline-none transition hover:border-blue-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                className="flex w-full items-center justify-between rounded-xl border border-gray-300 bg-white px-3 py-2 text-left text-sm outline-none transition hover:border-blue-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 sm:text-base"
               >
                 <span
                   className={
@@ -142,7 +154,7 @@ export default function ReservationVisitFlowSection({
             </div>
 
             <p className="mt-2 text-xs text-gray-500">
-              Available visiting hours: 9:00 AM to 5:00 PM
+              Available visiting hours: 9:00 AM to 5:00 PM.
             </p>
 
             {formErrors.appointmentTime && (
@@ -152,8 +164,8 @@ export default function ReservationVisitFlowSection({
             )}
           </div>
 
-          <label className="mt-6 mb-2 block text-sm font-medium text-gray-700">
-            What is the goal of your visit?
+          <label className="mb-2 mt-6 block text-sm font-medium text-gray-700">
+            Appointment Purpose
           </label>
 
           <div className="space-y-2">
@@ -180,11 +192,11 @@ export default function ReservationVisitFlowSection({
 
               <div>
                 <p className="text-sm font-medium text-gray-900">
-                  Book Viewing Only
+                  Viewing Appointment
                 </p>
                 <p className="text-xs text-gray-500">
-                  I want to tour the unit first. No payment is required for the
-                  visit.
+                  Schedule a visit to inspect the unit first. No payment method
+                  is required for this appointment.
                 </p>
               </div>
             </label>
@@ -212,11 +224,11 @@ export default function ReservationVisitFlowSection({
 
               <div>
                 <p className="text-sm font-medium text-gray-900">
-                  Reserve with On-site Visit
+                  Reservation with Appointment
                 </p>
                 <p className="text-xs text-gray-500">
-                  Submit a reservation request and complete the visit onsite.
-                  Approval is still required before payment is finalized.
+                  Submit a reservation request and schedule a visit. If
+                  approved, payment will be completed through the website.
                 </p>
               </div>
             </label>
@@ -230,8 +242,8 @@ export default function ReservationVisitFlowSection({
 
           {isViewingOnly && (
             <div className="mt-4 rounded-2xl border border-green-100 bg-green-50 p-3 text-sm text-green-800">
-              Viewing only selected. No payment method is required for this
-              appointment.
+              Viewing appointment selected. No payment method is required for
+              this appointment.
             </div>
           )}
         </div>

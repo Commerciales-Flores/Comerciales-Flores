@@ -1,33 +1,49 @@
-export type PaymentCycle = "daily" | "weekly" | "monthly";
-
 export type VatBreakdown = {
   subtotal: number;
   vat: number;
   total: number;
 };
 
-export type RentalBillingResult = {
-  monthlyBase: number;
+export type FlexibleStayBillingResult = {
+  stayDays: number;
+  months: number;
+  weeks: number;
+  days: number;
 
-  leaseSubtotal: number;
-  leaseVat: number;
-  leaseTotal: number;
+  monthlyRate: number;
+  weeklyRate: number;
+  dailyRate: number;
 
-  dailyCycleTotal: number;
-  weeklyCycleTotal: number;
-  monthlyCycleTotal: number;
+  monthlySubtotal: number;
+  weeklySubtotal: number;
+  dailySubtotal: number;
 
-  selectedCycleTotal: number;
+  subtotal: number;
+  discountAmount: number;
+  taxableSubtotal: number;
+  vatRate: number;
+  vatAmount: number;
+  totalAmount: number;
+  amountDue: number;
+};
 
-  depositMonths: number;
-  advanceMonths: number;
+export type MonthlyLeaseBillingResult = {
+  leaseMonths: number;
+  monthlyRate: number;
 
-  depositBase: number;
-  firstMonthSubtotal: number;
-  firstMonthVat: number;
-  firstMonthTotal: number;
+  rentSubtotal: number;
+  discountAmount: number;
+  taxableRentSubtotal: number;
+  vatRate: number;
+  vatAmount: number;
+
+  securityDepositMonths: number;
+  advanceRentMonths: number;
+  securityDepositAmount: number;
+  advanceRentAmount: number;
 
   initialDue: number;
+  totalContractValue: number;
 };
 
 const VAT_RATE = 0.12;
@@ -42,20 +58,22 @@ function sanitizeAmount(value: number | string | null | undefined): number {
   return parsed;
 }
 
-function sanitizeDuration(value: number | string | null | undefined): number {
-  const parsed = Number(value ?? 0);
-  if (!Number.isFinite(parsed) || parsed <= 0) return 1;
+function sanitizePositiveInteger(
+  value: number | string | null | undefined,
+  fallback = 1
+): number {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return Math.floor(parsed);
 }
 
-function sanitizeMonths(
+function sanitizeNonNegativeInteger(
   value: number | string | null | undefined,
-  fallback: number,
-  min = 0
+  fallback = 0
 ): number {
   const parsed = Number(value ?? fallback);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.max(min, Math.floor(parsed));
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return Math.floor(parsed);
 }
 
 export function computeVatBreakdown(baseAmount: number): VatBreakdown {
@@ -63,96 +81,194 @@ export function computeVatBreakdown(baseAmount: number): VatBreakdown {
   const vat = roundCurrency(subtotal * VAT_RATE);
   const total = roundCurrency(subtotal + vat);
 
+  return { subtotal, vat, total };
+}
+
+export function computeFlexibleStayBilling(params: {
+  stayDays: number;
+  dailyRate: number;
+  weeklyRate: number;
+  monthlyRate: number;
+  discountAmount?: number;
+}): FlexibleStayBillingResult {
+  const stayDays = sanitizePositiveInteger(params.stayDays, 1);
+
+  const dailyRate = roundCurrency(sanitizeAmount(params.dailyRate));
+  const weeklyRate = roundCurrency(sanitizeAmount(params.weeklyRate));
+  const monthlyRate = roundCurrency(sanitizeAmount(params.monthlyRate));
+
+  const months = Math.floor(stayDays / 30);
+  const remainingAfterMonths = stayDays % 30;
+  const weeks = Math.floor(remainingAfterMonths / 7);
+  const days = remainingAfterMonths % 7;
+
+  const monthlySubtotal = roundCurrency(months * monthlyRate);
+  const weeklySubtotal = roundCurrency(weeks * weeklyRate);
+  const dailySubtotal = roundCurrency(days * dailyRate);
+
+  const subtotal = roundCurrency(
+    monthlySubtotal + weeklySubtotal + dailySubtotal
+  );
+
+  const rawDiscount = sanitizeAmount(params.discountAmount);
+  const discountAmount = roundCurrency(Math.min(rawDiscount, subtotal));
+
+  const taxableSubtotal = roundCurrency(subtotal - discountAmount);
+  const vatAmount = roundCurrency(taxableSubtotal * VAT_RATE);
+  const totalAmount = roundCurrency(taxableSubtotal + vatAmount);
+
   return {
+    stayDays,
+    months,
+    weeks,
+    days,
+
+    monthlyRate,
+    weeklyRate,
+    dailyRate,
+
+    monthlySubtotal,
+    weeklySubtotal,
+    dailySubtotal,
+
     subtotal,
-    vat,
-    total,
+    discountAmount,
+    taxableSubtotal,
+    vatRate: VAT_RATE,
+    vatAmount,
+    totalAmount,
+    amountDue: totalAmount,
   };
 }
 
-export function computeRentalBilling(params: {
-  monthlyBase: number;
-  durationMonths: number;
-  paymentCycle: PaymentCycle;
+export function computeMonthlyLeaseBilling(params: {
+  leaseMonths: number;
+  monthlyRate: number;
   securityDepositMonths?: number;
-  advanceDepositMonths?: number;
-}): RentalBillingResult {
-  const monthlyBase = roundCurrency(sanitizeAmount(params.monthlyBase));
-  const durationMonths = sanitizeDuration(params.durationMonths);
-  const paymentCycle = params.paymentCycle;
+  advanceRentMonths?: number;
+  discountAmount?: number;
+}): MonthlyLeaseBillingResult {
+  const leaseMonths = sanitizePositiveInteger(params.leaseMonths, 1);
+  const monthlyRate = roundCurrency(sanitizeAmount(params.monthlyRate));
 
-  const depositMonths = sanitizeMonths(
+  const securityDepositMonths = sanitizeNonNegativeInteger(
     params.securityDepositMonths,
-    1,
-    0
-  );
-
-  const advanceMonths = sanitizeMonths(
-    params.advanceDepositMonths,
-    1,
     1
   );
 
-  const leaseBase = roundCurrency(monthlyBase * durationMonths);
-  const leaseBreakdown = computeVatBreakdown(leaseBase);
+  const advanceRentMonths = sanitizePositiveInteger(
+    params.advanceRentMonths,
+    1
+  );
 
-  const firstMonthBase = roundCurrency(monthlyBase * advanceMonths);
-  const firstMonthBreakdown = computeVatBreakdown(firstMonthBase);
+  const securityDepositAmount = roundCurrency(
+    monthlyRate * securityDepositMonths
+  );
 
-  const depositBase = roundCurrency(monthlyBase * depositMonths);
+  const advanceRentAmount = roundCurrency(
+    monthlyRate * advanceRentMonths
+  );
 
-  // Daily / weekly = full upfront
-  const dailyCycleTotal = leaseBreakdown.total;
-  const weeklyCycleTotal = leaseBreakdown.total;
+  const rawDiscount = sanitizeAmount(params.discountAmount);
+  const discountAmount = roundCurrency(Math.min(rawDiscount, advanceRentAmount));
 
-  // Monthly = recurring monthly charge after approval
-  const oneMonthBreakdown = computeVatBreakdown(monthlyBase);
-  const monthlyCycleTotal = oneMonthBreakdown.total;
+  const taxableRentSubtotal = roundCurrency(advanceRentAmount - discountAmount);
+  const vatAmount = roundCurrency(taxableRentSubtotal * VAT_RATE);
 
-  const selectedCycleTotal =
-    paymentCycle === "daily"
-      ? dailyCycleTotal
-      : paymentCycle === "weekly"
-        ? weeklyCycleTotal
-        : monthlyCycleTotal;
+  const initialDue = roundCurrency(
+    securityDepositAmount + taxableRentSubtotal + vatAmount
+  );
 
-  // Monthly rentals:
-  // deposit is non-VAT
-  // advance month(s) are VAT-inclusive
-  const initialDue =
-    paymentCycle === "monthly"
-      ? roundCurrency(depositBase + firstMonthBreakdown.total)
-      : leaseBreakdown.total;
+  const rentSubtotal = roundCurrency(monthlyRate * leaseMonths);
+  const totalContractValue = roundCurrency(
+    rentSubtotal + securityDepositAmount + vatAmount
+  );
 
   return {
-    monthlyBase,
+    leaseMonths,
+    monthlyRate,
 
-    leaseSubtotal: leaseBreakdown.subtotal,
-    leaseVat: leaseBreakdown.vat,
-    leaseTotal: leaseBreakdown.total,
+    rentSubtotal,
+    discountAmount,
+    taxableRentSubtotal,
+    vatRate: VAT_RATE,
+    vatAmount,
 
-    dailyCycleTotal,
-    weeklyCycleTotal,
-    monthlyCycleTotal,
-
-    selectedCycleTotal,
-
-    depositMonths,
-    advanceMonths,
-
-    depositBase,
-    firstMonthSubtotal: firstMonthBreakdown.subtotal,
-    firstMonthVat: firstMonthBreakdown.vat,
-    firstMonthTotal: firstMonthBreakdown.total,
+    securityDepositMonths,
+    advanceRentMonths,
+    securityDepositAmount,
+    advanceRentAmount,
 
     initialDue,
+    totalContractValue,
   };
 }
 
 export function computeOneTimeBilling(params: {
   baseAmount: number;
-}): VatBreakdown {
-  return computeVatBreakdown(params.baseAmount);
+  discountAmount?: number;
+}) {
+  const subtotal = roundCurrency(sanitizeAmount(params.baseAmount));
+  const discountAmount = roundCurrency(
+    Math.min(sanitizeAmount(params.discountAmount), subtotal)
+  );
+  const taxableSubtotal = roundCurrency(subtotal - discountAmount);
+  const vatAmount = roundCurrency(taxableSubtotal * VAT_RATE);
+  const totalAmount = roundCurrency(taxableSubtotal + vatAmount);
+
+  return {
+    subtotal,
+    discountAmount,
+    taxableSubtotal,
+    vatRate: VAT_RATE,
+    vatAmount,
+    totalAmount,
+    amountDue: totalAmount,
+  };
+}
+export function computeRentalBilling(params: {
+  monthlyBase: number;
+  durationMonths: number;
+  paymentCycle: "daily" | "weekly" | "monthly";
+  securityDepositMonths?: number;
+  advanceRentMonths?: number;
+}) {
+  const result = computeMonthlyLeaseBilling({
+    leaseMonths: params.durationMonths,
+    monthlyRate: params.monthlyBase,
+    securityDepositMonths: params.securityDepositMonths,
+    advanceRentMonths: params.advanceRentMonths,
+  });
+
+  return {
+    monthlyBase: result.monthlyRate,
+
+    leaseSubtotal: result.rentSubtotal,
+    leaseVat: roundCurrency(result.rentSubtotal * VAT_RATE),
+    leaseTotal: roundCurrency(result.rentSubtotal + result.rentSubtotal * VAT_RATE),
+
+    dailyCycleTotal: roundCurrency(result.rentSubtotal + result.rentSubtotal * VAT_RATE),
+    weeklyCycleTotal: roundCurrency(result.rentSubtotal + result.rentSubtotal * VAT_RATE),
+    monthlyCycleTotal: roundCurrency(result.monthlyRate + result.monthlyRate * VAT_RATE),
+
+    selectedCycleTotal:
+      params.paymentCycle === "monthly"
+        ? roundCurrency(result.monthlyRate + result.monthlyRate * VAT_RATE)
+        : roundCurrency(result.rentSubtotal + result.rentSubtotal * VAT_RATE),
+
+    depositMonths: result.securityDepositMonths,
+    advanceMonths: result.advanceRentMonths,
+
+    depositBase: result.securityDepositAmount,
+    firstMonthSubtotal: result.advanceRentAmount,
+    firstMonthVat: result.vatAmount,
+    firstMonthTotal: roundCurrency(result.advanceRentAmount + result.vatAmount),
+
+    initialDue:
+      params.paymentCycle === "monthly"
+        ? result.initialDue
+        : roundCurrency(result.rentSubtotal + result.rentSubtotal * VAT_RATE),
+  };
 }
 
 export const BILLING_CONSTANTS = {

@@ -9,6 +9,15 @@ type RequestBody = {
   notes?: string | null;
 };
 
+const PAYMENT_CATEGORY_LABELS: Record<string, string> = {
+  reservation_payment: "Reservation Payment",
+  advance_deposit: "Advance Deposit",
+  security_deposit: "Security Deposit",
+  monthly_rent: "Monthly Rent",
+  late_fee: "Late Fee",
+  payment: "Payment",
+};
+
 function corsHeaders(origin: string | null) {
   return {
     "Access-Control-Allow-Origin": origin ?? "*",
@@ -17,6 +26,13 @@ function corsHeaders(origin: string | null) {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Content-Type": "application/json",
   };
+}
+
+function json(origin: string | null, status: number, body: unknown) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: corsHeaders(origin),
+  });
 }
 
 serve(async (req) => {
@@ -28,27 +44,25 @@ serve(async (req) => {
 
   try {
     if (req.method !== "POST") {
-      return new Response(
-        JSON.stringify({ error: "Method not allowed." }),
-        { status: 405, headers: corsHeaders(origin) }
-      );
+      return json(origin, 405, { error: "Method not allowed." });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const appUrl = Deno.env.get("APP_URL");
+    const appUrl =
+      Deno.env.get("APP_URL") ||
+      Deno.env.get("SITE_URL") ||
+      "https://commercialesflores.com";
 
     if (!supabaseUrl || !anonKey || !serviceRoleKey) {
       throw new Error("Missing Supabase environment variables.");
     }
 
     const authHeader = req.headers.get("Authorization");
+
     if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: "Missing authorization header." }),
-        { status: 401, headers: corsHeaders(origin) }
-      );
+      return json(origin, 401, { error: "Missing authorization header." });
     }
 
     const userClient = createClient(supabaseUrl, anonKey, {
@@ -63,10 +77,7 @@ serve(async (req) => {
     } = await userClient.auth.getUser();
 
     if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: "Unauthorized." }),
-        { status: 401, headers: corsHeaders(origin) }
-      );
+      return json(origin, 401, { error: "Unauthorized." });
     }
 
     const { data: adminUser, error: adminUserError } = await adminClient
@@ -78,19 +89,15 @@ serve(async (req) => {
     if (adminUserError) throw adminUserError;
 
     if (!adminUser || adminUser.role !== "admin") {
-      return new Response(
-        JSON.stringify({ error: "Admin access required." }),
-        { status: 403, headers: corsHeaders(origin) }
-      );
+      return json(origin, 403, { error: "Admin access required." });
     }
 
     const body = (await req.json()) as RequestBody;
 
     if (!body.paymentId || !body.action) {
-      return new Response(
-        JSON.stringify({ error: "paymentId and action are required." }),
-        { status: 400, headers: corsHeaders(origin) }
-      );
+      return json(origin, 400, {
+        error: "paymentId and action are required.",
+      });
     }
 
     const { data: paymentRow, error: paymentError } = await adminClient
@@ -99,6 +106,8 @@ serve(async (req) => {
         payment_id,
         public_id,
         amount,
+        category,
+        billing_snapshot,
         user_id,
         reservation_id,
         users!payments_user_id_fkey (
@@ -116,10 +125,7 @@ serve(async (req) => {
     if (paymentError) throw paymentError;
 
     if (!paymentRow) {
-      return new Response(
-        JSON.stringify({ error: "Payment not found." }),
-        { status: 404, headers: corsHeaders(origin) }
-      );
+      return json(origin, 404, { error: "Payment not found." });
     }
 
     const customer = Array.isArray(paymentRow.users)
@@ -131,15 +137,17 @@ serve(async (req) => {
       : paymentRow.reservations;
 
     const recipientEmail = customer?.email;
+
     if (!recipientEmail) {
-      return new Response(
-        JSON.stringify({ error: "Customer email not found." }),
-        { status: 400, headers: corsHeaders(origin) }
-      );
+      return json(origin, 400, { error: "Customer email not found." });
     }
 
     const customerName =
-      [customer?.first_name, customer?.last_name].filter(Boolean).join(" ") || null;
+      [customer?.first_name, customer?.last_name].filter(Boolean).join(" ") ||
+      null;
+
+    const categoryLabel =
+      PAYMENT_CATEGORY_LABELS[paymentRow.category ?? "payment"] ?? "Payment";
 
     const template = paymentUpdateTemplate({
       customerName,
@@ -147,7 +155,9 @@ serve(async (req) => {
       reservationPublicId: reservation?.public_id ?? null,
       amount: Number(paymentRow.amount ?? 0),
       action: body.action,
-      notes: body.notes ?? null,
+      notes: body.notes
+        ? `${categoryLabel}: ${body.notes}`
+        : `${categoryLabel} ${body.action === "verified" ? "approved." : "rejected."}`,
       appUrl,
     });
 
@@ -157,22 +167,44 @@ serve(async (req) => {
       html: template.html,
     });
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: "Payment update email sent.",
-        emailResult,
-      }),
-      { status: 200, headers: corsHeaders(origin) }
-    );
+    await adminClient.from("notifications").insert({
+      user_id: paymentRow.user_id,
+      title: template.subject,
+      message:
+        body.action === "verified"
+          ? `${categoryLabel} ${paymentRow.public_id} has been approved.`
+          : `${categoryLabel} ${paymentRow.public_id} has been rejected.`,
+      type: "payment",
+      is_read: false,
+      date: new Date().toISOString(),
+      related_table: "payments",
+      related_id: paymentRow.payment_id,
+      action_url: `/payments/${paymentRow.public_id}`,
+    });
+
+    await adminClient.from("audit_log").insert({
+      user_id: user.id,
+      action:
+        body.action === "verified"
+          ? "PAYMENT_UPDATE_EMAIL_SENT"
+          : "PAYMENT_REJECTION_EMAIL_SENT",
+      target_table: "payments",
+      target_id: paymentRow.payment_id,
+      target_public_id: paymentRow.public_id ?? null,
+      changed_fields: ["email_notification", "in_app_notification"],
+      notes: `${categoryLabel} update notification sent to customer.`,
+    });
+
+    return json(origin, 200, {
+      success: true,
+      message: "Payment update email and notification sent.",
+      emailResult,
+    });
   } catch (error) {
     console.error("send-payment-update error:", error);
 
-    return new Response(
-      JSON.stringify({
-        error: error instanceof Error ? error.message : "Unexpected error.",
-      }),
-      { status: 500, headers: corsHeaders(origin) }
-    );
+    return json(origin, 500, {
+      error: error instanceof Error ? error.message : "Unexpected error.",
+    });
   }
 });

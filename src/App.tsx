@@ -6,6 +6,7 @@ import { ClientDataProvider } from './contexts/ClientDataContext';
 import { AdminDataProvider } from './contexts/AdminDataContext';
 import { IndicatorProvider } from './contexts/IndicatorContext';
 import { ReviewsProvider } from './contexts/ReviewsContext';
+import { PromotionsProvider } from './contexts/PromotionsContext';
 import SessionWarningModal from './components/auth/SessionWarningModal';
 import { PaymentMethodsProvider } from './contexts/PaymentMethodsContext';
 import { Building2 } from 'lucide-react';
@@ -49,6 +50,7 @@ const AdminInquiries = lazy(() => import('./pages/admin/Inquiries'));
 const AdminContent = lazy(() => import('./pages/admin/Content'));
 const AdminAnalytics = lazy(() => import('./pages/admin/Analytics'));
 const AdminProfile = lazy(() => import('./pages/admin/Profile'));
+const AdminPromotions = lazy(() => import('./components/admin/promos/AdminPromotions'));
 
 // Error Pages
 const UnauthorizePage = lazy(() =>
@@ -439,6 +441,14 @@ function AppRoutes() {
           }
         />
         <Route
+          path="promotions"
+          element={
+            <RouteSuspense inLayout>
+              <AdminPromotions />
+            </RouteSuspense>
+          }
+        />
+        <Route
           path="payment-methods"
           element={
             <RouteSuspense inLayout>
@@ -531,9 +541,11 @@ export default function App() {
           <DataProvider>
             <ReviewsProvider>
               <PaymentMethodsProvider>
-                <RoutePrefetcher />
-                <AppRoutes />
-                <SessionManager />
+                <PromotionsProvider>
+                  <RoutePrefetcher />
+                  <AppRoutes />
+                  <SessionManager />
+                </PromotionsProvider>
               </PaymentMethodsProvider>
             </ReviewsProvider>
           </DataProvider>

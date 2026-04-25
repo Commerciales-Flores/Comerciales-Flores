@@ -231,6 +231,17 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
       subtype: base.unit_subtype ?? null,
       description: '',
       price: Number(base.price || 0),
+
+      dailyRate: base.daily_rate ?? null,
+      weeklyRate: base.weekly_rate ?? null,
+      monthlyRate: base.monthly_rate ?? null,
+
+      allowsFlexibleStay: base.allows_flexible_stay ?? false,
+      allowsMonthlyLease: base.allows_monthly_lease ?? true,
+
+      securityDepositMonths: base.security_deposit_months ?? 1,
+      advanceRentMonths: base.advance_rent_months ?? 1,
+
       imagePaths,
       images:
         imagePaths.length > 0
@@ -244,7 +255,6 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
       features: [],
       location: getSafeLocation(normalizeAddress(base.location)),
       property: null,
-      minimumPaymentPercent: base.minimum_payment_percent ?? null,
       contractFilePath: base.contract_file_path ?? null,
       contractFileName: base.contract_file_name ?? null,
     };
@@ -340,7 +350,7 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
       .from('units')
       .select(`
         unit_id,
-        public_id,
+        public_id,  
         unit_type,
         unit_category,
         unit_subtype,
@@ -350,8 +360,14 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
         location,
         images,
         videos,
-        minimum_payment_percent,
         contract_file_path,
+        daily_rate,
+        weekly_rate,
+        monthly_rate,
+        allows_flexible_stay,
+        allows_monthly_lease,
+        security_deposit_months,
+        advance_rent_months,
         contract_file_name
       `)
       .eq('unit_id', unitId)
@@ -422,6 +438,17 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
       subtype: base.unit_subtype ?? null,
       description: normalizeText(specificRow?.description || ''),
       price: Number(base.price || 0),
+
+dailyRate: base.daily_rate ?? null,
+weeklyRate: base.weekly_rate ?? null,
+monthlyRate: base.monthly_rate ?? null,
+
+allowsFlexibleStay: base.allows_flexible_stay ?? false,
+allowsMonthlyLease: base.allows_monthly_lease ?? true,
+
+securityDepositMonths: base.security_deposit_months ?? 1,
+advanceRentMonths: base.advance_rent_months ?? 1,
+
       imagePaths,
       images:
         imagePaths.length > 0
@@ -440,7 +467,6 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
         : [],
       location: getSafeLocation(normalizeAddress(base.location)),
       property: null,
-      minimumPaymentPercent: base.minimum_payment_percent ?? null,
       contractFilePath: base.contract_file_path ?? null,
       contractFileName: base.contract_file_name ?? null,
     };
@@ -491,9 +517,15 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
       location,
       images,
       videos,
-      minimum_payment_percent,
       contract_file_path,
       contract_file_name,
+      daily_rate,
+weekly_rate,
+monthly_rate,
+allows_flexible_stay,
+allows_monthly_lease,
+security_deposit_months,
+advance_rent_months,
       is_deleted
     `)
     .eq('is_deleted', false),
@@ -586,7 +618,18 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
           subtype: base.unit_subtype ?? null,
           description: normalizeText(specific?.description || ''),
           price: Number(base.price || 0),
-          imagePaths,
+
+dailyRate: base.daily_rate ?? null,
+weeklyRate: base.weekly_rate ?? null,
+monthlyRate: base.monthly_rate ?? null,
+
+allowsFlexibleStay: base.allows_flexible_stay ?? false,
+allowsMonthlyLease: base.allows_monthly_lease ?? true,
+
+securityDepositMonths: base.security_deposit_months ?? 1,
+advanceRentMonths: base.advance_rent_months ?? 1,
+
+imagePaths,
           images:
             imagePaths.length > 0
               ? imagePaths.map((path) => getPublicImageUrl(path))
@@ -604,7 +647,6 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
             : [],
           location: getSafeLocation(normalizeAddress(base.location)),
           property: null,
-          minimumPaymentPercent: base.minimum_payment_percent ?? null,
           contractFilePath: base.contract_file_path ?? null,
           contractFileName: base.contract_file_name ?? null,
         };
@@ -947,10 +989,20 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
         title: normalizedName,
         is_available: unitData.available,
         price: normalizedPrice,
-        location: normalizedLocation,
+
+daily_rate: unitData.dailyRate ?? null,
+weekly_rate: unitData.weeklyRate ?? null,
+monthly_rate: unitData.monthlyRate ?? null,
+
+allows_flexible_stay: unitData.allowsFlexibleStay ?? false,
+allows_monthly_lease: unitData.allowsMonthlyLease ?? true,
+
+security_deposit_months: unitData.securityDepositMonths ?? 1,
+advance_rent_months: unitData.advanceRentMonths ?? 1,
+
+location: normalizedLocation,
         images: imagePaths,
         videos: videoPaths,
-        minimum_payment_percent: unitData.minimumPaymentPercent ?? null,
         contract_file_path: unitData.contractFilePath ?? null,
         contract_file_name: unitData.contractFileName ?? null,
       };
@@ -1022,6 +1074,13 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
         subtype: unitData.subtype ?? null,
         description: normalizedDescription,
         price: normalizedPrice,
+        dailyRate: unitData.dailyRate ?? null,
+        weeklyRate: unitData.weeklyRate ?? null,
+        monthlyRate: unitData.monthlyRate ?? null,
+        allowsFlexibleStay: unitData.allowsFlexibleStay ?? false,
+        allowsMonthlyLease: unitData.allowsMonthlyLease ?? true,
+        securityDepositMonths: unitData.securityDepositMonths ?? 1,
+        advanceRentMonths: unitData.advanceRentMonths ?? 1,
         imagePaths,
         images:
           imagePaths.length > 0
@@ -1035,7 +1094,6 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
         features: normalizedFeatures,
         location: normalizedLocation,
         property: null,
-        minimumPaymentPercent: unitData.minimumPaymentPercent ?? null,
         contractFilePath: unitData.contractFilePath ?? null,
         contractFileName: unitData.contractFileName ?? null,
       };
@@ -1115,9 +1173,33 @@ const refreshUnitsPromiseRef = useRef<Promise<void> | null>(null);
         if (unitUpdate.price !== undefined) {
           basePayload.price = Number(normalizeMoneyString(String(unitUpdate.price)));
         }
-        if (unitUpdate.minimumPaymentPercent !== undefined) {
-          basePayload.minimum_payment_percent = unitUpdate.minimumPaymentPercent;
-        }
+        if (unitUpdate.dailyRate !== undefined) {
+  basePayload.daily_rate = unitUpdate.dailyRate;
+}
+
+if (unitUpdate.weeklyRate !== undefined) {
+  basePayload.weekly_rate = unitUpdate.weeklyRate;
+}
+
+if (unitUpdate.monthlyRate !== undefined) {
+  basePayload.monthly_rate = unitUpdate.monthlyRate;
+}
+
+if (unitUpdate.allowsFlexibleStay !== undefined) {
+  basePayload.allows_flexible_stay = unitUpdate.allowsFlexibleStay;
+}
+
+if (unitUpdate.allowsMonthlyLease !== undefined) {
+  basePayload.allows_monthly_lease = unitUpdate.allowsMonthlyLease;
+}
+
+if (unitUpdate.securityDepositMonths !== undefined) {
+  basePayload.security_deposit_months = unitUpdate.securityDepositMonths;
+}
+
+if (unitUpdate.advanceRentMonths !== undefined) {
+  basePayload.advance_rent_months = unitUpdate.advanceRentMonths;
+}
         if (unitUpdate.location !== undefined) {
           basePayload.location = getSafeLocation(normalizeAddress(unitUpdate.location));
         }

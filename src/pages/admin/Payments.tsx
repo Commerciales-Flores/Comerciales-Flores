@@ -47,7 +47,7 @@ import AdminFilterBar, {
   FILTER_SELECT_CLASS,
 } from '../../components/common/AdminFilterBar';
 
-type PaymentFilterStatus = 'all' | 'paid' | 'unpaid' | 'partial';
+type PaymentFilterStatus = 'all' | 'paid' | 'unpaid';
 
 type PaymentView = {
   id: string;
@@ -72,6 +72,8 @@ type PaymentView = {
   unitName: string;
   reservationTotalAmount: number;
   reservationPaidAmount: number;
+  reservationBalance: number;
+reservationDueNow: number;
   progress: number;
   searchableText: string;
 };
@@ -295,6 +297,8 @@ export default function AdminPayments() {
 
       const reservationTotalAmount = Number(reservation?.totalAmount || 0);
 
+      let runningTotal = 0;
+
 // running total ONLY up to this payment
 const approvedPayments = payments
   .filter(
@@ -307,8 +311,6 @@ const approvedPayments = payments
       new Date(a.date).getTime() - new Date(b.date).getTime()
   );
 
-let runningTotal = 0;
-
 for (const p of approvedPayments) {
   runningTotal += Number(p.amount || 0);
 
@@ -318,6 +320,19 @@ for (const p of approvedPayments) {
 }
 
 const paidFromLedger = runningTotal;
+const reservationPaidAmount = paidFromLedger;
+
+const reservationBalance = Math.max(
+  reservationTotalAmount - reservationPaidAmount,
+  0
+);
+
+const reservationDueNow = Number(
+  (reservation as any)?.initialDue ??
+    (reservation as any)?.amountDue ??
+    reservationTotalAmount
+);
+
 
 const progress =
   reservationTotalAmount > 0
@@ -352,7 +367,9 @@ const progress =
         userFullName,
         unitName: reservation?.unitName ?? 'Not Found',
         reservationTotalAmount,
-        reservationPaidAmount: paidFromLedger,
+        reservationPaidAmount,
+reservationBalance,
+reservationDueNow,
         progress,
         derivedStatus,
         searchableText: [
@@ -368,7 +385,7 @@ const progress =
   .toLowerCase(),
       };
     });
-  }, [payments, reservations, getUserById, ledgerTotalsByReservationId, refundedAmountByPaymentId]);
+}, [payments, reservations, getUserById, refundedAmountByPaymentId]);
 
   const filteredPaymentViews = useMemo(() => {
   const term = debouncedSearch.trim().toLowerCase();
@@ -626,7 +643,7 @@ const shouldShowFilters =
       Category: getPaymentCategoryLabel(payment.category),
       Amount: payment.amount,
       Refunded: payment.refundedAmount,
-      Status: payment.status.toUpperCase(),
+      Status: payment.derivedStatus.toUpperCase(),
       Customer: payment.userFullName,
       'User ID': payment.userPublicId,
       Unit: payment.unitName,
@@ -699,8 +716,7 @@ const shouldShowFilters =
         >
           <option value="all">All Status</option>
           <option value="paid">Verified</option>
-          <option value="partial">Partial</option>
-          <option value="unpaid">Pending</option>
+          <option value="unpaid">Pending / Partial</option>
         </select>
 
         <SortSelect<PaymentSortOption>
@@ -744,8 +760,7 @@ const shouldShowFilters =
         >
           <option value="all">All Status</option>
           <option value="paid">Verified</option>
-          <option value="partial">Partial</option>
-          <option value="unpaid">Pending</option>
+          <option value="unpaid">Pending / Partial</option>
         </select>
 
         <SortSelect<PaymentSortOption>
@@ -1324,6 +1339,43 @@ const shouldShowFilters =
                     </div>
                   </div>
 
+                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-5">
+  <h4 className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+    <CreditCard className="size-4" />
+    Billing Snapshot
+  </h4>
+
+  <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+    <div className="flex justify-between gap-4">
+      <span className="text-slate-500">Due Upon Approval</span>
+      <span className="font-bold text-emerald-700">
+        {formatCurrency(selectedPaymentData.reservationDueNow)}
+      </span>
+    </div>
+
+    <div className="flex justify-between gap-4">
+      <span className="text-slate-500">Paid To Date</span>
+      <span className="font-semibold text-blue-700">
+        {formatCurrency(selectedPaymentData.reservationPaidAmount)}
+      </span>
+    </div>
+
+    <div className="flex justify-between gap-4">
+      <span className="text-slate-500">Remaining Balance</span>
+      <span className="font-bold text-slate-900">
+        {formatCurrency(selectedPaymentData.reservationBalance)}
+      </span>
+    </div>
+
+    <div className="flex justify-between gap-4">
+      <span className="text-slate-500">Contract Total</span>
+      <span className="font-semibold text-slate-900">
+        {formatCurrency(selectedPaymentData.reservationTotalAmount)}
+      </span>
+    </div>
+  </div>
+</div>
+
                   {selectedPaymentData.notes && (
                     <div>
                       <h3 className="mb-3 ml-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
@@ -1337,7 +1389,7 @@ const shouldShowFilters =
                   )}
 
                   {selectedPaymentData.proofOfPayment && (
-  <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                   <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-5">
               <h4 className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-blue-600">
                 
                 Proof of Payment
@@ -1354,49 +1406,51 @@ const shouldShowFilters =
                       </button>
                     </div>
                   )}
-        </div>
-        </div>
-
-        <div className="border-t border-slate-200 bg-white px-6 py-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-  <div className="flex items-center gap-3">
-    <span className="text-sm text-slate-500">Current Status</span>
-    <span
-      className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wide ${
-        statusColors[selectedPaymentData.derivedStatus]
-      }`}
-    >
-      {selectedPaymentData.derivedStatus === 'paid'
-        ? 'Verified'
-        : selectedPaymentData.derivedStatus === 'partial'
-        ? 'Partial'
-        : 'Pending'}
-    </span>
-  </div>
-
-  {selectedPaymentData.derivedStatus === 'unpaid' && (
-    <div className="flex gap-2">
-      <button
-        onClick={() => handleReject(selectedPaymentData)}
-        className="rounded-xl border border-rose-200 px-5 py-2.5 font-semibold text-rose-600 transition-all hover:bg-rose-50"
-      >
-        Reject
-      </button>
-
-      <button
-        onClick={() => handleVerify(selectedPaymentData)}
-        className="rounded-xl bg-emerald-600 px-5 py-2.5 font-semibold text-white transition-all hover:bg-emerald-700"
-      >
-        Verify Payment
-      </button>
-    </div>
-  )}
-          </div>
                 </div>
-              </motion.div>
+                </div>
+
+                <div className="border-t border-slate-200 bg-white px-6 py-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-slate-500">Current Status</span>
+                    <span
+                      className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wide ${
+                        statusColors[selectedPaymentData.derivedStatus]
+                      }`}
+                    >
+                      {selectedPaymentData.derivedStatus === 'paid'
+                        ? 'Verified'
+                        : selectedPaymentData.derivedStatus === 'partial'
+                        ? 'Partial'
+                        : 'Pending'}
+                    </span>
+                  </div>
+
+                      {selectedPaymentData.derivedStatus === 'unpaid' && (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleReject(selectedPaymentData)}
+                            className="rounded-xl border border-rose-200 px-5 py-2.5 font-semibold text-rose-600 transition-all hover:bg-rose-50"
+                          >
+                            Reject
+                          </button>
+
+                          <button
+                            onClick={() => handleVerify(selectedPaymentData)}
+                            className="rounded-xl bg-emerald-600 px-5 py-2.5 font-semibold text-white transition-all hover:bg-emerald-700"
+                          >
+                            Verify Payment
+                          </button>
+                        </div>
+                      )}
+                  </div>
+                        </div>
+                      </motion.div>
     </div>
           )}
         </AnimatePresence>
+
+        
 
         <AnimatePresence>
           {refundPayment && (

@@ -29,6 +29,8 @@ export interface ReservationForm {
   paymentCycle: PaymentCycle;
   paymentMode?: PaymentMode;
 
+  promoCode: string;
+
   notes: string;
 
   slotId: string;
