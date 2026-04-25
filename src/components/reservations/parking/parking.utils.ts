@@ -8,6 +8,16 @@ import { computeEndFromForm } from "../shared/reservation.utils";
 const BLOCKING_STATUSES = ["approved", "confirmed"] as const;
 const DEFAULT_SAME_DAY_HOURLY_LEAD_MINUTES = 120;
 
+const BUSINESS_TIME_ZONE = "Asia/Manila";
+
+export function getBusinessNow() {
+  return new Date(
+    new Date().toLocaleString("en-US", {
+      timeZone: BUSINESS_TIME_ZONE,
+    })
+  );
+}
+
 export const PARKING_DURATION_LIMITS = {
   hours: { min: 1, max: 24 },
   days: { min: 1, max: 30 },
@@ -189,7 +199,7 @@ export function getParkingDurationPolicyText(durationType: DurationType) {
  * Parking reservations may start today.
  */
 export function getParkingMinStartDate() {
-  const today = new Date();
+  const today = getBusinessNow();
   today.setHours(0, 0, 0, 0);
   return today;
 }
@@ -197,7 +207,7 @@ export function getParkingMinStartDate() {
 export function isSameParkingDay(date?: Date | null) {
   if (!date) return false;
 
-  const now = new Date();
+  const now = getBusinessNow();
 
   return (
     date.getFullYear() === now.getFullYear() &&
@@ -205,6 +215,7 @@ export function isSameParkingDay(date?: Date | null) {
     date.getDate() === now.getDate()
   );
 }
+
 
 function roundUpToNextWholeHour(date: Date) {
   const next = new Date(date);
@@ -224,7 +235,7 @@ function roundUpToNextWholeHour(date: Date) {
 export function getParkingEarliestSelectableDateTime(
   leadMinutes = DEFAULT_SAME_DAY_HOURLY_LEAD_MINUTES
 ) {
-  const next = new Date();
+  const next = getBusinessNow();
   next.setMinutes(next.getMinutes() + leadMinutes);
   return roundUpToNextWholeHour(next);
 }
