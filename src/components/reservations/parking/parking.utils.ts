@@ -18,6 +18,43 @@ export function getBusinessNow() {
   );
 }
 
+export function isWithinParkingRequestWindow(
+  hourlyStart: string,
+  hourlyEnd: string
+) {
+  if (!isValidTimeHHMM(hourlyStart) || !isValidTimeHHMM(hourlyEnd)) {
+    return false;
+  }
+
+  const now = getBusinessNow();
+
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const startMinutes = parseHHMM(hourlyStart).totalMinutes;
+  const endMinutes = parseHHMM(hourlyEnd).totalMinutes;
+
+  return nowMinutes >= startMinutes && nowMinutes < endMinutes;
+}
+
+export function parkingDurationRequiresOfficeHours(
+  durationType: ParkingDurationType
+) {
+  return durationType === "hours" || durationType === "days";
+}
+
+export function isParkingRequestAllowedNow(params: {
+  durationType: ParkingDurationType;
+  hourlyStart: string;
+  hourlyEnd: string;
+}) {
+  const { durationType, hourlyStart, hourlyEnd } = params;
+
+  if (!parkingDurationRequiresOfficeHours(durationType)) {
+    return true;
+  }
+
+  return isWithinParkingRequestWindow(hourlyStart, hourlyEnd);
+}
+
 export const PARKING_DURATION_LIMITS = {
   hours: { min: 1, max: 24 },
   days: { min: 1, max: 30 },

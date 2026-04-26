@@ -295,9 +295,9 @@ export default function AdminDashboard() {
 
     const paidPayments = payments.filter((p) => p.status === 'paid');
     const paidPaymentsCount = paidPayments.length;
-    const pendingPayments = payments.filter(
-      (p) => p.status !== 'paid'
-    );
+    const pendingPayments = payments.filter((p) =>
+  ['pending', 'partial'].includes(p.status)
+);
 
     const recentInquiries = (tickets ?? [])
       .filter((t) => t.status === 'waiting_for_support')
@@ -327,6 +327,22 @@ export default function AdminDashboard() {
     const overdueReservations = pendingReservationsAll.filter(
       (r) => new Date(r.requestDate) < fortyEightHoursAgo
     );
+
+    const readyToCompleteReservations = reservations
+  .filter((r) => {
+    const hasEnded =
+      !!r.endDate && new Date(r.endDate).getTime() <= now.getTime();
+
+    const isFullyPaid =
+      Number(r.paidAmount || 0) >= Number(r.totalAmount || 0);
+
+    return (
+      ['approved', 'confirmed'].includes(r.status) &&
+      hasEnded &&
+      isFullyPaid
+    );
+  })
+  .slice(0, 3);
 
     const monthlyData = Array.from({ length: 6 }, (_, i) => {
       const date = new Date();
@@ -362,7 +378,17 @@ export default function AdminDashboard() {
 
    const occupiedUnitIds = new Set(
   reservations
-    .filter((r) => r.status === 'confirmed')
+    .filter(
+      (r) =>
+        r.status === 'confirmed' &&
+        (
+          r.usageStatus === 'active' ||
+          (
+            new Date(r.startDate) <= now &&
+            new Date(r.endDate) >= now
+          )
+        )
+    )
     .map((r) => r.unitId)
     .filter(Boolean)
 );
@@ -428,6 +454,7 @@ const totalRevenue = paidPayments.reduce((sum, p) => sum + p.amount, 0);
       pendingParkingRequests,
       pendingVisitRequests,
       pendingPayments: pendingPayments.slice(0, 3),
+      readyToCompleteReservations,
       recentInquiries,
       recentReviews,
       confirmedReservationsCount,
@@ -671,6 +698,27 @@ const totalRevenue = paidPayments.reduce((sum, p) => sum + p.amount, 0);
       )}
     />
   </div>
+  <div className="md:col-span-2">
+  <MiniListCard
+    title="Ready to Complete"
+    icon={<CheckCircle2 className="size-4 text-green-500" />}
+    viewAllTo="/admin/reservations"
+    items={dashboardData.readyToCompleteReservations}
+    emptyText="No reservations ready for completion"
+    badgeText="Complete"
+    badgeClassName="bg-green-100 text-green-700"
+    valueRenderer={(res) => (
+      <div className="min-w-0">
+        <span className="block truncate text-sm font-medium text-gray-800">
+          {res.unitName}
+        </span>
+        <span className="block text-xs text-gray-500">
+          Ended {formatDate(res.endDate)}
+        </span>
+      </div>
+    )}
+  />
+</div>
 </div>
 
             <section className="space-y-4">

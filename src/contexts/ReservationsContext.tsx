@@ -306,6 +306,12 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
           row.details?.assignedSlotLabel ??
           row.details?.assignedSlotCode ??
           null,
+          usageStatus: row.usage_status ?? "not_started",
+          usageStartedAt: row.usage_started_at ?? null,
+          usageEndsAt: row.usage_ends_at ?? null,
+          usageEndedAt: row.usage_ended_at ?? null,
+          usageEndNotifiedAt: row.usage_end_notified_at ?? null,
+          usageEndReminderSentAt: row.usage_end_reminder_sent_at ?? null,
 
         vehicleType: row.details?.vehicleType,
         plateNumber: row.details?.plateNumber,
@@ -379,6 +385,12 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         visit_status,
         details,
         assigned_parking_slot_id,
+        usage_status,
+        usage_started_at,
+        usage_ends_at,
+        usage_ended_at,
+        usage_end_notified_at,
+        usage_end_reminder_sent_at,
         security_deposit_months_snapshot,
         advance_rent_months_snapshot
       `)
@@ -560,6 +572,12 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         visit_status,
         details,
         assigned_parking_slot_id,
+        usage_status,
+        usage_started_at,
+        usage_ends_at,
+        usage_ended_at,
+        usage_end_notified_at,
+        usage_end_reminder_sent_at,
         security_deposit_months_snapshot,
         advance_rent_months_snapshot,
         users:user_id (
@@ -945,6 +963,12 @@ const safePaymentMode =
         vehicleType: data.details?.vehicleType,
         plateNumber: data.details?.plateNumber,
         durationType: data.details?.durationType,
+        usageStatus: data.usage_status ?? "not_started",
+        usageStartedAt: data.usage_started_at ?? null,
+        usageEndsAt: data.usage_ends_at ?? null,
+        usageEndedAt: data.usage_ended_at ?? null,
+        usageEndNotifiedAt: data.usage_end_notified_at ?? null,
+        usageEndReminderSentAt: data.usage_end_reminder_sent_at ?? null,
         securityDepositMonthsSnapshot: data.security_deposit_months_snapshot ?? null,
         advanceRentMonthsSnapshot: data.advance_rent_months_snapshot ?? null,
       };
@@ -1035,6 +1059,31 @@ const safePaymentMode =
         dbPayload.assigned_parking_slot_id =
           reservationUpdate.assignedParkingSlotId;
       }
+      if (reservationUpdate.usageStatus !== undefined) {
+  dbPayload.usage_status = reservationUpdate.usageStatus;
+}
+
+if (reservationUpdate.usageStartedAt !== undefined) {
+  dbPayload.usage_started_at = reservationUpdate.usageStartedAt;
+}
+
+if (reservationUpdate.usageEndsAt !== undefined) {
+  dbPayload.usage_ends_at = reservationUpdate.usageEndsAt;
+}
+
+if (reservationUpdate.usageEndedAt !== undefined) {
+  dbPayload.usage_ended_at = reservationUpdate.usageEndedAt;
+}
+
+if (reservationUpdate.usageEndNotifiedAt !== undefined) {
+  dbPayload.usage_end_notified_at =
+    reservationUpdate.usageEndNotifiedAt;
+}
+
+if (reservationUpdate.usageEndReminderSentAt !== undefined) {
+  dbPayload.usage_end_reminder_sent_at =
+    reservationUpdate.usageEndReminderSentAt;
+}
 
       const detailsPatch = buildReservationDetails(reservationUpdate);
       const rawDetails = (reservationUpdate as any).details;

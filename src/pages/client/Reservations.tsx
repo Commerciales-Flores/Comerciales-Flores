@@ -752,9 +752,7 @@ const confirmRequestCancellation = useCallback(async () => {
                 const isFullyPaid =
                   Number(reservation.paidAmount || 0) >= Number(reservation.totalAmount || 0);
 
-                const isEligibleReviewStatus = ['approved', 'confirmed', 'completed'].includes(
-                  reservation.status
-                );
+                const isEligibleReviewStatus = reservation.status === 'completed';
 
                 const canReview = isEligibleReviewStatus && hasEnded && isFullyPaid;
 
@@ -1281,7 +1279,7 @@ const canRequestCancel = canRequestCancellation({
             </div>
           )}
 
-          {isEligibleReviewStatus && !hasEnded && (
+          {['approved', 'confirmed'].includes(reservation.status) && !hasEnded && (
             <div className="flex items-start gap-2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-amber-800">
               <Clock className="mt-0.5 size-4 text-amber-600" />
               <p className="text-[13px] font-medium sm:text-sm">

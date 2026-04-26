@@ -539,36 +539,36 @@ const hasNoSearchResults =
   );
 
   const handleApprove = useCallback(
-    async (reservation: EnrichedReservation) => {
-      await updateReservation(reservation.id, { status: 'confirmed' });
+  async (reservation: EnrichedReservation) => {
+    await updateReservation(reservation.id, { status: 'confirmed' });
 
-      await sendReservationNotification({
-        userId: reservation.userId,
-        reservationPublicId: reservation.reservationPublicId,
-        action: 'approved',
-      });
+    await sendReservationNotification({
+      userId: reservation.userId,
+      reservationPublicId: reservation.reservationPublicId,
+      action: 'confirmed',
+    });
 
-      setSelectedReservation(null);
-      await reloadPage();
-    },
-    [updateReservation, sendReservationNotification, reloadPage]
-  );
+    setSelectedReservation(null);
+    await reloadPage();
+  },
+  [updateReservation, sendReservationNotification, reloadPage]
+);
 
   const handleReject = useCallback(
-    async (reservation: EnrichedReservation) => {
-      await updateReservation(reservation.id, { status: 'cancelled' });
+  async (reservation: EnrichedReservation) => {
+    await updateReservation(reservation.id, { status: 'rejected' });
 
-      await sendReservationNotification({
-        userId: reservation.userId,
-        reservationPublicId: reservation.reservationPublicId,
-        action: 'rejected',
-      });
+    await sendReservationNotification({
+      userId: reservation.userId,
+      reservationPublicId: reservation.reservationPublicId,
+      action: 'rejected',
+    });
 
-      setSelectedReservation(null);
-      await reloadPage();
-    },
-    [updateReservation, sendReservationNotification, reloadPage]
-  );
+    setSelectedReservation(null);
+    await reloadPage();
+  },
+  [updateReservation, sendReservationNotification, reloadPage]
+);
 
   const handleComplete = useCallback(
     async (reservation: EnrichedReservation) => {

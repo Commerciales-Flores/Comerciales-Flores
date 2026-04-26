@@ -27,7 +27,7 @@ interface NotificationsDataContextType {
   sendReservationNotification: (params: {
     userId: string;
     reservationPublicId: string;
-    action: 'approved' | 'rejected' | 'completed'
+    action: 'approved' | 'confirmed' | 'rejected' | 'completed' | 'cancelled'
   }) => Promise<void>;
 
   sendPaymentNotification: (params: {
@@ -421,17 +421,26 @@ action_url
       await addNotification({
         userId,
         title:
-          action === 'approved'
-            ? 'Reservation Approved'
-            : action === 'completed'
-              ? 'Reservation Completed'
-              : 'Reservation Rejected',
-        message:
-          action === 'approved'
-            ? `Your reservation ${reservationPublicId} has been approved. You may proceed to payments.`
-            : action === 'completed'
-              ? `Your reservation ${reservationPublicId} has been completed. Thank you for choosing us.`
-              : `Your reservation ${reservationPublicId} has been rejected.`,
+  action === 'approved'
+    ? 'Reservation Approved'
+    : action === 'confirmed'
+      ? 'Reservation Confirmed'
+      : action === 'completed'
+        ? 'Reservation Completed'
+        : action === 'cancelled'
+          ? 'Reservation Cancelled'
+          : 'Reservation Rejected',
+
+message:
+  action === 'approved'
+    ? `Your reservation ${reservationPublicId} has been approved. You may proceed to payments.`
+    : action === 'confirmed'
+      ? `Your reservation ${reservationPublicId} is now confirmed.`
+      : action === 'completed'
+        ? `Your reservation ${reservationPublicId} has been completed. You may now leave a review.`
+        : action === 'cancelled'
+          ? `Your reservation ${reservationPublicId} has been cancelled.`
+          : `Your reservation ${reservationPublicId} has been rejected.`,
         type: 'reservation',
       });
     },
@@ -474,7 +483,7 @@ action_url
             : action === 'reschedule_requested'
               ? `Your onsite visit for reservation ${reservationPublicId} needs to be rescheduled. Please wait for the updated schedule.`
               : `Your onsite visit for reservation ${reservationPublicId} has been declined.`,
-        type: 'system',
+        type: 'reservation',
       });
     },
     [addNotification]
@@ -534,7 +543,7 @@ action_url
         userId,
         title: 'Inquiry Response',
         message: `Your inquiry "${subject}" has received a response.`,
-        type: 'inquiry',
+        type: 'support',
       });
     },
     [addNotification]
@@ -588,7 +597,7 @@ action_url
           status === 'approved'
             ? 'Your account deletion request has been approved. Kindly settle first your active reservations or payments before proceeding'
             : 'Your account deletion request has been rejected. Please contact support for more details.',
-        type: 'system',
+        type: 'security',
       });
     },
     [addNotification]

@@ -9,6 +9,7 @@ export type ReservationStatus =
   | 'cancelled'
   | 'overdue'
   | 'rejected';
+  
 
 export type PaymentReviewStatus = 'pending' | 'approved' | 'rejected';
 export type PaymentStatus = 'unpaid' | 'paid';
@@ -43,6 +44,11 @@ export type OverdueReason =
   | 'manual_admin_flag';
 
 export type ParkingSlotStatus = 'active' | 'inactive' | 'maintenance';
+export type UsageStatus =
+  | 'not_started'
+  | 'active'
+  | 'ended'
+  | 'released_early';
 
 export interface ReservationDetails {
   bookingTerm?: BookingTerm;
@@ -180,6 +186,13 @@ export interface Reservation {
 
   assignedParkingSlotId?: string | null;
   assignedParkingSlotLabel?: string | null;
+
+  usageStatus?: UsageStatus | null;
+usageStartedAt?: string | null;
+usageEndsAt?: string | null;
+usageEndedAt?: string | null;
+usageEndNotifiedAt?: string | null;
+usageEndReminderSentAt?: string | null;
 
   location?: string;
   details?: ReservationDetails;
@@ -332,11 +345,13 @@ export interface Inquiry {
 export type NotificationType =
   | 'reservation'
   | 'payment'
-  | 'appointment'
-  | 'promo'
   | 'billing'
-  | 'inquiry'
+  | 'usage'
   | 'review'
+  | 'support'
+  | 'promotion'
+  | 'maintenance'
+  | 'security'
   | 'system';
 
 export interface Notification {

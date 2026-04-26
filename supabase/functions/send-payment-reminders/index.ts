@@ -162,8 +162,8 @@ serve(async (req) => {
         last_payment_reminder_stage
       `)
       .eq("status", "confirmed")
-      .eq("reservation_type", "monthly_lease")
-      .not("payment_due_at", "is", null);
+.eq("reservation_type", "flexible_stay")
+.not("payment_due_at", "is", null);
 
     if (reservationsError) {
       throw reservationsError;

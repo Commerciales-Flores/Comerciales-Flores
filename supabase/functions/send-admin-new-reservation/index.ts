@@ -45,6 +45,12 @@ const RESERVATION_TYPE_LABELS: Record<string, string> = {
   parking: "Parking Booking",
 };
 
+const UNIT_LABELS: Record<string, string> = {
+          parking_slot: "Parking Space",
+          rental_space: "Rental Space",
+          function_hall: "Function Hall",
+        };
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -117,8 +123,9 @@ serve(async (req) => {
         customerName: payload.customerName,
         reservationPublicId: payload.reservationPublicId,
         unitTitle: payload.unitTitle,
+
         unitType: payload.unitType
-          ? `${payload.unitType} · ${reservationTypeLabel}`
+          ? `${UNIT_LABELS[payload.unitType] ?? payload.unitType} · ${reservationTypeLabel}`
           : reservationTypeLabel,
         startDate: payload.startDate,
         endDate: payload.endDate,

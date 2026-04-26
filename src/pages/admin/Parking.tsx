@@ -199,7 +199,10 @@ export default function Parking() {
   const { updateReservation, getUnitById, loadingUnits } = useAdminData();
   const { fetchReservationsPage, reservationsVersion } = useReservations();
   const { users, isLoadingUsers, refreshUsers, getUserById } = useUsers();
-  const { sendReservationNotification } = useNotifications();
+  const {
+    sendReservationNotification,
+    sendSystemNotification,
+  } = useNotifications();
 
   const [reservations, setReservations] = useState<ParkingReservation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -435,20 +438,20 @@ const [rulesError, setRulesError] = useState<string | null>(null);
   }, [selectedReservation, loadAvailableSlots]);
 
   const handleReject = useCallback(
-    async (reservation: EnrichedParkingReservation) => {
-      await updateReservation(reservation.id, { status: 'cancelled' });
+  async (reservation: EnrichedParkingReservation) => {
+    await updateReservation(reservation.id, { status: 'rejected' });
 
-      await sendReservationNotification({
-        userId: reservation.userId,
-        reservationPublicId: reservation.reservationPublicId,
-        action: 'rejected',
-      });
+    await sendReservationNotification({
+      userId: reservation.userId,
+      reservationPublicId: reservation.reservationPublicId,
+      action: 'rejected',
+    });
 
-      setSelectedReservationId(null);
-      await loadParkingReservations();
-    },
-    [updateReservation, sendReservationNotification, loadParkingReservations]
-  );
+    setSelectedReservationId(null);
+    await loadParkingReservations();
+  },
+  [updateReservation, sendReservationNotification, loadParkingReservations]
+);
 
   const handleAssignAndApprove = useCallback(async () => {
   if (!selectedReservation) return;
@@ -490,12 +493,20 @@ const [rulesError, setRulesError] = useState<string | null>(null);
     });
 
     if (selectedReservation.status === 'pending') {
-      await sendReservationNotification({
-        userId: selectedReservation.userId,
-        reservationPublicId: selectedReservation.reservationPublicId,
-        action: 'approved',
-      });
-    }
+  await sendReservationNotification({
+    userId: selectedReservation.userId,
+    reservationPublicId: selectedReservation.reservationPublicId,
+    action: 'confirmed',
+  });
+}
+
+await sendSystemNotification(
+  selectedReservation.userId,
+  selectedReservation.status === 'pending'
+    ? 'Parking Slot Assigned'
+    : 'Parking Slot Updated',
+  `Parking slot ${assignedSlot.label ?? assignedSlot.slot_code} has been assigned to your reservation ${selectedReservation.reservationPublicId}.`
+);
 
     setSelectedReservationId(null);
     await loadParkingReservations();
@@ -516,6 +527,7 @@ const [rulesError, setRulesError] = useState<string | null>(null);
   slotMap,
   updateReservation,
   sendReservationNotification,
+  sendSystemNotification,
   loadParkingReservations,
 ]);
 

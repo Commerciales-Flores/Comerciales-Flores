@@ -578,7 +578,14 @@ export function paymentUpdateTemplate(params: {
 export function reservationUpdateTemplate(params: {
   customerName?: string | null;
   reservationPublicId: string;
-  action: "approved" | "rejected" | "completed" | "cancelled" | "confirmed";
+  action:
+  | "approved"
+  | "rejected"
+  | "completed"
+  | "cancelled"
+  | "confirmed"
+  | "usage_ending_soon"
+  | "usage_ended";
   notes?: string | null;
   appUrl?: string | null;
 }) {
@@ -591,6 +598,10 @@ export function reservationUpdateTemplate(params: {
     ? "Confirmed"
     : params.action === "cancelled"
     ? "Cancelled"
+    : params.action === "usage_ending_soon"
+    ? "Ending Soon"
+    : params.action === "usage_ended"
+    ? "Ended"
     : "Rejected";
 
   const text = [
@@ -610,17 +621,37 @@ export function reservationUpdateTemplate(params: {
     preheader: `Your reservation ${params.reservationPublicId} has been updated.`,
     heroEyebrow: "Reservation Update",
     heroTitle:
-      params.action === "approved"
-        ? "Your reservation has been approved"
-        : params.action === "completed"
-        ? "Your reservation has been completed"
-        : "Your reservation has been updated",
+  params.action === "approved"
+    ? "Your reservation has been approved"
+    : params.action === "confirmed"
+    ? "Your reservation is now confirmed"
+    : params.action === "completed"
+    ? "Your reservation has been completed"
+    : params.action === "cancelled"
+    ? "Your reservation has been cancelled"
+    : params.action === "rejected"
+    ? "Your reservation could not be approved"
+    : params.action === "usage_ending_soon"
+    ? "Your reservation is ending soon"
+    : params.action === "usage_ended"
+    ? "Your reservation period has ended"
+    : "Your reservation has been updated",
     heroSubtitle:
-      params.action === "approved"
-        ? "Your reservation request has been approved by our team."
-        : params.action === "completed"
-        ? "Your reservation has been marked as completed. Thank you for choosing Comerciales Flores."
-        : "Your reservation request was reviewed and could not be approved in its current state.",
+  params.action === "approved"
+    ? "Your reservation request has been approved by our team."
+    : params.action === "confirmed"
+    ? "Your reservation is confirmed and ready based on the approved arrangement."
+    : params.action === "completed"
+    ? "Your reservation has been marked as completed. Thank you for choosing Comerciales Flores."
+    : params.action === "cancelled"
+    ? "Your reservation has been cancelled. Please contact support if you need assistance."
+    : params.action === "rejected"
+    ? "Your reservation request was reviewed and could not be approved in its current state."
+    : params.action === "usage_ending_soon"
+    ? "Your active reservation period will end soon. Please prepare accordingly."
+    : params.action === "usage_ended"
+    ? "Your approved reservation period has ended."
+    : "Your reservation has been updated.",
     greeting: `Hello${
       params.customerName
         ? ` <strong>${escapeHtml(params.customerName)}</strong>`
@@ -669,11 +700,21 @@ export function reservationUpdateTemplate(params: {
 
   return {
     subject:
-      params.action === "approved"
-        ? `Reservation Approved — ${params.reservationPublicId}`
-        : params.action === "completed"
-        ? `Reservation Completed — ${params.reservationPublicId}`
-        : `Reservation Update — ${params.reservationPublicId}`,
+  params.action === "approved"
+    ? `Reservation Approved — ${params.reservationPublicId}`
+    : params.action === "confirmed"
+    ? `Reservation Confirmed — ${params.reservationPublicId}`
+    : params.action === "completed"
+    ? `Reservation Completed — ${params.reservationPublicId}`
+    : params.action === "cancelled"
+    ? `Reservation Cancelled — ${params.reservationPublicId}`
+    : params.action === "rejected"
+    ? `Reservation Update — ${params.reservationPublicId}`
+    : params.action === "usage_ending_soon"
+    ? `Reservation Ending Soon — ${params.reservationPublicId}`
+    : params.action === "usage_ended"
+    ? `Reservation Period Ended — ${params.reservationPublicId}`
+    : `Reservation Update — ${params.reservationPublicId}`,
     text,
     html,
   };

@@ -5,7 +5,14 @@ import { sendEmailWithResend } from "../_shared/email/resend.ts";
 
 type RequestBody = {
   reservationId: string;
-  action: "approved" | "rejected" | "completed" | "cancelled" | "confirmed";
+  action:
+    | "approved"
+    | "rejected"
+    | "completed"
+    | "cancelled"
+    | "confirmed"
+    | "usage_ending_soon"
+    | "usage_ended";
   notes?: string | null;
 };
 
@@ -103,6 +110,10 @@ serve(async (req) => {
         amount_due,
         total_amount,
         start_date,
+        parking_access_status,
+        parking_access_expires_at,
+        assigned_parking_slot_id,
+        details,
         end_date,
         users!reservations_user_id_fkey (
           email,
@@ -118,6 +129,30 @@ serve(async (req) => {
     if (!reservationRow) {
       return json(origin, 404, { error: "Reservation not found." });
     }
+    if (
+  body.action === "usage_ending_soon" ||
+  body.action === "usage_ended"
+) {
+  const supported =
+    reservationRow.unit_type === "parking_slot" ||
+    reservationRow.unit_type === "function_hall" ||
+    (
+      reservationRow.unit_type === "rental_space" &&
+      reservationRow.reservation_type === "flexible_stay"
+    );
+
+  if (!supported) {
+    return json(origin, 400, {
+      error:
+        "Usage lifecycle notifications are not valid for this reservation type.",
+    });
+  }
+} {
+  return json(origin, 400, {
+    error:
+      "Parking notification actions are only valid for parking reservations.",
+  });
+}
 
     const customer = Array.isArray(reservationRow.users)
       ? reservationRow.users[0]
@@ -134,10 +169,24 @@ serve(async (req) => {
       null;
 
     const paymentNote =
-      body.action === "approved"
-        ? "Your reservation has been approved. Please complete the required online payment to confirm your booking."
-        : body.action === "confirmed"
-          ? "Your reservation is now confirmed."
+  body.action === "approved"
+    ? reservationRow.unit_type === "parking_slot"
+      ? "Your parking request has been approved. Your assigned access is now active for the approved period."
+      : "Your reservation has been approved. Please complete the required payment to confirm your booking."
+    : body.action === "confirmed"
+      ? "Your reservation is now confirmed."
+      : body.action === "usage_ending_soon"
+        ? reservationRow.unit_type === "parking_slot"
+          ? "Your parking reservation is ending soon. Please prepare to vacate your assigned slot."
+          : reservationRow.unit_type === "function_hall"
+            ? "Your function hall reservation is ending soon."
+            : "Your stay reservation is ending soon."
+        : body.action === "usage_ended"
+          ? reservationRow.unit_type === "parking_slot"
+            ? "Your parking reservation has ended. The assigned slot has been released."
+            : reservationRow.unit_type === "function_hall"
+              ? "Your function hall reservation period has ended."
+              : "Your stay reservation period has ended."
           : body.notes ?? null;
 
     const template = reservationUpdateTemplate({

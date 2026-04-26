@@ -15,8 +15,8 @@ import {
   sanitizePhoneInput,
 } from "../../utils/DataNormalization";
 import {
-  getParkingDurationBounds,
   getBusinessNow,
+  getParkingDurationBounds,
   validateParkingDuration,
   getParkingMinStartDate,
   isSameParkingDay,
@@ -24,6 +24,8 @@ import {
   getParkingEarliestSelectableTimeValue,
   validateSameDayHourlyParking,
   buildParkingHourlyOptions,
+  isParkingRequestAllowedNow,
+parkingDurationRequiresOfficeHours,
 } from "../reservations/parking/parking.utils";
 
 import {
@@ -103,6 +105,7 @@ function buildInitialForm(): GuestParkingForm {
   };
 }
 
+
 function formatTime12h(time?: string) {
   if (!time) return "";
 
@@ -146,11 +149,27 @@ export default function GuestParking() {
 
   const [parkingRules, setParkingRules] =
   useState<ParkingRules>(DEFAULT_PARKING_RULES);
+  
 
   const durationBounds = useMemo(
     () => getParkingDurationBounds(form.durationType),
     [form.durationType]
   );
+
+  const selectedDurationRequiresOfficeHours =
+  parkingDurationRequiresOfficeHours(form.durationType);
+
+const parkingRequestsOpenNow = useMemo(
+  () =>
+    isParkingRequestAllowedNow({
+      durationType: form.durationType,
+      hourlyStart: parkingRules.hourly_start,
+      hourlyEnd: parkingRules.hourly_end,
+    }),
+  [form.durationType, parkingRules.hourly_start, parkingRules.hourly_end]
+);
+
+const formLocked = isSubmitting || !parkingRequestsOpenNow;
 
   const startDateObject = useMemo(() => {
     return form.startDate ? new Date(`${form.startDate}T00:00:00`) : undefined;
@@ -276,6 +295,10 @@ const availableHourlyOptions = useMemo(() => {
 });
   }, [form.durationType, startDateObject, form.startTime]);
 
+  const parkingRequestWindowText = `${formatTime12h(
+  parkingRules.hourly_start
+)} to ${formatTime12h(parkingRules.hourly_end)}`;
+
   const endTime = useMemo(() => {
     if (form.durationType !== "hours") return "";
     return computeEndTime(form.startTime, Number(form.durationValue || "0"));
@@ -346,6 +369,13 @@ const availableHourlyOptions = useMemo(() => {
       e.preventDefault();
 
       if (isSubmitting) return;
+
+      if (!parkingRequestsOpenNow) {
+  setSubmitError(
+    `Parking requests are currently closed. Requests are accepted from ${parkingRequestWindowText}.`
+  );
+  return;
+}
 
       const firstName = form.firstName.trim();
       const lastName = form.lastName.trim();
@@ -454,7 +484,14 @@ const payload = {
       setForm(buildInitialForm());
       setIsSubmitting(false);
     },
-    [durationError, form, isSubmitting, sameDayHourlyError]
+    [
+  durationError,
+  form,
+  isSubmitting,
+  parkingRequestsOpenNow,
+  parkingRequestWindowText,
+  sameDayHourlyError,
+]
   );
 
   return (
@@ -482,15 +519,20 @@ const payload = {
 
                 return (
                   <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => handleDurationTypeChange(option.value)}
-                    className={`rounded-2xl border px-4 py-4 text-left transition-all ${
-                      active
-                        ? "border-blue-600 bg-blue-600 text-white shadow-md"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50"
-                    }`}
-                  >
+  key={option.value}
+  type="button"
+  disabled={isSubmitting}
+  onClick={() => handleDurationTypeChange(option.value)}
+  className={`rounded-2xl border px-4 py-4 text-left transition-all ${
+    isSubmitting
+  ? "cursor-not-allowed opacity-60"
+  : ""
+  } ${
+    active
+      ? "border-blue-600 bg-blue-600 text-white shadow-md"
+      : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50"
+  }`}
+>
                     <Icon className="mb-3 size-5" />
                     <p className="text-sm font-bold">{option.label}</p>
                     <p
@@ -526,6 +568,15 @@ const payload = {
       These hours may be adjusted later by admin settings.
     </div>
 
+    {!parkingRequestsOpenNow && selectedDurationRequiresOfficeHours && (
+  <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+    <strong>Parking requests are closed right now.</strong>
+    <span className="mt-1 block">
+      Requests are accepted from {parkingRequestWindowText}.
+    </span>
+  </div>
+)}
+
     <p className="text-xs text-blue-600">
   {getParkingDurationPolicyText(form.durationType)}
 </p>
@@ -540,7 +591,7 @@ const payload = {
         type="date"
         min={getTodayInputValue()}
         value={form.startDate}
-        disabled={isSubmitting}
+        disabled={formLocked}
         onChange={(e) => updateField("startDate", e.target.value)}
         className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
         required
@@ -559,7 +610,7 @@ const payload = {
         inputMode="numeric"
         maxLength={2}
         value={form.durationValue}
-        disabled={isSubmitting}
+        disabled={formLocked}
         onChange={(e) => updateField("durationValue", e.target.value)}
         className={`w-full rounded-xl border px-3 py-2 text-sm outline-none transition focus:ring-4 ${
           durationError
@@ -588,7 +639,7 @@ const payload = {
 
         <select
           value={form.startTime}
-          disabled={isSubmitting || availableHourlyOptions.length === 0}
+          disabled={formLocked || availableHourlyOptions.length === 0}
           onChange={(e) => updateField("startTime", e.target.value)}
           className={`w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none transition ${
             availableHourlyOptions.length === 0
@@ -786,10 +837,18 @@ const payload = {
 
   <button
     type="submit"
-    disabled={isSubmitting}
+    disabled={formLocked}
     className="w-full rounded-xl bg-blue-600 py-3 font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
   >
-    {isSubmitting ? "Sending Parking Request..." : "Send Parking Request"}
+    {isSubmitting
+  ? "Sending Parking Request..."
+  : parkingRequestsOpenNow
+    ? "Send Parking Request"
+    : form.durationType === "hours"
+  ? "Hourly Requests Closed"
+  : form.durationType === "days"
+    ? "Daily Requests Closed"
+    : "Send Parking Request"}
   </button>
 
   {submitError && (

@@ -598,3 +598,14 @@ entrypoint = "./functions/validate-promotion/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/validate-promotion/*.html" ]
+
+[functions.send-usage-lifecycle-reminders]
+enabled = true
+verify_jwt = true
+import_map = "./functions/send-usage-lifecycle-reminders/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/send-usage-lifecycle-reminders/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/send-usage-lifecycle-reminders/*.html" ]
