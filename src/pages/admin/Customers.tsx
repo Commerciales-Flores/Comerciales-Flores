@@ -80,6 +80,12 @@ type CustomerRow = {
   deletionStatus?: 'pending' | 'approved' | 'rejected' | null;
   deletionRequestReason?: string | null;
 
+  validIdStatus?: 'not_submitted' | 'pending' | 'approved' | 'rejected';
+validIdFilePath?: string | null;
+validIdUploadedAt?: string | null;
+validIdReviewedAt?: string | null;
+validIdReviewNotes?: string | null;
+
   initials: string;
   searchableText: string;
 };
@@ -235,6 +241,12 @@ function mapUserToCustomerRow(u: any): CustomerRow {
     deletionStatus: u.deletionStatus ?? null,
     deletionRequestReason: u.deletionRequestReason ?? null,
 
+    validIdStatus: u.validIdStatus ?? 'not_submitted',
+validIdFilePath: u.validIdFilePath ?? null,
+validIdUploadedAt: u.validIdUploadedAt ?? null,
+validIdReviewedAt: u.validIdReviewedAt ?? null,
+validIdReviewNotes: u.validIdReviewNotes ?? null,
+
     initials: `${first[0] ?? ''}${last[0] ?? ''}`,
     searchableText: [
       first,
@@ -247,6 +259,8 @@ function mapUserToCustomerRow(u: any): CustomerRow {
       u.activeUnitType ?? '',
       u.deletionStatus ?? '',
       u.deletionRequestReason ?? '',
+      u.validIdStatus ?? '',
+u.validIdReviewNotes ?? '',
     ]
       .filter(Boolean)
       .join(' ')
@@ -733,6 +747,113 @@ const reloadUsers = useCallback(async () => {
     clearUsersCache,
   ]);
 
+  const [isSubmittingValidIdReview, setIsSubmittingValidIdReview] = useState(false);
+
+const [validIdReviewState, setValidIdReviewState] = useState<{
+  target: CustomerRow | null;
+  status: 'approved' | 'rejected' | null;
+  notes: string;
+}>({
+  target: null,
+  status: null,
+  notes: '',
+});
+
+  const openValidIdReviewModal = useCallback(
+  (target: CustomerRow | null, status: 'approved' | 'rejected') => {
+    if (!target || isSubmittingValidIdReview) return;
+    if (!target.validIdFilePath) return;
+
+    setValidIdReviewState({
+      target,
+      status,
+      notes: '',
+    });
+  },
+  [isSubmittingValidIdReview]
+);
+
+const closeValidIdReviewModal = useCallback(() => {
+  if (isSubmittingValidIdReview) return;
+
+  setValidIdReviewState({
+    target: null,
+    status: null,
+    notes: '',
+  });
+}, [isSubmittingValidIdReview]);
+
+const handleValidIdReview = useCallback(async () => {
+  const target = validIdReviewState.target;
+  const status = validIdReviewState.status;
+
+  if (!target || !status || isSubmittingValidIdReview) return;
+
+  try {
+    setIsSubmittingValidIdReview(true);
+
+    const { error } = await supabase.rpc('admin_review_valid_id', {
+      p_user_id: target.id,
+      p_status: status,
+      p_notes: validIdReviewState.notes.trim() || null,
+    });
+
+    if (error) throw error;
+
+    clearUsersCache();
+    await reloadUsers();
+
+    setValidIdReviewState({
+      target: null,
+      status: null,
+      notes: '',
+    });
+
+    setRestrictionModal({
+      title: status === 'approved' ? 'Valid ID Approved' : 'Valid ID Rejected',
+      message:
+        status === 'approved'
+          ? 'The customer valid ID has been approved.'
+          : 'The customer valid ID has been rejected and the user has been notified.',
+    });
+  } catch (error) {
+    console.error('Failed to review valid ID:', error);
+
+    setRestrictionModal({
+      title: 'Review Failed',
+      message: 'Failed to update the valid ID review status.',
+    });
+  } finally {
+    setIsSubmittingValidIdReview(false);
+  }
+}, [
+  validIdReviewState,
+  isSubmittingValidIdReview,
+  clearUsersCache,
+  reloadUsers,
+]);
+
+const openValidIdFile = useCallback(
+  async (filePath?: string | null) => {
+    if (!filePath) return;
+
+    const { data, error } = await supabase.storage
+      .from('valid_ids')
+      .createSignedUrl(filePath, 120);
+
+    if (error || !data?.signedUrl) {
+      setRestrictionModal({
+        title: 'Preview Failed',
+        message: 'Failed to open the uploaded valid ID.',
+      });
+      return;
+    }
+
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+  },
+  []
+);
+
   const handleExportCustomer = useCallback(
     async (target: CustomerRow | null) => {
       if (!target) return;
@@ -1218,6 +1339,23 @@ const reloadUsers = useCallback(async () => {
                     Unpaid
                   </TableBadge>
                 )}
+                {c.validIdStatus === 'pending' && (
+                  <TableBadge className="bg-amber-100 text-amber-700">
+                    ID Pending
+                  </TableBadge>
+                )}
+
+                {c.validIdStatus === 'approved' && (
+                  <TableBadge className="bg-emerald-100 text-emerald-700">
+                    ID Approved
+                  </TableBadge>
+                )}
+
+                {c.validIdStatus === 'rejected' && (
+                  <TableBadge className="bg-rose-100 text-rose-700">
+                    ID Rejected
+                  </TableBadge>
+                )}
               </div>
             }
           />
@@ -1240,6 +1378,24 @@ const reloadUsers = useCallback(async () => {
                   <TableBadge className="bg-purple-100 text-purple-700">
                     Pending
                   </TableBadge>
+                )}
+
+                {c.validIdStatus === 'pending' && (
+                  <StatusBadge className="bg-amber-100 text-amber-700">
+                    ID Pending
+                  </StatusBadge>
+                )}
+
+                {c.validIdStatus === 'approved' && (
+                  <StatusBadge className="bg-emerald-100 text-emerald-700">
+                    ID Approved
+                  </StatusBadge>
+                )}
+
+                {c.validIdStatus === 'rejected' && (
+                  <StatusBadge className="bg-rose-100 text-rose-700">
+                    ID Rejected
+                  </StatusBadge>
                 )}
 
                 {c.deletionStatus === 'approved' && (
@@ -1265,6 +1421,38 @@ const reloadUsers = useCallback(async () => {
             >
               <Eye size={16} />
             </button>
+
+            {c.validIdFilePath && (
+  <button
+    onClick={() => void openValidIdFile(c.validIdFilePath)}
+    className="flex h-8 w-8 items-center justify-center rounded-md text-blue-600 hover:bg-blue-100"
+    title="View valid ID"
+  >
+    <Eye size={16} />
+  </button>
+)}
+
+{c.validIdStatus === 'pending' && c.validIdFilePath && (
+  <>
+    <button
+      onClick={() => openValidIdReviewModal(c, 'approved')}
+      disabled={isSubmittingValidIdReview}
+      className="flex h-8 w-8 items-center justify-center rounded-md text-emerald-600 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+      title="Approve valid ID"
+    >
+      <Check size={16} />
+    </button>
+
+    <button
+      onClick={() => openValidIdReviewModal(c, 'rejected')}
+      disabled={isSubmittingValidIdReview}
+      className="flex h-8 w-8 items-center justify-center rounded-md text-rose-600 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+      title="Reject valid ID"
+    >
+      <X size={16} />
+    </button>
+  </>
+)}
 
             <button
               onClick={() => void handleExportCustomer(c)}
@@ -1460,6 +1648,84 @@ const reloadUsers = useCallback(async () => {
           </div>
         )}
 
+        {validIdReviewState.target && validIdReviewState.status && (
+  <div className="fixed inset-0 z-[125] flex items-center justify-center bg-black/40 p-4">
+    <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
+      <div className="text-center">
+        <div
+          className={`mx-auto flex size-14 items-center justify-center rounded-full ${
+            validIdReviewState.status === 'approved'
+              ? 'bg-emerald-50 text-emerald-600'
+              : 'bg-rose-50 text-rose-600'
+          }`}
+        >
+          {validIdReviewState.status === 'approved' ? (
+            <Check size={28} />
+          ) : (
+            <X size={28} />
+          )}
+        </div>
+
+        <h3 className="mt-4 text-lg font-bold text-gray-900">
+          {validIdReviewState.status === 'approved'
+            ? 'Approve Valid ID'
+            : 'Reject Valid ID'}
+        </h3>
+
+        <p className="mt-1 text-sm text-gray-500">
+          {validIdReviewState.status === 'approved'
+            ? 'This will mark the customer valid ID as approved.'
+            : 'This will reject the customer valid ID and notify them to upload a replacement.'}
+        </p>
+      </div>
+
+      {validIdReviewState.status === 'rejected' && (
+        <textarea
+          value={validIdReviewState.notes}
+          onChange={(e) =>
+            setValidIdReviewState((prev) => ({
+              ...prev,
+              notes: e.target.value,
+            }))
+          }
+          rows={4}
+          maxLength={500}
+          placeholder="Optional rejection note..."
+          className="mt-5 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-50"
+        />
+      )}
+
+      <div className="mt-6 flex gap-3">
+        <button
+          type="button"
+          onClick={closeValidIdReviewModal}
+          disabled={isSubmittingValidIdReview}
+          className="flex-1 rounded-xl bg-gray-100 py-3 font-bold text-gray-600 transition hover:bg-gray-200 disabled:opacity-50"
+        >
+          Cancel
+        </button>
+
+        <button
+          type="button"
+          onClick={() => void handleValidIdReview()}
+          disabled={isSubmittingValidIdReview}
+          className={`flex-1 rounded-xl py-3 font-bold text-white transition disabled:opacity-50 ${
+            validIdReviewState.status === 'approved'
+              ? 'bg-emerald-600 hover:bg-emerald-700'
+              : 'bg-rose-600 hover:bg-rose-700'
+          }`}
+        >
+          {isSubmittingValidIdReview
+            ? 'Saving...'
+            : validIdReviewState.status === 'approved'
+            ? 'Approve'
+            : 'Reject'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
         {confirmTarget && !confirmTarget.deactivationBlocked && (confirmTarget.is_active ?? true) && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 p-4">
             <div className="animate-in zoom-in-95 fade-in-0 w-full max-w-sm rounded-3xl bg-white p-6 shadow-xl duration-200">
@@ -1599,6 +1865,20 @@ const reloadUsers = useCallback(async () => {
                     value={customer.createdAt ? formatDate(customer.createdAt) : '—'}
                   />
 
+                  <CustomerDetailItem
+                    icon={<User size={18} />}
+                    label="Valid ID Status"
+                    value={
+                      customer.validIdStatus === 'approved'
+                        ? 'Approved'
+                        : customer.validIdStatus === 'pending'
+                        ? 'Pending Review'
+                        : customer.validIdStatus === 'rejected'
+                        ? `Rejected${customer.validIdReviewNotes ? ` — ${customer.validIdReviewNotes}` : ''}`
+                        : 'Not Submitted'
+                    }
+                  />
+
                   {customer.hasActiveOccupancy && (
                     <CustomerDetailItem
                       icon={<Briefcase size={18} />}
@@ -1644,6 +1924,102 @@ const reloadUsers = useCallback(async () => {
                     </p>
                   </div>
                 )}
+
+                {customer.validIdFilePath && (
+  <div className="mt-6 rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-4 shadow-sm">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">
+          Uploaded Valid ID
+        </p>
+
+        <p className="mt-1 text-sm text-slate-600">
+          {customer.validIdStatus === 'approved'
+            ? 'This valid ID has been approved.'
+            : customer.validIdStatus === 'pending'
+            ? 'This valid ID is waiting for admin review.'
+            : customer.validIdStatus === 'rejected'
+            ? 'This valid ID was rejected.'
+            : 'A valid ID file is attached to this account.'}
+        </p>
+
+        {customer.validIdUploadedAt && (
+          <p className="mt-2 text-xs text-slate-400">
+            Uploaded {formatDate(customer.validIdUploadedAt)}
+          </p>
+        )}
+      </div>
+
+      <TableBadge
+        className={
+          customer.validIdStatus === 'approved'
+            ? 'bg-emerald-100 text-emerald-700'
+            : customer.validIdStatus === 'pending'
+            ? 'bg-amber-100 text-amber-700'
+            : customer.validIdStatus === 'rejected'
+            ? 'bg-rose-100 text-rose-700'
+            : 'bg-slate-100 text-slate-700'
+        }
+      >
+        {customer.validIdStatus === 'approved'
+          ? 'Approved'
+          : customer.validIdStatus === 'pending'
+          ? 'Pending'
+          : customer.validIdStatus === 'rejected'
+          ? 'Rejected'
+          : 'Attached'}
+      </TableBadge>
+    </div>
+
+    {customer.validIdStatus === 'rejected' &&
+      customer.validIdReviewNotes && (
+        <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2">
+          <p className="text-xs font-semibold text-rose-700">
+            Rejection Note
+          </p>
+          <p className="mt-1 text-sm text-rose-800">
+            {customer.validIdReviewNotes}
+          </p>
+        </div>
+      )}
+
+    <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <button
+        type="button"
+        onClick={() => void openValidIdFile(customer.validIdFilePath)}
+        className="rounded-xl border border-blue-200 bg-blue-50 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
+      >
+        View ID
+      </button>
+
+      {customer.validIdStatus === 'pending' && (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              openValidIdReviewModal(customer, 'approved')
+            }
+            disabled={isSubmittingValidIdReview}
+            className="rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+          >
+            Approve
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              openValidIdReviewModal(customer, 'rejected')
+            }
+            disabled={isSubmittingValidIdReview}
+            className="rounded-xl border border-rose-200 bg-rose-50 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+          >
+            Reject
+          </button>
+        </>
+      )}
+    </div>
+  </div>
+)}
 
                 <div className="mt-8 flex flex-col gap-3">
   <div className="flex flex-col gap-2 sm:flex-row">

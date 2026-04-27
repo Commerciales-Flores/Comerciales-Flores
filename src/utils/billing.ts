@@ -226,48 +226,140 @@ export function computeOneTimeBilling(params: {
     amountDue: totalAmount,
   };
 }
+export type RentalBillingCycle = "daily" | "weekly" | "monthly";
+export type RentalBillingResult = {
+  paymentCycle: RentalBillingCycle;
+  monthlyBase: number;
+  weeklyRate: number;
+  dailyRate: number;
+  durationMonths: number;
+  stayDays: number;
+  leaseSubtotal: number;
+  leaseVat: number;
+  leaseTotal: number;
+  dailyCycleTotal: number;
+  weeklyCycleTotal: number;
+  monthlyCycleTotal: number;
+  selectedCycleTotal: number;
+  depositMonths: number;
+  advanceMonths: number;
+  depositBase: number;
+  firstMonthSubtotal: number;
+  firstMonthVat: number;
+  firstMonthTotal: number;
+  initialDue: number;
+  flexibleBreakdown?: FlexibleStayBillingResult;
+};
+
 export function computeRentalBilling(params: {
   monthlyBase: number;
-  durationMonths: number;
-  paymentCycle: "daily" | "weekly" | "monthly";
+  durationMonths?: number;
+  stayDays?: number;
+  paymentCycle: RentalBillingCycle;
   securityDepositMonths?: number;
   advanceRentMonths?: number;
-}) {
-  const result = computeMonthlyLeaseBilling({
-    leaseMonths: params.durationMonths,
-    monthlyRate: params.monthlyBase,
+  dailyRate?: number;
+  weeklyRate?: number;
+}): RentalBillingResult {
+  const paymentCycle = params.paymentCycle;
+
+  const monthlyBase = roundCurrency(sanitizeAmount(params.monthlyBase));
+
+  const dailyRate = roundCurrency(
+    sanitizeAmount(params.dailyRate ?? monthlyBase / 30)
+  );
+
+  const weeklyRate = roundCurrency(
+    sanitizeAmount(params.weeklyRate ?? dailyRate * 7)
+  );
+
+  const durationMonths = sanitizePositiveInteger(params.durationMonths, 1);
+  const stayDays = sanitizePositiveInteger(
+    params.stayDays ?? durationMonths * 30,
+    1
+  );
+
+  if (paymentCycle === "daily" || paymentCycle === "weekly") {
+    const flexible = computeFlexibleStayBilling({
+      stayDays,
+      dailyRate,
+      weeklyRate,
+      monthlyRate: monthlyBase,
+    });
+
+    return {
+      paymentCycle,
+
+      monthlyBase,
+      weeklyRate,
+      dailyRate,
+
+      durationMonths,
+      stayDays,
+
+      leaseSubtotal: flexible.subtotal,
+      leaseVat: flexible.vatAmount,
+      leaseTotal: flexible.totalAmount,
+
+      dailyCycleTotal: flexible.totalAmount,
+      weeklyCycleTotal: flexible.totalAmount,
+      monthlyCycleTotal: roundCurrency(monthlyBase + monthlyBase * VAT_RATE),
+      selectedCycleTotal: flexible.totalAmount,
+
+      depositMonths: 0,
+      advanceMonths: 0,
+
+      depositBase: 0,
+      firstMonthSubtotal: flexible.subtotal,
+      firstMonthVat: flexible.vatAmount,
+      firstMonthTotal: flexible.totalAmount,
+
+      initialDue: flexible.totalAmount,
+
+      flexibleBreakdown: flexible,
+    };
+  }
+
+  const lease = computeMonthlyLeaseBilling({
+    leaseMonths: durationMonths,
+    monthlyRate: monthlyBase,
     securityDepositMonths: params.securityDepositMonths,
     advanceRentMonths: params.advanceRentMonths,
   });
 
+  const fullLeaseVat = roundCurrency(lease.rentSubtotal * VAT_RATE);
+  const fullLeaseTotal = roundCurrency(lease.rentSubtotal + fullLeaseVat);
+
+  const monthlyCycleTotal = roundCurrency(monthlyBase + monthlyBase * VAT_RATE);
+
   return {
-    monthlyBase: result.monthlyRate,
+    paymentCycle,
 
-    leaseSubtotal: result.rentSubtotal,
-    leaseVat: roundCurrency(result.rentSubtotal * VAT_RATE),
-    leaseTotal: roundCurrency(result.rentSubtotal + result.rentSubtotal * VAT_RATE),
+    monthlyBase,
+    weeklyRate,
+    dailyRate,
 
-    dailyCycleTotal: roundCurrency(result.rentSubtotal + result.rentSubtotal * VAT_RATE),
-    weeklyCycleTotal: roundCurrency(result.rentSubtotal + result.rentSubtotal * VAT_RATE),
-    monthlyCycleTotal: roundCurrency(result.monthlyRate + result.monthlyRate * VAT_RATE),
+    durationMonths,
+    stayDays: durationMonths * 30,
 
-    selectedCycleTotal:
-      params.paymentCycle === "monthly"
-        ? roundCurrency(result.monthlyRate + result.monthlyRate * VAT_RATE)
-        : roundCurrency(result.rentSubtotal + result.rentSubtotal * VAT_RATE),
+    leaseSubtotal: lease.rentSubtotal,
+    leaseVat: fullLeaseVat,
+    leaseTotal: fullLeaseTotal,
 
-    depositMonths: result.securityDepositMonths,
-    advanceMonths: result.advanceRentMonths,
+    dailyCycleTotal: fullLeaseTotal,
+    weeklyCycleTotal: fullLeaseTotal,
+    monthlyCycleTotal,
+    selectedCycleTotal: monthlyCycleTotal,
 
-    depositBase: result.securityDepositAmount,
-    firstMonthSubtotal: result.advanceRentAmount,
-    firstMonthVat: result.vatAmount,
-    firstMonthTotal: roundCurrency(result.advanceRentAmount + result.vatAmount),
+    depositMonths: lease.securityDepositMonths,
+    advanceMonths: lease.advanceRentMonths,
 
-    initialDue:
-      params.paymentCycle === "monthly"
-        ? result.initialDue
-        : roundCurrency(result.rentSubtotal + result.rentSubtotal * VAT_RATE),
+    depositBase: lease.securityDepositAmount,
+    firstMonthSubtotal: lease.advanceRentAmount,
+    firstMonthVat: lease.vatAmount,
+    firstMonthTotal: roundCurrency(lease.advanceRentAmount + lease.vatAmount),
+
+    initialDue: lease.initialDue,
   };
 }
 

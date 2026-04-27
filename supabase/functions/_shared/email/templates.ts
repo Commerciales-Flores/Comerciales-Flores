@@ -47,20 +47,60 @@ function renderEmailLayout({
 }: EmailLayoutParams) {
   return `
   <div style="margin:0;padding:0;background:#eef2f7;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+  <meta name="color-scheme" content="light dark">
+    <meta name="supported-color-schemes" content="light dark">
+    <style>
+      :root {
+        color-scheme: light dark;
+        supported-color-schemes: light dark;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .cf-email-bg {
+          background-color: #eef2f7 !important;
+        }
+
+        .cf-email-card {
+          background-color: #ffffff !important;
+          border-color: #e2e8f0 !important;
+        }
+
+        .cf-text-dark {
+          color: #111827 !important;
+        }
+
+        .cf-text-body {
+          color: #334155 !important;
+        }
+
+        .cf-text-muted {
+          color: #64748b !important;
+        }
+
+        .cf-blue-footer {
+          background-color: #2563eb !important;
+        }
+
+        .cf-button {
+          background-color: #2563eb !important;
+          color: #ffffff !important;
+        }
+      }
+    </style>
     ${
       preheader
         ? `<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(preheader)}</div>`
         : ""
     }
 
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0;padding:32px 16px;background:#eef2f7;">
+    <table class="cf-email-bg" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0;padding:32px 16px;background:#eef2f7;background-color:#eef2f7;">
       <tr>
         <td align="center">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:680px;margin:0 auto;">
             <tr>
               <td style="padding:0;">
 
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border:1px solid #e2e8f0;border-radius:22px;overflow:hidden;box-shadow:0 12px 40px rgba(15,23,42,0.08);">
+                <table class="cf-email-card" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;background-color:#ffffff;border:1px solid #e2e8f0;border-radius:22px;overflow:hidden;box-shadow:0 12px 40px rgba(15,23,42,0.08);">
 
                   <tr>
                     <td style="padding:0;background:#ffffff;border-bottom:1px solid #e2e8f0;">
@@ -82,7 +122,7 @@ function renderEmailLayout({
                                       src="https://nlermulroebcmfwvyhmo.supabase.co/storage/v1/object/public/property_media/public/logos/building-2.png"
                                       width="18"
                                       height="18"
-                                      alt="Comerciales Flores"
+                                      alt="Commerciales Flores"
                                       style="display:block;filter:brightness(0) invert(1);"
                                     />
                                   </div>
@@ -120,7 +160,7 @@ function renderEmailLayout({
                               CF
                             </div>
 
-<table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:-22px auto 24px auto;">                             <tr>
+<table role="presentation" align="center" cellpadding="0" cellspacing="0" style="margin:-22px auto 32px auto;">                             <tr>
                                 <td
                                   width="64"
                                   height="64"
@@ -137,7 +177,7 @@ function renderEmailLayout({
                                     src="https://nlermulroebcmfwvyhmo.supabase.co/storage/v1/object/public/property_media/public/logos/building-2.png"
                                     width="28"
                                     height="28"
-                                    alt="Comerciales Flores"
+                                    alt="Commerciales Flores"
                                     style="
                                       display:block;
                                       margin:0 auto;
@@ -279,13 +319,15 @@ function renderEmailLayout({
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                   <tr>
                     <td
-                      align="center"
-                      style="
-                        padding:22px 32px;
-                        background:#2563eb;
-                        border-radius:0 0 22px 22px;
-                      "
-                    >
+  class="cf-blue-footer"
+  align="center"
+  style="
+    padding:22px 32px;
+    background:#2563eb;
+    background-color:#2563eb;
+    border-radius:0 0 22px 22px;
+  "
+>
                       <div style="
                         font-size:13px;
                         font-weight:600;
@@ -372,7 +414,8 @@ function renderCtaCard(params: {
 
           <a
             href="${escapeHtml(params.buttonUrl)}"
-            style="display:inline-block;background:linear-gradient(135deg,#2563eb 0%,#1d4ed8 100%);color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;line-height:1;padding:16px 26px;border-radius:12px;box-shadow:0 10px 24px rgba(37,99,235,0.28);"
+            class="cf-button"
+style="display:inline-block;background:#2563eb;background-color:#2563eb;background-image:linear-gradient(135deg,#2563eb 0%,#1d4ed8 100%);color:#ffffff !important;text-decoration:none;font-size:15px;font-weight:700;line-height:1;padding:16px 26px;border-radius:12px;box-shadow:0 10px 24px rgba(37,99,235,0.28);"
           >
             ${escapeHtml(params.buttonLabel)}
           </a>
@@ -642,7 +685,7 @@ export function reservationUpdateTemplate(params: {
     : params.action === "confirmed"
     ? "Your reservation is confirmed and ready based on the approved arrangement."
     : params.action === "completed"
-    ? "Your reservation has been marked as completed. Thank you for choosing Comerciales Flores."
+    ? "Your reservation has been marked as completed. Thank you for choosing Commerciales Flores."
     : params.action === "cancelled"
     ? "Your reservation has been cancelled. Please contact support if you need assistance."
     : params.action === "rejected"

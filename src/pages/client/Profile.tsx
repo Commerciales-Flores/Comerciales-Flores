@@ -26,11 +26,14 @@ import {
   Camera,
   ShieldAlert,
   ShieldCheck,
-  Edit3,
-  X,
-  Save,
-  Eye,
-  EyeOff,
+Edit3,
+X,
+Save,
+Eye,
+EyeOff,
+Upload,
+Trash2,
+FileText,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -84,6 +87,10 @@ const hasPasswordIdentity = user?.hasPassword === true;
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+const validIdInputRef = useRef<HTMLInputElement | null>(null);
+
+const [uploadingValidId, setUploadingValidId] = useState(false);
+const [removingValidId, setRemovingValidId] = useState(false);
 
   const fullName = useMemo(() => {
     return `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim() || 'User';
@@ -105,6 +112,23 @@ const hasPasswordIdentity = user?.hasPassword === true;
       )}&background=0D8ABC&color=fff&size=512`
     );
   }, [user, fullName]);
+
+  const validIdStatus =
+  (user as any)?.validIdStatus ||
+  (user as any)?.valid_id_status ||
+  null;
+
+const validIdFilePath =
+  (user as any)?.validIdFilePath ||
+  (user as any)?.valid_id_file_path ||
+  null;
+
+const validIdReviewNotes =
+  (user as any)?.validIdReviewNotes ||
+  (user as any)?.valid_id_review_notes ||
+  null;
+
+const hasValidId = Boolean(validIdFilePath);
 
   const hasCustomAvatar = useMemo(() => {
   return Boolean(
@@ -505,6 +529,78 @@ const handleRemoveImage = useCallback(async () => {
     }
   }
 }, [deleteProfilePicture, removingAvatar, showMessage, uploadingAvatar]);
+
+const handleValidIdUpload = useCallback(
+  async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user?.id || uploadingValidId) return;
+
+    try {
+      setUploadingValidId(true);
+
+      const ext = file.name.split('.').pop() || 'jpg';
+      const filePath = `${user.id}/${Date.now()}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('valid_ids')
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({
+  valid_id_file_path: filePath,
+  valid_id_status: 'pending',
+  valid_id_uploaded_at: new Date().toISOString(),
+  valid_id_reviewed_at: null,
+  valid_id_review_notes: null,
+})
+        .eq('user_id', user.id);
+
+      if (updateError) throw updateError;
+
+      showMessage(
+        'success',
+        'Valid ID uploaded successfully and submitted for review.'
+      );
+    } catch {
+      showMessage('error', 'Failed to upload valid ID.');
+    } finally {
+      setUploadingValidId(false);
+
+      if (validIdInputRef.current) {
+        validIdInputRef.current.value = '';
+      }
+    }
+  },
+  [user?.id, uploadingValidId, showMessage]
+);
+
+const handleRemoveValidId = useCallback(async () => {
+  if (!user?.id || removingValidId) return;
+
+  try {
+    setRemovingValidId(true);
+
+    await supabase
+      .from('users')
+      .update({
+        valid_id_file_path: null,
+        valid_id_status: 'not_submitted',
+        valid_id_uploaded_at: null,
+        valid_id_reviewed_at: null,
+        valid_id_review_notes: null,
+      })
+      .eq('user_id', user.id);
+
+    showMessage('success', 'Valid ID removed.');
+  } catch {
+    showMessage('error', 'Failed to remove valid ID.');
+  } finally {
+    setRemovingValidId(false);
+  }
+}, [user?.id, removingValidId, showMessage]);
 
 const handleDeleteAccount = useCallback(async () => {
   try {
@@ -1320,7 +1416,106 @@ className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 tex
               </AnimatePresence>
             </section>
             
-            <DeviceManagement />
+            <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+  <div className="border-b border-slate-100 px-6 py-5">
+    <h3 className="text-base font-bold text-slate-900">
+      Identity Verification
+    </h3>
+    <p className="mt-1 text-sm text-slate-500">
+      Upload and manage your valid ID for account verification.
+    </p>
+  </div>
+
+  <div className="space-y-4 p-6">
+    <div
+  className={`rounded-2xl border px-4 py-3 ${
+    validIdStatus === 'approved'
+      ? 'border-emerald-200 bg-emerald-50'
+      : validIdStatus === 'pending'
+      ? 'border-amber-200 bg-amber-50'
+      : validIdStatus === 'rejected'
+      ? 'border-rose-200 bg-rose-50'
+      : 'border-slate-200 bg-slate-50'
+  }`}
+>
+  <p className="text-xs font-bold uppercase tracking-wider text-slate-500">
+    Verification Status
+  </p>
+
+  <p
+    className={`mt-1 text-sm font-semibold ${
+      validIdStatus === 'approved'
+        ? 'text-emerald-700'
+        : validIdStatus === 'pending'
+        ? 'text-amber-700'
+        : validIdStatus === 'rejected'
+        ? 'text-rose-700'
+        : 'text-slate-700'
+    }`}
+  >
+    {validIdStatus === 'approved'
+      ? 'Approved'
+      : validIdStatus === 'pending'
+      ? 'Pending Review'
+      : validIdStatus === 'rejected'
+      ? 'Rejected'
+      : 'Not Uploaded'}
+  </p>
+
+  <p className="mt-2 text-sm leading-relaxed text-slate-600">
+    {validIdStatus === 'approved'
+      ? 'Your valid ID has been reviewed and approved.'
+      : validIdStatus === 'pending'
+      ? 'Your valid ID has been submitted and is waiting for admin review.'
+      : validIdStatus === 'rejected'
+      ? 'Your valid ID was rejected. Please upload a clearer or valid replacement.'
+      : 'Upload a valid ID so administrators can verify your account.'}
+  </p>
+
+  {validIdStatus === 'rejected' && validIdReviewNotes && (
+    <p className="mt-3 rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm text-rose-700">
+      <span className="font-semibold">Admin note:</span> {validIdReviewNotes}
+    </p>
+  )}
+</div>
+
+    <input
+      ref={validIdInputRef}
+      type="file"
+      accept=".jpg,.jpeg,.png,.pdf"
+      className="hidden"
+      onChange={handleValidIdUpload}
+    />
+
+    <button
+      type="button"
+      onClick={() => validIdInputRef.current?.click()}
+      disabled={uploadingValidId}
+      className="inline-flex w-full min-h-[44px] items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700"
+    >
+      <Upload className="size-4" />
+      {uploadingValidId
+        ? 'Uploading...'
+        : hasValidId
+        ? 'Replace Valid ID'
+        : 'Upload Valid ID'}
+    </button>
+
+    {hasValidId && validIdStatus !== 'approved' && (
+      <button
+        type="button"
+        onClick={() => void handleRemoveValidId()}
+        disabled={removingValidId}
+        className="inline-flex w-full min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 hover:bg-rose-100"
+      >
+        <Trash2 className="size-4" />
+        {removingValidId ? 'Removing...' : 'Remove Valid ID'}
+      </button>
+    )}
+  </div>
+</section>
+
+<DeviceManagement />
           </div>
         </div>
 

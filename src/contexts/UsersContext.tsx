@@ -69,6 +69,11 @@ function mapUserRow(row: any): User {
     addressConfirmed: Boolean(row.address_confirmed),
     addressConfirmedAt: row.address_confirmed_at ?? null,
     createdAt: row.created_at ?? undefined,
+    validIdStatus: row.valid_id_status ?? 'not_submitted',
+    validIdFilePath: row.valid_id_file_path ?? null,
+    validIdUploadedAt: row.valid_id_uploaded_at ?? null,
+    validIdReviewedAt: row.valid_id_reviewed_at ?? null,
+    validIdReviewNotes: row.valid_id_review_notes ?? null,
   };
 }
 
@@ -238,7 +243,12 @@ export function UsersProvider({ children }: { children: ReactNode }) {
               address_confirmed,
               address_confirmed_at,
               is_messaging_blocked,
-              created_at
+              created_at,
+              valid_id_status,
+              valid_id_file_path,
+              valid_id_uploaded_at,
+              valid_id_reviewed_at,
+              valid_id_review_notes
             `)
             .eq('role', 'client')
             .order('created_at', { ascending: false });

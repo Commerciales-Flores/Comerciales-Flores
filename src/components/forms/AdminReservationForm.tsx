@@ -29,6 +29,10 @@ import type {
 import { calculateTotalAmount } from '../../utils/propertyHelpers';
 import { formatCurrency } from '../../utils/currency';
 import { formatDate } from '../../utils/date';
+import {
+  computeOneTimeBilling,
+  computeRentalBilling,
+} from '../../utils/billing';
 
 interface AdminReservationFormProps {
   userId: string;
@@ -58,6 +62,8 @@ const BLOCKING_STATUSES = ['approved', 'confirmed'] as const;
 
 const RESERVATION_LIMITS = {
   rental_space: {
+    minDays: 1,
+    maxDays: 29,
     minMonths: 1,
     maxMonths: 60,
   },
@@ -149,16 +155,35 @@ function computeEndFromForm(start: Date, duration: number, type: DurationType) {
   return end;
 }
 
+function computeRentalEndFromForm(
+  start: Date,
+  duration: number,
+  paymentCycle: PaymentCycle
+) {
+  if (paymentCycle === 'monthly') {
+    return computeEndFromForm(start, duration, 'months');
+  }
+
+  return computeEndFromForm(start, duration, 'days');
+}
+
 function clampNumber(value: number, min: number, max: number) {
   if (!Number.isFinite(value)) return min;
   return Math.min(max, Math.max(min, value));
 }
 
-function getDurationBounds(unitType: UnitType, durationType: DurationType) {
-  if (unitType === 'rental_space' && durationType === 'months') {
+function getDurationBounds(unitType: UnitType, durationType: DurationType, paymentCycle?: PaymentCycle) {
+  if (unitType === 'rental_space') {
+    if (paymentCycle === 'monthly' || durationType === 'months') {
+      return {
+        min: RESERVATION_LIMITS.rental_space.minMonths,
+        max: RESERVATION_LIMITS.rental_space.maxMonths,
+      };
+    }
+
     return {
-      min: RESERVATION_LIMITS.rental_space.minMonths,
-      max: RESERVATION_LIMITS.rental_space.maxMonths,
+      min: RESERVATION_LIMITS.rental_space.minDays,
+      max: RESERVATION_LIMITS.rental_space.maxDays,
     };
   }
 
@@ -204,6 +229,33 @@ function rangesOverlap(
   return aStart <= bEnd && aEnd >= bStart;
 }
 
+function getUnitRate(unit: any, key: 'dailyRate' | 'weeklyRate' | 'monthlyRate') {
+  const camelValue = Number(unit?.[key] ?? 0);
+  if (Number.isFinite(camelValue) && camelValue > 0) return camelValue;
+
+  const snakeKey =
+    key === 'dailyRate'
+      ? 'daily_rate'
+      : key === 'weeklyRate'
+        ? 'weekly_rate'
+        : 'monthly_rate';
+
+  const snakeValue = Number(unit?.[snakeKey] ?? 0);
+  if (Number.isFinite(snakeValue) && snakeValue > 0) return snakeValue;
+
+  if (key === 'monthlyRate') return Number(unit?.price ?? 0);
+  if (key === 'weeklyRate') return Number(unit?.price ?? 0) / 4;
+  return Number(unit?.price ?? 0) / 30;
+}
+
+function getDepositMonths(unit: any) {
+  return Number(unit?.securityDepositMonths ?? unit?.security_deposit_months ?? 1) || 1;
+}
+
+function getAdvanceMonths(unit: any) {
+  return Number(unit?.advanceRentMonths ?? unit?.advance_deposit_months ?? 1) || 1;
+}
+
 function buildInitialForm(
   unitType?: UnitType,
   defaultPaymentMethod?: PaymentMethod
@@ -211,11 +263,9 @@ function buildInitialForm(
   const tomorrow = getTomorrow();
 
   if (unitType === 'parking_slot') {
-    const endDate = computeEndFromForm(tomorrow, 1, 'months');
-
     return {
       startDate: tomorrow,
-      endDate,
+      endDate: computeEndFromForm(tomorrow, 1, 'months'),
       duration: 1,
       durationType: 'months',
       notes: '',
@@ -248,12 +298,10 @@ function buildInitialForm(
     };
   }
 
-  const endDate = computeEndFromForm(tomorrow, 1, 'months');
-
   return {
     startDate: tomorrow,
-    endDate,
-    duration: 1,
+    endDate: computeRentalEndFromForm(tomorrow, 12, 'monthly'),
+    duration: 12,
     durationType: 'months',
     notes: '',
     paymentCycle: 'monthly',
@@ -269,6 +317,19 @@ function buildInitialForm(
 
 function getSafeCalendarAnchor(date?: Date) {
   return startOfLocalDay(date ?? getTomorrow());
+}
+
+function formatUnitTypeLabel(value: UnitType) {
+  switch (value) {
+    case 'rental_space':
+      return 'Rental Space';
+    case 'function_hall':
+      return 'Function Hall';
+    case 'parking_slot':
+      return 'Parking Slot';
+    default:
+      return String(value).replace(/_/g, ' ');
+  }
 }
 
 function FieldLabel({
@@ -357,23 +418,21 @@ export default function AdminReservationForm({
   useEffect(() => {
     if (!unit) return;
 
-    const bounds = getDurationBounds(unit.type, formState.durationType);
+    const bounds = getDurationBounds(
+      unit.type,
+      formState.durationType,
+      formState.paymentCycle
+    );
 
     if (formState.duration < bounds.min || formState.duration > bounds.max) {
       const safeDuration = clampNumber(formState.duration, bounds.min, bounds.max);
 
       setFormState((prev) => {
-        if (!prev.startDate) {
-          return {
-            ...prev,
-            duration: safeDuration,
-          };
-        }
+        if (!prev.startDate) return { ...prev, duration: safeDuration };
 
         if (unit.type === 'function_hall') {
           const nextEnd = new Date(startOfLocalDay(prev.startDate));
           nextEnd.setDate(nextEnd.getDate() + safeDuration - 1);
-
           const nextRange = buildFunctionHallRange(prev.startDate, nextEnd);
 
           return {
@@ -385,6 +444,22 @@ export default function AdminReservationForm({
           };
         }
 
+        if (unit.type === 'rental_space') {
+          const nextDurationType: DurationType =
+            prev.paymentCycle === 'monthly' ? 'months' : 'days';
+
+          return {
+            ...prev,
+            duration: safeDuration,
+            durationType: nextDurationType,
+            endDate: computeRentalEndFromForm(
+              prev.startDate,
+              safeDuration,
+              prev.paymentCycle
+            ),
+          };
+        }
+
         return {
           ...prev,
           duration: safeDuration,
@@ -392,17 +467,34 @@ export default function AdminReservationForm({
         };
       });
     }
-  }, [unit, formState.duration, formState.durationType]);
+  }, [unit, formState.duration, formState.durationType, formState.paymentCycle]);
 
   useEffect(() => {
     if (!unit?.type || !formState.startDate) return;
     if (unit.type === 'function_hall') return;
 
-    setFormState((prev) => ({
-      ...prev,
-      endDate: computeEndFromForm(prev.startDate!, Number(prev.duration) || 1, prev.durationType),
-    }));
-  }, [unit?.type, formState.startDate, formState.duration, formState.durationType]);
+    setFormState((prev) => {
+      if (unit.type === 'rental_space') {
+        return {
+          ...prev,
+          endDate: computeRentalEndFromForm(
+            prev.startDate!,
+            Number(prev.duration) || 1,
+            prev.paymentCycle
+          ),
+        };
+      }
+
+      return {
+        ...prev,
+        endDate: computeEndFromForm(
+          prev.startDate!,
+          Number(prev.duration) || 1,
+          prev.durationType
+        ),
+      };
+    });
+  }, [unit?.type, formState.startDate, formState.duration, formState.durationType, formState.paymentCycle]);
 
   const unitParkingSlots = useMemo(() => {
     if (unit?.type !== 'parking_slot') return [];
@@ -471,36 +563,62 @@ export default function AdminReservationForm({
     return unitParkingSlots.find((slot) => slot.id === formState.slotId) ?? null;
   }, [formState.slotId, unitParkingSlots]);
 
-  const totalContractValue = useMemo(() => {
-    if (!unit) return 0;
+  const rentalBilling = useMemo(() => {
+    if (!unit || unit.type !== 'rental_space') return null;
 
-    return calculateTotalAmount(
+    return computeRentalBilling({
+      monthlyBase: getUnitRate(unit, 'monthlyRate'),
+      dailyRate: getUnitRate(unit, 'dailyRate'),
+      weeklyRate: getUnitRate(unit, 'weeklyRate'),
+      durationMonths:
+        formState.paymentCycle === 'monthly'
+          ? Number(formState.duration) || 1
+          : Math.max(1, Math.ceil((Number(formState.duration) || 1) / 30)),
+      stayDays:
+        formState.paymentCycle === 'monthly'
+          ? (Number(formState.duration) || 1) * 30
+          : Number(formState.duration) || 1,
+      paymentCycle: formState.paymentCycle as 'daily' | 'weekly' | 'monthly',
+      securityDepositMonths: getDepositMonths(unit),
+      advanceRentMonths: getAdvanceMonths(unit),
+    });
+  }, [unit, formState.duration, formState.paymentCycle]);
+
+  const totalBilling = useMemo(() => {
+    if (!unit) {
+      return {
+        subtotal: 0,
+        vatAmount: 0,
+        totalAmount: 0,
+        amountDue: 0,
+      };
+    }
+
+    if (unit.type === 'rental_space' && rentalBilling) {
+      return {
+        subtotal: rentalBilling.leaseSubtotal,
+        vatAmount: rentalBilling.leaseVat,
+        totalAmount: rentalBilling.leaseTotal,
+        amountDue: rentalBilling.initialDue,
+      };
+    }
+
+    const baseAmount = calculateTotalAmount(
       unit.type,
       unit.price,
       Number(formState.duration) || 1,
       formState.paymentCycle
     );
-  }, [unit, formState.duration, formState.paymentCycle]);
 
-  const rentalMonthlyAmount = useMemo(() => {
-    if (!unit || unit.type !== 'rental_space') return 0;
-    if (!formState.duration || formState.duration <= 0) return 0;
+    const result = computeOneTimeBilling({ baseAmount });
 
-    return totalContractValue / formState.duration;
-  }, [unit, formState.duration, totalContractValue]);
-
-  const rentalRequiredPayment = useMemo(() => {
-  if (!unit || unit.type !== 'rental_space') return 0;
-
-  if (
-    formState.paymentCycle === 'daily' ||
-    formState.paymentCycle === 'weekly'
-  ) {
-    return totalContractValue;
-  }
-
-  return Math.min(rentalMonthlyAmount, totalContractValue);
-}, [unit, formState.paymentCycle, rentalMonthlyAmount, totalContractValue]);
+    return {
+      subtotal: result.subtotal,
+      vatAmount: result.vatAmount,
+      totalAmount: result.totalAmount,
+      amountDue: result.amountDue,
+    };
+  }, [unit, rentalBilling, formState.duration, formState.paymentCycle]);
 
   const functionHallCalendarValue = useMemo(() => {
     if (formState.startDate && formState.endDate) {
@@ -510,11 +628,8 @@ export default function AdminReservationForm({
   }, [formState.startDate, formState.endDate]);
 
   const calendarAnchorDate = useMemo(() => {
-    if (unit?.type === 'function_hall') {
-      return getSafeCalendarAnchor(formState.startDate);
-    }
     return getSafeCalendarAnchor(formState.startDate);
-  }, [unit?.type, formState.startDate]);
+  }, [formState.startDate]);
 
   if (!unit) {
     return <div className="p-4 text-sm text-red-500">Error: Unit information could not be found.</div>;
@@ -550,12 +665,26 @@ export default function AdminReservationForm({
       }
 
       if (errorMessage) {
-        setFormErrors((prev) => ({
-          ...prev,
-          [field]: errorMessage,
-        }));
+        setFormErrors((prev) => ({ ...prev, [field]: errorMessage }));
       }
     }
+  };
+
+  const handleRentalCycleChange = (nextCycle: PaymentCycle) => {
+    setFormState((prev) => {
+      const nextDuration = nextCycle === 'monthly' ? 12 : 1;
+      const nextDurationType: DurationType = nextCycle === 'monthly' ? 'months' : 'days';
+
+      return {
+        ...prev,
+        paymentCycle: nextCycle,
+        duration: nextDuration,
+        durationType: nextDurationType,
+        endDate: prev.startDate
+          ? computeRentalEndFromForm(prev.startDate, nextDuration, nextCycle)
+          : prev.endDate,
+      };
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -573,7 +702,12 @@ export default function AdminReservationForm({
       return;
     }
 
-    const durationBounds = getDurationBounds(unit.type, formState.durationType);
+    const durationBounds = getDurationBounds(
+      unit.type,
+      formState.durationType,
+      formState.paymentCycle
+    );
+
     const safeDuration = clampNumber(
       Number(formState.duration) || durationBounds.min,
       durationBounds.min,
@@ -632,7 +766,7 @@ export default function AdminReservationForm({
       return;
     }
 
-    if (unit.type === 'rental_space') {
+    if (unit.type === 'rental_space' || unit.type === 'function_hall') {
       const hasConflict = blockingReservationsForUnit.some((reservation) =>
         rangesOverlap(
           formState.startDate,
@@ -643,28 +777,11 @@ export default function AdminReservationForm({
       );
 
       if (hasConflict) {
-        setFormError('This rental space is occupied for the selected lease period.');
-        return;
-      }
-    }
-
-    if (unit.type === 'function_hall') {
-      if (safeDuration <= 0) {
-        setFormError('Please select reservation dates first.');
-        return;
-      }
-
-      const hasConflict = blockingReservationsForUnit.some((reservation) =>
-        rangesOverlap(
-          formState.startDate,
-          formState.endDate,
-          reservation.startDate,
-          reservation.endDate
-        )
-      );
-
-      if (hasConflict) {
-        setFormError('This function hall is already reserved for the selected date(s).');
+        setFormError(
+          unit.type === 'rental_space'
+            ? 'This rental space is occupied for the selected lease period.'
+            : 'This function hall is already reserved for the selected date(s).'
+        );
         return;
       }
     }
@@ -711,7 +828,7 @@ export default function AdminReservationForm({
       startDate: formState.startDate.toISOString(),
       endDate: formState.endDate.toISOString(),
       duration: safeDuration,
-      totalAmount: totalContractValue,
+      totalAmount: totalBilling.totalAmount,
       notes: formState.notes.trim(),
       modeOfVisit: 'online',
       paymentMethod: resolvedPaymentMethod,
@@ -719,19 +836,19 @@ export default function AdminReservationForm({
 
       ...(unit.type === 'rental_space' && {
         bookingTerm: formState.paymentCycle,
-paymentMode:
-  formState.paymentCycle === 'monthly'
-    ? 'deposit_plus_first_month'
-    : 'full_upfront',
+        paymentMode:
+          formState.paymentCycle === 'monthly'
+            ? 'deposit_plus_first_month'
+            : 'full_upfront',
         businessType: formState.businessType.trim(),
-        durationType: 'months' as const,
+        durationType: formState.durationType,
       }),
 
       ...(unit.type === 'function_hall' && {
         eventPurpose: formState.eventPurpose.trim(),
         attendees: Math.max(1, Number(formState.attendees) || 1),
         bookingTerm: 'daily',
-paymentMode: 'full_upfront',
+        paymentMode: 'full_upfront',
         durationType: 'days' as const,
       }),
 
@@ -739,7 +856,7 @@ paymentMode: 'full_upfront',
         vehicleType: formState.vehicleType.trim(),
         plateNumber: formState.plateNumber.trim(),
         bookingTerm: formState.paymentCycle,
-paymentMode: 'full_upfront',
+        paymentMode: 'full_upfront',
         durationType: 'months' as const,
         slotId: formState.slotId,
         slotName:
@@ -789,8 +906,8 @@ paymentMode: 'full_upfront',
                 Unit
               </p>
               <p className="mt-1 text-sm font-semibold text-gray-900">{unit.name}</p>
-              <p className="mt-1 text-xs capitalize text-gray-500">
-                {unit.type.replace(/_/g, ' ')}
+              <p className="mt-1 text-xs text-gray-500">
+                {formatUnitTypeLabel(unit.type)}
               </p>
             </div>
 
@@ -813,13 +930,13 @@ paymentMode: 'full_upfront',
         icon={<UserIcon className="size-4" />}
       >
         <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4">
-        <p className="text-sm font-semibold text-gray-900">
-          {[user.firstName, user.lastName].filter(Boolean).join(' ') || 'Unnamed User'}
-        </p>
-        <p className="mt-1 text-xs text-gray-500">
-          {user.publicId || user.email || 'No user identifier available'}
-        </p>
-      </div>
+          <p className="text-sm font-semibold text-gray-900">
+            {[user.firstName, user.lastName].filter(Boolean).join(' ') || 'Unnamed User'}
+          </p>
+          <p className="mt-1 text-xs text-gray-500">
+            {user.publicId || user.email || 'No user identifier available'}
+          </p>
+        </div>
       </SectionCard>
 
       {formError && (
@@ -831,7 +948,7 @@ paymentMode: 'full_upfront',
       {unit.type === 'rental_space' && (
         <SectionCard
           title="Lease Details"
-          subtitle="Set the lease start date, duration, and billing cycle."
+          subtitle="Set the lease start date, booking term, and business details."
           icon={<CalendarDays className="size-4" />}
         >
           <div className="grid gap-4 md:grid-cols-2">
@@ -859,9 +976,15 @@ paymentMode: 'full_upfront',
                   <Calendar
                     onChange={(value) => {
                       if (value instanceof Date) {
+                        const startDate = startOfLocalDay(value);
                         setFormState((prev) => ({
                           ...prev,
-                          startDate: startOfLocalDay(value),
+                          startDate,
+                          endDate: computeRentalEndFromForm(
+                            startDate,
+                            Number(prev.duration) || 1,
+                            prev.paymentCycle
+                          ),
                         }));
                         setShowCalendar(false);
                       }
@@ -876,23 +999,57 @@ paymentMode: 'full_upfront',
             </div>
 
             <div>
-              <FieldLabel>Duration (months)</FieldLabel>
+              <FieldLabel icon={<Wallet className="size-3.5" />}>Booking Term</FieldLabel>
+              <select
+                value={formState.paymentCycle}
+                onChange={(e) => handleRentalCycleChange(e.target.value as PaymentCycle)}
+                className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-900 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
+                disabled={isSubmitting}
+              >
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
+
+            <div>
+              <FieldLabel>
+                Duration {formState.paymentCycle === 'monthly' ? '(months)' : '(days)'}
+              </FieldLabel>
               <input
                 type="number"
-                min={RESERVATION_LIMITS.rental_space.minMonths}
-                max={RESERVATION_LIMITS.rental_space.maxMonths}
+                min={getDurationBounds(unit.type, formState.durationType, formState.paymentCycle).min}
+                max={getDurationBounds(unit.type, formState.durationType, formState.paymentCycle).max}
                 value={formState.duration}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const bounds = getDurationBounds(
+                    unit.type,
+                    formState.paymentCycle === 'monthly' ? 'months' : 'days',
+                    formState.paymentCycle
+                  );
+
+                  const nextDuration = clampNumber(
+                    Number(e.target.value) || bounds.min,
+                    bounds.min,
+                    bounds.max
+                  );
+
+                  const nextDurationType: DurationType =
+                    formState.paymentCycle === 'monthly' ? 'months' : 'days';
+
                   setFormState((prev) => ({
                     ...prev,
-                    duration: clampNumber(
-                      Number(e.target.value) || RESERVATION_LIMITS.rental_space.minMonths,
-                      RESERVATION_LIMITS.rental_space.minMonths,
-                      RESERVATION_LIMITS.rental_space.maxMonths
-                    ),
-                    durationType: 'months',
-                  }))
-                }
+                    duration: nextDuration,
+                    durationType: nextDurationType,
+                    endDate: prev.startDate
+                      ? computeRentalEndFromForm(
+                          prev.startDate,
+                          nextDuration,
+                          prev.paymentCycle
+                        )
+                      : prev.endDate,
+                  }));
+                }}
                 className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-900 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
                 disabled={isSubmitting}
               />
@@ -905,18 +1062,15 @@ paymentMode: 'full_upfront',
               </ReadOnlyValue>
             </div>
 
-            <div>
+            <div className="md:col-span-2">
               <FieldLabel>Business Type</FieldLabel>
               <input
                 type="text"
                 placeholder="e.g., Retail, Office, Restaurant"
-                maxLength={INPUT_LIMITS.eventPurpose}
+                maxLength={INPUT_LIMITS.businessType}
                 value={formState.businessType}
                 onChange={(e) => {
-                  setFormState((prev) => ({
-                    ...prev,
-                    businessType: e.target.value,
-                  }));
+                  setFormState((prev) => ({ ...prev, businessType: e.target.value }));
                   setFormErrors((prev) => {
                     if (!prev.businessType) return prev;
                     const next = { ...prev };
@@ -924,34 +1078,13 @@ paymentMode: 'full_upfront',
                     return next;
                   });
                 }}
-                onBlur={(e) => handleFieldBlur("businessType", e.target.value)}
+                onBlur={(e) => handleFieldBlur('businessType', e.target.value)}
                 className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
                 disabled={isSubmitting}
               />
               {formErrors.businessType && (
-                <p className="mt-1 text-xs text-red-600">
-                  {formErrors.businessType}
-                </p>
+                <p className="mt-1 text-xs text-red-600">{formErrors.businessType}</p>
               )}
-            </div>
-
-            <div>
-              <FieldLabel icon={<Wallet className="size-3.5" />}>Booking Term</FieldLabel>
-              <select
-                value={formState.paymentCycle}
-                onChange={(e) =>
-                  setFormState((prev) => ({
-                    ...prev,
-                    paymentCycle: e.target.value as PaymentCycle,
-                  }))
-                }
-                className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm font-semibold text-gray-900 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-                disabled={isSubmitting}
-              >
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-              </select>
             </div>
           </div>
         </SectionCard>
@@ -1034,10 +1167,7 @@ paymentMode: 'full_upfront',
                   )}`}
                   value={formState.attendees}
                   onChange={(e) => {
-                    setFormState((prev) => ({
-                      ...prev,
-                      attendees: e.target.value,
-                    }));
+                    setFormState((prev) => ({ ...prev, attendees: e.target.value }));
                     setFormErrors((prev) => {
                       if (!prev.attendees) return prev;
                       const next = { ...prev };
@@ -1045,14 +1175,12 @@ paymentMode: 'full_upfront',
                       return next;
                     });
                   }}
-                  onBlur={(e) => handleFieldBlur("attendees", e.target.value)}
+                  onBlur={(e) => handleFieldBlur('attendees', e.target.value)}
                   className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
                   disabled={isSubmitting}
                 />
                 {formErrors.attendees && (
-                  <p className="mt-1 text-xs text-red-600">
-                    {formErrors.attendees}
-                  </p>
+                  <p className="mt-1 text-xs text-red-600">{formErrors.attendees}</p>
                 )}
               </div>
             </div>
@@ -1062,12 +1190,10 @@ paymentMode: 'full_upfront',
               <input
                 type="text"
                 placeholder="e.g., Wedding, Conference"
+                maxLength={INPUT_LIMITS.eventPurpose}
                 value={formState.eventPurpose}
                 onChange={(e) => {
-                  setFormState((prev) => ({
-                    ...prev,
-                    eventPurpose: e.target.value,
-                  }));
+                  setFormState((prev) => ({ ...prev, eventPurpose: e.target.value }));
                   setFormErrors((prev) => {
                     if (!prev.eventPurpose) return prev;
                     const next = { ...prev };
@@ -1075,14 +1201,12 @@ paymentMode: 'full_upfront',
                     return next;
                   });
                 }}
-                onBlur={(e) => handleFieldBlur("eventPurpose", e.target.value)}
+                onBlur={(e) => handleFieldBlur('eventPurpose', e.target.value)}
                 className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
                 disabled={isSubmitting}
               />
               {formErrors.eventPurpose && (
-                <p className="mt-1 text-xs text-red-600">
-                  {formErrors.eventPurpose}
-                </p>
+                <p className="mt-1 text-xs text-red-600">{formErrors.eventPurpose}</p>
               )}
             </div>
           </div>
@@ -1207,12 +1331,7 @@ paymentMode: 'full_upfront',
 
                   <button
                     type="button"
-                    onClick={() =>
-                      setFormState((prev) => ({
-                        ...prev,
-                        slotId: '',
-                      }))
-                    }
+                    onClick={() => setFormState((prev) => ({ ...prev, slotId: '' }))}
                     className="rounded-full p-2 text-blue-500 transition hover:bg-blue-100"
                     disabled={isSubmitting}
                   >
@@ -1238,8 +1357,7 @@ paymentMode: 'full_upfront',
                       const isSelected = formState.slotId === slot.id;
                       const isDisabled = isReserved || isInactive;
 
-                      let badgeClass =
-                        'border-green-200 bg-green-50 text-green-700';
+                      let badgeClass = 'border-green-200 bg-green-50 text-green-700';
                       let badgeText = 'Available';
 
                       if (isReserved) {
@@ -1256,10 +1374,7 @@ paymentMode: 'full_upfront',
                           type="button"
                           disabled={isDisabled || isSubmitting}
                           onClick={() => {
-                            setFormState((prev) => ({
-                              ...prev,
-                              slotId: slot.id,
-                            }));
+                            setFormState((prev) => ({ ...prev, slotId: slot.id }));
                             setIsSlotPanelOpen(false);
                           }}
                           className={`rounded-2xl border px-4 py-4 text-left transition ${
@@ -1278,9 +1393,7 @@ paymentMode: 'full_upfront',
                               </p>
                             </div>
 
-                            <span
-                              className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${badgeClass}`}
-                            >
+                            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-bold ${badgeClass}`}>
                               {badgeText}
                             </span>
                           </div>
@@ -1301,10 +1414,7 @@ paymentMode: 'full_upfront',
                   placeholder="e.g., Sedan, SUV, Motorcycle"
                   value={formState.vehicleType}
                   onChange={(e) => {
-                    setFormState((prev) => ({
-                      ...prev,
-                      vehicleType: e.target.value,
-                    }));
+                    setFormState((prev) => ({ ...prev, vehicleType: e.target.value }));
                     setFormErrors((prev) => {
                       if (!prev.vehicleType) return prev;
                       const next = { ...prev };
@@ -1312,14 +1422,12 @@ paymentMode: 'full_upfront',
                       return next;
                     });
                   }}
-                  onBlur={(e) => handleFieldBlur("vehicleType", e.target.value)}
+                  onBlur={(e) => handleFieldBlur('vehicleType', e.target.value)}
                   className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
                   disabled={isSubmitting}
                 />
                 {formErrors.vehicleType && (
-                  <p className="mt-1 text-xs text-red-600">
-                    {formErrors.vehicleType}
-                  </p>
+                  <p className="mt-1 text-xs text-red-600">{formErrors.vehicleType}</p>
                 )}
               </div>
 
@@ -1342,14 +1450,12 @@ paymentMode: 'full_upfront',
                       return next;
                     });
                   }}
-                  onBlur={(e) => handleFieldBlur("plateNumber", e.target.value)}
+                  onBlur={(e) => handleFieldBlur('plateNumber', e.target.value)}
                   className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
                   disabled={isSubmitting}
                 />
                 {formErrors.plateNumber && (
-                  <p className="mt-1 text-xs text-red-600">
-                    {formErrors.plateNumber}
-                  </p>
+                  <p className="mt-1 text-xs text-red-600">{formErrors.plateNumber}</p>
                 )}
               </div>
             </div>
@@ -1389,15 +1495,55 @@ paymentMode: 'full_upfront',
           </div>
 
           <div>
-            <FieldLabel icon={<ReceiptText className="size-3.5" />}>Estimated Total</FieldLabel>
-            <ReadOnlyValue>{formatCurrency(totalContractValue)}</ReadOnlyValue>
+            <FieldLabel icon={<ReceiptText className="size-3.5" />}>Amount Due</FieldLabel>
+            <ReadOnlyValue>{formatCurrency(totalBilling.amountDue)}</ReadOnlyValue>
           </div>
         </div>
 
-        {unit.type === 'rental_space' && (
+        <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-500">
+            Billing Breakdown
+          </p>
+
+          <div className="mt-3 space-y-2 text-sm">
+            <div className="flex justify-between gap-4">
+              <span className="text-gray-500">Subtotal</span>
+              <span className="font-semibold text-gray-900">
+                {formatCurrency(totalBilling.subtotal)}
+              </span>
+            </div>
+
+            <div className="flex justify-between gap-4">
+              <span className="text-gray-500">VAT (12%)</span>
+              <span className="font-semibold text-gray-900">
+                {formatCurrency(totalBilling.vatAmount)}
+              </span>
+            </div>
+
+            <div className="border-t border-gray-200 pt-2">
+              <div className="flex justify-between gap-4">
+                <span className="font-bold text-gray-900">
+                  {unit.type === 'rental_space' ? 'Total Contract Value' : 'Total Amount'}
+                </span>
+                <span className="font-bold text-gray-900">
+                  {formatCurrency(totalBilling.totalAmount)}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {unit.type === 'rental_space' && rentalBilling && (
           <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4 text-sm text-blue-800">
-            Initial required payment:{' '}
-            <span className="font-bold">{formatCurrency(rentalRequiredPayment)}</span>
+            <p>
+              Initial required payment:{' '}
+              <span className="font-bold">{formatCurrency(rentalBilling.initialDue)}</span>
+            </p>
+            <p className="mt-1 text-xs text-blue-700">
+              {formState.paymentCycle === 'monthly'
+                ? 'Monthly rentals require security deposit plus advance rent and VAT.'
+                : 'Daily and weekly rental bookings are treated as full upfront payments.'}
+            </p>
           </div>
         )}
 
@@ -1409,10 +1555,7 @@ paymentMode: 'full_upfront',
             value={formState.notes}
             maxLength={INPUT_LIMITS.notes}
             onChange={(e) =>
-              setFormState((prev) => ({
-                ...prev,
-                notes: e.target.value,
-              }))
+              setFormState((prev) => ({ ...prev, notes: e.target.value }))
             }
             className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
             disabled={isSubmitting}
@@ -1426,7 +1569,7 @@ paymentMode: 'full_upfront',
           <div>
             <p className="text-sm font-bold text-green-900">Admin-created reservation</p>
             <p className="mt-1 text-sm text-green-800">
-              This will be created immediately with approved status.
+              This reservation will be created immediately with approved status.
             </p>
           </div>
         </div>

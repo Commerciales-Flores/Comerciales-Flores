@@ -677,7 +677,7 @@ const shouldShowFilters =
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Payment Management</h1>
             <p className="text-sm text-gray-500">
-              Verify and manage customer payments
+              Review, verify, refund, and monitor customer payment submissions
             </p>
           </div>
 
@@ -688,14 +688,6 @@ const shouldShowFilters =
             >
               <Settings2 className="size-4.5" />
               Manage Methods
-            </button>
-
-            <button
-              onClick={() => setIsActionModalOpen(true)}
-              className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-100 transition-all hover:bg-blue-700 active:scale-95"
-            >
-              <Plus className="size-5" />
-              <span className="hidden font-medium sm:inline">Create Payments</span>
             </button>
           </div>
         </div>
@@ -798,12 +790,6 @@ const shouldShowFilters =
   />
 )}
 
-        <button
-          onClick={() => setIsActionModalOpen(true)}
-          className="fixed bottom-6 right-6 z-40 flex size-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-2xl transition-transform active:scale-90 sm:hidden"
-        >
-          <Plus className="size-8" />
-        </button>
 
         <div className="grid grid-cols-1 gap-4 lg:hidden">
           {isTableLoading ? (
@@ -820,7 +806,7 @@ const shouldShowFilters =
             <EmptyState
               icon={<CreditCard className="size-10 text-blue-500" />}
               title="No payments yet"
-              description="Payment records will appear here once customers submit payments or an administrator creates one."
+              description="Payment records will appear here once customers submit payments through approved channels."
             />
           ) : hasNoSearchResults ? (
             <motion.div
@@ -959,7 +945,7 @@ const shouldShowFilters =
             <EmptyState
               icon={<CreditCard className="size-10 text-blue-500" />}
               title="No payments yet"
-              description="Payment records will appear here once customers submit payments or an administrator creates one."
+              description="Payment records will appear here once customers submit payments through approved channels."
             />
           ) : hasNoSearchResults ? (
             <div className="rounded-2xl border border-gray-200 bg-white px-6 py-20 shadow-sm">
@@ -1187,13 +1173,6 @@ const shouldShowFilters =
               </button>
             </div>
           </div>
-        )}
-
-        {isActionModalOpen && (
-          <AdminActionModal
-            actionType="payment"
-            onClose={() => setIsActionModalOpen(false)}
-          />
         )}
 
         <AnimatePresence>

@@ -511,17 +511,21 @@ export default function AdminUserForm({
         </div>
       </SectionCard>
 
-      <div className="rounded-[1.75rem] border border-green-200 bg-green-50 p-4 shadow-sm">
-        <div className="flex items-start gap-3">
-          <CheckCircle2 className="mt-0.5 size-5 text-green-600" />
-          <div>
-            <p className="text-sm font-bold text-green-900">Admin-created customer</p>
-            <p className="mt-1 text-sm text-green-800">
-              This account will be created immediately once all fields are valid.
-            </p>
-          </div>
-        </div>
-      </div>
+      <div className="rounded-[1.75rem] border border-blue-200 bg-blue-50 p-4 shadow-sm">
+  <div className="flex items-start gap-3">
+    <CheckCircle2 className="mt-0.5 size-5 text-blue-600" />
+    <div>
+      <p className="text-sm font-bold text-blue-900">
+        Admin-created customer
+      </p>
+      <p className="mt-1 text-sm text-blue-800">
+        This account will be created immediately once all fields are valid.
+        The customer must upload their valid ID later from their profile for
+        identity verification.
+      </p>
+    </div>
+  </div>
+</div>
 
       <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-5 sm:flex-row sm:justify-end">
         <button

@@ -9,6 +9,12 @@ export type ReservationStatus =
   | 'cancelled'
   | 'overdue'
   | 'rejected';
+
+export type ValidIdStatus =
+  | 'not_submitted'
+  | 'pending'
+  | 'approved'
+  | 'rejected';
   
 
 export type PaymentReviewStatus = 'pending' | 'approved' | 'rejected';
@@ -326,6 +332,11 @@ export interface User {
 
   deactivationBlocked?: boolean;
   deactivationReason?: string | null;
+  validIdStatus?: ValidIdStatus;
+validIdFilePath?: string | null;
+validIdUploadedAt?: string | null;
+validIdReviewedAt?: string | null;
+validIdReviewNotes?: string | null;
 }
 
 export interface Inquiry {
