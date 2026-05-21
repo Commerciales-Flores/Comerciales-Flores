@@ -73,11 +73,11 @@ type PromotionsContextType = {
   getPromotionById: (id?: string | null) => Promotion | undefined;
   getPromotionByCode: (code?: string | null) => Promotion | undefined;
   attachPromotionToUnit: (promoId: string, unitId: string) => Promise<void>;
-detachPromotionFromUnit: (promoId: string, unitId: string) => Promise<void>;
+  detachPromotionFromUnit: (promoId: string, unitId: string) => Promise<void>;
 };
 
 const PromotionsContext = createContext<PromotionsContextType | undefined>(
-  undefined
+  undefined,
 );
 
 function normalizePromoCode(value: string) {
@@ -101,7 +101,7 @@ function normalizeUnitType(value?: string | null): PromotionAppliesToUnitType {
 }
 
 function normalizeReservationType(
-  value?: string | null
+  value?: string | null,
 ): PromotionAppliesToReservationType {
   if (
     value === "flexible_stay" ||
@@ -126,7 +126,7 @@ function mapPromotionRow(row: any): Promotion {
     discountValue: Number(row.discount_value ?? 0),
     appliesToUnitType: normalizeUnitType(row.applies_to_unit_type),
     appliesToReservationType: normalizeReservationType(
-      row.applies_to_reservation_type
+      row.applies_to_reservation_type,
     ),
     minBookingAmount:
       row.min_booking_amount === null ? null : Number(row.min_booking_amount),
@@ -139,7 +139,7 @@ function mapPromotionRow(row: any): Promotion {
     createdAt: row.created_at ?? null,
     updatedAt: row.updated_at ?? null,
     attachedUnitIds:
-  row.unit_promotions?.map((item: any) => item.unit_id) ?? [],
+      row.unit_promotions?.map((item: any) => item.unit_id) ?? [],
   };
 }
 
@@ -154,7 +154,9 @@ function buildPromotionPayload(payload: PromotionPayload) {
   return {
     code: normalizePromoCode(payload.code),
     name: normalizeText(payload.name),
-    description: payload.description ? normalizeText(payload.description) : null,
+    description: payload.description
+      ? normalizeText(payload.description)
+      : null,
     discount_type: payload.discountType,
     discount_value: Number(payload.discountValue),
     applies_to_unit_type: payload.appliesToUnitType,
@@ -180,12 +182,14 @@ export function PromotionsProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from("promotions")
-        .select(`
+        .select(
+          `
         *,
         unit_promotions (
         unit_id
         )
-        `)
+        `,
+        )
         .order("is_active", { ascending: false })
         .order("code", { ascending: true });
 
@@ -200,42 +204,44 @@ export function PromotionsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const attachPromotionToUnit = useCallback(
-  async (promoId: string, unitId: string) => {
-    const { error: deleteError } = await supabase
-      .from("unit_promotions")
-      .delete()
-      .eq("unit_id", unitId);
+    async (promoId: string, unitId: string) => {
+      const { error: deleteError } = await supabase
+        .from("unit_promotions")
+        .delete()
+        .eq("unit_id", unitId);
 
-    if (deleteError) throw deleteError;
+      if (deleteError) throw deleteError;
 
-    const { error: insertError } = await supabase.from("unit_promotions").insert([
-      {
-        promo_id: promoId,
-        unit_id: unitId,
-      },
-    ]);
+      const { error: insertError } = await supabase
+        .from("unit_promotions")
+        .insert([
+          {
+            promo_id: promoId,
+            unit_id: unitId,
+          },
+        ]);
 
-    if (insertError) throw insertError;
+      if (insertError) throw insertError;
 
-    await refreshPromotions();
-  },
-  [refreshPromotions]
-);
+      await refreshPromotions();
+    },
+    [refreshPromotions],
+  );
 
-const detachPromotionFromUnit = useCallback(
-  async (promoId: string, unitId: string) => {
-    const { error } = await supabase
-      .from("unit_promotions")
-      .delete()
-      .eq("promo_id", promoId)
-      .eq("unit_id", unitId);
+  const detachPromotionFromUnit = useCallback(
+    async (promoId: string, unitId: string) => {
+      const { error } = await supabase
+        .from("unit_promotions")
+        .delete()
+        .eq("promo_id", promoId)
+        .eq("unit_id", unitId);
 
-    if (error) throw error;
+      if (error) throw error;
 
-    await refreshPromotions();
-  },
-  [refreshPromotions]
-);
+      await refreshPromotions();
+    },
+    [refreshPromotions],
+  );
 
   useEffect(() => {
     void refreshPromotions();
@@ -247,51 +253,24 @@ const detachPromotionFromUnit = useCallback(
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "promotions",
         },
-        (payload) => {
-          const newItem = mapPromotionRow(payload.new);
-
-          setPromotions((prev) => {
-            if (prev.some((item) => item.id === newItem.id)) return prev;
-            return sortPromotions([...prev, newItem]);
-          });
-        }
+        () => {
+          void refreshPromotions();
+        },
       )
       .on(
         "postgres_changes",
         {
-          event: "UPDATE",
+          event: "*",
           schema: "public",
-          table: "promotions",
+          table: "unit_promotions",
         },
-        (payload) => {
-          const updatedItem = mapPromotionRow(payload.new);
-
-          setPromotions((prev) =>
-            sortPromotions(
-              prev.map((item) =>
-                item.id === updatedItem.id ? updatedItem : item
-              )
-            )
-          );
-        }
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "DELETE",
-          schema: "public",
-          table: "promotions",
+        () => {
+          void refreshPromotions();
         },
-        (payload) => {
-          const deletedId = payload.old.promo_id as string | undefined;
-          if (!deletedId) return;
-
-          setPromotions((prev) => prev.filter((item) => item.id !== deletedId));
-        }
       )
       .subscribe((status) => {
         if (import.meta.env.DEV) {
@@ -302,7 +281,7 @@ const detachPromotionFromUnit = useCallback(
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, []);
+  }, [refreshPromotions]);
 
   const addPromotion = useCallback(async (payload: PromotionPayload) => {
     const dbPayload = buildPromotionPayload(payload);
@@ -326,7 +305,7 @@ const detachPromotionFromUnit = useCallback(
 
       if (error) throw error;
     },
-    []
+    [],
   );
 
   const deletePromotion = useCallback(async (id: string) => {
@@ -355,7 +334,7 @@ const detachPromotionFromUnit = useCallback(
 
   const getPromotionById = useCallback(
     (id?: string | null) => promotions.find((item) => item.id === id),
-    [promotions]
+    [promotions],
   );
 
   const getPromotionByCode = useCallback(
@@ -363,7 +342,7 @@ const detachPromotionFromUnit = useCallback(
       const normalizedCode = normalizePromoCode(code ?? "");
       return promotions.find((item) => item.code === normalizedCode);
     },
-    [promotions]
+    [promotions],
   );
 
   const value = useMemo<PromotionsContextType>(
@@ -378,7 +357,7 @@ const detachPromotionFromUnit = useCallback(
       getPromotionById,
       getPromotionByCode,
       attachPromotionToUnit,
-        detachPromotionFromUnit,
+      detachPromotionFromUnit,
     }),
     [
       promotions,
@@ -391,8 +370,8 @@ const detachPromotionFromUnit = useCallback(
       getPromotionById,
       getPromotionByCode,
       attachPromotionToUnit,
-detachPromotionFromUnit,
-    ]
+      detachPromotionFromUnit,
+    ],
   );
 
   return (

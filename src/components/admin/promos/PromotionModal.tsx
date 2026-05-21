@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BadgePercent,
   CalendarDays,
@@ -6,33 +6,37 @@ import {
   PhilippinePeso,
   Tags,
   X,
-} from 'lucide-react';
+} from "lucide-react";
 import type {
   Promotion,
   PromotionPayload,
   PromotionAppliesToReservationType,
   PromotionDiscountType,
-} from '../../../contexts/PromotionsContext';
-import { useUnits } from '../../../contexts/UnitsContext';
+} from "../../../contexts/PromotionsContext";
+import { useUnits } from "../../../contexts/UnitsContext";
 
 type PromotionModalProps = {
   open: boolean;
   promotion: Promotion | null;
   onClose: () => void;
-  onSave: (payload: PromotionPayload, id?: string, unitId?: string) => Promise<void>;
+  onSave: (
+    payload: PromotionPayload,
+    id?: string,
+    unitId?: string,
+  ) => Promise<void>;
 };
 
 const VAT_RATE = 0.12;
 const PERCENT_OPTIONS = [5, 10, 15, 20, 25, 30, 40, 50];
 
 const INITIAL_FORM: PromotionPayload = {
-  code: '',
-  name: '',
-  description: '',
-  discountType: 'percent',
+  code: "",
+  name: "",
+  description: "",
+  discountType: "percent",
   discountValue: 5,
-  appliesToUnitType: 'all',
-  appliesToReservationType: 'all',
+  appliesToUnitType: "all",
+  appliesToReservationType: "all",
   minBookingAmount: null,
   minStayDays: null,
   maxUses: null,
@@ -42,9 +46,9 @@ const INITIAL_FORM: PromotionPayload = {
 };
 
 function toDateTimeLocal(value?: string | null) {
-  if (!value) return '';
+  if (!value) return "";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
+  if (Number.isNaN(date.getTime())) return "";
   return date.toISOString().slice(0, 16);
 }
 
@@ -54,7 +58,7 @@ function fromDateTimeLocal(value: string) {
 }
 
 function money(value: number | null | undefined) {
-  return `₱${Number(value ?? 0).toLocaleString('en-PH', {
+  return `₱${Number(value ?? 0).toLocaleString("en-PH", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -66,29 +70,29 @@ function roundCurrency(value: number) {
 
 function reservationTypeLabel(value: PromotionAppliesToReservationType) {
   switch (value) {
-    case 'flexible_stay':
-      return 'Flexible Stay';
-    case 'monthly_lease':
-      return 'Monthly Lease';
-    case 'function_hall':
-      return 'Function Hall Booking';
-    case 'parking':
-      return 'Parking Booking';
+    case "flexible_stay":
+      return "Flexible Stay";
+    case "monthly_lease":
+      return "Monthly Lease";
+    case "function_hall":
+      return "Function Hall Booking";
+    case "parking":
+      return "Parking Booking";
     default:
-      return 'All Reservation Types';
+      return "All Reservation Types";
   }
 }
 
 function unitTypeLabel(value?: string | null) {
   switch (value) {
-    case 'rental_space':
-      return 'Rental Space';
-    case 'function_hall':
-      return 'Function Hall';
-    case 'parking_slot':
-      return 'Parking Slot';
+    case "rental_space":
+      return "Rental Space";
+    case "function_hall":
+      return "Function Hall";
+    case "parking_slot":
+      return "Parking Slot";
     default:
-      return 'Unit';
+      return "Unit";
   }
 }
 
@@ -101,34 +105,34 @@ export default function PromotionModal({
   const { units } = useUnits();
 
   const [form, setForm] = useState<PromotionPayload>(INITIAL_FORM);
-  const [selectedUnitId, setSelectedUnitId] = useState('');
+  const [selectedUnitId, setSelectedUnitId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const availableUnits = useMemo(
     () =>
       [...units]
-        .filter((unit) => !('isDeleted' in unit) || !(unit as any).isDeleted)
+        .filter((unit) => !("isDeleted" in unit) || !(unit as any).isDeleted)
         .sort((a, b) => a.name.localeCompare(b.name)),
-    [units]
+    [units],
   );
 
   const selectedUnit = useMemo(
     () => availableUnits.find((unit) => unit.id === selectedUnitId) ?? null,
-    [availableUnits, selectedUnitId]
+    [availableUnits, selectedUnitId],
   );
 
   const selectedUnitPrice = useMemo(() => {
     if (!selectedUnit) return 0;
 
     if (
-      form.appliesToReservationType === 'flexible_stay' &&
+      form.appliesToReservationType === "flexible_stay" &&
       selectedUnit.dailyRate
     ) {
       return Number(selectedUnit.dailyRate);
     }
 
     if (
-      form.appliesToReservationType === 'monthly_lease' &&
+      form.appliesToReservationType === "monthly_lease" &&
       selectedUnit.monthlyRate
     ) {
       return Number(selectedUnit.monthlyRate);
@@ -141,12 +145,12 @@ export default function PromotionModal({
     const subtotal = roundCurrency(Math.max(0, selectedUnitPrice));
 
     const rawDiscount =
-      form.discountType === 'percent'
+      form.discountType === "percent"
         ? subtotal * (Number(form.discountValue || 0) / 100)
         : Number(form.discountValue || 0);
 
     const discountAmount = roundCurrency(
-      Math.min(Math.max(0, rawDiscount), subtotal)
+      Math.min(Math.max(0, rawDiscount), subtotal),
     );
 
     const taxableSubtotal = roundCurrency(subtotal - discountAmount);
@@ -169,10 +173,10 @@ export default function PromotionModal({
       setForm({
         code: promotion.code,
         name: promotion.name,
-        description: promotion.description ?? '',
+        description: promotion.description ?? "",
         discountType: promotion.discountType,
         discountValue: promotion.discountValue,
-        appliesToUnitType: 'all',
+        appliesToUnitType: "all",
         appliesToReservationType: promotion.appliesToReservationType,
         minBookingAmount: promotion.minBookingAmount,
         minStayDays: promotion.minStayDays,
@@ -182,10 +186,10 @@ export default function PromotionModal({
         isActive: promotion.isActive,
       });
 
-      setSelectedUnitId(promotion.attachedUnitIds?.[0] ?? '');
+      setSelectedUnitId(promotion.attachedUnitIds?.[0] ?? "");
     } else {
       setForm(INITIAL_FORM);
-      setSelectedUnitId('');
+      setSelectedUnitId("");
     }
 
     setIsSubmitting(false);
@@ -195,11 +199,11 @@ export default function PromotionModal({
     <K extends keyof PromotionPayload>(key: K, value: PromotionPayload[K]) => {
       setForm((prev) => ({ ...prev, [key]: value }));
     },
-    []
+    [],
   );
 
   const previewDiscount = useMemo(() => {
-    if (form.discountType === 'percent') {
+    if (form.discountType === "percent") {
       return `${Number(form.discountValue || 5)}% OFF`;
     }
 
@@ -207,16 +211,16 @@ export default function PromotionModal({
   }, [form.discountType, form.discountValue]);
 
   const previewStatus = useMemo(() => {
-    if (!form.isActive) return 'Inactive';
+    if (!form.isActive) return "Inactive";
 
     const now = new Date();
     const validFrom = form.validFrom ? new Date(form.validFrom) : null;
     const validUntil = form.validUntil ? new Date(form.validUntil) : null;
 
-    if (validFrom && validFrom > now) return 'Scheduled';
-    if (validUntil && validUntil < now) return 'Expired';
+    if (validFrom && validFrom > now) return "Scheduled";
+    if (validUntil && validUntil < now) return "Expired";
 
-    return 'Active';
+    return "Active";
   }, [form.isActive, form.validFrom, form.validUntil]);
 
   const handleSubmit = useCallback(
@@ -225,7 +229,7 @@ export default function PromotionModal({
       if (isSubmitting) return;
 
       if (!selectedUnitId) {
-        alert('Please select a unit before saving this promotion.');
+        alert("Please select a unit before saving this promotion.");
         return;
       }
 
@@ -239,13 +243,14 @@ export default function PromotionModal({
             description: form.description?.trim() || null,
             discountType: form.discountType,
             discountValue:
-              form.discountType === 'percent'
+              form.discountType === "percent"
                 ? Number(form.discountValue || 5)
                 : Math.max(1, Number(form.discountValue || 1)),
-            appliesToUnitType: 'all',
+            appliesToUnitType: "all",
             appliesToReservationType: form.appliesToReservationType,
             minBookingAmount:
-              form.minBookingAmount === null || form.minBookingAmount === undefined
+              form.minBookingAmount === null ||
+              form.minBookingAmount === undefined
                 ? null
                 : Number(form.minBookingAmount),
             minStayDays:
@@ -261,16 +266,16 @@ export default function PromotionModal({
             isActive: form.isActive,
           },
           promotion?.id,
-          selectedUnitId
+          selectedUnitId,
         );
 
         onClose();
       } catch (error) {
-        console.error('Failed to save promotion:', error);
+        console.error("Failed to save promotion:", error);
         setIsSubmitting(false);
       }
     },
-    [form, isSubmitting, onClose, onSave, promotion?.id, selectedUnitId]
+    [form, isSubmitting, onClose, onSave, promotion?.id, selectedUnitId],
   );
 
   if (!open) return null;
@@ -281,10 +286,11 @@ export default function PromotionModal({
         <div className="flex items-center justify-between bg-slate-900 p-6">
           <div>
             <h2 className="text-xl font-bold text-white">
-              {promotion ? 'Edit Promotion' : 'Add Promotion'}
+              {promotion ? "Edit Promotion" : "Add Promotion"}
             </h2>
             <p className="mt-1 text-xs font-medium text-slate-400">
-              Configure promo codes, discount rules, validity, and assign this promo to one unit.
+              Configure promo codes, discount rules, validity, and assign this
+              promo to one unit.
             </p>
           </div>
 
@@ -309,7 +315,9 @@ export default function PromotionModal({
                   required
                   maxLength={40}
                   value={form.code}
-                  onChange={(e) => updateField('code', e.target.value.toUpperCase())}
+                  onChange={(e) =>
+                    updateField("code", e.target.value.toUpperCase())
+                  }
                   placeholder="e.g. SUMMER10"
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold uppercase tracking-wider outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
                 />
@@ -324,7 +332,7 @@ export default function PromotionModal({
                   required
                   maxLength={120}
                   value={form.name}
-                  onChange={(e) => updateField('name', e.target.value)}
+                  onChange={(e) => updateField("name", e.target.value)}
                   placeholder="e.g. Summer Discount"
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
                 />
@@ -344,7 +352,8 @@ export default function PromotionModal({
                 <option value="">Select a unit</option>
                 {availableUnits.map((unit) => (
                   <option key={unit.id} value={unit.id}>
-                    {unit.name} · {unitTypeLabel(unit.type)} · {money(unit.price)}
+                    {unit.name} · {unitTypeLabel(unit.type)} ·{" "}
+                    {money(unit.price)}
                   </option>
                 ))}
               </select>
@@ -377,8 +386,11 @@ export default function PromotionModal({
                   value={form.discountType}
                   onChange={(e) => {
                     const nextType = e.target.value as PromotionDiscountType;
-                    updateField('discountType', nextType);
-                    updateField('discountValue', nextType === 'percent' ? 5 : 1);
+                    updateField("discountType", nextType);
+                    updateField(
+                      "discountValue",
+                      nextType === "percent" ? 5 : 1,
+                    );
                   }}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
                 >
@@ -392,12 +404,12 @@ export default function PromotionModal({
                   Discount Value
                 </label>
 
-                {form.discountType === 'percent' ? (
+                {form.discountType === "percent" ? (
                   <select
                     required
                     value={form.discountValue || 5}
                     onChange={(e) =>
-                      updateField('discountValue', Number(e.target.value))
+                      updateField("discountValue", Number(e.target.value))
                     }
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
                   >
@@ -414,16 +426,16 @@ export default function PromotionModal({
                     min="1"
                     max={selectedUnitPrice > 0 ? selectedUnitPrice : undefined}
                     step="0.01"
-                    value={form.discountValue || ''}
+                    value={form.discountValue || ""}
                     onChange={(e) => {
                       const rawValue =
-                        e.target.value === '' ? 1 : Number(e.target.value);
+                        e.target.value === "" ? 1 : Number(e.target.value);
                       const nextValue =
                         selectedUnitPrice > 0
                           ? Math.min(selectedUnitPrice, Math.max(1, rawValue))
                           : Math.max(1, rawValue);
 
-                      updateField('discountValue', nextValue);
+                      updateField("discountValue", nextValue);
                     }}
                     placeholder="e.g. 500"
                     className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
@@ -440,8 +452,8 @@ export default function PromotionModal({
                 value={form.appliesToReservationType}
                 onChange={(e) =>
                   updateField(
-                    'appliesToReservationType',
-                    e.target.value as PromotionAppliesToReservationType
+                    "appliesToReservationType",
+                    e.target.value as PromotionAppliesToReservationType,
                   )
                 }
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
@@ -463,11 +475,11 @@ export default function PromotionModal({
                   type="number"
                   min="0"
                   step="0.01"
-                  value={form.minBookingAmount ?? ''}
+                  value={form.minBookingAmount ?? ""}
                   onChange={(e) =>
                     updateField(
-                      'minBookingAmount',
-                      e.target.value === '' ? null : Number(e.target.value)
+                      "minBookingAmount",
+                      e.target.value === "" ? null : Number(e.target.value),
                     )
                   }
                   placeholder="Optional"
@@ -482,11 +494,11 @@ export default function PromotionModal({
                 <input
                   type="number"
                   min="1"
-                  value={form.minStayDays ?? ''}
+                  value={form.minStayDays ?? ""}
                   onChange={(e) =>
                     updateField(
-                      'minStayDays',
-                      e.target.value === '' ? null : Number(e.target.value)
+                      "minStayDays",
+                      e.target.value === "" ? null : Number(e.target.value),
                     )
                   }
                   placeholder="Optional"
@@ -501,11 +513,11 @@ export default function PromotionModal({
                 <input
                   type="number"
                   min="1"
-                  value={form.maxUses ?? ''}
+                  value={form.maxUses ?? ""}
                   onChange={(e) =>
                     updateField(
-                      'maxUses',
-                      e.target.value === '' ? null : Number(e.target.value)
+                      "maxUses",
+                      e.target.value === "" ? null : Number(e.target.value),
                     )
                   }
                   placeholder="Unlimited"
@@ -522,7 +534,9 @@ export default function PromotionModal({
                 <input
                   type="datetime-local"
                   value={toDateTimeLocal(form.validFrom)}
-                  onChange={(e) => updateField('validFrom', fromDateTimeLocal(e.target.value))}
+                  onChange={(e) =>
+                    updateField("validFrom", fromDateTimeLocal(e.target.value))
+                  }
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
                 />
               </div>
@@ -534,7 +548,9 @@ export default function PromotionModal({
                 <input
                   type="datetime-local"
                   value={toDateTimeLocal(form.validUntil)}
-                  onChange={(e) => updateField('validUntil', fromDateTimeLocal(e.target.value))}
+                  onChange={(e) =>
+                    updateField("validUntil", fromDateTimeLocal(e.target.value))
+                  }
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
                 />
               </div>
@@ -547,8 +563,8 @@ export default function PromotionModal({
               <textarea
                 rows={4}
                 maxLength={500}
-                value={form.description || ''}
-                onChange={(e) => updateField('description', e.target.value)}
+                value={form.description || ""}
+                onChange={(e) => updateField("description", e.target.value)}
                 placeholder="Optional internal/client-facing description."
                 className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50"
               />
@@ -562,7 +578,7 @@ export default function PromotionModal({
                 <input
                   type="checkbox"
                   checked={form.isActive}
-                  onChange={(e) => updateField('isActive', e.target.checked)}
+                  onChange={(e) => updateField("isActive", e.target.checked)}
                   className="size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm font-medium text-slate-700">
@@ -587,11 +603,11 @@ export default function PromotionModal({
               >
                 {isSubmitting
                   ? promotion
-                    ? 'Updating...'
-                    : 'Adding...'
+                    ? "Updating..."
+                    : "Adding..."
                   : promotion
-                    ? 'Update Promotion'
-                    : 'Add Promotion'}
+                    ? "Update Promotion"
+                    : "Add Promotion"}
               </button>
             </div>
           </form>
@@ -599,9 +615,13 @@ export default function PromotionModal({
           <div className="space-y-4">
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-100 px-5 py-4">
-                <h3 className="text-base font-semibold text-slate-900">Promo Preview</h3>
+                <h3 className="text-base font-semibold text-slate-900">
+                  Promo Preview
+                </h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  Preview uses the selected unit’s reference price. Final discount is calculated during reservation based on booking type.
+                  Preview uses the selected unit’s reference price. Final
+                  discount is calculated during reservation based on booking
+                  type.
                 </p>
               </div>
 
@@ -610,7 +630,7 @@ export default function PromotionModal({
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <div className="rounded-2xl bg-blue-600 p-3 text-white shadow-lg shadow-blue-100">
-                        {form.discountType === 'percent' ? (
+                        {form.discountType === "percent" ? (
                           <BadgePercent className="size-5" />
                         ) : (
                           <PhilippinePeso className="size-5" />
@@ -619,7 +639,7 @@ export default function PromotionModal({
 
                       <div>
                         <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600">
-                          {form.code || 'PROMO_CODE'}
+                          {form.code || "PROMO_CODE"}
                         </p>
                         <h4 className="mt-1 text-lg font-black text-slate-900">
                           {previewDiscount}
@@ -629,11 +649,11 @@ export default function PromotionModal({
 
                     <span
                       className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${
-                        previewStatus === 'Active'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : previewStatus === 'Scheduled'
-                            ? 'bg-amber-100 text-amber-700'
-                            : 'bg-slate-200 text-slate-600'
+                        previewStatus === "Active"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : previewStatus === "Scheduled"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-slate-200 text-slate-600"
                       }`}
                     >
                       {previewStatus}
@@ -642,11 +662,11 @@ export default function PromotionModal({
 
                   <div className="mt-5">
                     <h5 className="text-sm font-bold text-slate-900">
-                      {form.name || 'Promotion Name'}
+                      {form.name || "Promotion Name"}
                     </h5>
                     <p className="mt-1 text-sm leading-relaxed text-slate-600">
                       {form.description?.trim() ||
-                        'Promo description will appear here.'}
+                        "Promo description will appear here."}
                     </p>
                   </div>
                 </div>
@@ -656,12 +676,12 @@ export default function PromotionModal({
                     Selected Unit
                   </p>
                   <p className="mt-1 text-sm font-bold text-slate-900">
-                    {selectedUnit ? selectedUnit.name : 'No unit selected'}
+                    {selectedUnit ? selectedUnit.name : "No unit selected"}
                   </p>
                   <p className="text-xs text-slate-500">
                     {selectedUnit
                       ? `${unitTypeLabel(selectedUnit.type)} · ${money(selectedUnitPrice)} base`
-                      : 'Select a unit to see final price.'}
+                      : "Select a unit to see final price."}
                   </p>
                 </div>
 
@@ -731,12 +751,12 @@ export default function PromotionModal({
                       <p className="mt-1 text-sm font-semibold text-slate-700">
                         {form.validFrom
                           ? new Date(form.validFrom).toLocaleString()
-                          : 'Starts anytime'}
+                          : "Starts anytime"}
                       </p>
                       <p className="text-xs text-slate-500">
                         {form.validUntil
                           ? `Until ${new Date(form.validUntil).toLocaleString()}`
-                          : 'No expiry date'}
+                          : "No expiry date"}
                       </p>
                     </div>
                   </div>
@@ -750,23 +770,25 @@ export default function PromotionModal({
                       <p className="mt-1 text-sm font-semibold text-slate-700">
                         {form.minBookingAmount
                           ? `Minimum ${money(form.minBookingAmount)} booking`
-                          : 'No minimum booking amount'}
+                          : "No minimum booking amount"}
                       </p>
                       <p className="text-xs text-slate-500">
                         {form.minStayDays
                           ? `Minimum stay: ${form.minStayDays} day(s)`
-                          : 'No minimum stay requirement'}
+                          : "No minimum stay requirement"}
                       </p>
                       <p className="text-xs text-slate-500">
-                        {form.maxUses ? `Usage limit: ${form.maxUses}` : 'Unlimited uses'}
+                        {form.maxUses
+                          ? `Usage limit: ${form.maxUses}`
+                          : "Unlimited uses"}
                       </p>
                     </div>
                   </div>
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 text-xs leading-relaxed text-slate-500">
-                  Final discount computation is still verified by the backend edge
-                  function before reservation/payment submission.
+                  Final discount computation is still verified by the backend
+                  edge function before reservation/payment submission.
                 </div>
               </div>
             </div>
