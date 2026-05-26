@@ -233,12 +233,69 @@ export function getParkingDurationPolicyText(durationType: DurationType) {
 }
 
 /**
- * Parking reservations may start today.
+ * Base minimum start date for parking reservations.
+ * Hourly parking may start today, subject to same-day hourly validation.
  */
 export function getParkingMinStartDate() {
   const today = getBusinessNow();
   today.setHours(0, 0, 0, 0);
   return today;
+}
+
+export function getParkingMinStartDateByDuration(params: {
+  durationType: ParkingDurationType;
+  hourlyEnd: string;
+}) {
+  const { durationType, hourlyEnd } = params;
+
+  const minDate = getParkingMinStartDate();
+
+  /**
+   * Hourly parking can start today because it uses same-day lead time
+   * and selectable hourly slots.
+   */
+  if (durationType === "hours") {
+    return minDate;
+  }
+
+  /**
+   * Daily and monthly requests need admin review and slot assignment first.
+   * Since the client has limited parking slots, the guest should not expect
+   * same-day approval for full-day or long-term parking.
+   */
+  const now = getBusinessNow();
+
+  let leadDays = 1;
+
+  if (isValidTimeHHMM(hourlyEnd)) {
+    const end = parseHHMM(hourlyEnd);
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+    /**
+     * If the request is made after the business/request window,
+     * tomorrow should not be allowed because admin may only see it
+     * the next day.
+     */
+    if (nowMinutes >= end.totalMinutes) {
+      leadDays = 2;
+    }
+  }
+
+  minDate.setDate(minDate.getDate() + leadDays);
+  return minDate;
+}
+
+export function getParkingMinStartDateInputValue(params: {
+  durationType: ParkingDurationType;
+  hourlyEnd: string;
+}) {
+  const date = getParkingMinStartDateByDuration(params);
+
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
 }
 
 export function isSameParkingDay(date?: Date | null) {

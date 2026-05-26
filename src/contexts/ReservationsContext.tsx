@@ -7,19 +7,23 @@ import {
   useCallback,
   useRef,
   type ReactNode,
-} from 'react';
-import supabase from '../supabaseClient';
-import type { Reservation, ReservationStatus, LedgerEntry } from '../data/types';
-import { useRecords } from './RecordsContext';
-import { useAuth } from './AuthContext';
-import { getChangedFields, buildAuditSnapshot } from '../utils/auditHelpers';
+} from "react";
+import supabase from "../supabaseClient";
+import type {
+  Reservation,
+  ReservationStatus,
+  LedgerEntry,
+} from "../data/types";
+import { useRecords } from "./RecordsContext";
+import { useAuth } from "./AuthContext";
+import { getChangedFields, buildAuditSnapshot } from "../utils/auditHelpers";
 
 import {
   normalizeText,
   normalizePlateNumber,
   normalizeName,
   normalizeAddress,
-} from '../utils/DataNormalization';
+} from "../utils/DataNormalization";
 
 async function notifyAdminsNewReservation(params: {
   reservationId: string;
@@ -41,12 +45,10 @@ async function notifyAdminsNewReservation(params: {
       headers: {
         Authorization: `Bearer ${secret}`,
       },
-    }
+    },
   );
 
-  // 👇 FULL RESPONSE LOG
   console.log("send-admin-new-reservation response:", {
-    secret,
     secretExists: Boolean(secret),
     data,
     error,
@@ -57,10 +59,43 @@ async function notifyAdminsNewReservation(params: {
   }
 }
 
+async function notifyCustomerReservationReceived(params: {
+  reservationId: string;
+}) {
+  const secret = import.meta.env.VITE_RESERVATION_RECEIVED_SECRET;
+
+  const { data, error } = await supabase.functions.invoke(
+    "send-reservation-received",
+    {
+      body: params,
+      headers: {
+        Authorization: `Bearer ${secret}`,
+      },
+    },
+  );
+
+  console.log("send-reservation-received response:", {
+    secretExists: Boolean(secret),
+    data,
+    error,
+  });
+
+  if (error) {
+    console.error("Failed to send reservation received email:", error);
+  }
+}
+
 type ReservationsPageFilters = {
   page?: number;
   pageSize?: number;
-  status?: 'all' | 'pending' | 'confirmed' | 'overdue' | 'completed' | 'cancelled' | 'rejected';
+  status?:
+    | "all"
+    | "pending"
+    | "confirmed"
+    | "overdue"
+    | "completed"
+    | "cancelled"
+    | "rejected";
   searchTerm?: string;
 };
 
@@ -70,10 +105,18 @@ interface ReservationsContextType {
   addReservation: (
     reservation: Omit<
       Reservation,
-      'id' | 'requestDate' | 'status' | 'paidAmount' | 'securityDepositMonthsSnapshot' | 'advanceRentMonthsSnapshot'
-    >
+      | "id"
+      | "requestDate"
+      | "status"
+      | "paidAmount"
+      | "securityDepositMonthsSnapshot"
+      | "advanceRentMonthsSnapshot"
+    >,
   ) => Promise<string>;
-  updateReservation: (id: string, reservation: Partial<Reservation>) => Promise<void>;
+  updateReservation: (
+    id: string,
+    reservation: Partial<Reservation>,
+  ) => Promise<void>;
   deleteReservation: (id: string) => Promise<void>;
   refreshReservations: () => Promise<void>;
   getReservationsByUserId: (userId: string) => Reservation[];
@@ -83,7 +126,9 @@ interface ReservationsContextType {
   }>;
 }
 
-const ReservationsContext = createContext<ReservationsContextType | undefined>(undefined);
+const ReservationsContext = createContext<ReservationsContextType | undefined>(
+  undefined,
+);
 const VAT_RATE = 0.12;
 
 function buildReservationDetails(reservation: Partial<Reservation>) {
@@ -102,8 +147,7 @@ function buildReservationDetails(reservation: Partial<Reservation>) {
       ? normalizeText(reservation.slotName)
       : undefined,
     assignedSlotId: reservation.assignedParkingSlotId ?? undefined,
-assignedSlotLabel:
-  reservation.assignedParkingSlotLabel ?? undefined,
+    assignedSlotLabel: reservation.assignedParkingSlotLabel ?? undefined,
     vehicleType: reservation.vehicleType
       ? normalizeText(reservation.vehicleType)
       : undefined,
@@ -114,14 +158,14 @@ assignedSlotLabel:
   };
 
   return Object.fromEntries(
-    Object.entries(details).filter(([, value]) => value !== undefined)
+    Object.entries(details).filter(([, value]) => value !== undefined),
   );
 }
 
 function getRemainingBalance(reservation: Reservation) {
   return Math.max(
     0,
-    Number(reservation.totalAmount || 0) - Number(reservation.paidAmount || 0)
+    Number(reservation.totalAmount || 0) - Number(reservation.paidAmount || 0),
   );
 }
 
@@ -136,7 +180,7 @@ function hasReservationEnded(reservation: Reservation) {
 
 function isOverdueReservation(reservation: Reservation) {
   return (
-    reservation.status === 'confirmed' &&
+    reservation.status === "confirmed" &&
     hasReservationEnded(reservation) &&
     !isFullyPaid(reservation)
   );
@@ -145,7 +189,8 @@ function isOverdueReservation(reservation: Reservation) {
 function sortReservationsByRequestDate(items: Reservation[]) {
   return [...items].sort(
     (a, b) =>
-      new Date(b.requestDate ?? 0).getTime() - new Date(a.requestDate ?? 0).getTime()
+      new Date(b.requestDate ?? 0).getTime() -
+      new Date(a.requestDate ?? 0).getTime(),
   );
 }
 
@@ -175,34 +220,31 @@ function buildLedgerTotalsMap(ledgers: LedgerEntry[]) {
     };
 
     switch (entry.entryType) {
-      case 'payment':
-      case 'balance':
+      case "payment":
+      case "balance":
         current.paid += Number(entry.amount || 0);
         break;
-      case 'deposit':
-        if (entry.depositType === 'advance') {
+      case "deposit":
+        if (entry.depositType === "advance") {
           current.paid += Number(entry.amount || 0);
         }
         break;
-      case 'refund':
+      case "refund":
         current.refunds += Number(entry.amount || 0);
         break;
-      case 'discount':
+      case "discount":
         current.discounts += Number(entry.amount || 0);
         break;
-      case 'penalty':
+      case "penalty":
         current.penalties += Number(entry.amount || 0);
         break;
-      case 'adjustment':
+      case "adjustment":
         current.adjustments += Number(entry.amount || 0);
         break;
     }
 
     current.netPaid =
-      current.paid -
-      current.refunds -
-      current.discounts +
-      current.adjustments;
+      current.paid - current.refunds - current.discounts + current.adjustments;
 
     map.set(entry.reservationId, current);
   }
@@ -218,9 +260,12 @@ export function ReservationsProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
 
   const hasLoadedReservationsRef = useRef(false);
-const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
+  const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
 
-  const ledgerTotalsMap = useMemo(() => buildLedgerTotalsMap(ledgers), [ledgers]);
+  const ledgerTotalsMap = useMemo(
+    () => buildLedgerTotalsMap(ledgers),
+    [ledgers],
+  );
 
   const applyDerivedReservationState = useCallback(
     (reservation: Reservation): Reservation => {
@@ -237,23 +282,26 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
       };
 
       if (isOverdueReservation(nextReservation)) {
-        return { ...nextReservation, status: 'overdue' };
+        return { ...nextReservation, status: "overdue" };
       }
 
-      if (nextReservation.status === 'overdue' && !hasReservationEnded(nextReservation)) {
-        return { ...nextReservation, status: 'confirmed' };
+      if (
+        nextReservation.status === "overdue" &&
+        !hasReservationEnded(nextReservation)
+      ) {
+        return { ...nextReservation, status: "confirmed" };
       }
 
       return nextReservation;
     },
-    [ledgerTotalsMap]
+    [ledgerTotalsMap],
   );
 
   const mapReservationRow = useCallback(
     (row: any): Reservation => {
       const persistedPaidAmount = Number(row.paid_amount ?? 0);
       const derivedPaidAmount = Number(
-        ledgerTotalsMap.get(row.reservation_id)?.netPaid ?? 0
+        ledgerTotalsMap.get(row.reservation_id)?.netPaid ?? 0,
       );
 
       const finalPaidAmount =
@@ -293,8 +341,8 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         modeOfVisit: row.mode_of_visit,
         appointmentDate: row.appointment_date,
         appointmentTime: row.appointment_time,
-        bookingTerm: row.details?.bookingTerm as Reservation['bookingTerm'],
-        paymentMode: row.details?.paymentMode as Reservation['paymentMode'],
+        bookingTerm: row.details?.bookingTerm as Reservation["bookingTerm"],
+        paymentMode: row.details?.paymentMode as Reservation["paymentMode"],
         businessType: row.details?.businessType,
         eventPurpose: row.details?.eventPurpose,
         attendees: row.details?.attendees,
@@ -306,27 +354,26 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
           row.details?.assignedSlotLabel ??
           row.details?.assignedSlotCode ??
           null,
-          usageStatus: row.usage_status ?? "not_started",
-          usageStartedAt: row.usage_started_at ?? null,
-          usageEndsAt: row.usage_ends_at ?? null,
-          usageEndedAt: row.usage_ended_at ?? null,
-          usageEndNotifiedAt: row.usage_end_notified_at ?? null,
-          usageEndReminderSentAt: row.usage_end_reminder_sent_at ?? null,
+        usageStatus: row.usage_status ?? "not_started",
+        usageStartedAt: row.usage_started_at ?? null,
+        usageEndsAt: row.usage_ends_at ?? null,
+        usageEndedAt: row.usage_ended_at ?? null,
+        usageEndNotifiedAt: row.usage_end_notified_at ?? null,
+        usageEndReminderSentAt: row.usage_end_reminder_sent_at ?? null,
 
         vehicleType: row.details?.vehicleType,
         plateNumber: row.details?.plateNumber,
         durationType: row.details?.durationType,
         confirmedVisitDate: row.confirmed_visit_date,
         confirmedVisitTime: row.confirmed_visit_time,
-        visitStatus: row.visit_status ?? 'requested',
+        visitStatus: row.visit_status ?? "requested",
         securityDepositMonthsSnapshot:
           row.security_deposit_months_snapshot ?? null,
-        advanceRentMonthsSnapshot:
-          row.advance_rent_months_snapshot ?? null,
+        advanceRentMonthsSnapshot: row.advance_rent_months_snapshot ?? null,
       };
 
       if (isOverdueReservation(baseReservation)) {
-        computedStatus = 'overdue';
+        computedStatus = "overdue";
       }
 
       return {
@@ -334,22 +381,24 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         status: computedStatus,
       };
     },
-    [ledgerTotalsMap]
+    [ledgerTotalsMap],
   );
 
-  const refreshReservations = useCallback(async (force = false) => {
-  if (!force && hasLoadedReservationsRef.current) {
-    return;
-  }
+  const refreshReservations = useCallback(
+    async (force = false) => {
+      if (!force && hasLoadedReservationsRef.current) {
+        return;
+      }
 
-  if (refreshReservationsPromiseRef.current) {
-    return refreshReservationsPromiseRef.current;
-  }
+      if (refreshReservationsPromiseRef.current) {
+        return refreshReservationsPromiseRef.current;
+      }
 
-  const promise = (async () => {
-    const { data, error } = await supabase
-      .from('reservations')
-      .select(`
+      const promise = (async () => {
+        const { data, error } = await supabase
+          .from("reservations")
+          .select(
+            `
         reservation_id,
         public_id,
         user_id,
@@ -393,74 +442,79 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
         usage_end_reminder_sent_at,
         security_deposit_months_snapshot,
         advance_rent_months_snapshot
-      `)
-      .order('created_at', { ascending: false });
+      `,
+          )
+          .order("created_at", { ascending: false });
 
-    if (error) {
-      console.error('Error loading reservations:', error);
-      hasLoadedReservationsRef.current = false;
-      return;
-    }
+        if (error) {
+          console.error("Error loading reservations:", error);
+          hasLoadedReservationsRef.current = false;
+          return;
+        }
 
-    setReservations(sortReservationsByRequestDate((data ?? []).map(mapReservationRow)));
-    hasLoadedReservationsRef.current = true;
-  })();
+        setReservations(
+          sortReservationsByRequestDate((data ?? []).map(mapReservationRow)),
+        );
+        hasLoadedReservationsRef.current = true;
+      })();
 
-  refreshReservationsPromiseRef.current = promise;
+      refreshReservationsPromiseRef.current = promise;
 
-  try {
-    await promise;
-  } finally {
-    refreshReservationsPromiseRef.current = null;
-  }
-}, [mapReservationRow]);
+      try {
+        await promise;
+      } finally {
+        refreshReservationsPromiseRef.current = null;
+      }
+    },
+    [mapReservationRow],
+  );
 
   useEffect(() => {
-  let cancelled = false;
+    let cancelled = false;
 
-  const start = () => {
-    if (!cancelled) {
-      void refreshReservations();
-    }
-  };
-
-  if ('requestIdleCallback' in window) {
-    const idleWindow = window as Window & {
-      requestIdleCallback: (cb: () => void) => number;
-      cancelIdleCallback: (id: number) => void;
+    const start = () => {
+      if (!cancelled) {
+        void refreshReservations();
+      }
     };
 
-    const idleId = idleWindow.requestIdleCallback(start);
+    if ("requestIdleCallback" in window) {
+      const idleWindow = window as Window & {
+        requestIdleCallback: (cb: () => void) => number;
+        cancelIdleCallback: (id: number) => void;
+      };
+
+      const idleId = idleWindow.requestIdleCallback(start);
+
+      return () => {
+        cancelled = true;
+        idleWindow.cancelIdleCallback(idleId);
+      };
+    }
+
+    const timeoutId = globalThis.setTimeout(start, 300);
 
     return () => {
       cancelled = true;
-      idleWindow.cancelIdleCallback(idleId);
+      globalThis.clearTimeout(timeoutId);
     };
-  }
-
-  const timeoutId = globalThis.setTimeout(start, 300);
-
-  return () => {
-    cancelled = true;
-    globalThis.clearTimeout(timeoutId);
-  };
-}, [refreshReservations]);
+  }, [refreshReservations]);
 
   useEffect(() => {
     setReservations((prev) =>
-      sortReservationsByRequestDate(prev.map(applyDerivedReservationState))
+      sortReservationsByRequestDate(prev.map(applyDerivedReservationState)),
     );
   }, [applyDerivedReservationState]);
 
   useEffect(() => {
     const channel = supabase
-      .channel('reservations-realtime')
+      .channel("reservations-realtime")
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'reservations',
+          event: "INSERT",
+          schema: "public",
+          table: "reservations",
         },
         (payload) => {
           const newReservation = mapReservationRow(payload.new);
@@ -474,14 +528,14 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
           });
 
           setReservationsVersion((prev) => prev + 1);
-        }
+        },
       )
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'reservations',
+          event: "UPDATE",
+          schema: "public",
+          table: "reservations",
         },
         (payload) => {
           const updatedReservation = mapReservationRow(payload.new);
@@ -489,32 +543,34 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
           setReservations((prev) =>
             sortReservationsByRequestDate(
               prev.map((item) =>
-                item.id === updatedReservation.id ? updatedReservation : item
-              )
-            )
+                item.id === updatedReservation.id ? updatedReservation : item,
+              ),
+            ),
           );
 
           setReservationsVersion((prev) => prev + 1);
-        }
+        },
       )
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'reservations',
+          event: "DELETE",
+          schema: "public",
+          table: "reservations",
         },
         (payload) => {
           const deletedId = payload.old.reservation_id as string | undefined;
           if (!deletedId) return;
 
-          setReservations((prev) => prev.filter((item) => item.id !== deletedId));
+          setReservations((prev) =>
+            prev.filter((item) => item.id !== deletedId),
+          );
           setReservationsVersion((prev) => prev + 1);
-        }
+        },
       )
       .subscribe((status) => {
         if (import.meta.env.DEV) {
-          console.log('Reservations realtime status:', status);
+          console.log("Reservations realtime status:", status);
         }
       });
 
@@ -524,19 +580,19 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
   }, [mapReservationRow]);
 
   const fetchReservationsPage = useCallback(
-  async ({
-    page = 1,
-    pageSize = 25,
-    status = 'all',
-    searchTerm = '',
-  }: ReservationsPageFilters): Promise<{
-    data: Reservation[];
-    count: number;
-  }> => {
-    let query = supabase
-      .from('reservations')
-      .select(
-        `
+    async ({
+      page = 1,
+      pageSize = 25,
+      status = "all",
+      searchTerm = "",
+    }: ReservationsPageFilters): Promise<{
+      data: Reservation[];
+      count: number;
+    }> => {
+      let query = supabase
+        .from("reservations")
+        .select(
+          `
         reservation_id,
         public_id,
         user_id,
@@ -587,219 +643,241 @@ const refreshReservationsPromiseRef = useRef<Promise<void> | null>(null);
           public_id
         )
         `,
-        { count: 'exact' }
-      )
-      .order('created_at', { ascending: false });
-
-    if (status !== 'all') {
-      query = query.eq('status', status);
-    }
-
-    const trimmedSearch = searchTerm.trim();
-
-    if (trimmedSearch) {
-      const escapedSearch = trimmedSearch.replace(/[%_]/g, '\\$&');
-
-      const reservationFilters = [
-        `public_id.ilike.%${escapedSearch}%`,
-        `title.ilike.%${escapedSearch}%`,
-        `notes.ilike.%${escapedSearch}%`,
-        `unit_type.ilike.%${escapedSearch}%`,
-        `mode_of_visit.ilike.%${escapedSearch}%`,
-      ];
-
-      let matchedUserIds: string[] = [];
-
-      const { data: matchedUsers, error: usersSearchError } = await supabase
-        .from('users')
-        .select('user_id')
-        .or(
-          [
-            `first_name.ilike.%${escapedSearch}%`,
-            `last_name.ilike.%${escapedSearch}%`,
-            `email.ilike.%${escapedSearch}%`,
-            `public_id.ilike.%${escapedSearch}%`,
-          ].join(',')
+          { count: "exact" },
         )
-        .limit(200);
+        .order("created_at", { ascending: false });
 
-      if (usersSearchError) {
-        console.error('User search failed:', usersSearchError);
-      } else {
-        matchedUserIds = Array.from(
-          new Set((matchedUsers ?? []).map((user) => user.user_id).filter(Boolean))
-        );
+      if (status !== "all") {
+        query = query.eq("status", status);
       }
 
-      const combinedFilters = [...reservationFilters];
+      const trimmedSearch = searchTerm.trim();
 
-      if (matchedUserIds.length > 0) {
-        combinedFilters.push(`user_id.in.(${matchedUserIds.join(',')})`);
+      if (trimmedSearch) {
+        const escapedSearch = trimmedSearch.replace(/[%_]/g, "\\$&");
+
+        const reservationFilters = [
+          `public_id.ilike.%${escapedSearch}%`,
+          `title.ilike.%${escapedSearch}%`,
+          `notes.ilike.%${escapedSearch}%`,
+          `unit_type.ilike.%${escapedSearch}%`,
+          `mode_of_visit.ilike.%${escapedSearch}%`,
+        ];
+
+        let matchedUserIds: string[] = [];
+
+        const { data: matchedUsers, error: usersSearchError } = await supabase
+          .from("users")
+          .select("user_id")
+          .or(
+            [
+              `first_name.ilike.%${escapedSearch}%`,
+              `last_name.ilike.%${escapedSearch}%`,
+              `email.ilike.%${escapedSearch}%`,
+              `public_id.ilike.%${escapedSearch}%`,
+            ].join(","),
+          )
+          .limit(200);
+
+        if (usersSearchError) {
+          console.error("User search failed:", usersSearchError);
+        } else {
+          matchedUserIds = Array.from(
+            new Set(
+              (matchedUsers ?? []).map((user) => user.user_id).filter(Boolean),
+            ),
+          );
+        }
+
+        const combinedFilters = [...reservationFilters];
+
+        if (matchedUserIds.length > 0) {
+          combinedFilters.push(`user_id.in.(${matchedUserIds.join(",")})`);
+        }
+
+        query = query.or(combinedFilters.join(","));
       }
 
-      query = query.or(combinedFilters.join(','));
-    }
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
 
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
+      const { data, error, count } = await query.range(from, to);
 
-    const { data, error, count } = await query.range(from, to);
+      if (error) throw error;
 
-    if (error) throw error;
-
-    return {
-      data: sortReservationsByRequestDate((data ?? []).map(mapReservationRow)),
-      count: count ?? 0,
-    };
-  },
-  [mapReservationRow]
-);
+      return {
+        data: sortReservationsByRequestDate(
+          (data ?? []).map(mapReservationRow),
+        ),
+        count: count ?? 0,
+      };
+    },
+    [mapReservationRow],
+  );
 
   const addReservation = useCallback(
     async (
       reservationData: Omit<
         Reservation,
-        'id' | 'requestDate' | 'status' | 'paidAmount' | 'securityDepositMonthsSnapshot' | 'advanceRentMonthsSnapshot'
-      >
+        | "id"
+        | "requestDate"
+        | "status"
+        | "paidAmount"
+        | "securityDepositMonthsSnapshot"
+        | "advanceRentMonthsSnapshot"
+      >,
     ): Promise<string> => {
       if (!user?.id) {
-        throw new Error('User not authenticated.');
+        throw new Error("User not authenticated.");
       }
 
-      if (reservationData.unitType === 'rental_space') {
-  if (!reservationData.bookingTerm) {
-    throw new Error('Please select a booking term for this rental space.');
-  }
+      if (reservationData.unitType === "rental_space") {
+        if (!reservationData.bookingTerm) {
+          throw new Error(
+            "Please select a booking term for this rental space.",
+          );
+        }
 
-  if (
-    !['daily', 'weekly', 'monthly'].includes(reservationData.bookingTerm)
-  ) {
-    throw new Error('Invalid booking term.');
-  }
+        if (
+          !["daily", "weekly", "monthly"].includes(reservationData.bookingTerm)
+        ) {
+          throw new Error("Invalid booking term.");
+        }
 
-  if (
-    !Number.isFinite(Number(reservationData.duration)) ||
-    Number(reservationData.duration) <= 0
-  ) {
-    throw new Error('Reservation duration must be greater than zero.');
-  }
+        if (
+          !Number.isFinite(Number(reservationData.duration)) ||
+          Number(reservationData.duration) <= 0
+        ) {
+          throw new Error("Reservation duration must be greater than zero.");
+        }
 
-  if (
-    !Number.isFinite(Number(reservationData.totalAmount)) ||
-    Number(reservationData.totalAmount) <= 0
-  ) {
-    throw new Error('Rental total amount must be greater than zero.');
-  }
+        if (
+          !Number.isFinite(Number(reservationData.totalAmount)) ||
+          Number(reservationData.totalAmount) <= 0
+        ) {
+          throw new Error("Rental total amount must be greater than zero.");
+        }
 
-  if (
-    reservationData.bookingTerm === 'monthly' &&
-    reservationData.durationType !== 'months'
-  ) {
-    throw new Error('Monthly rental spaces must use monthly duration.');
-  }
+        if (
+          reservationData.bookingTerm === "monthly" &&
+          reservationData.durationType !== "months"
+        ) {
+          throw new Error("Monthly rental spaces must use monthly duration.");
+        }
 
-  if (
-    reservationData.bookingTerm === 'weekly' &&
-    reservationData.durationType !== 'days'
-  ) {
-    throw new Error('Weekly rental bookings must use day-based duration.');
-  }
+        if (
+          reservationData.bookingTerm === "weekly" &&
+          reservationData.durationType !== "days"
+        ) {
+          throw new Error(
+            "Weekly rental bookings must use day-based duration.",
+          );
+        }
 
-  if (
-    reservationData.bookingTerm === 'daily' &&
-    reservationData.durationType !== 'days'
-  ) {
-    throw new Error('Daily rental bookings must use day-based duration.');
-  }
-}
+        if (
+          reservationData.bookingTerm === "daily" &&
+          reservationData.durationType !== "days"
+        ) {
+          throw new Error("Daily rental bookings must use day-based duration.");
+        }
+      }
 
       const baseDetails = buildReservationDetails(reservationData);
 
-const baseSubtotal = Number(reservationData.totalAmount || 0);
+      const baseSubtotal = Number(reservationData.totalAmount || 0);
 
-if (!Number.isFinite(baseSubtotal) || baseSubtotal <= 0) {
-  throw new Error('Reservation amount must be greater than zero.');
-}
+      if (!Number.isFinite(baseSubtotal) || baseSubtotal <= 0) {
+        throw new Error("Reservation amount must be greater than zero.");
+      }
 
-const vatAmount = Number((baseSubtotal * VAT_RATE).toFixed(2));
-const grandTotal = Number((baseSubtotal + vatAmount).toFixed(2));
+      const vatAmount = Number((baseSubtotal * VAT_RATE).toFixed(2));
+      const grandTotal = Number((baseSubtotal + vatAmount).toFixed(2));
 
-let initialDue = grandTotal;
-let securityDepositAmount = 0;
-let firstMonthAmount = 0;
-let paymentMode: Reservation['paymentMode'] = 'full_upfront';
+      let initialDue = grandTotal;
+      let securityDepositAmount = 0;
+      let firstMonthAmount = 0;
+      let paymentMode: Reservation["paymentMode"] = "full_upfront";
 
-if (reservationData.unitType === 'rental_space') {
-  if (reservationData.bookingTerm === 'monthly') {
-    const durationMonths = Math.max(1, Number(reservationData.duration || 1));
-    const monthlyBase = Number((baseSubtotal / durationMonths).toFixed(2));
+      if (reservationData.unitType === "rental_space") {
+        if (reservationData.bookingTerm === "monthly") {
+          const durationMonths = Math.max(
+            1,
+            Number(reservationData.duration || 1),
+          );
+          const monthlyBase = Number(
+            (baseSubtotal / durationMonths).toFixed(2),
+          );
 
-    const detailsInput = reservationData.details ?? {};
+          const detailsInput = reservationData.details ?? {};
 
-    const securityDepositMonths = Math.max(
-      0,
-      Number(
-        (detailsInput as any).securityDepositMonths ??
-          (detailsInput as any).security_deposit_months ??
-          1
-      )
-    );
+          const securityDepositMonths = Math.max(
+            0,
+            Number(
+              (detailsInput as any).securityDepositMonths ??
+                (detailsInput as any).security_deposit_months ??
+                1,
+            ),
+          );
 
-    const advanceRentMonths = Math.max(
-      1,
-      Number(
-        (detailsInput as any).advanceDepositMonths ??
-          (detailsInput as any).advance_deposit_months ??
-          1
-      )
-    );
+          const advanceRentMonths = Math.max(
+            1,
+            Number(
+              (detailsInput as any).advanceDepositMonths ??
+                (detailsInput as any).advance_deposit_months ??
+                1,
+            ),
+          );
 
-    securityDepositAmount = Number(
-      (monthlyBase * securityDepositMonths).toFixed(2)
-    );
+          securityDepositAmount = Number(
+            (monthlyBase * securityDepositMonths).toFixed(2),
+          );
 
-    firstMonthAmount = Number(
-      (monthlyBase * advanceRentMonths).toFixed(2)
-    );
+          firstMonthAmount = Number(
+            (monthlyBase * advanceRentMonths).toFixed(2),
+          );
 
-    const taxableInitialBase = firstMonthAmount;
-    const rentalInitialVat = Number(
-      (taxableInitialBase * VAT_RATE).toFixed(2)
-    );
+          const taxableInitialBase = firstMonthAmount;
+          const rentalInitialVat = Number(
+            (taxableInitialBase * VAT_RATE).toFixed(2),
+          );
 
-    initialDue = Number(
-      (securityDepositAmount + firstMonthAmount + rentalInitialVat).toFixed(2)
-    );
+          initialDue = Number(
+            (
+              securityDepositAmount +
+              firstMonthAmount +
+              rentalInitialVat
+            ).toFixed(2),
+          );
 
-    paymentMode = 'deposit_plus_first_month';
-  } else {
-    initialDue = grandTotal;
-    paymentMode = 'full_upfront';
-  }
-} else {
-  initialDue = grandTotal;
-  paymentMode = 'full_upfront';
-}
+          paymentMode = "deposit_plus_first_month";
+        } else {
+          initialDue = grandTotal;
+          paymentMode = "full_upfront";
+        }
+      } else {
+        initialDue = grandTotal;
+        paymentMode = "full_upfront";
+      }
 
-const cleanDetails = {
-  ...baseDetails,
-  paymentMode,
-  subtotalAmount: baseSubtotal,
-  vatRate: VAT_RATE,
-  vatAmount,
-  initialDue,
-  securityDepositAmount,
-  firstMonthAmount,
-};
+      const cleanDetails = {
+        ...baseDetails,
+        paymentMode,
+        subtotalAmount: baseSubtotal,
+        vatRate: VAT_RATE,
+        vatAmount,
+        initialDue,
+        securityDepositAmount,
+        firstMonthAmount,
+      };
 
-      if (reservationData.unitType === 'function_hall') {
+      if (reservationData.unitType === "function_hall") {
         const { data: existing, error: checkError } = await supabase.rpc(
-          'get_blocking_reservations'
+          "get_blocking_reservations",
         );
 
         if (checkError) {
-          console.error('Function hall validation failed:', checkError);
-          throw new Error('Unable to validate function hall availability.');
+          console.error("Function hall validation failed:", checkError);
+          throw new Error("Unable to validate function hall availability.");
         }
 
         const requestedStart = new Date(reservationData.startDate).getTime();
@@ -807,7 +885,7 @@ const cleanDetails = {
 
         const hasConflict = (existing ?? []).some((row: any) => {
           if (row.unit_id !== reservationData.unitId) return false;
-          if (row.unit_type !== 'function_hall') return false;
+          if (row.unit_type !== "function_hall") return false;
 
           const existingStart = new Date(row.start_date).getTime();
           const existingEnd = new Date(row.end_date).getTime();
@@ -817,51 +895,52 @@ const cleanDetails = {
 
         if (hasConflict) {
           throw new Error(
-            'This function hall is already reserved for the selected date(s).'
+            "This function hall is already reserved for the selected date(s).",
           );
         }
       }
 
-      if (reservationData.unitType === 'parking_slot' && reservationData.slotId) {
+      if (
+        reservationData.unitType === "parking_slot" &&
+        reservationData.slotId
+      ) {
         const { data: existing, error: checkError } = await supabase
-          .from('reservations')
-          .select('reservation_id')
-          .eq('unit_type', 'parking_slot')
-          .eq('details->>slotId', reservationData.slotId)
-          .in('status', ['approved', 'confirmed']);
+          .from("reservations")
+          .select("reservation_id")
+          .eq("unit_type", "parking_slot")
+          .eq("details->>slotId", reservationData.slotId)
+          .in("status", ["approved", "confirmed"]);
 
         if (checkError) {
-          console.error('Slot validation failed:', checkError);
-          throw new Error('Unable to validate parking slot.');
+          console.error("Slot validation failed:", checkError);
+          throw new Error("Unable to validate parking slot.");
         }
 
         if (existing && existing.length > 0) {
           throw new Error(
-            'This parking slot is already occupied. Please select another.'
+            "This parking slot is already occupied. Please select another.",
           );
         }
       }
 
       const { data: unitRow, error: unitError } = await supabase
-  .from('units')
-  .select('security_deposit_months, advance_rent_months')
-  .eq('unit_id', reservationData.unitId)
-  .single();
+        .from("units")
+        .select("security_deposit_months, advance_rent_months")
+        .eq("unit_id", reservationData.unitId)
+        .single();
 
-if (unitError) {
-  console.error('Failed to fetch unit lease terms:', unitError);
-  throw new Error('Unable to determine lease payment requirements.');
-}
+      if (unitError) {
+        console.error("Failed to fetch unit lease terms:", unitError);
+        throw new Error("Unable to determine lease payment requirements.");
+      }
 
-const securityDepositMonthsSnapshot =
-  unitRow?.security_deposit_months ?? 1;
+      const securityDepositMonthsSnapshot =
+        unitRow?.security_deposit_months ?? 1;
 
-const advanceRentMonthsSnapshot =
-  unitRow?.advance_rent_months ?? 1;
-
+      const advanceRentMonthsSnapshot = unitRow?.advance_rent_months ?? 1;
 
       const { data, error } = await supabase
-        .from('reservations')
+        .from("reservations")
         .insert([
           {
             user_id: reservationData.userId,
@@ -881,12 +960,13 @@ const advanceRentMonthsSnapshot =
             billing_breakdown: reservationData.billingBreakdown ?? cleanDetails,
             promo_id: reservationData.promoId ?? null,
             discount_snapshot: reservationData.discountSnapshot ?? null,
-            requires_full_payment: reservationData.reservationType !== 'monthly_lease',
+            requires_full_payment:
+              reservationData.reservationType !== "monthly_lease",
             payment_due_at:
-              reservationData.reservationType === 'monthly_lease'
+              reservationData.reservationType === "monthly_lease"
                 ? reservationData.startDate
-    : null,
-            status: 'pending',
+                : null,
+            status: "pending",
             payment_method: reservationData.paymentMethod ?? null,
             payment_intent: reservationData.paymentIntent ?? null,
             mode_of_visit: reservationData.modeOfVisit ?? null,
@@ -896,10 +976,8 @@ const advanceRentMonthsSnapshot =
               ? normalizeText(reservationData.notes)
               : null,
             details: cleanDetails,
-            security_deposit_months_snapshot:
-              securityDepositMonthsSnapshot,
-            advance_rent_months_snapshot:
-              advanceRentMonthsSnapshot,
+            security_deposit_months_snapshot: securityDepositMonthsSnapshot,
+            advance_rent_months_snapshot: advanceRentMonthsSnapshot,
           },
         ])
         .select()
@@ -908,19 +986,19 @@ const advanceRentMonthsSnapshot =
       if (error) throw error;
 
       const bookingTerm = data.details?.bookingTerm;
-const safeBookingTerm =
-  bookingTerm === 'daily' ||
-  bookingTerm === 'weekly' ||
-  bookingTerm === 'monthly'
-    ? bookingTerm
-    : undefined;
+      const safeBookingTerm =
+        bookingTerm === "daily" ||
+        bookingTerm === "weekly" ||
+        bookingTerm === "monthly"
+          ? bookingTerm
+          : undefined;
 
-const insertedPaymentMode = data.details?.paymentMode;
-const safePaymentMode =
-  insertedPaymentMode === 'full_upfront' ||
-  insertedPaymentMode === 'deposit_plus_first_month'
-    ? insertedPaymentMode
-    : undefined;
+      const insertedPaymentMode = data.details?.paymentMode;
+      const safePaymentMode =
+        insertedPaymentMode === "full_upfront" ||
+        insertedPaymentMode === "deposit_plus_first_month"
+          ? insertedPaymentMode
+          : undefined;
 
       const newReservation: Reservation = {
         id: data.reservation_id,
@@ -969,15 +1047,16 @@ const safePaymentMode =
         usageEndedAt: data.usage_ended_at ?? null,
         usageEndNotifiedAt: data.usage_end_notified_at ?? null,
         usageEndReminderSentAt: data.usage_end_reminder_sent_at ?? null,
-        securityDepositMonthsSnapshot: data.security_deposit_months_snapshot ?? null,
+        securityDepositMonthsSnapshot:
+          data.security_deposit_months_snapshot ?? null,
         advanceRentMonthsSnapshot: data.advance_rent_months_snapshot ?? null,
       };
 
-            try {
+      try {
         await addAuditLog({
           userId: user.id,
-          action: 'CREATE',
-          targetTable: 'reservations',
+          action: "CREATE",
+          targetTable: "reservations",
           targetId: newReservation.id,
           targetPublicId: newReservation.publicId,
           beforeValue: null,
@@ -986,7 +1065,18 @@ const safePaymentMode =
           notes: `Created reservation ${newReservation.publicId ?? newReservation.id}`,
         });
       } catch (auditError) {
-        console.error('Failed to audit reservation creation:', auditError);
+        console.error("Failed to audit reservation creation:", auditError);
+      }
+
+      try {
+        await notifyCustomerReservationReceived({
+          reservationId: newReservation.id,
+        });
+      } catch (receiptError) {
+        console.error(
+          "Failed to trigger reservation received notification:",
+          receiptError,
+        );
       }
 
       try {
@@ -1000,29 +1090,35 @@ const safePaymentMode =
           unitType: newReservation.unitType,
           startDate: newReservation.startDate,
           endDate: newReservation.endDate,
-          amount: Number(newReservation.amountDue ?? newReservation.totalAmount ?? 0),
+          amount: Number(
+            newReservation.amountDue ?? newReservation.totalAmount ?? 0,
+          ),
           reservationType: newReservation.reservationType ?? null,
         });
       } catch (notificationError) {
         console.error(
-          'Failed to trigger admin new reservation notification:',
-          notificationError
+          "Failed to trigger admin new reservation notification:",
+          notificationError,
         );
       }
 
       return newReservation.id;
     },
-    [addAuditLog, user]
+    [addAuditLog, user],
   );
 
   const updateReservation = useCallback(
-    async (id: string, reservationUpdate: Partial<Reservation>): Promise<void> => {
+    async (
+      id: string,
+      reservationUpdate: Partial<Reservation>,
+    ): Promise<void> => {
       const existingReservation = reservations.find((r) => r.id === id);
       if (!existingReservation) return;
 
       const dbPayload: Record<string, unknown> = {};
 
-      if (reservationUpdate.status !== undefined) dbPayload.status = reservationUpdate.status;
+      if (reservationUpdate.status !== undefined)
+        dbPayload.status = reservationUpdate.status;
       if (reservationUpdate.notes !== undefined) {
         dbPayload.notes = reservationUpdate.notes
           ? normalizeText(reservationUpdate.notes)
@@ -1060,30 +1156,29 @@ const safePaymentMode =
           reservationUpdate.assignedParkingSlotId;
       }
       if (reservationUpdate.usageStatus !== undefined) {
-  dbPayload.usage_status = reservationUpdate.usageStatus;
-}
+        dbPayload.usage_status = reservationUpdate.usageStatus;
+      }
 
-if (reservationUpdate.usageStartedAt !== undefined) {
-  dbPayload.usage_started_at = reservationUpdate.usageStartedAt;
-}
+      if (reservationUpdate.usageStartedAt !== undefined) {
+        dbPayload.usage_started_at = reservationUpdate.usageStartedAt;
+      }
 
-if (reservationUpdate.usageEndsAt !== undefined) {
-  dbPayload.usage_ends_at = reservationUpdate.usageEndsAt;
-}
+      if (reservationUpdate.usageEndsAt !== undefined) {
+        dbPayload.usage_ends_at = reservationUpdate.usageEndsAt;
+      }
 
-if (reservationUpdate.usageEndedAt !== undefined) {
-  dbPayload.usage_ended_at = reservationUpdate.usageEndedAt;
-}
+      if (reservationUpdate.usageEndedAt !== undefined) {
+        dbPayload.usage_ended_at = reservationUpdate.usageEndedAt;
+      }
 
-if (reservationUpdate.usageEndNotifiedAt !== undefined) {
-  dbPayload.usage_end_notified_at =
-    reservationUpdate.usageEndNotifiedAt;
-}
+      if (reservationUpdate.usageEndNotifiedAt !== undefined) {
+        dbPayload.usage_end_notified_at = reservationUpdate.usageEndNotifiedAt;
+      }
 
-if (reservationUpdate.usageEndReminderSentAt !== undefined) {
-  dbPayload.usage_end_reminder_sent_at =
-    reservationUpdate.usageEndReminderSentAt;
-}
+      if (reservationUpdate.usageEndReminderSentAt !== undefined) {
+        dbPayload.usage_end_reminder_sent_at =
+          reservationUpdate.usageEndReminderSentAt;
+      }
 
       const detailsPatch = buildReservationDetails(reservationUpdate);
       const rawDetails = (reservationUpdate as any).details;
@@ -1101,91 +1196,99 @@ if (reservationUpdate.usageEndReminderSentAt !== undefined) {
       if (Object.keys(dbPayload).length === 0) return;
 
       const { error } = await supabase
-        .from('reservations')
+        .from("reservations")
         .update(dbPayload)
-        .eq('reservation_id', id);
+        .eq("reservation_id", id);
 
       if (error) throw error;
 
       // 🔔 Send client email when reservation status changes
-const previousStatus = existingReservation.status;
-const nextStatus = reservationUpdate.status;
+      const previousStatus = existingReservation.status;
+      const nextStatus = reservationUpdate.status;
 
-if (nextStatus && nextStatus !== previousStatus) {
-  let action:
-  | 'approved'
-  | 'confirmed'
-  | 'rejected'
-  | 'completed'
-  | 'cancelled'
-  | null = null;
+      if (nextStatus && nextStatus !== previousStatus) {
+        let action:
+          | "approved"
+          | "confirmed"
+          | "rejected"
+          | "completed"
+          | "cancelled"
+          | null = null;
 
-if (nextStatus === 'approved') {
-  action = 'approved';
-} else if (nextStatus === 'confirmed') {
-  action = 'confirmed';
-} else if (nextStatus === 'rejected') {
-  action = 'rejected';
-} else if (nextStatus === 'completed') {
-  action = 'completed';
-} else if (nextStatus === 'cancelled') {
-  action = 'cancelled';
-}
-
-  if (action) {
-    try {
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
-
-      const accessToken = session?.access_token;
-
-      if (sessionError || !accessToken) {
-        throw new Error('Missing valid session for reservation update email.');
-      }
-
-      const { data, error } = await supabase.functions.invoke(
-        'send-reservation-update',
-        {
-          body: {
-            reservationId: id,
-            action,
-            notes:
-              typeof reservationUpdate.notes === 'string'
-                ? reservationUpdate.notes
-                : existingReservation.notes ?? null,
-          },
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
+        if (nextStatus === "approved") {
+          action = "approved";
+        } else if (nextStatus === "confirmed") {
+          action = "confirmed";
+        } else if (nextStatus === "rejected") {
+          action = "rejected";
+        } else if (nextStatus === "completed") {
+          action = "completed";
+        } else if (nextStatus === "cancelled") {
+          action = "cancelled";
         }
-      );
 
-      console.log('send-reservation-update response:', { data, error });
+        if (action) {
+          try {
+            const {
+              data: { session },
+              error: sessionError,
+            } = await supabase.auth.getSession();
 
-      if (error) {
-        console.error('Failed to send reservation update email:', error);
+            const accessToken = session?.access_token;
+
+            if (sessionError || !accessToken) {
+              throw new Error(
+                "Missing valid session for reservation update email.",
+              );
+            }
+
+            const { data, error } = await supabase.functions.invoke(
+              "send-reservation-update",
+              {
+                body: {
+                  reservationId: id,
+                  action,
+                  notes:
+                    typeof reservationUpdate.notes === "string"
+                      ? reservationUpdate.notes
+                      : (existingReservation.notes ?? null),
+                },
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                },
+              },
+            );
+
+            console.log("send-reservation-update response:", { data, error });
+
+            if (error) {
+              console.error("Failed to send reservation update email:", error);
+            }
+          } catch (notificationError) {
+            console.error(
+              "Failed to trigger reservation update notification:",
+              notificationError,
+            );
+          }
+        }
       }
-    } catch (notificationError) {
-      console.error(
-        'Failed to trigger reservation update notification:',
-        notificationError
-      );
-    }
-  }
-}
 
-      const updatedReservation = buildAuditSnapshot(existingReservation, reservationUpdate);
-      const changedFields = getChangedFields(existingReservation, reservationUpdate);
+      const updatedReservation = buildAuditSnapshot(
+        existingReservation,
+        reservationUpdate,
+      );
+      const changedFields = getChangedFields(
+        existingReservation,
+        reservationUpdate,
+      );
 
       if (changedFields.length === 0) return;
 
       try {
         await addAuditLog({
           userId: user?.id || existingReservation.userId,
-          action: 'UPDATE',
-          targetTable: 'reservations',
+          action: "UPDATE",
+          targetTable: "reservations",
           targetId: id,
           targetPublicId: existingReservation.publicId,
           beforeValue: existingReservation,
@@ -1194,10 +1297,10 @@ if (nextStatus === 'approved') {
           notes: `Updated reservation ${existingReservation.publicId ?? id}`,
         });
       } catch (auditError) {
-        console.error('Failed to audit reservation update:', auditError);
+        console.error("Failed to audit reservation update:", auditError);
       }
     },
-    [addAuditLog, reservations, user?.id]
+    [addAuditLog, reservations, user?.id],
   );
 
   const deleteReservation = useCallback(
@@ -1206,17 +1309,17 @@ if (nextStatus === 'approved') {
       if (!existingReservation) return;
 
       const { error } = await supabase
-        .from('reservations')
+        .from("reservations")
         .delete()
-        .eq('reservation_id', id);
+        .eq("reservation_id", id);
 
       if (error) throw error;
 
       try {
         await addAuditLog({
           userId: user?.id || existingReservation.userId,
-          action: 'DELETE',
-          targetTable: 'reservations',
+          action: "DELETE",
+          targetTable: "reservations",
           targetId: id,
           targetPublicId: existingReservation.publicId,
           beforeValue: existingReservation,
@@ -1225,15 +1328,15 @@ if (nextStatus === 'approved') {
           notes: `Deleted reservation ${existingReservation.publicId ?? id}`,
         });
       } catch (auditError) {
-        console.error('Failed to audit reservation deletion:', auditError);
+        console.error("Failed to audit reservation deletion:", auditError);
       }
     },
-    [addAuditLog, reservations, user?.id]
+    [addAuditLog, reservations, user?.id],
   );
 
   const getReservationsByUserId = useCallback(
     (userId: string) => reservations.filter((r) => r.userId === userId),
-    [reservations]
+    [reservations],
   );
 
   const value = useMemo<ReservationsContextType>(
@@ -1256,7 +1359,7 @@ if (nextStatus === 'approved') {
       refreshReservations,
       getReservationsByUserId,
       fetchReservationsPage,
-    ]
+    ],
   );
 
   return (
@@ -1269,7 +1372,7 @@ if (nextStatus === 'approved') {
 export function useReservations() {
   const context = useContext(ReservationsContext);
   if (!context) {
-    throw new Error('useReservations must be used within ReservationsProvider');
+    throw new Error("useReservations must be used within ReservationsProvider");
   }
   return context;
 }

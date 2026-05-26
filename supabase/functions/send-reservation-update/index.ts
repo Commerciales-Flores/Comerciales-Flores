@@ -147,11 +147,6 @@ serve(async (req) => {
         "Usage lifecycle notifications are not valid for this reservation type.",
     });
   }
-} {
-  return json(origin, 400, {
-    error:
-      "Parking notification actions are only valid for parking reservations.",
-  });
 }
 
     const customer = Array.isArray(reservationRow.users)
