@@ -61,6 +61,15 @@ export const PARKING_DURATION_LIMITS = {
   months: { min: 1, max: 12 },
 } as const;
 
+export const PARKING_VEHICLE_TYPE_OPTIONS = [
+  "Sedan",
+  "Hatchback",
+  "Compact SUV",
+  "Standard SUV / 6-seater",
+  "Motorcycle",
+  "Other / for admin review",
+] as const;
+
 type ParkingDurationType = keyof typeof PARKING_DURATION_LIMITS;
 
 function isValidTimeHHMM(value?: string) {

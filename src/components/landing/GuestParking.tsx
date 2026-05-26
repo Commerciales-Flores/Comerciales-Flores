@@ -27,6 +27,7 @@ import {
   buildParkingHourlyOptions,
   isParkingRequestAllowedNow,
   parkingDurationRequiresOfficeHours,
+  PARKING_VEHICLE_TYPE_OPTIONS,
 } from "../reservations/parking/parking.utils";
 
 import {
@@ -834,16 +835,26 @@ export default function GuestParking() {
                   <label className="mb-2 block text-sm text-gray-700">
                     Vehicle Type
                   </label>
-                  <input
-                    type="text"
-                    maxLength={50}
-                    placeholder="e.g., Sedan, SUV, Motorcycle"
+
+                  <select
                     value={form.vehicleType}
                     disabled={isSubmitting}
                     onChange={(e) => updateField("vehicleType", e.target.value)}
-                    className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
                     required
-                  />
+                  >
+                    <option value="">Select vehicle type</option>
+                    {PARKING_VEHICLE_TYPE_OPTIONS.map((vehicleType) => (
+                      <option key={vehicleType} value={vehicleType}>
+                        {vehicleType}
+                      </option>
+                    ))}
+                  </select>
+
+                  <p className="mt-1 text-xs text-slate-500">
+                    Larger vehicles may require admin review and may be rejected
+                    if the available slot cannot safely accommodate the vehicle.
+                  </p>
                 </div>
 
                 <div>
